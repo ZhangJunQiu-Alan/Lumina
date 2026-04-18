@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "fetch:ielts-vocab": "node scripts/fetch-ielts-vocab.mjs",
+    "seed:official-vocab": "tsx --env-file=.env scripts/preload-official-vocab.ts",
     "lint": "tsc --noEmit",
     "test:review": "tsx scripts/test-review-rules.ts",
     "test:session": "tsx scripts/test-learning-session.ts",

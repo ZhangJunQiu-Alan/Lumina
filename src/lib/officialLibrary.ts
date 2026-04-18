@@ -9,6 +9,12 @@ export const OFFICIAL_TOTAL_WORDS = IELTS_WORDS_FLAT.length;
 
 const OFFICIAL_GROUP_PATTERN = /^雅思词汇真经 · (\d{4})-(\d{4})$/;
 
+export interface OfficialBatchPlan {
+  words: string[];
+  groupName: string;
+  nextProgress: number;
+}
+
 function clampProgress(value: number): number {
   if (Number.isNaN(value)) return 0;
   return Math.min(Math.max(value, 0), OFFICIAL_TOTAL_WORDS);
@@ -84,4 +90,15 @@ export function deriveOfficialProgress(groups: Pick<LibraryGroupSummary, 'source
 
 export function getOfficialBatchWords(progress: number) {
   return IELTS_WORDS_FLAT.slice(progress, progress + OFFICIAL_BATCH_SIZE);
+}
+
+export function getOfficialBatchPlan(progress: number): OfficialBatchPlan | null {
+  const words = getOfficialBatchWords(progress);
+  if (words.length === 0) return null;
+
+  return {
+    words,
+    groupName: formatOfficialGroupName(progress, words.length),
+    nextProgress: progress + words.length,
+  };
 }

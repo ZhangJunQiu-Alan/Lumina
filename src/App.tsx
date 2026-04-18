@@ -1357,15 +1357,15 @@ export default function App() {
             'h-full overflow-y-auto',
             isSessionRoute
               ? 'session-main px-4 py-6 md:px-6 md:py-7 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10'
-              : 'px-6 pt-24 pb-32',
+              : 'px-6 pt-24 pb-32 lg:px-6 lg:py-7 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10',
           )}
         >
           <div
             className={cx(
-              'mx-auto min-h-full',
+              'min-h-full',
               isSessionRoute
-                ? 'session-route-shell flex w-full max-w-[1460px] flex-col'
-                : 'container flex flex-col items-center justify-center',
+                ? 'session-route-shell mx-auto flex w-full max-w-[1460px] flex-col'
+                : 'flex w-full flex-col',
             )}
           >
             {sessionStartError && (

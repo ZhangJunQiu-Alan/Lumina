@@ -1,8 +1,44 @@
 # Codex Work Summary
 
-> 更新时间：2026-04-15
-> 当前已与 `claude_code.md` 同步，覆盖 review v1、入口重构、真实鉴权、RLS 收口和账户退出闭环。
+> 更新时间：2026-04-18
+> 当前已与 `claude_code.md` 同步，覆盖 review v1、入口重构、真实鉴权、RLS 收口、生产部署、GitHub 自动发布，以及官方词库直启学习/预加载脚本。
 > 目的：记录当前由 Codex 已完成的核心工作，作为后续继续设计和开发单词复习系统的接手说明。
+
+---
+
+## 0. 本次更新（2026-04-18）
+
+### 官方词库导入链路
+
+- 官方词库入口已改成“先查库、缺的再补、补齐后直接开始”，不再停留在独立的 preview / saving / audio 等中间阶段。
+- `src/lib/importFlow.ts` 已拆出可复用能力：
+  - `fetchVocabularyEntriesByWords()`
+  - `persistEnrichedVocabularyEntries()`
+  - `createLearningGroupFromVocabularyEntries()`
+- 现有官方词条会优先复用数据库里已经完整可用的内容，只有缺失词才会再调用 `/api/vocab/enrich`。
+- 建组时支持直接从已持久化的词条创建 `learning_groups / learning_group_words / review_states`，减少重复写库。
+- `src/lib/officialLibrary.ts` 新增 `getOfficialBatchPlan()`，统一生成本批单词、组名和进度推进值。
+- `src/components/library/OfficialLibraryPanel.tsx` 已切到新的批处理流程，文案也改成“准备好就直接开始”。
+
+### 官方词库预加载脚本
+
+- 已新增 [`scripts/preload-official-vocab.ts`](/Users/zhangjunqiu/Desktop/Primoria_English/scripts/preload-official-vocab.ts:1)。
+- 已在 [`package.json`](/Users/zhangjunqiu/Desktop/Primoria_English/package.json:1) 增加 `npm run seed:official-vocab`。
+- 该脚本会批量扫描 `IELTS_WORDS_FLAT`，跳过已完整存在的词条，仅对缺失词做 enrich 并回写 `vocabulary_items / vocabulary_senses / confused_words`。
+
+### 生产部署与自动发布
+
+- 前端已部署到 Cloudflare Pages：`https://primoria-english.pages.dev`
+- 后端已部署到 Railway：`https://api-production-0052.up.railway.app`
+- GitHub 自动发布已打通：
+  - `CI` workflow 负责类型检查、规则测试、session 测试、word batch 测试和生产构建验证
+  - `Deploy Pages` workflow 负责将 `main` 的前端构建结果发布到现有 Pages 项目
+  - Railway `api` 服务已连接 GitHub 仓库 `ZhangJunQiu-Alan/Primoria_English` 的 `main`
+  - Railway `Wait for CI` 已开启，只有 GitHub Actions 通过后才会部署
+- 已确认：
+  - `Deploy Pages` 成功
+  - Railway 最新 GitHub 部署成功
+  - `GET /api/health` 返回 `{ "ok": true }`
 
 ---
 
@@ -375,6 +411,8 @@
 npm run lint
 npm run build
 npm run test:review
+npm run test:session
+npm run test:word-batch
 ```
 
 验证结果：
@@ -382,6 +420,8 @@ npm run test:review
 - TypeScript 静态检查通过
 - Vite 生产构建通过
 - 纯规则测试通过
+- Learning session 检查通过
+- Word batch 校验通过
 
 当前仍有一个非阻塞警告：
 
