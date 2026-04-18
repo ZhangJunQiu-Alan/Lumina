@@ -139,20 +139,28 @@ npm run test:review
 For a split deployment with Cloudflare Pages + Railway:
 
 - Cloudflare Pages
-  - Build command: `npm run build`
-  - Output directory: `dist`
-  - Environment variables:
+  - This repo keeps the existing `primoria-english.pages.dev` Direct Upload project and updates it via GitHub Actions. Cloudflare's current docs say a Direct Upload Pages project cannot be switched to native Git integration later.
+  - Workflow files:
+    - `.github/workflows/ci.yml`
+    - `.github/workflows/pages-deploy.yml`
+  - Required GitHub Actions secrets:
+    - `CLOUDFLARE_ACCOUNT_ID=1186c12d969b2f2b637acba7d26ad486`
+    - `CLOUDFLARE_API_TOKEN=<Cloudflare Pages Edit token>`
     - `VITE_SUPABASE_URL`
     - `VITE_SUPABASE_PUBLISHABLE_KEY`
-    - `VITE_API_BASE_URL=https://<your-railway-domain>`
+    - `VITE_API_BASE_URL=https://api-production-0052.up.railway.app`
+  - Optional GitHub Actions variable:
     - `VITE_GOOGLE_AUTH_ENABLED=true` only after Google OAuth is configured in Supabase
 - Railway
+  - Keep the existing `api` service and connect it to `main` from `ZhangJunQiu-Alan/Primoria_English`.
+  - Turn on GitHub autodeploys for that service.
+  - Turn on `Wait for CI` so Railway deploys only after `.github/workflows/ci.yml` passes.
   - Start command: `npm run start`
   - Environment variables:
     - `SUPABASE_URL`
     - `SUPABASE_SERVICE_ROLE_KEY`
     - `GEMINI_API_KEY`
     - `GOOGLE_TTS_API_KEY`
-    - `APP_ORIGIN=https://<your-pages-domain>`
+    - `APP_ORIGIN=https://primoria-english.pages.dev`
 
 Cloudflare Pages SPA routing is handled by [`public/_redirects`](/Users/zhangjunqiu/Desktop/Primoria_English/public/_redirects:1), and Supabase Auth should include your Pages domain plus `/auth` as an allowed redirect URL.
