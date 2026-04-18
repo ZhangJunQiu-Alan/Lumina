@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { BookOpen, LayoutDashboard, LogOut, PlusCircle, Settings, User } from 'lucide-react';
+import { BookOpen, ChevronRight, LayoutDashboard, LogOut, PlusCircle, Settings, User } from 'lucide-react';
 
 const NAV_ITEMS = [
   { to: '/app/home', icon: LayoutDashboard, label: '首页' },
   { to: '/app/library', icon: BookOpen, label: '词库' },
   { to: '/app/import', icon: PlusCircle, label: '导入' },
-  { to: '/app/profile', icon: User, label: '账户' },
+  { to: '/app/profile', icon: User, label: '我的' },
 ] as const;
 
 interface SidebarProps {
@@ -71,7 +71,11 @@ export const Sidebar = ({
         <button
           type="button"
           onClick={() => setIsAccountMenuOpen((prev) => !prev)}
-          className="flex h-11 w-11 items-center justify-center rounded-[14px] text-gray-400 transition-colors hover:bg-white/50 hover:text-gray-700"
+          className={`flex h-11 w-11 items-center justify-center rounded-[14px] transition-colors ${
+            activePath === '/app/settings'
+              ? 'bg-white text-apple-blue shadow-lg shadow-black/5'
+              : 'text-gray-400 hover:bg-white/50 hover:text-gray-700'
+          }`}
         >
           <Settings className="h-6 w-6" />
         </button>
@@ -90,10 +94,10 @@ export const Sidebar = ({
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-black text-text-primary">
-                    {userName ?? '当前账户'}
+                    {userName ?? '当前账号'}
                   </p>
                   <p className="truncate text-xs font-medium text-text-secondary">
-                    {userEmail ?? '未读取到邮箱'}
+                    {userEmail ?? '还没拿到邮箱'}
                   </p>
                 </div>
               </div>
@@ -102,11 +106,26 @@ export const Sidebar = ({
                 type="button"
                 onClick={() => {
                   setIsAccountMenuOpen(false);
+                  onNavigate('/app/settings');
+                }}
+                className="mt-3 flex w-full items-center justify-between rounded-[22px] px-4 py-4 text-left text-sm font-black text-text-primary transition-colors hover:bg-black/5"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Settings className="h-4 w-4 text-apple-blue" />
+                  学习设置
+                </span>
+                <ChevronRight className="h-4 w-4 text-text-secondary" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAccountMenuOpen(false);
                   onSignOut();
                 }}
-                className="mt-3 flex w-full items-center justify-between rounded-[22px] px-4 py-4 text-left text-sm font-black text-apple-red transition-colors hover:bg-apple-red/8"
+                className="mt-2 flex w-full items-center justify-between rounded-[22px] px-4 py-4 text-left text-sm font-black text-apple-red transition-colors hover:bg-apple-red/8"
               >
-                退出账户
+                退出登录
                 <LogOut className="h-4 w-4" />
               </button>
             </motion.div>

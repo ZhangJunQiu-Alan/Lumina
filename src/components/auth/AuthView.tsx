@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { isGoogleAuthEnabled } from '../../lib/authFeatures';
 
 type AuthMode = 'login' | 'register';
 
@@ -29,21 +30,6 @@ const defaultFormState: FormState = {
   password: '',
   confirmPassword: '',
 };
-
-const insightCards = [
-  {
-    title: '先登录，再进入产品区。',
-    body: '结构一旦摆正，账户、进度、退出和权限这些事情才不会越做越乱。',
-  },
-  {
-    title: 'Google 是主入口。',
-    body: '如果只是为了快速进入自己的学习空间，通常不需要再让用户在一开始就做太多表单劳动。',
-  },
-  {
-    title: '邮箱密码保留为备用。',
-    body: '有些人就是更习惯传统方式。好的入口不是只给一种答案，而是把主次分明地摆出来。',
-  },
-] as const;
 
 function safeNextPath(searchParams: URLSearchParams) {
   const next = searchParams.get('next');
@@ -109,6 +95,24 @@ export const AuthView = () => {
   const [feedback, setFeedback] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
 
   const nextPath = useMemo(() => safeNextPath(searchParams), [searchParams]);
+  const insightCards = useMemo(() => [
+    {
+      title: '先登录，再继续。',
+      body: '这样你下次回来，词库和进度才能接得上。',
+    },
+    {
+      title: isGoogleAuthEnabled ? 'Google 会更省事。' : '邮箱登录已经可用。',
+      body: isGoogleAuthEnabled
+        ? '想快一点进来，通常点一下就够了。'
+        : '当前线上先开放邮箱密码，先把学习系统稳定跑起来。',
+    },
+    {
+      title: isGoogleAuthEnabled ? '邮箱密码也能用。' : 'Google 稍后再开。',
+      body: isGoogleAuthEnabled
+        ? '如果你更习惯老办法，这边也留着，不着急。'
+        : '等 Supabase 的 Google provider 配好之后，再把它放回主入口。',
+    },
+  ], []);
 
   useEffect(() => {
     const nextMode = searchParams.get('mode');
@@ -129,15 +133,15 @@ export const AuthView = () => {
 
   const title = mode === 'login'
     ? {
-      kicker: '继续回来',
-      heading: '先登录，系统才能接着上一次判断往下走。',
-      body: '如果账户没有先确定，复习进度、到期队列和退出逻辑都会变成一团混乱。',
-      cta: '邮箱登录',
+      kicker: '欢迎回来',
+      heading: '登录一下，继续刚才那一段。',
+      body: '账号一接上，词库、复习安排和学习进度都会跟着回来。',
+      cta: '用邮箱登录',
     }
     : {
-      kicker: '创建入口',
-      heading: '先把账户建起来，再开始长期复习。',
-      body: '真正要积累的是跨会话进度，所以注册不是装饰，它是后面所有判断得以落地的前提。',
+      kicker: '第一次来',
+      heading: '先把账号建好，后面就能一直接着学。',
+      body: '先把入口留住，之后每次回来都能接上原来的进度。',
       cta: '创建账户',
     };
 
@@ -149,7 +153,7 @@ export const AuthView = () => {
     } catch (error) {
       setFeedback({
         type: 'error',
-        text: error instanceof Error ? error.message : 'Google 登录没有成功发起。',
+        text: error instanceof Error ? error.message : 'Google 登录没跳起来，再试一次看看。',
       });
       setIsGoogleSubmitting(false);
     }
@@ -193,14 +197,14 @@ export const AuthView = () => {
         if (result.requiresEmailConfirmation) {
           setFeedback({
             type: 'success',
-            text: '注册已提交。若你的 Supabase 项目开启了邮箱确认，请先去邮箱完成验证，再回来登录。',
+            text: '已经提交好了。如果邮箱里有确认信，先点一下，再回来登录。',
           });
         }
       }
     } catch (error) {
       setFeedback({
         type: 'error',
-        text: error instanceof Error ? error.message : '邮箱登录流程执行失败。',
+        text: error instanceof Error ? error.message : '这次没登进去，再试一次看看。',
       });
     } finally {
       setIsFormSubmitting(false);
@@ -228,10 +232,10 @@ export const AuthView = () => {
             </div>
 
             <h1 className="mt-6 max-w-3xl text-5xl font-black leading-[0.98] tracking-tight text-text-primary md:text-6xl">
-              真正可靠的产品，不会把登录塞进产品内部导航里。
+              先登录，回来时才接得上。
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-8 text-text-secondary">
-              先确认你是谁，再让系统继续你的进度，这件事听起来普通，但很多体验混乱其实都起源于入口层没摆正。
+              词库、复习安排和学习进度都跟着账号走。先把你认出来，后面就不会乱。
             </p>
 
             <div className="mt-10 grid gap-4">
@@ -291,20 +295,26 @@ export const AuthView = () => {
               </h2>
               <p className="mt-4 text-sm leading-7 text-text-secondary">{title.body}</p>
 
-              <button
-                type="button"
-                disabled={isAuthLoading || isGoogleSubmitting}
-                onClick={() => { void handleGoogle(); }}
-                className="mt-8 flex w-full items-center justify-center gap-3 rounded-[30px] bg-[#111827] px-6 py-5 text-base font-black text-white shadow-[0_22px_40px_rgba(17,24,39,0.24)] transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                <Chrome className="h-5 w-5" />
-                {isGoogleSubmitting ? '正在跳转到 Google…' : '使用 Google 继续'}
-              </button>
+              {isGoogleAuthEnabled ? (
+                <button
+                  type="button"
+                  disabled={isAuthLoading || isGoogleSubmitting}
+                  onClick={() => { void handleGoogle(); }}
+                  className="mt-8 flex w-full items-center justify-center gap-3 rounded-[30px] bg-[#111827] px-6 py-5 text-base font-black text-white shadow-[0_22px_40px_rgba(17,24,39,0.24)] transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  <Chrome className="h-5 w-5" />
+                  {isGoogleSubmitting ? '正在跳转到 Google…' : '使用 Google 继续'}
+                </button>
+              ) : (
+                <div className="mt-8 rounded-[28px] border border-[#D6B36A]/30 bg-[#FFF6DF] px-5 py-4 text-sm font-medium leading-7 text-[#8A5A14]">
+                  当前线上先开放邮箱密码登录，Google 登录会在 provider 配好之后再打开。
+                </div>
+              )}
 
               <div className="mt-8 rounded-[28px] border border-white/60 bg-white/56 p-5 backdrop-blur-xl">
                 <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">备用方式</p>
                 <p className="mt-2 text-sm leading-7 text-text-secondary">
-                  如果你更习惯邮箱密码，也可以继续用它。只是从体验判断上看，Google 会更顺手。
+                  如果你更习惯邮箱密码，也可以用这个。不赶时间的话，慢一点也没关系。
                 </p>
               </div>
 
@@ -383,8 +393,8 @@ export const AuthView = () => {
                   type="submit"
                   disabled={isFormSubmitting}
                   className="group flex w-full items-center justify-center gap-3 rounded-[30px] bg-apple-blue px-6 py-5 text-base font-black text-white shadow-[0_22px_40px_rgba(0,122,255,0.28)] transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {isFormSubmitting ? '正在处理…' : title.cta}
+                  >
+                  {isFormSubmitting ? '稍等一下…' : title.cta}
                   <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1.5" />
                 </button>
               </form>
@@ -394,7 +404,7 @@ export const AuthView = () => {
                 onClick={() => navigate('/')}
                 className="mt-6 w-full rounded-[24px] border border-white/65 bg-white/70 px-5 py-4 text-sm font-black text-text-secondary transition-colors hover:bg-white"
               >
-                回到入口页
+                回到首页
               </button>
             </motion.div>
           </AnimatePresence>

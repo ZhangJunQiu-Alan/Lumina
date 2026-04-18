@@ -35,6 +35,10 @@
   .jelly-shadow {
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
   }
+
+  .session-main {
+    scrollbar-gutter: stable both-edges;
+  }
 }
 
 body {
@@ -88,4 +92,19 @@ input::placeholder {
 /* Progress bar pulse effect */
 .bg-apple-blue {
   box-shadow: 0 0 15px rgba(0, 122, 255, 0.1);
+}
+
+@media (min-width: 1440px) and (min-height: 900px) {
+  .session-main {
+    padding-top: 1.75rem;
+    padding-bottom: 1.75rem;
+  }
+
+  .session-route-shell {
+    min-height: 100%;
+  }
+
+  .input-session-shell {
+    max-width: 1320px;
+  }
 }

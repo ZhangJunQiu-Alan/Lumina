@@ -9,19 +9,20 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { isGoogleAuthEnabled } from '../../lib/authFeatures';
 
 const featureCards = [
   {
     icon: BrainCircuit,
     eyebrow: '状态驱动',
     title: '不是只看对错，而是判断你究竟记到了哪一层。',
-    body: '能答出来但明显迟疑，通常不算真正稳住。系统会把这种差别记下来，而不是一概当成“会了”。',
+    body: '能答出来但明显迟疑，通常还不算真的稳住。这种差别，这边会替你记下来。',
   },
   {
     icon: History,
     eyebrow: '跨次延续',
     title: '每次作答即时写库，中断之后还能从真实进度继续。',
-    body: '复习不是一口气做完才算数。真正可靠的系统，应该允许你中途离开，再回来时仍然知道你停在了哪里。',
+    body: '复习不一定非得一口气做完。中途离开也没关系，回来还能接着上次那一段。',
   },
   {
     icon: BookOpen,
@@ -36,6 +37,14 @@ const capabilityChips = ['状态驱动复习', '即时写库', '跨会话延续'
 export const LandingView = () => {
   const navigate = useNavigate();
   const { isAuthenticated, isAuthLoading } = useAuth();
+  const primaryTarget = isAuthenticated ? '/app/home' : isGoogleAuthEnabled ? '/auth' : '/auth?mode=login';
+  const primaryLabel = isAuthenticated
+    ? '继续进入学习系统'
+    : isGoogleAuthEnabled
+      ? '使用 Google 继续'
+      : '邮箱登录开始学习';
+  const secondaryLabel = isGoogleAuthEnabled ? '邮箱登录' : '邮箱注册';
+  const secondaryTarget = isGoogleAuthEnabled ? '/auth?mode=login' : '/auth?mode=register';
 
   return (
     <div className="min-h-screen px-6 py-6">
@@ -51,18 +60,18 @@ export const LandingView = () => {
                 背不住单词，通常不是不够努力，而是判断得还不够细。
               </h1>
               <p className="mt-6 max-w-3xl text-base leading-8 text-text-secondary md:text-lg">
-                这不是一张只会给你“对 / 错”结论的练习页。它会记录你是彻底想不起、
-                还是能回忆但明显迟疑，再据此安排下一次真正有意义的复习。
+                这边不只记你答对还是答错，还会记住你是一下想起来了，还是卡了一会儿才想起来。
+                下次该什么时候再见到这个词，也会跟着这个判断一起走。
               </p>
             </div>
 
             <div className="glass max-w-sm rounded-[32px] p-6 jelly-shadow">
-              <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">进入方式</p>
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">怎么开始</p>
               <p className="mt-3 text-xl font-black text-text-primary">
-                先进入入口页，再登录，最后进入你的学习系统。
+                先登录，回来时才接得上。
               </p>
               <p className="mt-3 text-sm leading-7 text-text-secondary">
-                产品区不再把登录当成内部导航项。先确认账户，再进入个人进度和复习空间，结构才是干净的。
+                词库、复习安排和学习进度都跟着账号走。先把你认出来，后面才不会乱。
               </p>
             </div>
           </header>
@@ -108,42 +117,44 @@ export const LandingView = () => {
           <div className="rounded-[32px] bg-[#12192b] p-7 text-white shadow-[0_24px_60px_rgba(18,25,43,0.28)]">
             <p className="text-xs font-bold uppercase tracking-[0.24em] text-white/60">你会得到什么</p>
             <p className="mt-4 text-3xl font-black leading-tight">
-              一套会逐渐形成判断力的复习系统，而不是只会堆练习次数的页面。
+              一套会慢慢摸清你卡在哪的复习系统，不只是做题次数越堆越多。
             </p>
             <p className="mt-4 max-w-xl text-sm leading-7 text-white/72">
-              经验型学习的价值，不在于把规则讲得越来越多，而在于让系统越来越知道你究竟卡在哪一步。
+              真正有用的地方，不是规则写得多漂亮，而是你下次回来时，它还知道该从哪接着走。
             </p>
           </div>
 
           <div className="glass rounded-apple-lg p-7 jelly-shadow">
             <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">开始使用</p>
             <h2 className="mt-3 text-3xl font-black leading-tight text-text-primary">
-              先登录，再进入属于你的学习空间。
+              先登录，再继续学。
             </h2>
             <p className="mt-3 text-sm leading-7 text-text-secondary">
               {isAuthenticated
-                ? '你已经处于登录状态，可以直接继续进入产品区。'
-                : 'Google 登录是主入口；如果你更习惯邮箱密码，也可以在下一页作为备用方式使用。'}
+                ? '你已经登录了，直接进去就行。'
+                : isGoogleAuthEnabled
+                  ? 'Google 会更省事一点。如果你更习惯邮箱密码，下一页也留着。'
+                  : '当前线上先开放邮箱密码登录，Google 登录会在 provider 配好之后再打开。'}
             </p>
 
             <div className="mt-8 flex flex-col gap-3">
               <button
                 type="button"
                 disabled={isAuthLoading}
-                onClick={() => navigate(isAuthenticated ? '/app/home' : '/auth')}
+                onClick={() => navigate(primaryTarget)}
                 className="group flex w-full items-center justify-center gap-3 rounded-[28px] bg-apple-blue px-6 py-5 text-lg font-black text-white shadow-[0_22px_40px_rgba(0,122,255,0.26)] transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
               >
-                {isAuthenticated ? '继续进入学习系统' : '使用 Google 继续'}
+                {primaryLabel}
                 <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1.5" />
               </button>
 
               {!isAuthenticated && (
                 <button
                   type="button"
-                  onClick={() => navigate('/auth?mode=login')}
+                  onClick={() => navigate(secondaryTarget)}
                   className="flex w-full items-center justify-center gap-3 rounded-[28px] border border-white/70 bg-white/78 px-6 py-5 text-base font-black text-text-primary transition-all hover:bg-white"
                 >
-                  邮箱登录
+                  {secondaryLabel}
                 </button>
               )}
             </div>
@@ -154,9 +165,9 @@ export const LandingView = () => {
                   <CheckCircle2 className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-sm font-black text-text-primary">这次先把入口结构做对。</p>
+                  <p className="text-sm font-black text-text-primary">先把入口理顺，后面就省心很多。</p>
                   <p className="mt-2 text-sm leading-7 text-text-secondary">
-                    先有清晰的入口层，再谈账户、进度和退出逻辑，后面的产品判断才不会越来越乱。
+                    以后你回来，词库和进度都能接得上，不用每次重新找感觉。
                   </p>
                 </div>
               </div>

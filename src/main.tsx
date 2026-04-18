@@ -3,13 +3,16 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import RootApp from './RootApp.tsx';
 import { AuthProvider } from './contexts/AuthContext.tsx';
+import { LearningPreferencesProvider } from './contexts/LearningPreferencesContext.tsx';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <RootApp />
+        <LearningPreferencesProvider>
+          <RootApp />
+        </LearningPreferencesProvider>
       </AuthProvider>
     </BrowserRouter>
   </StrictMode>,

@@ -1,6 +1,21 @@
 import { GoogleGenAI } from '@google/genai';
+import {
+  analyzeWordBatch,
+  compareWordBatches,
+  formatWordBatchMismatchMessage,
+  sanitizeWordInput,
+} from '../shared/wordBatch.js';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+
+export class EnrichmentResponseValidationError extends Error {
+  readonly statusCode = 502;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'EnrichmentResponseValidationError';
+  }
+}
 
 export interface GeminiWordResult {
   word: string;
@@ -26,8 +41,8 @@ Return ONLY a valid JSON array — no markdown fences, no explanation, no extra 
 Each element must follow this exact schema:
 {
   "word": "the word exactly as given",
-  "ipa_uk": "British IPA e.g. /ˈæl.ə.keɪt/",
-  "ipa_us": "American IPA e.g. /ˈæl.ə.keɪt/",
+  "ipa_uk": "British IPA using forward slashes e.g. /ˈæl.ə.keɪt/",
+  "ipa_us": "American IPA using forward slashes e.g. /ˈæl.ə.keɪt/",
   "primary_meaning_zh": "primary Chinese definition, concise",
   "ner_label": null,
   "senses": [
@@ -69,16 +84,18 @@ export async function generateArticle(words: string[]): Promise<string> {
 }
 
 export async function enrichWords(words: string[]): Promise<GeminiWordResult[]> {
-  const prompt = `${SYSTEM_PROMPT}\n\nWords to process: ${words.join(', ')}`;
+  const cleanedWords = words.map(sanitizeWordInput);
+  const prompt = `${SYSTEM_PROMPT}\n\nWords to process: ${cleanedWords.join(', ')}`;
 
   const result = await ai.models.generateContent({
     model: 'gemini-2.0-flash',
     contents: prompt,
+    config: { responseMimeType: 'application/json' },
   });
 
   const raw = result.text?.trim() ?? '';
 
-  // Strip markdown fences if Gemini adds them despite instructions
+  // Strip markdown fences as a fallback
   const jsonText = raw.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim();
 
   let parsed: GeminiWordResult[];
@@ -92,5 +109,22 @@ export async function enrichWords(words: string[]): Promise<GeminiWordResult[]> 
     throw new Error('Gemini response is not an array');
   }
 
-  return parsed;
+  const responseWords = parsed.map((entry) => sanitizeWordInput(typeof entry.word === 'string' ? entry.word : ''));
+  const responseBatch = analyzeWordBatch(responseWords);
+
+  if (responseBatch.duplicateWords.length > 0) {
+    throw new EnrichmentResponseValidationError(
+      `整理结果无效：模型返回了重复词：${responseBatch.duplicateWords.join('、')}。系统按忽略大小写和多余空格判重，请重试。`,
+    );
+  }
+
+  const mismatch = compareWordBatches(cleanedWords, responseWords);
+  if (mismatch.missingWords.length > 0 || mismatch.unexpectedWords.length > 0) {
+    throw new EnrichmentResponseValidationError(formatWordBatchMismatchMessage(mismatch));
+  }
+
+  return parsed.map((entry, index) => ({
+    ...entry,
+    word: responseWords[index],
+  }));
 }

@@ -44,8 +44,13 @@ CREATE TABLE IF NOT EXISTS learning_groups (
   group_name    TEXT,
   source_type   TEXT DEFAULT 'custom',
   status        TEXT DEFAULT 'active',   -- 'active' | 'completed'
+  session_round TEXT,                    -- 'round1' | 'round2' | 'round3' | 'article'
+  session_current_index INTEGER,
+  session_queue_word_ids JSONB,
+  session_last_active_at TIMESTAMPTZ,
   created_at    TIMESTAMPTZ DEFAULT NOW(),
-  completed_at  TIMESTAMPTZ
+  completed_at  TIMESTAMPTZ,
+  CHECK (session_round IS NULL OR session_round IN ('round1', 'round2', 'round3', 'article'))
 );
 
 -- Words inside each group (preserves order)
@@ -103,7 +108,23 @@ CREATE TABLE IF NOT EXISTS generated_articles (
   title                 TEXT,
   content               TEXT,
   target_words_json     JSONB,
-  created_at            TIMESTAMPTZ DEFAULT NOW()
+  created_at            TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(learning_group_id)
+);
+
+-- Per-user learning preferences
+CREATE TABLE IF NOT EXISTS user_settings (
+  user_id                        TEXT PRIMARY KEY,
+  default_pronunciation_locale   TEXT NOT NULL DEFAULT 'uk',
+  auto_play_enabled              BOOLEAN NOT NULL DEFAULT true,
+  auto_play_repeat_count         INTEGER NOT NULL DEFAULT 1,
+  auto_play_repeat_gap_ms        INTEGER NOT NULL DEFAULT 800,
+  wrong_answer_reveal_ms         INTEGER NOT NULL DEFAULT 5000,
+  updated_at                     TIMESTAMPTZ DEFAULT NOW(),
+  CHECK (default_pronunciation_locale IN ('uk', 'us')),
+  CHECK (auto_play_repeat_count IN (1, 2, 3)),
+  CHECK (auto_play_repeat_gap_ms IN (800, 1200, 1800)),
+  CHECK (wrong_answer_reveal_ms IN (3000, 5000, 8000))
 );
 
 -- ============================================================
@@ -117,6 +138,7 @@ ALTER TABLE learning_group_words   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE review_states          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE review_events          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE generated_articles     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_settings          ENABLE ROW LEVEL SECURITY;
 
 -- Allow all access for now (replace with user-scoped policies when auth lands)
 CREATE POLICY "public_all" ON vocabulary_items       FOR ALL USING (true) WITH CHECK (true);
@@ -202,4 +224,13 @@ CREATE POLICY "generated_articles_owner_insert" ON generated_articles
 CREATE POLICY "generated_articles_owner_update" ON generated_articles
   FOR UPDATE USING (auth.uid()::text = user_id) WITH CHECK (auth.uid()::text = user_id);
 CREATE POLICY "generated_articles_owner_delete" ON generated_articles
+  FOR DELETE USING (auth.uid()::text = user_id);
+
+CREATE POLICY "user_settings_owner_select" ON user_settings
+  FOR SELECT USING (auth.uid()::text = user_id);
+CREATE POLICY "user_settings_owner_insert" ON user_settings
+  FOR INSERT WITH CHECK (auth.uid()::text = user_id);
+CREATE POLICY "user_settings_owner_update" ON user_settings
+  FOR UPDATE USING (auth.uid()::text = user_id) WITH CHECK (auth.uid()::text = user_id);
+CREATE POLICY "user_settings_owner_delete" ON user_settings
   FOR DELETE USING (auth.uid()::text = user_id);

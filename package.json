@@ -6,11 +6,15 @@
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "server": "tsx --env-file=.env server/index.ts",
+    "start": "tsx server/index.ts",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
+    "fetch:ielts-vocab": "node scripts/fetch-ielts-vocab.mjs",
     "lint": "tsc --noEmit",
-    "test:review": "tsx scripts/test-review-rules.ts"
+    "test:review": "tsx scripts/test-review-rules.ts",
+    "test:session": "tsx scripts/test-learning-session.ts",
+    "test:word-batch": "tsx scripts/test-word-batch.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -25,6 +29,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.14.1",
+    "tsx": "^4.21.0",
     "vite": "^6.2.0"
   },
   "devDependencies": {
@@ -32,7 +37,6 @@
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
     "tailwindcss": "^4.1.14",
-    "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

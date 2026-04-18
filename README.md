@@ -41,9 +41,12 @@ Create `.env` in the project root:
 ```env
 VITE_SUPABASE_URL=https://<your-project>.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_<your-key>
+VITE_API_BASE_URL=https://<your-api-domain>   # Optional in local dev; required for split frontend/backend deploys
+VITE_GOOGLE_AUTH_ENABLED=false                 # Set to true only after the Supabase Google provider is configured
+SUPABASE_URL=https://<your-project>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<your-service-role-jwt>
-SUPABASE_DB_PASSWORD=<your-db-password>
 GEMINI_API_KEY=<your-gemini-api-key>
+GOOGLE_TTS_API_KEY=<your-google-tts-api-key>
 ```
 
 ### 3. Deploy the database schema
@@ -130,3 +133,26 @@ npm run lint
 npm run build
 npm run test:review
 ```
+
+## Deployment
+
+For a split deployment with Cloudflare Pages + Railway:
+
+- Cloudflare Pages
+  - Build command: `npm run build`
+  - Output directory: `dist`
+  - Environment variables:
+    - `VITE_SUPABASE_URL`
+    - `VITE_SUPABASE_PUBLISHABLE_KEY`
+    - `VITE_API_BASE_URL=https://<your-railway-domain>`
+    - `VITE_GOOGLE_AUTH_ENABLED=true` only after Google OAuth is configured in Supabase
+- Railway
+  - Start command: `npm run start`
+  - Environment variables:
+    - `SUPABASE_URL`
+    - `SUPABASE_SERVICE_ROLE_KEY`
+    - `GEMINI_API_KEY`
+    - `GOOGLE_TTS_API_KEY`
+    - `APP_ORIGIN=https://<your-pages-domain>`
+
+Cloudflare Pages SPA routing is handled by [`public/_redirects`](/Users/zhangjunqiu/Desktop/Primoria_English/public/_redirects:1), and Supabase Auth should include your Pages domain plus `/auth` as an allowed redirect URL.

@@ -4,6 +4,33 @@ interface ApiFetchOptions extends RequestInit {
   requiresAuth?: boolean;
 }
 
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+
+export function resolveApiUrl(path: string) {
+  if (!path || !apiBaseUrl || !path.startsWith('/')) {
+    return path;
+  }
+
+  return new URL(path, apiBaseUrl).toString();
+}
+
+function resolveFetchInput(input: RequestInfo | URL) {
+  if (typeof input === 'string') {
+    return resolveApiUrl(input);
+  }
+
+  if (
+    typeof window !== 'undefined'
+    && input instanceof URL
+    && apiBaseUrl
+    && input.origin === window.location.origin
+  ) {
+    return new URL(`${input.pathname}${input.search}${input.hash}`, apiBaseUrl);
+  }
+
+  return input;
+}
+
 export async function apiFetch(input: RequestInfo | URL, init: ApiFetchOptions = {}) {
   const { requiresAuth = true, headers, ...rest } = init;
   const requestHeaders = new Headers(headers ?? {});
@@ -22,7 +49,7 @@ export async function apiFetch(input: RequestInfo | URL, init: ApiFetchOptions =
     requestHeaders.set('Authorization', `Bearer ${accessToken}`);
   }
 
-  return fetch(input, {
+  return fetch(resolveFetchInput(input), {
     ...rest,
     headers: requestHeaders,
   });

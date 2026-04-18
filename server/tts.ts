@@ -1,64 +1,35 @@
-import { GoogleGenAI } from '@google/genai';
+const GOOGLE_TTS_KEY = process.env.GOOGLE_TTS_API_KEY!;
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-
-// Gemini TTS voices — Aoede (female) for UK RP, Puck (male) for US General American
-const LOCALE_VOICE: Record<'uk' | 'us', string> = {
-  uk: 'Aoede',
-  us: 'Puck',
+// Neural2 voices — natural, dictionary-quality pronunciation
+const LOCALE_VOICE: Record<'uk' | 'us', { languageCode: string; name: string }> = {
+  uk: { languageCode: 'en-GB', name: 'en-GB-Neural2-B' }, // Male British RP
+  us: { languageCode: 'en-US', name: 'en-US-Neural2-D' }, // Male American
 };
 
-function getPrompt(word: string, locale: 'uk' | 'us'): string {
-  return locale === 'uk'
-    ? `Pronounce this single English word clearly in British RP accent: ${word}`
-    : `Pronounce this single English word clearly in American English: ${word}`;
-}
-
-// Wrap raw PCM (24 kHz, 16-bit, mono) in a standard RIFF/WAV header
-function pcmToWav(pcm: Buffer): Buffer {
-  const sampleRate = 24000;
-  const channels = 1;
-  const bitDepth = 16;
-  const header = Buffer.alloc(44);
-  header.write('RIFF', 0);
-  header.writeUInt32LE(36 + pcm.length, 4);
-  header.write('WAVE', 8);
-  header.write('fmt ', 12);
-  header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20);                               // PCM format
-  header.writeUInt16LE(channels, 22);
-  header.writeUInt32LE(sampleRate, 24);
-  header.writeUInt32LE(sampleRate * channels * (bitDepth / 8), 28);
-  header.writeUInt16LE(channels * (bitDepth / 8), 32);
-  header.writeUInt16LE(bitDepth, 34);
-  header.write('data', 36);
-  header.writeUInt32LE(pcm.length, 40);
-  return Buffer.concat([header, pcm]);
-}
-
 export async function generateWordAudio(word: string, locale: 'uk' | 'us'): Promise<Buffer> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result = await (ai.models as any).generateContent({
-    model: 'gemini-2.5-flash-preview-tts',
-    contents: getPrompt(word, locale),
-    generationConfig: {
-      responseModalities: ['AUDIO'],
-      speechConfig: {
-        voiceConfig: {
-          prebuiltVoiceConfig: { voiceName: LOCALE_VOICE[locale] },
-        },
-      },
-    },
-  });
+  const voice = LOCALE_VOICE[locale];
 
-  const part = result?.candidates?.[0]?.content?.parts?.[0];
-  if (!part?.inlineData?.data) {
-    throw new Error(`Gemini TTS returned no audio for "${word}" (${locale})`);
+  const res = await fetch(
+    `https://texttospeech.googleapis.com/v1/text:synthesize?key=${GOOGLE_TTS_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        input: { text: word },
+        voice,
+        audioConfig: {
+          audioEncoding: 'MP3',
+          speakingRate: 0.85,
+          pitch: 0,
+        },
+      }),
+    },
+  );
+
+  const json = await res.json() as { audioContent?: string; error?: { message: string } };
+  if (!res.ok || !json.audioContent) {
+    throw new Error(`Google TTS error: ${json.error?.message ?? res.statusText}`);
   }
 
-  const raw = Buffer.from(part.inlineData.data as string, 'base64');
-  const mime: string = (part.inlineData.mimeType as string) ?? '';
-
-  // Gemini typically returns raw PCM; wrap in WAV if needed
-  return mime.startsWith('audio/wav') ? raw : pcmToWav(raw);
+  return Buffer.from(json.audioContent, 'base64');
 }

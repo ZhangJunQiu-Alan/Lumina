@@ -38,6 +38,16 @@ export interface EnrichedWord {
   audio_us_url?: string | null;
 }
 
+export type PronunciationLocale = 'uk' | 'us';
+
+export interface LearningPreferences {
+  defaultPronunciationLocale: PronunciationLocale;
+  autoPlayEnabled: boolean;
+  autoPlayRepeatCount: 1 | 2 | 3;
+  autoPlayRepeatGapMs: number;
+  wrongAnswerRevealMs: 3000 | 5000 | 8000;
+}
+
 // Convert EnrichedWord → Word for the learning engine
 export function toWord(e: EnrichedWord): Word {
   return {
@@ -59,6 +69,8 @@ export function toWord(e: EnrichedWord): Word {
 export type MemoryState = 'new' | 'fuzzy' | 'slow_recall' | 'stable_recall' | 'mastered';
 export type ReviewAttemptSource = 'round2' | 'review';
 export type ReviewResultType = 'wrong' | 'slow_correct' | 'fast_correct';
+export type LearningRoundType = 'round1' | 'round2' | 'round3' | 'article';
+export type RoundType = 'review' | LearningRoundType;
 
 export interface ReviewTransition {
   from: MemoryState | null;
@@ -89,8 +101,47 @@ export interface ReviewSummaryItem {
   transition: ReviewTransition;
 }
 
-export type RoundType = 'review' | 'round1' | 'round2' | 'round3' | 'article';
-export type ViewState = 'home' | 'library' | 'import' | 'learning' | 'auth' | 'profile' | 'reviewResults';
+export interface LibraryGroupSummary {
+  id: string;
+  title: string;
+  createdAt: string;
+  wordCount: number;
+  sourceType: 'custom' | 'system';
+  status: 'active' | 'completed';
+}
+
+export interface LibraryGroupWord {
+  id: string;
+  word: string;
+  phonetic: string;
+  meaning: string;
+  memoryTip: string;
+  posTags: string[];
+  examples: { sentence: string; translation: string }[];
+  confusingWord: string | null;
+  confusingDiff: string | null;
+  memoryState: MemoryState;
+  nextReviewAt: string | null;
+  lastResult: ReviewResultType | null;
+  sequenceNo: number;
+}
+
+export type ViewState = 'home' | 'library' | 'import' | 'learning' | 'auth' | 'profile' | 'settings' | 'reviewResults';
+
+export interface PersistedLearningSession {
+  groupId: string;
+  round: LearningRoundType;
+  currentIndex: number;
+  queueWordIds: string[];
+  lastActiveAt: string;
+  article?: string | null;
+}
+
+export interface ResumeCandidate extends PersistedLearningSession {
+  groupTitle: string;
+  createdAt: string;
+  queueLength: number;
+}
 
 export interface LearningSession {
   type: RoundType;
@@ -104,4 +155,5 @@ export interface UserStats {
   todayNewGroups: number;
   streak: number;
   totalLearned: number;
+  resumeCandidate: ResumeCandidate | null;
 }

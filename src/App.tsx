@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
+  AlertCircle,
   BookOpen,
   CheckCircle2,
   ChevronRight,
@@ -13,18 +14,43 @@ import {
   Volume2,
 } from 'lucide-react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { Word, RoundType, UserStats, ReviewAttemptSource, ReviewSummaryItem } from './types';
+import {
+  LearningRoundType,
+  PersistedLearningSession,
+  PronunciationLocale,
+  ReviewAttemptSource,
+  ReviewSummaryItem,
+  RoundType,
+  UserStats,
+  Word,
+} from './types';
 import { Sidebar } from './components/layout/Sidebar';
 import { HomeView } from './components/home/HomeView';
 import { ImportView } from './components/import/ImportView';
 import { supabase } from './lib/supabase';
 import { fetchDueReviewWords, submitReviewAttempt } from './lib/reviewApi';
-import { LibraryView } from './components/library/LibraryView';
+import { LibraryGroupDetailView, LibraryView } from './components/library/LibraryView';
 import { ReviewResultsView } from './components/review/ReviewResultsView';
+import { SettingsView } from './components/settings/SettingsView';
 import { useAuth } from './contexts/AuthContext';
+import { useLearningPreferences } from './contexts/LearningPreferencesContext';
 import { apiFetch } from './lib/api';
+import { invalidateLibraryCache } from './lib/libraryCache';
+import { createInitialLearningSession } from './lib/learningSession';
+import {
+  clearLearningGroupSession,
+  fetchGeneratedArticle,
+  fetchLearningGroupSession,
+  fetchResumeCandidate,
+  persistLearningGroupSession,
+  upsertGeneratedArticle,
+} from './lib/learningSessionApi';
 
 // --- Learning sub-components (to be extracted in later sessions) ---
+
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(' ');
+}
 
 // Plain helper — NOT a React component — avoids remount on every LearningEngine render
 function renderProgressBar(currentIndex: number, queueLength: number) {
@@ -57,7 +83,7 @@ function renderBold(text: string): React.ReactNode {
   );
 }
 
-const RoundIndicator = ({ type }: { type: RoundType }) => {
+const RoundIndicator = ({ type, className }: { type: RoundType; className?: string }) => {
   const labels: Record<RoundType, string> = {
     review: '今日复习',
     round1: '第一轮：明示拼写',
@@ -73,7 +99,7 @@ const RoundIndicator = ({ type }: { type: RoundType }) => {
     article: 'bg-apple-green',
   };
   return (
-    <div className="flex items-center gap-3 mb-8">
+    <div className={cx('flex items-center gap-3', className)}>
       <div className={`px-4 py-1.5 ${colors[type]} text-white text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg`}>
         {labels[type]}
       </div>
@@ -82,14 +108,140 @@ const RoundIndicator = ({ type }: { type: RoundType }) => {
   );
 };
 
+const SessionProgress = ({
+  currentIndex,
+  queueLength,
+}: {
+  currentIndex: number;
+  queueLength: number;
+}) => (
+  <div className="flex items-baseline gap-3 rounded-full border border-white/70 bg-white/70 px-4 py-2 shadow-[0_14px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl">
+    <div className="text-sm font-black tracking-[0.16em] text-text-primary">
+      {String(currentIndex + 1).padStart(2, '0')} / {String(queueLength).padStart(2, '0')}
+    </div>
+    <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-text-secondary">
+      当前进度
+    </span>
+  </div>
+);
+
+const PronunciationControls = ({
+  phonetic,
+  audioLocale,
+  isPlayingAudio,
+  onPlay,
+}: {
+  phonetic: string;
+  audioLocale: 'uk' | 'us';
+  isPlayingAudio: boolean;
+  onPlay: (locale: 'uk' | 'us') => void;
+}) => (
+  <div className="flex flex-wrap items-center gap-3">
+    <span className="rounded-2xl bg-apple-blue px-4 py-2 text-lg font-black tracking-tight text-white shadow-[0_12px_30px_rgba(0,122,255,0.18)]">
+      {phonetic || '暂无音标'}
+    </span>
+    {(['uk', 'us'] as const).map((loc) => (
+      <button
+        key={loc}
+        type="button"
+        onClick={() => onPlay(loc)}
+        className={cx(
+          'flex items-center gap-1.5 rounded-2xl px-3 py-2 text-xs font-black tracking-wide transition-all',
+          audioLocale === loc
+            ? 'bg-apple-blue text-white shadow-[0_10px_24px_rgba(0,122,255,0.16)]'
+            : 'bg-apple-blue/10 text-apple-blue hover:bg-apple-blue/15',
+        )}
+      >
+        {isPlayingAudio && audioLocale === loc
+          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          : <Volume2 className="h-3.5 w-3.5" />}
+        {loc.toUpperCase()}
+      </button>
+    ))}
+  </div>
+);
+
+const Round1ExampleCard = ({ word }: { word: Word }) => (
+  <section className="rounded-[24px] border border-white/80 bg-white/60 p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
+    <div className="flex items-center justify-between gap-3">
+      <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">例句</p>
+      <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-text-secondary/70">
+        {word.example_sentences.length || 0} 条
+      </span>
+    </div>
+    <div className="mt-4 space-y-3">
+      {word.example_sentences.length > 0 ? word.example_sentences.map((sentence, index) => (
+        <div
+          key={`${word.id}-example-${index}`}
+          className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
+        >
+          <p className="text-sm leading-6 text-text-primary">{renderBold(sentence)}</p>
+        </div>
+      )) : (
+        <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-sm leading-6 text-text-secondary">
+          这个词暂时还没有例句。
+        </div>
+      )}
+    </div>
+  </section>
+);
+
+const Round1ConfusingCard = ({ word }: { word: Word }) => (
+  <section className="rounded-[24px] border border-white/80 bg-white/60 p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
+    <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">易混词</p>
+    {word.confusing_pair ? (
+      <>
+        <p className="mt-4 text-2xl font-black tracking-tight text-text-primary">
+          {word.confusing_pair.word}
+        </p>
+        {word.confusing_pair.difference && (
+          <p className="mt-4 text-sm leading-6 text-text-secondary">
+            {word.confusing_pair.difference}
+          </p>
+        )}
+      </>
+    ) : (
+      <p className="mt-4 text-sm leading-6 text-text-secondary">
+        这个词当前没有需要特别提醒的易混词。
+      </p>
+    )}
+  </section>
+);
+
+const InputSessionShell = ({
+  type,
+  currentIndex,
+  queueLength,
+  main,
+}: {
+  type: RoundType;
+  currentIndex: number;
+  queueLength: number;
+  main: React.ReactNode;
+}) => (
+  <div className="input-session-shell mx-auto flex w-full max-w-[1260px] flex-col gap-4">
+    <header className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <RoundIndicator type={type} className="min-w-0 flex-1" />
+      <SessionProgress currentIndex={currentIndex} queueLength={queueLength} />
+    </header>
+
+    <div className="input-session-shell__body min-w-0">
+      {main}
+    </div>
+  </div>
+);
+
 const LearningEngine = ({
   type,
   words,
+  initialSession,
   onComplete,
   onAttempt,
+  onSessionChange,
 }: {
   type: RoundType;
   words: Word[];
+  initialSession?: PersistedLearningSession | null;
   onComplete: () => void | Promise<void>;
   onAttempt?: (params: {
     word: Word;
@@ -97,72 +249,254 @@ const LearningEngine = ({
     wasCorrect: boolean;
     elapsedMs: number;
   }) => Promise<void>;
+  onSessionChange?: (session: {
+    round: LearningRoundType;
+    currentIndex: number;
+    queueWordIds: string[];
+  }) => void;
 }) => {
-  const [queue, setQueue] = useState<Word[]>([...words]);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const { preferences } = useLearningPreferences();
+  const initialEngineState = useMemo(() => {
+    const hasMatchingSession = initialSession && initialSession.round === type;
+    const wordMap = new Map(words.map((word) => [word.id, word]));
+    const hydratedQueue = hasMatchingSession
+      ? initialSession.queueWordIds
+          .map((wordId) => wordMap.get(wordId))
+          .filter((word): word is Word => Boolean(word))
+      : [];
+    const queue = hydratedQueue.length > 0 ? hydratedQueue : [...words];
+    const currentIndex = hasMatchingSession
+      ? Math.min(Math.max(initialSession.currentIndex, 0), Math.max(queue.length - 1, 0))
+      : 0;
+
+    return { queue, currentIndex };
+  }, [initialSession, type, words]);
+
+  const [queue, setQueue] = useState<Word[]>(initialEngineState.queue);
+  const [currentIndex, setCurrentIndex] = useState(initialEngineState.currentIndex);
   const [inputValue, setInputValue] = useState('');
   const [isWrong, setIsWrong] = useState(false);
   const [showAnswer, setShowAnswer] = useState(false);
   const [isSubmittingAttempt, setIsSubmittingAttempt] = useState(false);
   const [submitError, setSubmitError] = useState('');
-  const [audioLocale, setAudioLocale] = useState<'uk' | 'us'>('uk');
+  const [audioLocale, setAudioLocale] = useState<PronunciationLocale>(preferences.defaultPronunciationLocale);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const promptStartedAtRef = useRef<number>(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const answerRevealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const audioGapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playbackRunIdRef = useRef(0);
 
   // Refs keep nextWord free of stale closures when called from setTimeout
-  const queueRef = useRef<Word[]>([...words]);
-  const currentIndexRef = useRef(0);
+  const queueRef = useRef<Word[]>(initialEngineState.queue);
+  const currentIndexRef = useRef(initialEngineState.currentIndex);
   useEffect(() => { queueRef.current = queue; }, [queue]);
   useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
 
   const currentWord = queue[currentIndex];
   const roundSource = type === 'review' ? 'review' : type === 'round2' ? 'round2' : null;
 
+  const clearAnswerRevealTimeout = useCallback(() => {
+    if (answerRevealTimeoutRef.current === null) return;
+    clearTimeout(answerRevealTimeoutRef.current);
+    answerRevealTimeoutRef.current = null;
+  }, []);
+
+  const stopPlayback = useCallback(() => {
+    playbackRunIdRef.current += 1;
+
+    if (audioGapTimeoutRef.current !== null) {
+      clearTimeout(audioGapTimeoutRef.current);
+      audioGapTimeoutRef.current = null;
+    }
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.onended = null;
+      audioRef.current.onerror = null;
+      audioRef.current = null;
+    }
+
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+
+    setIsPlayingAudio(false);
+  }, []);
+
   useEffect(() => {
-    const nextQueue = [...words];
-    setQueue(nextQueue);
-    setCurrentIndex(0);
+    clearAnswerRevealTimeout();
+    stopPlayback();
+    setQueue(initialEngineState.queue);
+    setCurrentIndex(initialEngineState.currentIndex);
     setInputValue('');
     setIsWrong(false);
     setShowAnswer(false);
     setIsSubmittingAttempt(false);
     setSubmitError('');
-    queueRef.current = nextQueue;
-    currentIndexRef.current = 0;
-  }, [type, words]);
+    queueRef.current = initialEngineState.queue;
+    currentIndexRef.current = initialEngineState.currentIndex;
+  }, [clearAnswerRevealTimeout, initialEngineState, stopPlayback, type, words]);
+
+  useEffect(() => () => {
+    clearAnswerRevealTimeout();
+    stopPlayback();
+  }, [clearAnswerRevealTimeout, stopPlayback]);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, [currentIndex]);
 
-  // Auto-play UK pronunciation when word changes
-  const playAudio = useCallback(async (word: Word, locale: 'uk' | 'us') => {
-    if (isPlayingAudio) return;
-    const url = locale === 'uk' ? word.audio_uk_url : word.audio_us_url;
+  const speakViaBrowser = useCallback((wordText: string, locale: PronunciationLocale, runId: number) => {
+    if (!('speechSynthesis' in window) || runId !== playbackRunIdRef.current) {
+      return Promise.resolve();
+    }
 
-    const resolvedUrl: string | null = url ?? await fetch(
-      `/api/audio/${encodeURIComponent(word.word)}?locale=${locale}`
-    ).then(r => r.ok ? r.json().then((d: { data: string }) => d.data) : null).catch(() => null);
+    window.speechSynthesis.cancel();
+    setIsPlayingAudio(true);
 
-    if (!resolvedUrl) return;
+    return new Promise<void>((resolve) => {
+      const utterance = new SpeechSynthesisUtterance(wordText);
+      utterance.lang = locale === 'uk' ? 'en-GB' : 'en-US';
+      utterance.rate = 0.85;
+      utterance.onend = () => {
+        if (runId === playbackRunIdRef.current) {
+          setIsPlayingAudio(false);
+        }
+        resolve();
+      };
+      utterance.onerror = () => {
+        if (runId === playbackRunIdRef.current) {
+          setIsPlayingAudio(false);
+        }
+        resolve();
+      };
+      window.speechSynthesis.speak(utterance);
+    });
+  }, []);
+
+  const resolveAudioUrl = useCallback(async (word: Word, locale: PronunciationLocale) => {
+    const cachedUrl = locale === 'uk' ? word.audio_uk_url : word.audio_us_url;
+    if (cachedUrl) return cachedUrl;
+
+    return apiFetch(`/api/audio/${encodeURIComponent(word.word)}?locale=${locale}`, {
+      requiresAuth: false,
+    })
+      .then((response) => response.ok ? response.json().then((payload: { data: string }) => payload.data) : null)
+      .catch(() => null);
+  }, []);
+
+  const waitForGap = useCallback((gapMs: number, runId: number) => (
+    new Promise<void>((resolve) => {
+      if (gapMs <= 0 || runId !== playbackRunIdRef.current) {
+        resolve();
+        return;
+      }
+
+      audioGapTimeoutRef.current = setTimeout(() => {
+        audioGapTimeoutRef.current = null;
+        resolve();
+      }, gapMs);
+    })
+  ), []);
+
+  const playAudioOnce = useCallback(async (word: Word, locale: PronunciationLocale, runId: number) => {
+    if (runId !== playbackRunIdRef.current) return;
+
+    const resolvedUrl = await resolveAudioUrl(word, locale);
+    if (runId !== playbackRunIdRef.current) return;
+
+    if (!resolvedUrl) {
+      await speakViaBrowser(word.word, locale, runId);
+      return;
+    }
 
     setIsPlayingAudio(true);
-    audioRef.current?.pause();
-    const audio = new Audio(resolvedUrl);
-    audioRef.current = audio;
-    audio.onended = () => setIsPlayingAudio(false);
-    audio.onerror = () => setIsPlayingAudio(false);
-    audio.play().catch(() => setIsPlayingAudio(false));
-  }, [isPlayingAudio]);
+
+    await new Promise<void>((resolve) => {
+      const audio = new Audio(resolvedUrl);
+      let settled = false;
+
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (audioRef.current === audio) {
+          audioRef.current = null;
+        }
+        if (runId === playbackRunIdRef.current) {
+          setIsPlayingAudio(false);
+        }
+        resolve();
+      };
+
+      const fallbackToSpeech = () => {
+        if (settled) return;
+        settled = true;
+        if (audioRef.current === audio) {
+          audioRef.current = null;
+        }
+        if (runId === playbackRunIdRef.current) {
+          setIsPlayingAudio(false);
+        }
+        void speakViaBrowser(word.word, locale, runId).then(resolve);
+      };
+
+      audioRef.current = audio;
+      audio.onended = finish;
+      audio.onerror = fallbackToSpeech;
+      audio.play().catch(fallbackToSpeech);
+    });
+  }, [resolveAudioUrl, speakViaBrowser]);
+
+  const playAudioSequence = useCallback(async (
+    word: Word,
+    locale: PronunciationLocale,
+    repeatCount: number,
+    gapMs: number,
+  ) => {
+    stopPlayback();
+    const runId = playbackRunIdRef.current;
+
+    for (let attempt = 0; attempt < repeatCount; attempt += 1) {
+      await playAudioOnce(word, locale, runId);
+
+      if (runId !== playbackRunIdRef.current) {
+        return;
+      }
+
+      if (attempt < repeatCount - 1) {
+        await waitForGap(gapMs, runId);
+      }
+    }
+  }, [playAudioOnce, stopPlayback, waitForGap]);
 
   useEffect(() => {
     if (!currentWord) return;
-    void playAudio(currentWord, 'uk');
-    setAudioLocale('uk');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentWord?.id]);
+
+    const locale = preferences.defaultPronunciationLocale;
+    setAudioLocale(locale);
+    stopPlayback();
+
+    if (!preferences.autoPlayEnabled) {
+      return;
+    }
+
+    void playAudioSequence(
+      currentWord,
+      locale,
+      preferences.autoPlayRepeatCount,
+      preferences.autoPlayRepeatGapMs,
+    );
+  }, [
+    currentWord,
+    playAudioSequence,
+    preferences.autoPlayEnabled,
+    preferences.autoPlayRepeatCount,
+    preferences.autoPlayRepeatGapMs,
+    preferences.defaultPronunciationLocale,
+    stopPlayback,
+  ]);
 
   useEffect(() => {
     if (!roundSource) return;
@@ -170,7 +504,18 @@ const LearningEngine = ({
     setSubmitError('');
   }, [currentIndex, roundSource]);
 
+  useEffect(() => {
+    if (!onSessionChange || type === 'review') return;
+    onSessionChange({
+      round: type,
+      currentIndex,
+      queueWordIds: queue.map((word) => word.id),
+    });
+  }, [currentIndex, onSessionChange, queue, type]);
+
   const nextWord = useCallback(() => {
+    clearAnswerRevealTimeout();
+    stopPlayback();
     if (currentIndexRef.current < queueRef.current.length - 1) {
       setCurrentIndex(prev => prev + 1);
       setInputValue('');
@@ -179,7 +524,7 @@ const LearningEngine = ({
     } else {
       void onComplete();
     }
-  }, [onComplete]);
+  }, [clearAnswerRevealTimeout, onComplete, stopPlayback]);
 
   const persistAttempt = useCallback(async (wasCorrect: boolean) => {
     if (!onAttempt || !roundSource) return true;
@@ -234,12 +579,14 @@ const LearningEngine = ({
       setInputValue('');
       setIsWrong(false);
       setShowAnswer(true);
-      setTimeout(() => {
+      clearAnswerRevealTimeout();
+      answerRevealTimeoutRef.current = setTimeout(() => {
+        answerRevealTimeoutRef.current = null;
         setShowAnswer(false);
         nextWord();
-      }, 1500);
+      }, preferences.wrongAnswerRevealMs);
     }
-  }, [currentIndex, currentWord, inputValue, nextWord, persistAttempt, queue, type]);
+  }, [clearAnswerRevealTimeout, currentIndex, currentWord, inputValue, nextWord, persistAttempt, preferences.wrongAnswerRevealMs, queue, type]);
 
   useEffect(() => {
     if (type !== 'round3') return;
@@ -278,6 +625,82 @@ const LearningEngine = ({
   }
 
   const isCorrect = inputValue.trim().toLowerCase() === currentWord.word.toLowerCase();
+  const primaryPos = currentWord.pos_tags[0] ?? '未标注';
+  const actionDisabled = isSubmittingAttempt || ((type === 'round2' || type === 'review') && showAnswer);
+  const actionLabel = (type === 'round2' || type === 'review') && showAnswer
+    ? '答案展示中…'
+    : type === 'round1'
+      ? '验证拼写'
+      : '提交答案';
+
+  const inputField = (
+    <form onSubmit={handleSubmit} className="w-full">
+      <div className="rounded-[24px] border border-white/80 bg-white/60 px-4 py-4 shadow-[0_14px_40px_rgba(14,26,56,0.06)] backdrop-blur-xl md:px-5 md:py-5">
+        <input
+          ref={inputRef}
+          type="text"
+          value={inputValue}
+          onChange={handleInput}
+          disabled={isSubmittingAttempt}
+          className={cx(
+            'w-full bg-transparent text-center font-black outline-none transition-colors caret-gray-800 placeholder:text-text-secondary/35',
+            type === 'round1' ? 'text-3xl md:text-4xl' : 'text-4xl md:text-5xl',
+            isWrong ? 'text-apple-red' : isCorrect ? 'text-[#10B981]' : 'text-text-primary',
+          )}
+          autoFocus
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck="false"
+          placeholder={type === 'round1' ? '拼写这个单词' : '输入英文拼写'}
+        />
+      </div>
+    </form>
+  );
+
+  const feedbackReveal = (
+    <AnimatePresence>
+      {showAnswer && (
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 10 }}
+          className="mx-auto mt-6 flex w-fit max-w-full items-center gap-3 rounded-[22px] bg-[#10B981] px-5 py-4 text-left font-bold text-white shadow-[0_16px_36px_rgba(16,185,129,0.24)]"
+        >
+          <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
+          <span className="text-sm leading-6 md:text-base">
+            {currentWord.word} · {primaryPos}: {currentWord.chinese_definition}
+          </span>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
+  const submitErrorBanner = submitError ? (
+    <div className="rounded-2xl bg-apple-red/10 px-4 py-3 text-sm font-medium text-apple-red">
+      {submitError}
+    </div>
+  ) : null;
+
+  const actionButton = (
+    <button
+      type="button"
+      onClick={() => { void validateCurrentInput(); }}
+      disabled={actionDisabled}
+      className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-apple-blue px-5 py-3.5 text-base font-black text-white shadow-[0_18px_40px_rgba(0,122,255,0.22)] transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 sm:w-auto sm:min-w-[220px]"
+    >
+      {isSubmittingAttempt ? (
+        <>
+          <Loader2 className="h-5 w-5 animate-spin" />
+          正在写入结果…
+        </>
+      ) : (
+        <>
+          {actionLabel}
+          <ChevronRight className="h-5 w-5" />
+        </>
+      )}
+    </button>
+  );
 
   // Round 3: flip-card recognition — no input, just reveal and advance
   if (type === 'round3') {
@@ -304,7 +727,7 @@ const LearningEngine = ({
               <button
                 key={loc}
                 type="button"
-                onClick={() => { setAudioLocale(loc); void playAudio(currentWord, loc); }}
+                onClick={() => { setAudioLocale(loc); void playAudioSequence(currentWord, loc, 1, 0); }}
                 className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold transition-all ${
                   audioLocale === loc
                     ? 'bg-apple-teal text-white shadow-sm'
@@ -363,172 +786,92 @@ const LearningEngine = ({
 
   // Round 1 & 2 / Review: input-based
   return (
-    <div className="w-full max-w-4xl mx-auto flex flex-col items-center">
-      <div className="w-full max-w-3xl">
-        <RoundIndicator type={type} />
-      </div>
-      <motion.div
-        key={currentWord.id + currentIndex}
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="w-full flex flex-col items-center justify-center min-h-[500px] relative"
-      >
+    <InputSessionShell
+      type={type}
+      currentIndex={currentIndex}
+      queueLength={queue.length}
+      main={(
         <motion.div
-          initial={{ y: -10, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          className="flex items-center gap-2 mb-12"
+          key={currentWord.id + currentIndex}
+          initial={{ opacity: 0, scale: 0.97, y: 14 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          className="glass rounded-[30px] px-5 py-6 shadow-[0_24px_64px_rgba(14,26,56,0.08)] md:px-7 md:py-7 lg:px-8 lg:py-7"
         >
-          <span className="bg-apple-blue text-white px-4 py-1 rounded-lg text-sm font-bold shadow-sm">
-            {currentWord.phonetic}
-          </span>
-          {(['uk', 'us'] as const).map(loc => (
-            <button
-              key={loc}
-              type="button"
-              onClick={() => { setAudioLocale(loc); void playAudio(currentWord, loc); }}
-              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold transition-all ${
-                audioLocale === loc
-                  ? 'bg-apple-blue text-white shadow-sm'
-                  : 'bg-apple-blue/10 text-apple-blue hover:bg-apple-blue/20'
-              }`}
-            >
-              {isPlayingAudio && audioLocale === loc
-                ? <Loader2 className="w-3 h-3 animate-spin" />
-                : <Volume2 className="w-3 h-3" />}
-              {loc.toUpperCase()}
-            </button>
-          ))}
-        </motion.div>
+          {type === 'round1' ? (
+            <div className="flex flex-col gap-7">
+              <div className="space-y-5">
+                <PronunciationControls
+                  phonetic={currentWord.phonetic}
+                  audioLocale={audioLocale}
+                  isPlayingAudio={isPlayingAudio}
+                  onPlay={(locale) => {
+                    setAudioLocale(locale);
+                    void playAudioSequence(currentWord, locale, 1, 0);
+                  }}
+                />
 
-        {type === 'round1' && (
-          <div className="w-full max-w-3xl mb-12 space-y-5">
-            <div className="text-center">
-              <div className="text-7xl font-black text-text-primary">{currentWord.word}</div>
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                {currentWord.pos_tags.map((tag) => (
-                  <span
-                    key={`${currentWord.id}-${tag}`}
-                    className="rounded-full bg-apple-gray px-3 py-1 text-xs font-bold uppercase tracking-widest text-text-secondary"
-                  >
-                    {tag}
-                  </span>
-                ))}
-                {currentWord.ner_entities.map((entity) => (
-                  <span
-                    key={`${currentWord.id}-${entity.label}-${entity.text}`}
-                    className="rounded-full bg-apple-blue/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-apple-blue"
-                  >
-                    {entity.label}: {entity.text}
-                  </span>
-                ))}
-              </div>
-              <p className="mt-6 text-3xl font-bold text-text-primary">{currentWord.chinese_definition}</p>
-            </div>
-
-            {currentWord.example_sentences.length > 0 && (
-              <div className="glass rounded-2xl p-6 text-left">
-                <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">例句</p>
-                <div className="mt-3 space-y-3">
-                  {currentWord.example_sentences.map((sentence, index) => (
-                    <p key={`${currentWord.id}-example-${index}`} className="text-base leading-7 text-text-primary">
-                      {renderBold(sentence)}
-                    </p>
-                  ))}
+                <div>
+                  <p className="text-[clamp(2.4rem,4.1vw,4.2rem)] font-black leading-[0.94] tracking-[-0.055em] text-text-primary">
+                    {currentWord.word}
+                  </p>
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <span className="rounded-full bg-black/5 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">
+                      {primaryPos}
+                    </span>
+                    {currentWord.pos_tags.length > 1 && (
+                      <span className="text-xs font-bold uppercase tracking-[0.18em] text-text-secondary">
+                        另有 {currentWord.pos_tags.length - 1} 个词性
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-5 max-w-[680px] text-[1.9rem] font-black leading-tight text-text-primary md:text-[2rem]">
+                    {currentWord.chinese_definition}
+                  </p>
                 </div>
               </div>
-            )}
 
-            {currentWord.confusing_pair && (
-              <div className="glass rounded-2xl p-6 text-left">
-                <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">易混词</p>
-                <p className="mt-3 text-lg font-bold text-text-primary">{currentWord.confusing_pair.word}</p>
-                <p className="mt-2 text-sm leading-6 text-text-secondary">{currentWord.confusing_pair.difference}</p>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Round1ExampleCard word={currentWord} />
+                <Round1ConfusingCard word={currentWord} />
               </div>
-            )}
-          </div>
-        )}
 
-        <div className="w-full max-w-2xl flex flex-col items-center">
-          <form onSubmit={handleSubmit} className="w-full text-center relative">
-            <input
-              ref={inputRef}
-              type="text"
-              value={inputValue}
-              onChange={handleInput}
-              disabled={isSubmittingAttempt}
-              className={`w-full bg-transparent text-center font-bold outline-none transition-colors caret-gray-800 ${
-                type === 'round1' ? 'text-6xl' : 'text-8xl'
-              } ${
-                isWrong ? 'text-apple-red' : isCorrect ? 'text-[#10B981]' : 'text-text-primary'
-              }`}
-              autoFocus
-              autoComplete="off"
-              autoCorrect="off"
-              spellCheck="false"
-            />
-            <div className="w-full h-[1px] bg-gray-400 mt-6" />
-          </form>
+              <div className="space-y-4 rounded-[24px] border border-white/80 bg-white/45 p-4 shadow-[0_12px_30px_rgba(14,26,56,0.04)] md:p-5">
+                {inputField}
+                {submitErrorBanner}
+                <div className="flex justify-end">
+                  {actionButton}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex h-full flex-col justify-center text-center">
+              <div className="mx-auto max-w-3xl">
+                <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary">
+                  {type === 'review' ? '今日到期复习' : '主动回忆拼写'}
+                </p>
+                <p className="mt-5 text-4xl font-black leading-tight text-text-primary md:text-5xl">
+                  {currentWord.chinese_definition}
+                </p>
+                <div className="mt-4 flex items-center justify-center gap-3">
+                  <span className="rounded-full bg-black/5 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">
+                    {primaryPos}
+                  </span>
+                </div>
+              </div>
 
-          {submitError && (
-            <div className="mt-5 w-full rounded-2xl bg-apple-red/10 px-4 py-3 text-sm font-medium text-apple-red">
-              {submitError}
+              <div className="mx-auto mt-8 w-full max-w-3xl space-y-5">
+                {inputField}
+                {feedbackReveal}
+                {submitErrorBanner}
+                <div className="flex justify-center sm:justify-end">
+                  {actionButton}
+                </div>
+              </div>
             </div>
           )}
-
-          {type === 'round1' && (
-            <p className="mt-5 text-sm font-medium text-text-secondary">
-              先自己拼出来，再按 Enter 或点击按钮验证。
-            </p>
-          )}
-
-          <AnimatePresence>
-            {showAnswer && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mt-10 bg-[#10B981] text-white px-8 py-4 rounded-xl flex items-center gap-3 font-bold shadow-xl shadow-green-500/20"
-              >
-                <CheckCircle2 className="w-6 h-6" />
-                <span className="text-xl">
-                  {currentWord.word} · {currentWord.pos_tags[0]}: {currentWord.chinese_definition}
-                </span>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {(type === 'round2' || type === 'review') && !isCorrect && !showAnswer && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-16 text-center">
-            <p className="text-3xl font-bold text-text-secondary/60">{currentWord.chinese_definition}</p>
-          </motion.div>
-        )}
-      </motion.div>
-
-      {renderProgressBar(currentIndex, queue.length)}
-
-      {(type === 'round1' || type === 'round2') && (
-        <div className="w-full max-w-3xl px-4 pb-8">
-          <button
-            type="button"
-            onClick={() => { void validateCurrentInput(); }}
-            disabled={isSubmittingAttempt || (type === 'round2' && showAnswer)}
-            className="w-full py-4 bg-apple-blue text-white font-bold rounded-2xl flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] transition-all disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
-          >
-            {isSubmittingAttempt ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                正在写入结果…
-              </>
-            ) : (
-              <>
-                下一个词
-                <ChevronRight className="w-5 h-5" />
-              </>
-            )}
-          </button>
-        </div>
+        </motion.div>
       )}
-    </div>
+    />
   );
 };
 
@@ -543,14 +886,14 @@ const ArticleView = ({ essay, words, onFinish }: { essay: string; words: Word[];
             </div>
             <div>
               <h2 className="text-2xl font-black tracking-tight">文章巩固</h2>
-              <p className="text-xs font-bold text-text-secondary uppercase tracking-widest">最后一步</p>
+              <p className="text-xs font-bold text-text-secondary uppercase tracking-widest">收个尾</p>
             </div>
           </div>
           <button
             onClick={onFinish}
             className="px-8 py-3 bg-apple-blue text-white font-bold rounded-2xl shadow-lg shadow-apple-blue/20"
           >
-            结束这一轮
+            读完了，回首页
           </button>
         </div>
         <div className="prose prose-xl max-w-none text-gray-800 leading-[1.8] font-medium">
@@ -571,32 +914,41 @@ const ArticleView = ({ essay, words, onFinish }: { essay: string; words: Word[];
 
 // --- Main App ---
 
-export default function App() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { user, signOut } = useAuth();
-  const [round, setRound] = useState<RoundType>('round1');
-  const [activeWords, setActiveWords] = useState<Word[]>([]);
-  const [activeLearningGroupId, setActiveLearningGroupId] = useState<string | null>(null);
-  const [essay, setEssay] = useState<string | null>(null);
-  const [isStartingSession, setIsStartingSession] = useState(false);
-  const [reviewSummary, setReviewSummary] = useState<ReviewSummaryItem[]>([]);
-  const [stats, setStats] = useState<UserStats>({
+function buildEmptyStats(): UserStats {
+  return {
     todayReviewCount: 0,
     todayNewGroups: 0,
     streak: 0,
     totalLearned: 0,
-  });
+    resumeCandidate: null,
+  };
+}
+
+export default function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user, signOut } = useAuth();
+  const mainScrollRef = useRef<HTMLElement | null>(null);
+  const activeLearningGroupIdRef = useRef<string | null>(null);
+  const sessionAutoRestoreRef = useRef<string | null>(null);
+  const [round, setRound] = useState<RoundType>('round1');
+  const [activeWords, setActiveWords] = useState<Word[]>([]);
+  const [activeLearningGroupId, setActiveLearningGroupId] = useState<string | null>(null);
+  const [activeSessionSeed, setActiveSessionSeed] = useState<PersistedLearningSession | null>(null);
+  const [essay, setEssay] = useState<string | null>(null);
+  const [isStartingSession, setIsStartingSession] = useState(false);
+  const [reviewSummary, setReviewSummary] = useState<ReviewSummaryItem[]>([]);
+  const [sessionStartError, setSessionStartError] = useState('');
+  const [stats, setStats] = useState<UserStats>(buildEmptyStats);
+
+  useEffect(() => {
+    activeLearningGroupIdRef.current = activeLearningGroupId;
+  }, [activeLearningGroupId]);
 
   // Fetch real stats from Supabase on mount
   const fetchStats = useCallback(async () => {
     if (!user) {
-      setStats({
-        todayReviewCount: 0,
-        todayNewGroups: 0,
-        streak: 0,
-        totalLearned: 0,
-      });
+      setStats(buildEmptyStats());
       return;
     }
 
@@ -604,7 +956,7 @@ export default function App() {
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
 
-      const [masteredRes, dueWords, groupTodayRes, allGroupsRes] = await Promise.all([
+      const [masteredRes, dueWords, groupTodayRes, allGroupsRes, resumeCandidate] = await Promise.all([
         supabase.from('review_states').select('id', { count: 'exact', head: true })
           .eq('user_id', user.id)
           .eq('memory_state', 'mastered'),
@@ -616,6 +968,7 @@ export default function App() {
           .select('created_at')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false }),
+        fetchResumeCandidate(user.id),
       ]);
 
       const totalLearned = masteredRes.count ?? 0;
@@ -644,7 +997,13 @@ export default function App() {
         }
       }
 
-      setStats({ todayReviewCount, todayNewGroups, streak, totalLearned });
+      setStats({
+        todayReviewCount,
+        todayNewGroups,
+        streak,
+        totalLearned,
+        resumeCandidate,
+      });
     } catch (err) {
       console.error('Failed to fetch stats:', err);
     }
@@ -652,85 +1011,169 @@ export default function App() {
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => {
+    if (location.pathname.startsWith('/app/home')) {
+      void fetchStats();
+    }
+  }, [fetchStats, location.pathname]);
+  useEffect(() => {
     if (!user) {
       setActiveWords([]);
       setActiveLearningGroupId(null);
+      setActiveSessionSeed(null);
       setReviewSummary([]);
       setEssay(null);
       setRound('round1');
     }
   }, [user]);
 
+  const resetActiveLearningState = useCallback(() => {
+    setActiveWords([]);
+    setActiveLearningGroupId(null);
+    setActiveSessionSeed(null);
+    setEssay(null);
+    setRound('round1');
+  }, []);
+
   const completeLearningGroup = useCallback(async () => {
     if (!activeLearningGroupId || !user) return;
 
-    const { error } = await supabase
-      .from('learning_groups')
-      .update({
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-      })
-      .eq('id', activeLearningGroupId)
-      .eq('user_id', user.id);
-
-    if (error) {
-      console.error('Failed to complete learning group:', error.message);
+    try {
+      await clearLearningGroupSession(user.id, activeLearningGroupId, { markCompleted: true });
+      invalidateLibraryCache(user.id);
+    } catch (error) {
+      console.error('Failed to complete learning group:', error);
     }
   }, [activeLearningGroupId, user]);
 
-  // Generate IELTS reading article via server
-  const fetchArticle = useCallback(async (words: string[]) => {
+  const ensureArticleForGroup = useCallback(async (groupId: string, words: Word[]) => {
+    if (!user) return null;
+
+    try {
+      const existingArticle = await fetchGeneratedArticle(user.id, groupId);
+      if (existingArticle !== null) {
+        if (activeLearningGroupIdRef.current === groupId) {
+          setEssay(existingArticle);
+        }
+        return existingArticle;
+      }
+    } catch (error) {
+      console.error('Article lookup failed:', error);
+    }
+
     try {
       const res = await apiFetch('/api/vocab/article', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ words }),
+        body: JSON.stringify({ words: words.map((word) => word.word) }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const { data } = await res.json();
-      setEssay(data as string);
-    } catch (err) {
-      console.error('Article generation failed:', err);
-      setEssay('');
-    }
-  }, []);
+      const article = data as string;
 
-  const handleStart = async () => {
-    if (stats.todayReviewCount === 0) {
-      navigate('/app/import');
-      return;
-    }
+      await upsertGeneratedArticle(user.id, groupId, article, words.map((word) => word.word));
 
-    setIsStartingSession(true);
-    try {
-      const dueWords = await fetchDueReviewWords();
-      if (dueWords.length === 0) {
-        await fetchStats();
-        return;
+      if (activeLearningGroupIdRef.current === groupId) {
+        setEssay(article);
       }
 
-      setReviewSummary([]);
-      setActiveLearningGroupId(null);
-      setActiveWords(dueWords);
-      setEssay(null);
-      setRound('review');
-      navigate('/app/session');
+      return article;
     } catch (error) {
-      console.error('Failed to start review session:', error);
+      console.error('Article generation failed:', error);
+      if (activeLearningGroupIdRef.current === groupId) {
+        setEssay('');
+      }
+      return '';
+    }
+  }, [user]);
+
+  const openLearningGroup = useCallback(async (groupId: string, preloadedWords?: Word[]) => {
+    if (!user) return;
+
+    setIsStartingSession(true);
+    setSessionStartError('');
+    try {
+      let words = preloadedWords ?? [];
+      let restoredSession: PersistedLearningSession | null = null;
+
+      if (!preloadedWords) {
+        const groupSession = await fetchLearningGroupSession(user.id, groupId);
+        if (!groupSession) {
+          throw new Error('这组词不存在，或它不属于你。');
+        }
+
+        words = groupSession.words;
+        restoredSession = groupSession.session;
+      }
+
+      if (words.length === 0) {
+        throw new Error('这组词还没有可学习的内容。');
+      }
+
+      const nextSession = {
+        ...(restoredSession ?? createInitialLearningSession(groupId, words)),
+        lastActiveAt: new Date().toISOString(),
+      };
+
+      setReviewSummary([]);
+      setActiveWords(words);
+      setActiveLearningGroupId(groupId);
+      setActiveSessionSeed(nextSession);
+      setEssay(nextSession.round === 'article' ? nextSession.article ?? null : null);
+      setRound(nextSession.round);
+      navigate('/app/session');
+
+      await persistLearningGroupSession(user.id, nextSession);
+      invalidateLibraryCache(user.id);
+
+      if (nextSession.round === 'article' && !nextSession.article) {
+        void ensureArticleForGroup(groupId, words);
+      }
+    } catch (error) {
+      console.error('Failed to open learning group:', error);
+      setSessionStartError(error instanceof Error ? error.message : '打开这组词时出了点问题，请再试一次。');
     } finally {
       setIsStartingSession(false);
     }
+  }, [ensureArticleForGroup, navigate, user]);
+
+  const handleStart = async () => {
+    setSessionStartError('');
+    if (stats.todayReviewCount > 0) {
+      setIsStartingSession(true);
+      try {
+        const dueWords = await fetchDueReviewWords();
+        if (dueWords.length === 0) {
+          await fetchStats();
+          return;
+        }
+
+        setReviewSummary([]);
+        setActiveLearningGroupId(null);
+        setActiveSessionSeed(null);
+        setActiveWords(dueWords);
+        setEssay(null);
+        setRound('review');
+        navigate('/app/session');
+      } catch (error) {
+        console.error('Failed to start review session:', error);
+        setSessionStartError(error instanceof Error ? error.message : '开始复习时出了点问题，请再试一次。');
+      } finally {
+        setIsStartingSession(false);
+      }
+      return;
+    }
+
+    if (stats.resumeCandidate) {
+      await openLearningGroup(stats.resumeCandidate.groupId);
+      return;
+    }
+
+    navigate('/app/import');
   };
 
-  // Called by ImportView after enrichment + DB save
-  const handleImportStart = (words: Word[], groupId: string) => {
-    setReviewSummary([]);
-    setActiveWords(words);
-    setActiveLearningGroupId(groupId);
-    setEssay(null);
-    setRound('round1');
-    navigate('/app/session');
-  };
+  const handleStartLearningGroup = useCallback(async (groupId: string, words?: Word[]) => {
+    await openLearningGroup(groupId, words);
+  }, [openLearningGroup]);
 
   const handleAttempt = useCallback(async ({
     word,
@@ -767,42 +1210,77 @@ export default function App() {
     }
   }, [activeLearningGroupId]);
 
+  const handleLearningSessionChange = useCallback((session: {
+    round: LearningRoundType;
+    currentIndex: number;
+    queueWordIds: string[];
+  }) => {
+    if (!activeLearningGroupId || !user) return;
+
+    void persistLearningGroupSession(user.id, {
+      groupId: activeLearningGroupId,
+      round: session.round,
+      currentIndex: session.currentIndex,
+      queueWordIds: session.queueWordIds,
+      lastActiveAt: new Date().toISOString(),
+    }).catch((error) => {
+      console.error('Failed to persist learning session snapshot:', error);
+    });
+  }, [activeLearningGroupId, user]);
+
   const handleRoundComplete = async () => {
     if (round === 'review') {
       navigate('/app/review-results');
-    } else if (round === 'round1') {
-      setRound('round2');
-    } else if (round === 'round2') {
-      setRound('round3');
-    } else if (round === 'round3') {
+      return;
+    }
+
+    if (!activeLearningGroupId || !user) {
+      return;
+    }
+
+    if (round === 'round1' || round === 'round2') {
+      const nextRound: LearningRoundType = round === 'round1' ? 'round2' : 'round3';
+      const nextSession = createInitialLearningSession(activeLearningGroupId, activeWords, nextRound);
+
+      setActiveSessionSeed(nextSession);
+      setRound(nextRound);
+      void persistLearningGroupSession(user.id, nextSession).catch((error) => {
+        console.error('Failed to persist round transition:', error);
+      });
+      return;
+    }
+
+    if (round === 'round3') {
+      const nextSession = createInitialLearningSession(activeLearningGroupId, activeWords, 'article');
+
+      setActiveSessionSeed(nextSession);
       setRound('article');
       setEssay(null);
-      void fetchArticle(activeWords.map(w => w.word));
-    } else {
-      await completeLearningGroup();
-      setActiveLearningGroupId(null);
-      setActiveWords([]);
-      setEssay(null);
-      navigate('/app/home');
-      void fetchStats();
+      void persistLearningGroupSession(user.id, nextSession).catch((error) => {
+        console.error('Failed to persist article transition:', error);
+      });
+      void ensureArticleForGroup(activeLearningGroupId, activeWords);
+      return;
     }
+
+    await completeLearningGroup();
+    resetActiveLearningState();
+    navigate('/app/home');
+    void fetchStats();
   };
 
   const handleReviewResultsBackHome = () => {
     navigate('/app/home');
     setReviewSummary([]);
-    setActiveWords([]);
-    setActiveLearningGroupId(null);
-    setEssay(null);
+    setSessionStartError('');
+    resetActiveLearningState();
     void fetchStats();
   };
 
   const handleSignOut = async () => {
-    setActiveWords([]);
-    setActiveLearningGroupId(null);
+    resetActiveLearningState();
     setReviewSummary([]);
-    setEssay(null);
-    setRound('round1');
+    setSessionStartError('');
     await signOut();
     window.location.assign('/');
   };
@@ -810,23 +1288,54 @@ export default function App() {
   const activeNavPath = (() => {
     if (location.pathname.startsWith('/app/library')) return '/app/library';
     if (location.pathname.startsWith('/app/import')) return '/app/import';
+    if (location.pathname.startsWith('/app/settings')) return '/app/settings';
     if (location.pathname.startsWith('/app/profile')) return '/app/profile';
     return '/app/home';
   })();
+  const isSessionRoute = location.pathname.startsWith('/app/session');
+
+  useEffect(() => {
+    mainScrollRef.current?.scrollTo({ top: 0 });
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!isSessionRoute) {
+      sessionAutoRestoreRef.current = null;
+      return;
+    }
+
+    if (!user || activeWords.length > 0 || isStartingSession || !stats.resumeCandidate) {
+      return;
+    }
+
+    if (sessionAutoRestoreRef.current === stats.resumeCandidate.groupId) {
+      return;
+    }
+
+    sessionAutoRestoreRef.current = stats.resumeCandidate.groupId;
+    void openLearningGroup(stats.resumeCandidate.groupId);
+  }, [
+    activeWords.length,
+    isSessionRoute,
+    isStartingSession,
+    openLearningGroup,
+    stats.resumeCandidate,
+    user,
+  ]);
 
   const sessionEmptyState = (
-    <div className="glass mx-auto max-w-3xl rounded-apple-lg p-16 text-center jelly-shadow">
-      <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">当前没有学习会话</p>
-      <h2 className="mt-4 text-3xl font-black text-text-primary">先从首页开始，系统才知道接下来该带你去哪。</h2>
+      <div className="glass mx-auto max-w-3xl rounded-apple-lg p-16 text-center jelly-shadow">
+      <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">这里还没有内容</p>
+      <h2 className="mt-4 text-3xl font-black text-text-primary">先回首页，从今天该做的开始。</h2>
       <p className="mt-4 text-sm leading-7 text-text-secondary">
-        如果今天有到期复习，会先进入复习；如果没有，系统会带你去导入新的学习组。
+        如果今天有复习，会先带你去复习；没有的话，就去导入新的一组。
       </p>
       <button
         type="button"
         onClick={() => navigate('/app/home')}
         className="mt-8 rounded-2xl bg-apple-blue px-6 py-4 text-base font-black text-white"
       >
-        回到首页
+        回首页看看
       </button>
     </div>
   );
@@ -842,15 +1351,74 @@ export default function App() {
       />
 
       <div className="flex-1 relative h-screen overflow-hidden">
-        <main className="h-full pt-24 pb-32 overflow-y-auto px-6">
-          <div className="container mx-auto h-full flex flex-col items-center justify-center">
+        <main
+          ref={mainScrollRef}
+          className={cx(
+            'h-full overflow-y-auto',
+            isSessionRoute
+              ? 'session-main px-4 py-6 md:px-6 md:py-7 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10'
+              : 'px-6 pt-24 pb-32',
+          )}
+        >
+          <div
+            className={cx(
+              'mx-auto min-h-full',
+              isSessionRoute
+                ? 'session-route-shell flex w-full max-w-[1460px] flex-col'
+                : 'container flex flex-col items-center justify-center',
+            )}
+          >
+            {sessionStartError && (
+              <div className="mx-auto mb-4 flex w-full max-w-6xl items-start gap-3 rounded-[28px] border border-apple-red/15 bg-apple-red/8 px-5 py-4 text-apple-red shadow-[0_18px_40px_rgba(255,59,48,0.08)]">
+                <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-black">没能开始这组学习</p>
+                  <p className="mt-1 text-sm leading-6">{sessionStartError}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSessionStartError('')}
+                  className="text-sm font-bold text-apple-red/80 transition-colors hover:text-apple-red"
+                >
+                  关闭
+                </button>
+              </div>
+            )}
             <Routes>
               <Route
                 path="home"
                 element={<HomeView stats={stats} onStart={() => { void handleStart(); }} isLoading={isStartingSession} />}
               />
-              <Route path="library" element={<LibraryView />} />
-              <Route path="import" element={<ImportView onStartLearning={handleImportStart} />} />
+              <Route
+                path="library"
+                element={(
+                  <LibraryView
+                    onLibraryMutated={() => { void fetchStats(); }}
+                    onStartLearningGroup={handleStartLearningGroup}
+                  />
+                )}
+              />
+              <Route
+                path="library/group/:groupId"
+                element={(
+                  <LibraryGroupDetailView
+                    isStartingLearningGroup={isStartingSession}
+                    onLibraryMutated={() => { void fetchStats(); }}
+                    onStartLearningGroup={handleStartLearningGroup}
+                  />
+                )}
+              />
+              <Route
+                path="library/custom/:groupId"
+                element={(
+                  <LibraryGroupDetailView
+                    isStartingLearningGroup={isStartingSession}
+                    onLibraryMutated={() => { void fetchStats(); }}
+                    onStartLearningGroup={handleStartLearningGroup}
+                  />
+                )}
+              />
+              <Route path="import" element={<ImportView onStartLearning={handleStartLearningGroup} />} />
               <Route
                 path="session"
                 element={activeWords.length === 0 ? sessionEmptyState : (
@@ -862,18 +1430,24 @@ export default function App() {
                         className="glass p-16 rounded-apple-lg jelly-shadow flex flex-col items-center gap-6"
                       >
                         <Loader2 className="w-10 h-10 text-apple-green animate-spin" />
-                        <p className="font-black text-xl">正在生成本轮收尾文章</p>
+                        <p className="font-black text-xl">正在生成收尾文章</p>
                       </motion.div>
                     ) : (
                       <ArticleView essay={essay} words={activeWords} onFinish={handleRoundComplete} />
                     )
                   ) : (
-                    <LearningEngine
-                      type={round}
-                      words={activeWords}
-                      onComplete={handleRoundComplete}
-                      onAttempt={handleAttempt}
-                    />
+                    <React.Fragment
+                      key={`${activeLearningGroupId ?? 'review'}:${round}:${activeSessionSeed?.lastActiveAt ?? activeWords.map((word) => word.id).join('|')}`}
+                    >
+                      <LearningEngine
+                        type={round}
+                        words={activeWords}
+                        initialSession={activeSessionSeed}
+                        onComplete={handleRoundComplete}
+                        onAttempt={handleAttempt}
+                        onSessionChange={handleLearningSessionChange}
+                      />
+                    </React.Fragment>
                   )
                 )}
               />
@@ -889,27 +1463,55 @@ export default function App() {
               <Route
                 path="profile"
                 element={(
-                  <div className="w-full max-w-2xl mx-auto glass p-12 rounded-apple-lg text-center">
-                    <div className="w-24 h-24 bg-apple-blue rounded-full mx-auto mb-6 flex items-center justify-center text-white text-4xl font-black">
-                      {(user?.email?.[0] ?? 'L').toUpperCase()}
-                    </div>
-                    <h2 className="text-2xl font-black mb-2">
-                      {(user?.user_metadata.full_name as string | undefined) ?? '当前账户'}
-                    </h2>
-                    <p className="text-text-secondary mb-8">{user?.email ?? '未读取到邮箱'}</p>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-apple-gray p-4 rounded-2xl">
-                        <div className="text-2xl font-black">{stats.totalLearned}</div>
-                        <div className="text-[10px] font-bold uppercase text-text-secondary">已掌握</div>
+                  <div className="w-full max-w-5xl mx-auto space-y-6">
+                    <div className="glass relative overflow-hidden rounded-[36px] p-8 shadow-[0_30px_80px_rgba(14,26,56,0.08)] md:p-10">
+                      <div className="pointer-events-none absolute -left-8 top-0 h-40 w-40 rounded-full bg-apple-blue/12 blur-3xl" />
+                      <div className="pointer-events-none absolute right-0 bottom-0 h-44 w-44 rounded-full bg-apple-green/10 blur-3xl" />
+
+                      <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                        <div>
+                          <div className="flex h-24 w-24 items-center justify-center rounded-[30px] bg-apple-blue text-4xl font-black text-white shadow-[0_22px_44px_rgba(0,122,255,0.22)]">
+                            {(user?.email?.[0] ?? 'L').toUpperCase()}
+                          </div>
+                          <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">Account</p>
+                          <h2 className="mt-3 text-4xl font-black text-text-primary">
+                            {(user?.user_metadata.full_name as string | undefined) ?? '当前账号'}
+                          </h2>
+                          <p className="mt-3 text-base text-text-secondary">{user?.email ?? '还没拿到邮箱'}</p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => navigate('/app/settings')}
+                          className="inline-flex items-center gap-2 rounded-full bg-[#12192b] px-5 py-3 text-sm font-black text-white shadow-[0_18px_34px_rgba(18,25,43,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
+                        >
+                          打开学习设置
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
                       </div>
-                      <div className="bg-apple-gray p-4 rounded-2xl">
-                        <div className="text-2xl font-black">{stats.todayReviewCount}</div>
-                        <div className="text-[10px] font-bold uppercase text-text-secondary">待复习</div>
+                    </div>
+
+                    <div className="grid gap-5 md:grid-cols-3">
+                      <div className="glass rounded-[30px] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.06)]">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">已掌握</p>
+                        <p className="mt-3 text-4xl font-black text-text-primary">{stats.totalLearned}</p>
+                        <p className="mt-3 text-sm leading-6 text-text-secondary">已经稳定掌握、进入长期记忆的词。</p>
+                      </div>
+                      <div className="glass rounded-[30px] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.06)]">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">待复习</p>
+                        <p className="mt-3 text-4xl font-black text-text-primary">{stats.todayReviewCount}</p>
+                        <p className="mt-3 text-sm leading-6 text-text-secondary">今天还在等待你回看的词。</p>
+                      </div>
+                      <div className="glass rounded-[30px] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.06)]">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">连续天数</p>
+                        <p className="mt-3 text-4xl font-black text-text-primary">{stats.streak}</p>
+                        <p className="mt-3 text-sm leading-6 text-text-secondary">最近连续学习没有断开的天数。</p>
                       </div>
                     </div>
                   </div>
                 )}
               />
+              <Route path="settings" element={<SettingsView />} />
               <Route path="*" element={<Navigate to="/app/home" replace />} />
             </Routes>
           </div>

@@ -32,7 +32,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   if (isAuthLoading) {
-    return <FullscreenLoader message="正在恢复你的学习会话" />;
+    return <FullscreenLoader message="正在把你的进度接回来" />;
   }
 
   if (!isAuthenticated) {
@@ -48,7 +48,7 @@ function PublicOnlyAuthRoute() {
   const location = useLocation();
 
   if (isAuthLoading) {
-    return <FullscreenLoader message="正在确认账户状态" />;
+    return <FullscreenLoader message="正在确认登录状态" />;
   }
 
   if (isAuthenticated) {

@@ -9,11 +9,11 @@ async function uploadAndSave(
   locale: 'uk' | 'us',
 ): Promise<string> {
   const buffer = await generateWordAudio(word, locale);
-  const path = `${locale}/${word.toLowerCase()}.wav`;
+  const path = `${locale}/${word.toLowerCase()}.mp3`;
 
   const { error: uploadErr } = await supabaseAdmin.storage
     .from(BUCKET)
-    .upload(path, buffer, { contentType: 'audio/wav', upsert: true });
+    .upload(path, buffer, { contentType: 'audio/mpeg', upsert: true });
 
   if (uploadErr) throw new Error(`Storage upload failed: ${uploadErr.message}`);
 

@@ -8,6 +8,7 @@ import {
 } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { isGoogleAuthEnabled } from '../lib/authFeatures';
 
 interface AuthContextValue {
   session: Session | null;
@@ -73,6 +74,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
     isAuthenticated: Boolean(session?.user),
     isAuthLoading,
     async signInWithGoogle(nextPath) {
+      if (!isGoogleAuthEnabled) {
+        throw new Error('Google 登录暂未配置，请先使用邮箱登录。');
+      }
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {

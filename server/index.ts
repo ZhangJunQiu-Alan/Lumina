@@ -1,19 +1,48 @@
 import 'dotenv/config';
 import express from 'express';
-import { enrichWords, generateArticle } from './gemini.js';
+import { enrichWords, EnrichmentResponseValidationError, generateArticle } from './gemini.js';
 import { fetchDueReviewWords, recordReviewAttempt } from './review.js';
 import { getOrCreateAudio, batchGenerateAudio } from './audio.js';
+import { deleteLearningGroup } from './library.js';
 import { requireAuth, type AuthenticatedRequest } from './auth.js';
+import { analyzeWordBatch, formatDuplicateWordsMessage } from '../shared/wordBatch.js';
 
 const app = express();
 app.use(express.json());
 
-// CORS for Vite dev server
-app.use((_, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+const appOrigin = process.env.APP_ORIGIN?.trim();
+const allowedOrigins = new Set(['http://localhost:3000', appOrigin].filter(Boolean));
+
+app.use((req, res, next) => {
+  const origin = req.header('Origin');
+
+  res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+
+  if (!origin) {
+    next();
+    return;
+  }
+
+  if (!allowedOrigins.has(origin)) {
+    res.status(403).json({ error: 'Origin not allowed' });
+    return;
+  }
+
+  res.setHeader('Access-Control-Allow-Origin', origin);
   next();
+});
+
+app.options('*', (req, res) => {
+  const origin = req.header('Origin');
+
+  if (origin && !allowedOrigins.has(origin)) {
+    res.status(403).json({ error: 'Origin not allowed' });
+    return;
+  }
+
+  res.sendStatus(204);
 });
 
 // POST /api/vocab/enrich
@@ -23,28 +52,33 @@ app.post('/api/vocab/enrich', requireAuth, async (req, res) => {
   const { words } = req.body as { words?: unknown };
 
   if (!Array.isArray(words) || words.length === 0) {
-    res.status(400).json({ error: 'words must be a non-empty array of strings' });
+    res.status(400).json({ error: '请传入一组英文单词，格式为 words: string[]。' });
     return;
   }
 
-  const cleaned = (words as unknown[])
-    .filter((w): w is string => typeof w === 'string')
-    .map(w => w.trim())
-    .filter(Boolean)
-    .slice(0, 30); // cap at 30 per request
+  const cleaned = analyzeWordBatch(
+    (words as unknown[]).filter((w): w is string => typeof w === 'string'),
+    { limit: 30 },
+  );
 
-  if (cleaned.length === 0) {
-    res.status(400).json({ error: 'No valid words provided' });
+  if (cleaned.words.length === 0) {
+    res.status(400).json({ error: '没有识别到可用单词，请贴一组英文单词后再试。' });
+    return;
+  }
+
+  if (cleaned.duplicateWords.length > 0) {
+    res.status(400).json({ error: formatDuplicateWordsMessage(cleaned.duplicateWords) });
     return;
   }
 
   try {
-    const enriched = await enrichWords(cleaned);
+    const enriched = await enrichWords(cleaned.words);
     res.json({ data: enriched });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    const status = err instanceof EnrichmentResponseValidationError ? err.statusCode : 500;
     console.error('[/api/vocab/enrich]', message);
-    res.status(500).json({ error: message });
+    res.status(status).json({ error: message });
   }
 });
 
@@ -142,6 +176,32 @@ app.get('/api/review/due', requireAuth, async (req: AuthenticatedRequest, res) =
   }
 });
 
+// DELETE /api/library/groups/:groupId
+// Deletes one personal learning group and clears review state only for words no longer used elsewhere
+app.delete('/api/library/groups/:groupId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const groupId = (req.params.groupId ?? '').trim();
+
+  if (!groupId) {
+    res.status(400).json({ error: 'groupId is required' });
+    return;
+  }
+
+  try {
+    const result = await deleteLearningGroup(req.authUserId!, groupId);
+    res.json({ data: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[/api/library/groups/${groupId}]`, message);
+    const status =
+      message.includes('不存在')
+      || message.includes('不属于你')
+      || message.includes('不支持删除')
+        ? 400
+        : 500;
+    res.status(status).json({ error: message });
+  }
+});
+
 // GET /api/audio/:word?locale=uk|us
 // Returns { data: url } — generates + caches on first call
 app.get('/api/audio/:word', async (req, res) => {
@@ -193,5 +253,6 @@ app.post('/api/audio/batch', async (req, res) => {
 // Health check
 app.get('/api/health', (_, res) => res.json({ ok: true }));
 
-const PORT = 4000;
+const parsedPort = Number.parseInt(process.env.PORT ?? '4000', 10);
+const PORT = Number.isNaN(parsedPort) ? 4000 : parsedPort;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));

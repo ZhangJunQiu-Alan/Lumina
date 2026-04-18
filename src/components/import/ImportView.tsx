@@ -1,135 +1,65 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { PlusCircle, Loader2, CheckCircle2, AlertCircle, ArrowRight, BookOpen } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-import { EnrichedWord, toWord, Word } from '../../types';
+import { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+import { AlertCircle, ArrowRight, BookOpen, CheckCircle2, Loader2, PlusCircle } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
+import { invalidateLibraryCache } from '../../lib/libraryCache';
+import { saveToSupabase } from '../../lib/importFlow';
 import { useAuth } from '../../contexts/AuthContext';
+import { EnrichedWord, Word } from '../../types';
+import { analyzeWordBatch, formatDuplicateWordsMessage } from '../../../shared/wordBatch';
 
 interface ImportViewProps {
-  onStartLearning: (words: Word[], groupId: string) => void;
+  onStartLearning: (groupId: string, words?: Word[]) => Promise<void> | void;
 }
 
 type Stage = 'input' | 'loading' | 'preview' | 'saving' | 'audio' | 'error';
 
-function parseWords(raw: string): string[] {
+const MANUAL_BATCH_SIZE = 30;
+const MANUAL_DRAFT_KEY = 'manual_vocab_import_draft';
+
+function splitWords(raw: string): string[] {
   return raw
     .split(/[\n,]+/)
-    .map(w => w.trim())
-    .filter(Boolean)
-    .slice(0, 30);
+    .map((word) => word.trim())
+    .filter(Boolean);
 }
 
-async function saveToSupabase(
-  enriched: EnrichedWord[],
-  userId: string,
-): Promise<{ groupId: string; words: Word[] }> {
-  // 1. Upsert vocabulary_items
-  const items = enriched.map(e => ({
-    word: e.word.toLowerCase(),
-    ipa_uk: e.ipa_uk,
-    ipa_us: e.ipa_us,
-    primary_meaning_zh: e.primary_meaning_zh,
-    ner_label: e.ner_label,
-    memory_tip: e.memory_tip,
-    source_type: 'custom',
-  }));
+function readManualDraft() {
+  if (typeof window === 'undefined') return '';
+  return window.localStorage.getItem(MANUAL_DRAFT_KEY) ?? '';
+}
 
-  const { data: insertedItems, error: itemsError } = await supabase
-    .from('vocabulary_items')
-    .upsert(items, { onConflict: 'word' })
-    .select('id, word');
+function writeManualDraft(value: string) {
+  if (typeof window === 'undefined') return;
 
-  if (itemsError) throw new Error(`vocabulary_items: ${itemsError.message}`);
+  if (value.trim()) {
+    window.localStorage.setItem(MANUAL_DRAFT_KEY, value);
+    return;
+  }
 
-  const wordIdMap = new Map(insertedItems!.map((r: { id: string; word: string }) => [r.word, r.id]));
-
-  // 2. Insert senses + confused_words in parallel (one Promise per word)
-  await Promise.all(enriched.map(async (e) => {
-    const vocabId = wordIdMap.get(e.word.toLowerCase());
-    if (!vocabId) return;
-
-    await supabase.from('vocabulary_senses').delete().eq('vocabulary_item_id', vocabId);
-    if (e.senses.length > 0) {
-      const { error } = await supabase.from('vocabulary_senses').insert(
-        e.senses.map(s => ({ vocabulary_item_id: vocabId, ...s }))
-      );
-      if (error) throw new Error(`senses [${e.word}]: ${error.message}`);
-    }
-
-    if (e.confused_word) {
-      await supabase.from('confused_words').delete().eq('vocabulary_item_id', vocabId);
-      const { error } = await supabase.from('confused_words').insert({
-        vocabulary_item_id: vocabId,
-        confused_word: e.confused_word,
-        difference_note_zh: e.confused_diff_zh,
-      });
-      if (error) throw new Error(`confused_words [${e.word}]: ${error.message}`);
-    }
-  }));
-
-  // 3. Create learning group
-  const { data: group, error: groupError } = await supabase
-    .from('learning_groups')
-    .insert({
-      user_id: userId,
-      group_name: `Custom · ${new Date().toLocaleDateString()}`,
-      source_type: 'custom',
-    })
-    .select('id')
-    .single();
-
-  if (groupError) throw new Error(`learning_groups: ${groupError.message}`);
-
-  // 4. Link words to group
-  const groupWords = enriched.map((e, i) => ({
-    learning_group_id: group.id,
-    vocabulary_item_id: wordIdMap.get(e.word.toLowerCase()),
-    sequence_no: i,
-  })).filter(r => r.vocabulary_item_id);
-
-  const { error: linkError } = await supabase.from('learning_group_words').insert(groupWords);
-  if (linkError) throw new Error(`learning_group_words: ${linkError.message}`);
-
-  // 5. Seed review_states for each word as unassessed new words
-  const reviewRows = enriched.map(e => ({
-    user_id: userId,
-    vocabulary_item_id: wordIdMap.get(e.word.toLowerCase()),
-    memory_state: 'new',
-    interval_days: null,
-    next_review_at: null,
-    graduated_at: null,
-  })).filter(r => r.vocabulary_item_id);
-
-  const { error: reviewError } = await supabase
-    .from('review_states')
-    .upsert(reviewRows, { onConflict: 'user_id,vocabulary_item_id' });
-
-  if (reviewError) throw new Error(`review_states: ${reviewError.message}`);
-
-  const persistedWords = enriched
-    .map((word) => ({ ...word, id: wordIdMap.get(word.word.toLowerCase()) }))
-    .filter((word): word is EnrichedWord & { id: string } => Boolean(word.id))
-    .map(toWord);
-
-  return { groupId: group.id as string, words: persistedWords };
+  window.localStorage.removeItem(MANUAL_DRAFT_KEY);
 }
 
 export const ImportView = ({ onStartLearning }: ImportViewProps) => {
   const { user } = useAuth();
-  const [raw, setRaw] = useState('');
+  const [raw, setRaw] = useState(readManualDraft);
   const [stage, setStage] = useState<Stage>('input');
   const [enriched, setEnriched] = useState<EnrichedWord[]>([]);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const wordCount = parseWords(raw).length;
+  useEffect(() => {
+    writeManualDraft(raw);
+  }, [raw]);
 
-  const handleGenerate = async () => {
-    const words = parseWords(raw);
+  const parsedWords = splitWords(raw);
+  const wordCount = parsedWords.length;
+
+  const startEnrichment = async (words: string[]) => {
     if (words.length === 0) return;
 
     setStage('loading');
     setErrorMsg('');
+    setEnriched([]);
 
     try {
       const res = await apiFetch('/api/vocab/enrich', {
@@ -146,31 +76,52 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
       const { data } = await res.json();
       setEnriched(data);
       setStage('preview');
-    } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : String(e));
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : String(error));
       setStage('error');
     }
   };
 
+  const handleGenerate = async () => {
+    const batch = analyzeWordBatch(parsedWords, { limit: MANUAL_BATCH_SIZE });
+
+    if (batch.words.length === 0) return;
+
+    if (batch.duplicateWords.length > 0) {
+      setErrorMsg(formatDuplicateWordsMessage(batch.duplicateWords));
+      setStage('error');
+      return;
+    }
+
+    await startEnrichment(batch.words);
+  };
+
+  const handleBackToInput = () => {
+    setStage('input');
+    setErrorMsg('');
+  };
+
   const handleStartLearning = async () => {
     if (!user) {
-      setErrorMsg('请先登录，再创建新的学习组。');
+      setErrorMsg('先登录一下，再开始这一组。');
       setStage('error');
       return;
     }
 
     setStage('saving');
     try {
-      const result = await saveToSupabase(enriched, user.id);
+      const result = await saveToSupabase(enriched, user.id, { groupSourceType: 'custom' });
+      invalidateLibraryCache(user.id);
+      writeManualDraft('');
+      setRaw('');
 
-      // Generate UK + US audio for all words (errors silently ignored — audio is non-blocking)
       setStage('audio');
       let audioMap: Record<string, { uk_url: string; us_url: string }> = {};
       try {
         const res = await apiFetch('/api/audio/batch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ words: result.words.map(w => w.word) }),
+          body: JSON.stringify({ words: result.words.map((word) => word.word) }),
           requiresAuth: false,
         });
         if (res.ok) {
@@ -178,18 +129,18 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
           audioMap = data ?? {};
         }
       } catch {
-        // Audio failure must never block learning
+        // Audio failure must never block learning.
       }
 
-      const wordsWithAudio = result.words.map(w => ({
-        ...w,
-        audio_uk_url: audioMap[w.word.toLowerCase()]?.uk_url ?? null,
-        audio_us_url: audioMap[w.word.toLowerCase()]?.us_url ?? null,
+      const wordsWithAudio = result.words.map((word) => ({
+        ...word,
+        audio_uk_url: audioMap[word.word.toLowerCase()]?.uk_url ?? null,
+        audio_us_url: audioMap[word.word.toLowerCase()]?.us_url ?? null,
       }));
 
-      onStartLearning(wordsWithAudio, result.groupId);
-    } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : String(e));
+      await onStartLearning(result.groupId, wordsWithAudio);
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : String(error));
       setStage('error');
     }
   };
@@ -198,78 +149,78 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="w-full max-w-2xl mx-auto"
+      className="mx-auto w-full max-w-2xl"
     >
       <AnimatePresence mode="wait">
-
-        {/* ── Input stage ── */}
         {(stage === 'input' || stage === 'error') && (
           <motion.div
             key="input"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="glass p-12 rounded-apple-lg jelly-shadow text-center"
+            className="glass rounded-apple-lg p-12 text-center jelly-shadow"
           >
-            <div className="w-14 h-14 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center mx-auto mb-6">
-              <PlusCircle className="w-7 h-7 text-gray-400" />
+            <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-full border-2 border-dashed border-gray-300">
+              <PlusCircle className="h-7 w-7 text-gray-400" />
             </div>
-            <h2 className="text-2xl font-black mb-2">导入一组新词</h2>
-            <p className="text-text-secondary text-sm mb-6">
-              把单词按逗号或换行贴进来，单次最多 30 个
+            <h2 className="mb-2 text-2xl font-black">导入一组新词</h2>
+            <p className="mb-6 text-sm text-text-secondary">
+              把单词贴进来就行，逗号或换行都可以，最多 30 个
             </p>
 
             <textarea
               value={raw}
-              onChange={e => { setRaw(e.target.value); setStage('input'); }}
-              className="w-full h-40 bg-apple-gray rounded-2xl p-5 mb-2 outline-none focus:ring-2 ring-apple-blue/30 text-sm resize-none"
+              onChange={(event) => {
+                setRaw(event.target.value);
+                setStage('input');
+              }}
+              className="mb-2 h-40 w-full resize-none rounded-2xl bg-apple-gray p-5 text-sm outline-none ring-apple-blue/30 focus:ring-2"
               placeholder="allocate, biodiversity, infrastructure, sustainable…"
             />
 
-            <div className="flex justify-between items-center mb-6 px-1">
-              <span className="text-xs text-text-secondary">识别到 {wordCount} 个词</span>
-              {wordCount > 30 && (
-                <span className="text-xs text-apple-red font-bold">只会使用前 30 个</span>
+            <div className="mb-6 flex items-center justify-between px-1">
+              <span className="text-xs text-text-secondary">一共识别到 {wordCount} 个词</span>
+              {wordCount > MANUAL_BATCH_SIZE && (
+                <span className="text-xs font-bold text-apple-red">只会取前 30 个</span>
               )}
             </div>
 
             {stage === 'error' && (
-              <div className="flex items-start gap-2 bg-apple-red/10 text-apple-red text-sm font-medium rounded-xl p-3 mb-4 text-left">
-                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <div className="mb-4 flex items-start gap-2 rounded-xl bg-apple-red/10 p-3 text-left text-sm font-medium text-apple-red">
+                <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
                 <span>{errorMsg}</span>
               </div>
             )}
 
             <button
-              onClick={handleGenerate}
+              type="button"
+              onClick={() => {
+                void handleGenerate();
+              }}
               disabled={wordCount === 0}
-              className="w-full py-4 bg-apple-blue text-white font-bold rounded-2xl disabled:opacity-40 disabled:cursor-not-allowed hover:scale-[1.01] active:scale-[0.99] transition-all"
+              className="w-full rounded-2xl bg-apple-blue py-4 font-bold text-white transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              生成这一组学习词
+              先帮我整理一下
             </button>
           </motion.div>
         )}
 
-        {/* ── Loading stage ── */}
         {stage === 'loading' && (
           <motion.div
             key="loading"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="glass p-16 rounded-apple-lg jelly-shadow flex flex-col items-center gap-6"
+            className="glass flex flex-col items-center gap-6 rounded-apple-lg p-16 jelly-shadow"
           >
-            <Loader2 className="w-10 h-10 text-apple-blue animate-spin" />
+            <Loader2 className="h-10 w-10 animate-spin text-apple-blue" />
             <div className="text-center">
-              <p className="font-black text-xl">正在用 AI 整理这一组词…</p>
-              <p className="text-text-secondary text-sm mt-1">
-                正在补充 {parseWords(raw).length} 个词的音标、释义、例句和记忆提示
-              </p>
+              <p className="text-xl font-black">这组词正在整理中…</p>
+              <p className="mt-1 text-sm text-text-secondary">音标、释义、例句这些马上就好</p>
             </div>
           </motion.div>
         )}
 
-        {/* ── Preview stage ── */}
         {stage === 'preview' && (
           <motion.div
             key="preview"
@@ -278,84 +229,83 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
             exit={{ opacity: 0 }}
             className="space-y-4"
           >
-            <div className="flex items-center justify-between mb-2 px-1">
-              <h2 className="text-2xl font-black">
-                这 {enriched.length} 个词已经准备好了
-              </h2>
+            <div className="mb-2 flex items-center justify-between px-1">
+              <h2 className="text-2xl font-black">这一组已经准备好了</h2>
               <button
-                onClick={() => setStage('input')}
-                className="text-sm text-text-secondary hover:text-text-primary transition-colors"
+                type="button"
+                onClick={handleBackToInput}
+                className="text-sm text-text-secondary transition-colors hover:text-text-primary"
               >
-                ← 返回修改
+                ← 返回改一下
               </button>
             </div>
 
-            <div className="space-y-3 max-h-[52vh] overflow-y-auto pr-1">
-              {enriched.map((w, i) => (
+            <div className="max-h-[52vh] space-y-3 overflow-y-auto pr-1">
+              {enriched.map((entry, index) => (
                 <motion.div
-                  key={w.word}
+                  key={`${entry.word}-${index}`}
                   initial={{ opacity: 0, x: -12 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.04 }}
-                  className="glass px-6 py-4 rounded-2xl jelly-shadow flex items-start justify-between gap-4"
+                  transition={{ delay: index * 0.04 }}
+                  className="glass flex items-start justify-between gap-4 rounded-2xl px-6 py-4 jelly-shadow"
                 >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-3 flex-wrap">
-                      <span className="font-black text-lg">{w.word}</span>
-                      <span className="text-xs text-apple-blue font-mono">{w.ipa_uk}</span>
-                      {w.senses[0] && (
-                        <span className="text-xs bg-apple-gray px-2 py-0.5 rounded-full text-text-secondary font-bold uppercase">
-                          {w.senses[0].pos}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline gap-3">
+                      <span className="text-lg font-black">{entry.word}</span>
+                      <span className="text-xs font-mono text-apple-blue">{entry.ipa_uk}</span>
+                      {entry.senses[0] && (
+                        <span className="rounded-full bg-apple-gray px-2 py-0.5 text-xs font-bold uppercase text-text-secondary">
+                          {entry.senses[0].pos}
                         </span>
                       )}
                     </div>
-                    <p className="text-text-secondary text-sm mt-1 truncate">{w.primary_meaning_zh}</p>
+                    <p className="mt-1 truncate text-sm text-text-secondary">{entry.primary_meaning_zh}</p>
                   </div>
-                  <CheckCircle2 className="w-5 h-5 text-apple-green flex-shrink-0 mt-0.5" />
+                  <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-apple-green" />
                 </motion.div>
               ))}
             </div>
 
             <button
-              onClick={handleStartLearning}
-              className="w-full py-5 bg-apple-blue text-white font-black text-lg rounded-2xl flex items-center justify-center gap-3 hover:scale-[1.01] active:scale-[0.99] transition-all jelly-shadow"
+              type="button"
+              onClick={() => {
+                void handleStartLearning();
+              }}
+              className="flex w-full items-center justify-center gap-3 rounded-2xl bg-apple-blue py-5 text-lg font-black text-white transition-all hover:scale-[1.01] active:scale-[0.99] jelly-shadow"
             >
-              <BookOpen className="w-5 h-5" />
-              开始这一轮学习
-              <ArrowRight className="w-5 h-5" />
+              <BookOpen className="h-5 w-5" />
+              就从这一组开始
+              <ArrowRight className="h-5 w-5" />
             </button>
           </motion.div>
         )}
 
-        {/* ── Saving stage ── */}
         {stage === 'saving' && (
           <motion.div
             key="saving"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="glass p-16 rounded-apple-lg jelly-shadow flex flex-col items-center gap-6"
+            className="glass flex flex-col items-center gap-6 rounded-apple-lg p-16 jelly-shadow"
           >
-            <Loader2 className="w-10 h-10 text-apple-green animate-spin" />
-            <p className="font-black text-xl">正在写入你的词库…</p>
+            <Loader2 className="h-10 w-10 animate-spin text-apple-green" />
+            <p className="text-xl font-black">正在放进你的词库…</p>
           </motion.div>
         )}
 
-        {/* ── Audio generation stage ── */}
         {stage === 'audio' && (
           <motion.div
             key="audio"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="glass p-16 rounded-apple-lg jelly-shadow flex flex-col items-center gap-6"
+            className="glass flex flex-col items-center gap-6 rounded-apple-lg p-16 jelly-shadow"
           >
-            <Loader2 className="w-10 h-10 text-apple-blue animate-spin" />
+            <Loader2 className="h-10 w-10 animate-spin text-apple-blue" />
             <div className="text-center">
-              <p className="font-black text-xl">正在补齐发音音频…</p>
-              <p className="text-text-secondary text-sm mt-1">为每个词生成英音和美音，失败也不会阻塞学习</p>
+              <p className="text-xl font-black">正在补发音…</p>
+              <p className="mt-1 text-sm text-text-secondary">英音和美音会慢一点，没补齐也不耽误你先学</p>
             </div>
           </motion.div>
         )}
-
       </AnimatePresence>
     </motion.div>
   );
