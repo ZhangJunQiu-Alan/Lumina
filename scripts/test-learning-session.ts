@@ -9,6 +9,17 @@ import {
 } from '../src/lib/learningSession.js';
 import type { Word } from '../src/types.js';
 
+const emptyWordExtras = {
+  morphology: {
+    summaryZh: '',
+    parts: [],
+  },
+  derivedWords: [],
+  synonyms: [],
+  antonyms: [],
+  confusingPairs: [],
+} satisfies Pick<Word, 'morphology' | 'derivedWords' | 'synonyms' | 'antonyms' | 'confusingPairs'>;
+
 const words: Word[] = [
   {
     id: 'w1',
@@ -18,6 +29,7 @@ const words: Word[] = [
     ner_entities: [],
     chinese_definition: '分配',
     example_sentences: ['Allocate the budget wisely.'],
+    ...emptyWordExtras,
   },
   {
     id: 'w2',
@@ -27,6 +39,7 @@ const words: Word[] = [
     ner_entities: [],
     chinese_definition: '可持续的',
     example_sentences: ['A sustainable plan matters.'],
+    ...emptyWordExtras,
   },
   {
     id: 'w3',
@@ -36,6 +49,7 @@ const words: Word[] = [
     ner_entities: [],
     chinese_definition: '基础设施',
     example_sentences: ['Infrastructure needs investment.'],
+    ...emptyWordExtras,
   },
 ];
 

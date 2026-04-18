@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS vocabulary_items (
   ipa_us        TEXT,
   primary_meaning_zh TEXT,
   ner_label     TEXT,          -- null for common words; e.g. 'LOCATION' for London
+  morphology_summary_zh TEXT,
   memory_tip    TEXT,
   source_type   TEXT DEFAULT 'custom',  -- 'system' | 'custom'
   created_at    TIMESTAMPTZ DEFAULT NOW(),
@@ -29,12 +30,37 @@ CREATE TABLE IF NOT EXISTS vocabulary_senses (
   example_translation_zh TEXT
 );
 
+-- Morphology / affix breakdown for memory
+CREATE TABLE IF NOT EXISTS vocabulary_morphology_parts (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  vocabulary_item_id    UUID NOT NULL REFERENCES vocabulary_items(id) ON DELETE CASCADE,
+  part_text             TEXT,
+  part_kind             TEXT,
+  meaning_zh            TEXT,
+  note_zh               TEXT,
+  sort_order            INTEGER DEFAULT 0,
+  CHECK (part_kind IN ('prefix', 'root', 'suffix'))
+);
+
+-- Related words grouped by relationship type
+CREATE TABLE IF NOT EXISTS vocabulary_relations (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  vocabulary_item_id    UUID NOT NULL REFERENCES vocabulary_items(id) ON DELETE CASCADE,
+  relation_type         TEXT NOT NULL,
+  related_word          TEXT,
+  meaning_zh            TEXT,
+  note_zh               TEXT,
+  sort_order            INTEGER DEFAULT 0,
+  CHECK (relation_type IN ('derived', 'synonym', 'antonym'))
+);
+
 -- Confused word pairs
 CREATE TABLE IF NOT EXISTS confused_words (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   vocabulary_item_id    UUID NOT NULL REFERENCES vocabulary_items(id) ON DELETE CASCADE,
   confused_word         TEXT,
-  difference_note_zh    TEXT
+  difference_note_zh    TEXT,
+  sort_order            INTEGER DEFAULT 0
 );
 
 -- 30-word study groups
@@ -132,6 +158,8 @@ CREATE TABLE IF NOT EXISTS user_settings (
 -- ============================================================
 ALTER TABLE vocabulary_items       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vocabulary_senses      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vocabulary_morphology_parts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vocabulary_relations   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE confused_words         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE learning_groups        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE learning_group_words   ENABLE ROW LEVEL SECURITY;
@@ -143,6 +171,8 @@ ALTER TABLE user_settings          ENABLE ROW LEVEL SECURITY;
 -- Allow all access for now (replace with user-scoped policies when auth lands)
 CREATE POLICY "public_all" ON vocabulary_items       FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "public_all" ON vocabulary_senses      FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "public_all" ON vocabulary_morphology_parts FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "public_all" ON vocabulary_relations   FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "public_all" ON confused_words         FOR ALL USING (true) WITH CHECK (true);
 
 CREATE POLICY "learning_groups_owner_select" ON learning_groups

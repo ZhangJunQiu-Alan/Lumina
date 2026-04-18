@@ -54,6 +54,23 @@ interface VocabularySenseRow {
 interface ConfusedWordRow {
   confused_word: string | null;
   difference_note_zh: string | null;
+  sort_order: number | null;
+}
+
+interface VocabularyMorphologyPartRow {
+  part_text: string | null;
+  part_kind: 'prefix' | 'root' | 'suffix' | null;
+  meaning_zh: string | null;
+  note_zh: string | null;
+  sort_order: number | null;
+}
+
+interface VocabularyRelationRow {
+  relation_type: 'derived' | 'synonym' | 'antonym' | null;
+  related_word: string | null;
+  meaning_zh: string | null;
+  note_zh: string | null;
+  sort_order: number | null;
 }
 
 interface VocabularyItemRow {
@@ -62,8 +79,11 @@ interface VocabularyItemRow {
   ipa_uk: string | null;
   primary_meaning_zh: string | null;
   ner_label: string | null;
+  morphology_summary_zh: string | null;
   vocabulary_senses: VocabularySenseRow[];
-  confused_words: ConfusedWordRow[];
+  vocabulary_morphology_parts?: VocabularyMorphologyPartRow[] | null;
+  vocabulary_relations?: VocabularyRelationRow[] | null;
+  confused_words?: ConfusedWordRow[] | null;
 }
 
 interface DueReviewRow {
@@ -79,7 +99,15 @@ function buildWord(row: DueReviewRow) {
   const vocabularyItem = Array.isArray(row.vocabulary_items)
     ? row.vocabulary_items[0]
     : row.vocabulary_items;
-  const confused = vocabularyItem?.confused_words[0];
+  const relations = [...(vocabularyItem?.vocabulary_relations ?? [])]
+    .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0));
+  const confusingPairs = [...(vocabularyItem?.confused_words ?? [])]
+    .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
+    .map((item) => ({
+      word: item.confused_word ?? '',
+      difference: item.difference_note_zh ?? '',
+    }))
+    .filter((item) => item.word);
 
   return {
     id: vocabularyItem?.id ?? row.vocabulary_item_id,
@@ -95,13 +123,57 @@ function buildWord(row: DueReviewRow) {
     example_sentences: (vocabularyItem?.vocabulary_senses ?? [])
       .map((sense) => sense.example_sentence ?? '')
       .filter(Boolean),
-    confusing_pair: confused?.confused_word
-      ? { word: confused.confused_word, difference: confused.difference_note_zh ?? '' }
-      : undefined,
+    morphology: {
+      summaryZh: vocabularyItem?.morphology_summary_zh ?? '',
+      parts: [...(vocabularyItem?.vocabulary_morphology_parts ?? [])]
+        .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
+        .map((part) => ({
+          text: part.part_text ?? '',
+          kind: part.part_kind ?? 'root',
+          meaningZh: part.meaning_zh ?? '',
+          noteZh: part.note_zh ?? '',
+        })),
+    },
+    derivedWords: relations
+      .filter((relation) => relation.relation_type === 'derived')
+      .map((relation) => ({
+        word: relation.related_word ?? '',
+        meaningZh: relation.meaning_zh ?? '',
+        noteZh: relation.note_zh ?? '',
+      }))
+      .filter((relation) => relation.word),
+    synonyms: relations
+      .filter((relation) => relation.relation_type === 'synonym')
+      .map((relation) => ({
+        word: relation.related_word ?? '',
+        meaningZh: relation.meaning_zh ?? '',
+        noteZh: relation.note_zh ?? '',
+      }))
+      .filter((relation) => relation.word),
+    antonyms: relations
+      .filter((relation) => relation.relation_type === 'antonym')
+      .map((relation) => ({
+        word: relation.related_word ?? '',
+        meaningZh: relation.meaning_zh ?? '',
+        noteZh: relation.note_zh ?? '',
+      }))
+      .filter((relation) => relation.word),
+    confusingPairs,
+    confusing_pair: confusingPairs[0],
     memoryState: row.memory_state,
     nextReviewAt: row.next_review_at,
     lastResult: row.last_result,
   };
+}
+
+function isMissingRichVocabularySchemaError(error: { message?: string } | null | undefined) {
+  const message = error?.message ?? '';
+  return [
+    'morphology_summary_zh',
+    'vocabulary_morphology_parts',
+    'vocabulary_relations',
+    'sort_order',
+  ].some((part) => message.includes(part));
 }
 
 export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<ReviewAttemptResponse> {
@@ -187,9 +259,45 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
 
 export async function fetchDueReviewWords(userId: string) {
   const nowIso = new Date().toISOString();
-  const { data, error } = await supabaseAdmin
-    .from('review_states')
-    .select(`
+  const richSelect = `
+      vocabulary_item_id,
+      memory_state,
+      next_review_at,
+      last_result,
+      last_assessed_at,
+      vocabulary_items!inner (
+        id,
+        word,
+        ipa_uk,
+        primary_meaning_zh,
+        ner_label,
+        morphology_summary_zh,
+        vocabulary_senses (
+          pos,
+          example_sentence
+        ),
+        vocabulary_morphology_parts (
+          part_text,
+          part_kind,
+          meaning_zh,
+          note_zh,
+          sort_order
+        ),
+        vocabulary_relations (
+          relation_type,
+          related_word,
+          meaning_zh,
+          note_zh,
+          sort_order
+        ),
+        confused_words (
+          confused_word,
+          difference_note_zh,
+          sort_order
+        )
+      )
+    `;
+  const legacySelect = `
       vocabulary_item_id,
       memory_state,
       next_review_at,
@@ -210,7 +318,11 @@ export async function fetchDueReviewWords(userId: string) {
           difference_note_zh
         )
       )
-    `)
+    `;
+
+  const initialResult = await supabaseAdmin
+    .from('review_states')
+    .select(richSelect)
     .eq('user_id', userId)
     .not('next_review_at', 'is', null)
     .neq('memory_state', 'mastered')
@@ -218,11 +330,29 @@ export async function fetchDueReviewWords(userId: string) {
     .order('next_review_at', { ascending: true })
     .order('last_assessed_at', { ascending: true });
 
+  let data = (initialResult.data ?? []) as unknown as DueReviewRow[];
+  let error = initialResult.error;
+
+  if (error && isMissingRichVocabularySchemaError(error)) {
+    const fallbackResult = await supabaseAdmin
+      .from('review_states')
+      .select(legacySelect)
+      .eq('user_id', userId)
+      .not('next_review_at', 'is', null)
+      .neq('memory_state', 'mastered')
+      .lte('next_review_at', nowIso)
+      .order('next_review_at', { ascending: true })
+      .order('last_assessed_at', { ascending: true });
+
+    data = (fallbackResult.data ?? []) as unknown as DueReviewRow[];
+    error = fallbackResult.error;
+  }
+
   if (error) {
     throw new Error(`due review query failed: ${error.message}`);
   }
 
-  const rows = sortDueReviewRows((data ?? []) as unknown as DueReviewRow[]);
+  const rows = sortDueReviewRows(data);
 
   return rows.map(buildWord);
 }

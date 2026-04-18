@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import {
+  EnrichedWordRelation,
   LibraryGroupSummary,
   LibraryGroupWord,
   MemoryState,
@@ -23,6 +24,7 @@ import {
   ReviewResultType,
   ResumeCandidate,
 } from '../../types';
+import { toConfusingPairs, toWordMorphology, toWordRelations } from '../../types';
 import {
   getCachedLibraryGroupDetail,
   getCachedLibraryGroups,
@@ -65,6 +67,7 @@ interface DetailVocabularyItemRow {
   word: string;
   ipa_uk: string | null;
   primary_meaning_zh: string | null;
+  morphology_summary_zh: string | null;
   memory_tip: string | null;
   created_at: string;
   vocabulary_senses: {
@@ -72,10 +75,25 @@ interface DetailVocabularyItemRow {
     example_sentence: string | null;
     example_translation_zh: string | null;
   }[];
-  confused_words: {
+  vocabulary_morphology_parts?: {
+    part_text: string | null;
+    part_kind: 'prefix' | 'root' | 'suffix' | null;
+    meaning_zh: string | null;
+    note_zh: string | null;
+    sort_order: number | null;
+  }[] | null;
+  vocabulary_relations?: {
+    relation_type: 'derived' | 'synonym' | 'antonym' | null;
+    related_word: string | null;
+    meaning_zh: string | null;
+    note_zh: string | null;
+    sort_order: number | null;
+  }[] | null;
+  confused_words?: {
     confused_word: string | null;
     difference_note_zh: string | null;
-  }[];
+    sort_order: number | null;
+  }[] | null;
   review_states: DetailReviewStateRow[] | DetailReviewStateRow | null;
 }
 
@@ -124,6 +142,16 @@ const groupStatusStyle: Record<'active' | 'completed', string> = {
 function asArray<T>(value: T | T[] | null | undefined): T[] {
   if (!value) return [];
   return Array.isArray(value) ? value : [value];
+}
+
+function isMissingRichVocabularySchemaError(error: { message?: string } | null | undefined) {
+  const message = error?.message ?? '';
+  return [
+    'morphology_summary_zh',
+    'vocabulary_morphology_parts',
+    'vocabulary_relations',
+    'sort_order',
+  ].some((part) => message.includes(part));
 }
 
 function formatDateTime(value: string | null): string {
@@ -177,7 +205,28 @@ function mapGroupWord(row: GroupWordRow): LibraryGroupWord | null {
   if (!vocabularyItem) return null;
 
   const reviewState = asArray(vocabularyItem.review_states)[0];
-  const confused = vocabularyItem.confused_words[0];
+  const relations = [...(vocabularyItem.vocabulary_relations ?? [])]
+    .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0));
+  const confusingPairs = toConfusingPairs(
+    [...(vocabularyItem.confused_words ?? [])]
+      .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
+      .map((item) => ({
+        word: item.confused_word ?? '',
+        difference_zh: item.difference_note_zh ?? '',
+      })),
+  ).filter((pair) => pair.word);
+  const confusingWord = confusingPairs[0];
+
+  const mapRelations = (type: 'derived' | 'synonym' | 'antonym'): EnrichedWordRelation[] => (
+    relations
+      .filter((relation) => relation.relation_type === type)
+      .map((relation) => ({
+        word: relation.related_word ?? '',
+        meaning_zh: relation.meaning_zh ?? '',
+        note_zh: relation.note_zh ?? '',
+      }))
+      .filter((relation) => relation.word)
+  );
 
   return {
     id: vocabularyItem.id,
@@ -192,8 +241,23 @@ function mapGroupWord(row: GroupWordRow): LibraryGroupWord | null {
         translation: sense.example_translation_zh ?? '',
       }))
       .filter((example) => example.sentence),
-    confusingWord: confused?.confused_word ?? null,
-    confusingDiff: confused?.difference_note_zh ?? null,
+    morphology: toWordMorphology({
+      summary_zh: vocabularyItem.morphology_summary_zh ?? '',
+      parts: [...(vocabularyItem.vocabulary_morphology_parts ?? [])]
+        .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
+        .map((part) => ({
+          text: part.part_text ?? '',
+          kind: part.part_kind ?? 'root',
+          meaning_zh: part.meaning_zh ?? '',
+          note_zh: part.note_zh ?? '',
+        })),
+    }),
+    derivedWords: toWordRelations(mapRelations('derived')),
+    synonyms: toWordRelations(mapRelations('synonym')),
+    antonyms: toWordRelations(mapRelations('antonym')),
+    confusingPairs,
+    confusingWord: confusingWord?.word ?? null,
+    confusingDiff: confusingWord?.difference ?? null,
     memoryState: reviewState?.memory_state ?? 'new',
     nextReviewAt: reviewState?.next_review_at ?? null,
     lastResult: reviewState?.last_result ?? null,
@@ -235,9 +299,48 @@ async function fetchOfficialLibraryDetail(userId: string): Promise<OfficialLibra
     };
   }
 
-  const { data, error } = await supabase
-    .from('learning_group_words')
-    .select(`
+  const richWordSelect = `
+      sequence_no,
+      vocabulary_items!inner (
+        id,
+        word,
+        ipa_uk,
+        primary_meaning_zh,
+        morphology_summary_zh,
+        memory_tip,
+        created_at,
+        vocabulary_senses (
+          pos,
+          example_sentence,
+          example_translation_zh
+        ),
+        vocabulary_morphology_parts (
+          part_text,
+          part_kind,
+          meaning_zh,
+          note_zh,
+          sort_order
+        ),
+        vocabulary_relations (
+          relation_type,
+          related_word,
+          meaning_zh,
+          note_zh,
+          sort_order
+        ),
+        confused_words (
+          confused_word,
+          difference_note_zh,
+          sort_order
+        ),
+        review_states (
+          memory_state,
+          next_review_at,
+          last_result
+        )
+      )
+    `;
+  const legacyWordSelect = `
       sequence_no,
       vocabulary_items!inner (
         id,
@@ -261,13 +364,30 @@ async function fetchOfficialLibraryDetail(userId: string): Promise<OfficialLibra
           last_result
         )
       )
-    `)
+    `;
+
+  const initialResult = await supabase
+    .from('learning_group_words')
+    .select(richWordSelect)
     .in('learning_group_id', systemGroups.map((group) => group.id));
+
+  let data = (initialResult.data ?? []) as unknown as GroupWordRow[];
+  let error = initialResult.error;
+
+  if (error && isMissingRichVocabularySchemaError(error)) {
+    const fallbackResult = await supabase
+      .from('learning_group_words')
+      .select(legacyWordSelect)
+      .in('learning_group_id', systemGroups.map((group) => group.id));
+
+    data = (fallbackResult.data ?? []) as unknown as GroupWordRow[];
+    error = fallbackResult.error;
+  }
 
   if (error) throw error;
 
   const wordsById = new Map<string, LibraryGroupWord>();
-  for (const row of (data ?? []) as GroupWordRow[]) {
+  for (const row of data) {
     const mappedWord = mapGroupWord(row);
     if (!mappedWord || wordsById.has(mappedWord.id)) continue;
     wordsById.set(mappedWord.id, mappedWord);
@@ -283,6 +403,72 @@ async function fetchLibraryGroupDetail(
   userId: string,
   groupId: string,
 ): Promise<LibraryGroupDetailCacheData> {
+  const richWordSelect = `
+      sequence_no,
+      vocabulary_items!inner (
+        id,
+        word,
+        ipa_uk,
+        primary_meaning_zh,
+        morphology_summary_zh,
+        memory_tip,
+        created_at,
+        vocabulary_senses (
+          pos,
+          example_sentence,
+          example_translation_zh
+        ),
+        vocabulary_morphology_parts (
+          part_text,
+          part_kind,
+          meaning_zh,
+          note_zh,
+          sort_order
+        ),
+        vocabulary_relations (
+          relation_type,
+          related_word,
+          meaning_zh,
+          note_zh,
+          sort_order
+        ),
+        confused_words (
+          confused_word,
+          difference_note_zh,
+          sort_order
+        ),
+        review_states (
+          memory_state,
+          next_review_at,
+          last_result
+        )
+      )
+    `;
+  const legacyWordSelect = `
+      sequence_no,
+      vocabulary_items!inner (
+        id,
+        word,
+        ipa_uk,
+        primary_meaning_zh,
+        memory_tip,
+        created_at,
+        vocabulary_senses (
+          pos,
+          example_sentence,
+          example_translation_zh
+        ),
+        confused_words (
+          confused_word,
+          difference_note_zh
+        ),
+        review_states (
+          memory_state,
+          next_review_at,
+          last_result
+        )
+      )
+    `;
   const { data: groupData, error: groupError } = await supabase
     .from('learning_groups')
     .select(`
@@ -305,41 +491,31 @@ async function fetchLibraryGroupDetail(
     };
   }
 
-  const { data: wordData, error: wordError } = await supabase
+  const initialWordResult = await supabase
     .from('learning_group_words')
-    .select(`
-      sequence_no,
-      vocabulary_items!inner (
-        id,
-        word,
-        ipa_uk,
-        primary_meaning_zh,
-        memory_tip,
-        created_at,
-        vocabulary_senses (
-          pos,
-          example_sentence,
-          example_translation_zh
-        ),
-        confused_words (
-          confused_word,
-          difference_note_zh
-        ),
-        review_states (
-          memory_state,
-          next_review_at,
-          last_result
-        )
-      )
-    `)
+    .select(richWordSelect)
     .eq('learning_group_id', groupId)
     .order('sequence_no', { ascending: true });
+
+  let wordData = (initialWordResult.data ?? []) as unknown as GroupWordRow[];
+  let wordError = initialWordResult.error;
+
+  if (wordError && isMissingRichVocabularySchemaError(wordError)) {
+    const fallbackResult = await supabase
+      .from('learning_group_words')
+      .select(legacyWordSelect)
+      .eq('learning_group_id', groupId)
+      .order('sequence_no', { ascending: true });
+
+    wordData = (fallbackResult.data ?? []) as unknown as GroupWordRow[];
+    wordError = fallbackResult.error;
+  }
 
   if (wordError) throw wordError;
 
   return {
     group: mapGroupSummary(groupData as LearningGroupRow),
-    words: ((wordData ?? []) as GroupWordRow[]).map(mapGroupWord).filter(Boolean) as LibraryGroupWord[],
+    words: wordData.map(mapGroupWord).filter(Boolean) as LibraryGroupWord[],
   };
 }
 
@@ -412,9 +588,9 @@ function WordDetailDrawer({
             )}
           </section>
 
-          {word.examples.length > 0 && (
-            <section className="glass rounded-2xl p-5">
-              <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">例句</p>
+          <section className="glass rounded-2xl p-5">
+            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">例句</p>
+            {word.examples.length > 0 ? (
               <div className="mt-3 space-y-4">
                 {word.examples.slice(0, 3).map((example, index) => (
                   <div key={`${word.id}-detail-example-${index}`}>
@@ -425,18 +601,118 @@ function WordDetailDrawer({
                   </div>
                 ))}
               </div>
-            </section>
-          )}
+            ) : (
+              <p className="mt-3 text-sm leading-6 text-text-secondary">这个词暂时还没有例句。</p>
+            )}
+          </section>
 
-          {word.confusingWord && (
-            <section className="glass rounded-2xl p-5">
-              <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">易混词</p>
-              <p className="mt-3 text-lg font-bold text-text-primary">{word.confusingWord}</p>
-              {word.confusingDiff && (
-                <p className="mt-2 text-sm leading-6 text-text-secondary">{word.confusingDiff}</p>
+          <section className="glass rounded-2xl p-5">
+            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">词根词缀</p>
+            <p className="mt-3 text-sm leading-6 text-text-primary">
+              {word.morphology.summaryZh || '这个词暂时还没有词根词缀拆解。'}
+            </p>
+
+            <div className="mt-4 space-y-3">
+              {word.morphology.parts.length > 0 ? word.morphology.parts.map((part, index) => (
+                <div key={`${word.id}-morphology-${index}`} className="rounded-2xl bg-black/5 px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-black text-text-primary">{part.text}</span>
+                    <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">
+                      {part.kind}
+                    </span>
+                  </div>
+                  {(part.meaningZh || part.noteZh) && (
+                    <p className="mt-2 text-xs leading-5 text-text-secondary">
+                      {[part.meaningZh, part.noteZh].filter(Boolean).join(' · ')}
+                    </p>
+                  )}
+                </div>
+              )) : (
+                <p className="text-sm leading-6 text-text-secondary">这个词暂时还没有可展示的构词拆解。</p>
               )}
-            </section>
-          )}
+            </div>
+
+            <div className="mt-5">
+              <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">派生词</p>
+              {word.derivedWords.length > 0 ? (
+                <div className="mt-3 space-y-3">
+                  {word.derivedWords.map((item) => (
+                    <div key={`${word.id}-derived-${item.word}`} className="rounded-2xl bg-black/5 px-4 py-3">
+                      <p className="text-sm font-black text-text-primary">{item.word}</p>
+                      {(item.meaningZh || item.noteZh) && (
+                        <p className="mt-1 text-xs leading-5 text-text-secondary">
+                          {[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm leading-6 text-text-secondary">这个词暂时还没有派生词提示。</p>
+              )}
+            </div>
+          </section>
+
+          <section className="glass rounded-2xl p-5">
+            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">近义词 / 反义词</p>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">近义词</p>
+                {word.synonyms.length > 0 ? (
+                  <div className="mt-3 space-y-3">
+                    {word.synonyms.map((item) => (
+                      <div key={`${word.id}-synonym-${item.word}`} className="rounded-2xl bg-black/5 px-4 py-3">
+                        <p className="text-sm font-black text-text-primary">{item.word}</p>
+                        {(item.meaningZh || item.noteZh) && (
+                          <p className="mt-1 text-xs leading-5 text-text-secondary">
+                            {[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm leading-6 text-text-secondary">这个词暂时还没有近义词提示。</p>
+                )}
+              </div>
+
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">反义词</p>
+                {word.antonyms.length > 0 ? (
+                  <div className="mt-3 space-y-3">
+                    {word.antonyms.map((item) => (
+                      <div key={`${word.id}-antonym-${item.word}`} className="rounded-2xl bg-black/5 px-4 py-3">
+                        <p className="text-sm font-black text-text-primary">{item.word}</p>
+                        {(item.meaningZh || item.noteZh) && (
+                          <p className="mt-1 text-xs leading-5 text-text-secondary">
+                            {[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm leading-6 text-text-secondary">这个词暂时还没有反义词提示。</p>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="glass rounded-2xl p-5">
+            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">易混词义对比</p>
+            {word.confusingPairs.length > 0 ? (
+              <div className="mt-3 space-y-3">
+                {word.confusingPairs.map((pair, index) => (
+                  <div key={`${word.id}-confusion-${pair.word}-${index}`} className="rounded-2xl bg-black/5 px-4 py-3">
+                    <p className="text-sm font-black text-text-primary">{pair.word}</p>
+                    <p className="mt-1 text-xs leading-5 text-text-secondary">{pair.difference}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm leading-6 text-text-secondary">这个词当前没有需要特别提醒的易混词。</p>
+            )}
+          </section>
 
           {word.memoryTip && (
             <section className="glass rounded-2xl p-5">

@@ -40,6 +40,27 @@ function writeManualDraft(value: string) {
   window.localStorage.removeItem(MANUAL_DRAFT_KEY);
 }
 
+function formatRelationPreview(items: EnrichedWord['derived_words']) {
+  if (items.length === 0) return '暂无';
+  return items.slice(0, 2).map((item) => item.word).join('、');
+}
+
+function formatSynonymAntonymPreview(entry: EnrichedWord) {
+  const synonyms = entry.synonyms.slice(0, 2).map((item) => item.word);
+  const antonyms = entry.antonyms.slice(0, 2).map((item) => item.word);
+  const parts = [
+    synonyms.length > 0 ? `近义：${synonyms.join('、')}` : '',
+    antonyms.length > 0 ? `反义：${antonyms.join('、')}` : '',
+  ].filter(Boolean);
+
+  return parts.join(' / ') || '暂无';
+}
+
+function formatConfusionPreview(entry: EnrichedWord) {
+  if (entry.confusions.length === 0) return '暂无';
+  return entry.confusions.slice(0, 2).map((item) => item.word).join('、');
+}
+
 export const ImportView = ({ onStartLearning }: ImportViewProps) => {
   const { user } = useAuth();
   const [raw, setRaw] = useState(readManualDraft);
@@ -260,6 +281,32 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
                       )}
                     </div>
                     <p className="mt-1 truncate text-sm text-text-secondary">{entry.primary_meaning_zh}</p>
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                      <div className="rounded-2xl bg-white/70 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">词根词缀</p>
+                        <p className="mt-1 text-xs leading-5 text-text-primary">
+                          {entry.morphology.summary_zh || '暂无'}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-white/70 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">派生词</p>
+                        <p className="mt-1 text-xs leading-5 text-text-primary">
+                          {formatRelationPreview(entry.derived_words)}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-white/70 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">近义 / 反义</p>
+                        <p className="mt-1 text-xs leading-5 text-text-primary">
+                          {formatSynonymAntonymPreview(entry)}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-white/70 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">易混词</p>
+                        <p className="mt-1 text-xs leading-5 text-text-primary">
+                          {formatConfusionPreview(entry)}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                   <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-apple-green" />
                 </motion.div>

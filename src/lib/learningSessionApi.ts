@@ -1,9 +1,13 @@
 import type {
+  ConfusingPair,
+  EnrichedWordRelation,
+  WordMorphology,
   LearningRoundType,
   PersistedLearningSession,
   ResumeCandidate,
   Word,
 } from '../types';
+import { toConfusingPairs, toWordMorphology, toWordRelations } from '../types';
 import { supabase } from './supabase';
 import { resolveLibraryGroupSourceType } from './officialLibrary';
 import {
@@ -42,6 +46,23 @@ interface VocabularySenseRow {
 interface ConfusedWordRow {
   confused_word: string | null;
   difference_note_zh: string | null;
+  sort_order: number | null;
+}
+
+interface VocabularyMorphologyPartRow {
+  part_text: string | null;
+  part_kind: 'prefix' | 'root' | 'suffix' | null;
+  meaning_zh: string | null;
+  note_zh: string | null;
+  sort_order: number | null;
+}
+
+interface VocabularyRelationRow {
+  relation_type: 'derived' | 'synonym' | 'antonym' | null;
+  related_word: string | null;
+  meaning_zh: string | null;
+  note_zh: string | null;
+  sort_order: number | null;
 }
 
 interface VocabularyItemRow {
@@ -50,10 +71,13 @@ interface VocabularyItemRow {
   ipa_uk: string | null;
   primary_meaning_zh: string | null;
   ner_label: string | null;
+  morphology_summary_zh: string | null;
   audio_uk_url: string | null;
   audio_us_url: string | null;
   vocabulary_senses: VocabularySenseRow[];
-  confused_words: ConfusedWordRow[];
+  vocabulary_morphology_parts?: VocabularyMorphologyPartRow[] | null;
+  vocabulary_relations?: VocabularyRelationRow[] | null;
+  confused_words?: ConfusedWordRow[] | null;
 }
 
 interface LearningGroupWordRow {
@@ -73,6 +97,16 @@ function isMissingLearningSessionColumnError(error: { message?: string } | null 
   ].some((column) => message.includes(column));
 }
 
+function isMissingRichVocabularySchemaError(error: { message?: string } | null | undefined) {
+  const message = error?.message ?? '';
+  return [
+    'morphology_summary_zh',
+    'vocabulary_morphology_parts',
+    'vocabulary_relations',
+    'sort_order',
+  ].some((part) => message.includes(part));
+}
+
 function hasLearningSessionColumns(row: LearningGroupLookupRow): row is LearningGroupSessionRow {
   return 'session_round' in row;
 }
@@ -86,11 +120,54 @@ function resolveGroupTitle(row: Pick<LearningGroupSessionRow, 'group_name'>) {
   return row.group_name?.trim() || '这组词';
 }
 
+function mapMorphology(
+  summary: string | null,
+  parts: VocabularyMorphologyPartRow[],
+): WordMorphology {
+  return toWordMorphology({
+    summary_zh: summary ?? '',
+    parts: [...parts]
+      .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
+      .map((part) => ({
+        text: part.part_text ?? '',
+        kind: part.part_kind ?? 'root',
+        meaning_zh: part.meaning_zh ?? '',
+        note_zh: part.note_zh ?? '',
+      })),
+  });
+}
+
+function mapRelations(
+  rows: VocabularyRelationRow[],
+  type: 'derived' | 'synonym' | 'antonym',
+): EnrichedWordRelation[] {
+  return [...rows]
+    .filter((relation) => relation.relation_type === type)
+    .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
+    .map((relation) => ({
+      word: relation.related_word ?? '',
+      meaning_zh: relation.meaning_zh ?? '',
+      note_zh: relation.note_zh ?? '',
+    }))
+    .filter((relation) => relation.word);
+}
+
+function mapConfusions(rows: ConfusedWordRow[]): ConfusingPair[] {
+  return toConfusingPairs(
+    [...rows]
+      .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
+      .map((row) => ({
+        word: row.confused_word ?? '',
+        difference_zh: row.difference_note_zh ?? '',
+      })),
+  ).filter((pair) => pair.word);
+}
+
 function mapGroupWord(row: LearningGroupWordRow): Word | null {
   const vocabularyItem = asArray(row.vocabulary_items)[0];
   if (!vocabularyItem) return null;
 
-  const confusedWord = vocabularyItem.confused_words[0];
+  const confusingPairs = mapConfusions(vocabularyItem.confused_words ?? []);
 
   return {
     id: vocabularyItem.id,
@@ -106,9 +183,15 @@ function mapGroupWord(row: LearningGroupWordRow): Word | null {
     example_sentences: vocabularyItem.vocabulary_senses
       .map((sense) => sense.example_sentence ?? '')
       .filter(Boolean),
-    confusing_pair: confusedWord?.confused_word
-      ? { word: confusedWord.confused_word, difference: confusedWord.difference_note_zh ?? '' }
-      : undefined,
+    morphology: mapMorphology(
+      vocabularyItem.morphology_summary_zh,
+      vocabularyItem.vocabulary_morphology_parts ?? [],
+    ),
+    derivedWords: toWordRelations(mapRelations(vocabularyItem.vocabulary_relations ?? [], 'derived')),
+    synonyms: toWordRelations(mapRelations(vocabularyItem.vocabulary_relations ?? [], 'synonym')),
+    antonyms: toWordRelations(mapRelations(vocabularyItem.vocabulary_relations ?? [], 'antonym')),
+    confusingPairs,
+    confusing_pair: confusingPairs[0],
     audio_uk_url: vocabularyItem.audio_uk_url,
     audio_us_url: vocabularyItem.audio_us_url,
   };
@@ -264,11 +347,43 @@ export async function fetchLearningGroupSession(
   userId: string,
   groupId: string,
 ): Promise<{ groupTitle: string; words: Word[]; session: PersistedLearningSession | null } | null> {
-  const [groupData, wordResult, articleResult] = await Promise.all([
-    fetchLearningGroupRow(userId, groupId),
-    supabase
-      .from('learning_group_words')
-      .select(`
+  const richWordSelect = `
+        sequence_no,
+        vocabulary_items!inner (
+          id,
+          word,
+          ipa_uk,
+          primary_meaning_zh,
+          ner_label,
+          morphology_summary_zh,
+          audio_uk_url,
+          audio_us_url,
+          vocabulary_senses (
+            pos,
+            example_sentence
+          ),
+          vocabulary_morphology_parts (
+            part_text,
+            part_kind,
+            meaning_zh,
+            note_zh,
+            sort_order
+          ),
+          vocabulary_relations (
+            relation_type,
+            related_word,
+            meaning_zh,
+            note_zh,
+            sort_order
+          ),
+          confused_words (
+            confused_word,
+            difference_note_zh,
+            sort_order
+          )
+        )
+      `;
+  const legacyWordSelect = `
         sequence_no,
         vocabulary_items!inner (
           id,
@@ -287,7 +402,12 @@ export async function fetchLearningGroupSession(
             difference_note_zh
           )
         )
-      `)
+      `;
+  const [groupData, wordResult, articleResult] = await Promise.all([
+    fetchLearningGroupRow(userId, groupId),
+    supabase
+      .from('learning_group_words')
+      .select(richWordSelect)
       .eq('learning_group_id', groupId)
       .order('sequence_no', { ascending: true }),
     supabase
@@ -302,7 +422,21 @@ export async function fetchLearningGroupSession(
     return null;
   }
 
-  if (wordResult.error) {
+  let wordRows = (wordResult.data ?? []) as LearningGroupWordRow[];
+
+  if (wordResult.error && isMissingRichVocabularySchemaError(wordResult.error)) {
+    const fallbackResult = await supabase
+      .from('learning_group_words')
+      .select(legacyWordSelect)
+      .eq('learning_group_id', groupId)
+      .order('sequence_no', { ascending: true });
+
+    if (fallbackResult.error) {
+      throw new Error(`learning_group_words lookup failed: ${fallbackResult.error.message}`);
+    }
+
+    wordRows = (fallbackResult.data ?? []) as LearningGroupWordRow[];
+  } else if (wordResult.error) {
     throw new Error(`learning_group_words lookup failed: ${wordResult.error.message}`);
   }
 
@@ -310,7 +444,7 @@ export async function fetchLearningGroupSession(
     throw new Error(`generated_articles lookup failed: ${articleResult.error.message}`);
   }
 
-  const words = ((wordResult.data ?? []) as LearningGroupWordRow[])
+  const words = wordRows
     .map(mapGroupWord)
     .filter((word): word is Word => Boolean(word));
   const group = groupData;

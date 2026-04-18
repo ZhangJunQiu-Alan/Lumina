@@ -1,4 +1,79 @@
-// Word shape used by the learning engine (stable — do not change)
+export type MorphologyPartKind = 'prefix' | 'root' | 'suffix';
+
+export interface EnrichedMorphologyPart {
+  text: string;
+  kind: MorphologyPartKind;
+  meaning_zh: string;
+  note_zh: string;
+}
+
+export interface EnrichedMorphology {
+  summary_zh: string;
+  parts: EnrichedMorphologyPart[];
+}
+
+export interface EnrichedWordRelation {
+  word: string;
+  meaning_zh: string;
+  note_zh: string;
+}
+
+export interface EnrichedWordConfusion {
+  word: string;
+  difference_zh: string;
+}
+
+export interface WordMorphologyPart {
+  text: string;
+  kind: MorphologyPartKind;
+  meaningZh: string;
+  noteZh: string;
+}
+
+export interface WordMorphology {
+  summaryZh: string;
+  parts: WordMorphologyPart[];
+}
+
+export interface WordRelation {
+  word: string;
+  meaningZh: string;
+  noteZh: string;
+}
+
+export interface ConfusingPair {
+  word: string;
+  difference: string;
+}
+
+export function toWordMorphology(morphology: EnrichedMorphology | null | undefined): WordMorphology {
+  return {
+    summaryZh: morphology?.summary_zh ?? '',
+    parts: (morphology?.parts ?? []).map((part) => ({
+      text: part.text,
+      kind: part.kind,
+      meaningZh: part.meaning_zh,
+      noteZh: part.note_zh,
+    })),
+  };
+}
+
+export function toWordRelations(items: EnrichedWordRelation[] | null | undefined): WordRelation[] {
+  return (items ?? []).map((item) => ({
+    word: item.word,
+    meaningZh: item.meaning_zh,
+    noteZh: item.note_zh,
+  }));
+}
+
+export function toConfusingPairs(items: EnrichedWordConfusion[] | null | undefined): ConfusingPair[] {
+  return (items ?? []).map((item) => ({
+    word: item.word,
+    difference: item.difference_zh,
+  }));
+}
+
+// Word shape used by the learning engine
 export interface Word {
   id: string;
   word: string;
@@ -7,10 +82,12 @@ export interface Word {
   ner_entities: { label: string; text: string }[];
   chinese_definition: string;
   example_sentences: string[];
-  confusing_pair?: {
-    word: string;
-    difference: string;
-  };
+  morphology: WordMorphology;
+  derivedWords: WordRelation[];
+  synonyms: WordRelation[];
+  antonyms: WordRelation[];
+  confusingPairs: ConfusingPair[];
+  confusing_pair?: ConfusingPair;
   audio_uk_url?: string | null;
   audio_us_url?: string | null;
 }
@@ -31,8 +108,14 @@ export interface EnrichedWord {
   primary_meaning_zh: string;
   ner_label: string | null;
   senses: WordSense[];
-  confused_word: string | null;
-  confused_diff_zh: string | null;
+  morphology: EnrichedMorphology;
+  derived_words: EnrichedWordRelation[];
+  synonyms: EnrichedWordRelation[];
+  antonyms: EnrichedWordRelation[];
+  confusions: EnrichedWordConfusion[];
+  // Deprecated compatibility aliases for older scripts.
+  confused_word?: string | null;
+  confused_diff_zh?: string | null;
   memory_tip: string;
   audio_uk_url?: string | null;
   audio_us_url?: string | null;
@@ -50,6 +133,8 @@ export interface LearningPreferences {
 
 // Convert EnrichedWord → Word for the learning engine
 export function toWord(e: EnrichedWord): Word {
+  const confusingPairs = toConfusingPairs(e.confusions);
+
   return {
     id: e.id ?? e.word,
     word: e.word,
@@ -58,9 +143,12 @@ export function toWord(e: EnrichedWord): Word {
     ner_entities: e.ner_label ? [{ label: e.ner_label, text: e.word }] : [],
     chinese_definition: e.primary_meaning_zh,
     example_sentences: e.senses.map(s => s.example_sentence),
-    confusing_pair: e.confused_word
-      ? { word: e.confused_word, difference: e.confused_diff_zh ?? '' }
-      : undefined,
+    morphology: toWordMorphology(e.morphology),
+    derivedWords: toWordRelations(e.derived_words),
+    synonyms: toWordRelations(e.synonyms),
+    antonyms: toWordRelations(e.antonyms),
+    confusingPairs,
+    confusing_pair: confusingPairs[0],
     audio_uk_url: e.audio_uk_url,
     audio_us_url: e.audio_us_url,
   };
@@ -118,6 +206,11 @@ export interface LibraryGroupWord {
   memoryTip: string;
   posTags: string[];
   examples: { sentence: string; translation: string }[];
+  morphology: WordMorphology;
+  derivedWords: WordRelation[];
+  synonyms: WordRelation[];
+  antonyms: WordRelation[];
+  confusingPairs: ConfusingPair[];
   confusingWord: string | null;
   confusingDiff: string | null;
   memoryState: MemoryState;

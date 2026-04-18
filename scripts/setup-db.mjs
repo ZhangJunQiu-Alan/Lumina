@@ -13,6 +13,8 @@ const supabase = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_PUBLISHAB
 const TABLES = [
   'vocabulary_items',
   'vocabulary_senses',
+  'vocabulary_morphology_parts',
+  'vocabulary_relations',
   'confused_words',
   'learning_groups',
   'learning_group_words',

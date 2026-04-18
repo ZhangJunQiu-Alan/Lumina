@@ -19,6 +19,23 @@ interface VocabularySenseRow {
 interface ConfusedWordRow {
   confused_word: string | null;
   difference_note_zh: string | null;
+  sort_order: number | null;
+}
+
+interface VocabularyMorphologyPartRow {
+  part_text: string | null;
+  part_kind: 'prefix' | 'root' | 'suffix' | null;
+  meaning_zh: string | null;
+  note_zh: string | null;
+  sort_order: number | null;
+}
+
+interface VocabularyRelationRow {
+  relation_type: 'derived' | 'synonym' | 'antonym' | null;
+  related_word: string | null;
+  meaning_zh: string | null;
+  note_zh: string | null;
+  sort_order: number | null;
 }
 
 interface VocabularyItemRow {
@@ -28,11 +45,14 @@ interface VocabularyItemRow {
   ipa_us: string | null;
   primary_meaning_zh: string | null;
   ner_label: string | null;
+  morphology_summary_zh: string | null;
   memory_tip: string | null;
   source_type: string | null;
   audio_uk_url: string | null;
   audio_us_url: string | null;
   vocabulary_senses: VocabularySenseRow[] | null;
+  vocabulary_morphology_parts: VocabularyMorphologyPartRow[] | null;
+  vocabulary_relations: VocabularyRelationRow[] | null;
   confused_words: ConfusedWordRow[] | null;
 }
 
@@ -48,6 +68,45 @@ export interface PersistedVocabularyEntry extends EnrichedWord {
 }
 
 const vocabularyEntrySelect = `
+  id,
+  word,
+  ipa_uk,
+  ipa_us,
+  primary_meaning_zh,
+  ner_label,
+  morphology_summary_zh,
+  memory_tip,
+  source_type,
+  audio_uk_url,
+  audio_us_url,
+  vocabulary_senses (
+    pos,
+    meaning_zh,
+    example_sentence,
+    example_translation_zh
+  ),
+  vocabulary_morphology_parts (
+    part_text,
+    part_kind,
+    meaning_zh,
+    note_zh,
+    sort_order
+  ),
+  vocabulary_relations (
+    relation_type,
+    related_word,
+    meaning_zh,
+    note_zh,
+    sort_order
+  ),
+  confused_words (
+    confused_word,
+    difference_note_zh,
+    sort_order
+  )
+`;
+
+const legacyVocabularyEntrySelect = `
   id,
   word,
   ipa_uk,
@@ -70,8 +129,29 @@ const vocabularyEntrySelect = `
   )
 `;
 
+function isMissingRichVocabularySchemaError(error: { message?: string } | null | undefined) {
+  const message = error?.message ?? '';
+  return [
+    'morphology_summary_zh',
+    'vocabulary_morphology_parts',
+    'vocabulary_relations',
+    'sort_order',
+  ].some((part) => message.includes(part));
+}
+
 function mapVocabularyEntry(row: VocabularyItemRow): PersistedVocabularyEntry {
-  const confusedWord = row.confused_words?.[0];
+  const sortedMorphologyParts = [...(row.vocabulary_morphology_parts ?? [])]
+    .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0));
+  const sortedRelations = [...(row.vocabulary_relations ?? [])]
+    .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0));
+  const confusions = [...(row.confused_words ?? [])]
+    .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
+    .map((item) => ({
+      word: item.confused_word ?? '',
+      difference_zh: item.difference_note_zh ?? '',
+    }))
+    .filter((item) => item.word);
+  const confusedWord = confusions[0];
 
   return {
     id: row.id,
@@ -86,8 +166,42 @@ function mapVocabularyEntry(row: VocabularyItemRow): PersistedVocabularyEntry {
       example_sentence: sense.example_sentence ?? '',
       example_translation_zh: sense.example_translation_zh ?? '',
     })),
-    confused_word: confusedWord?.confused_word ?? null,
-    confused_diff_zh: confusedWord?.difference_note_zh ?? null,
+    morphology: {
+      summary_zh: row.morphology_summary_zh ?? '',
+      parts: sortedMorphologyParts.map((part) => ({
+        text: part.part_text ?? '',
+        kind: part.part_kind ?? 'root',
+        meaning_zh: part.meaning_zh ?? '',
+        note_zh: part.note_zh ?? '',
+      })),
+    },
+    derived_words: sortedRelations
+      .filter((relation) => relation.relation_type === 'derived')
+      .map((relation) => ({
+        word: relation.related_word ?? '',
+        meaning_zh: relation.meaning_zh ?? '',
+        note_zh: relation.note_zh ?? '',
+      }))
+      .filter((relation) => relation.word),
+    synonyms: sortedRelations
+      .filter((relation) => relation.relation_type === 'synonym')
+      .map((relation) => ({
+        word: relation.related_word ?? '',
+        meaning_zh: relation.meaning_zh ?? '',
+        note_zh: relation.note_zh ?? '',
+      }))
+      .filter((relation) => relation.word),
+    antonyms: sortedRelations
+      .filter((relation) => relation.relation_type === 'antonym')
+      .map((relation) => ({
+        word: relation.related_word ?? '',
+        meaning_zh: relation.meaning_zh ?? '',
+        note_zh: relation.note_zh ?? '',
+      }))
+      .filter((relation) => relation.word),
+    confusions,
+    confused_word: confusedWord?.word ?? null,
+    confused_diff_zh: confusedWord?.difference_zh ?? null,
     memory_tip: row.memory_tip ?? '',
     source_type: row.source_type,
     audio_uk_url: row.audio_uk_url,
@@ -99,6 +213,7 @@ function isVocabularyEntryReady(entry: PersistedVocabularyEntry) {
   return Boolean(
     entry.ipa_uk.trim()
     && entry.primary_meaning_zh.trim()
+    && entry.morphology.summary_zh.trim()
     && entry.memory_tip.trim()
     && entry.senses.length > 0,
   );
@@ -113,11 +228,24 @@ async function loadVocabularyEntriesByNormalizedWords(words: string[]) {
     .select(vocabularyEntrySelect)
     .in('word', normalizedWords);
 
-  if (error) {
+  if (!error) {
+    return ((data ?? []) as VocabularyItemRow[]).map(mapVocabularyEntry);
+  }
+
+  if (!isMissingRichVocabularySchemaError(error)) {
     throw new Error(`vocabulary_items lookup failed: ${error.message}`);
   }
 
-  return ((data ?? []) as VocabularyItemRow[]).map(mapVocabularyEntry);
+  const fallbackResult = await supabase
+    .from('vocabulary_items')
+    .select(legacyVocabularyEntrySelect)
+    .in('word', normalizedWords);
+
+  if (fallbackResult.error) {
+    throw new Error(`vocabulary_items lookup failed: ${fallbackResult.error.message}`);
+  }
+
+  return ((fallbackResult.data ?? []) as VocabularyItemRow[]).map(mapVocabularyEntry);
 }
 
 export async function fetchVocabularyEntriesByWords(words: string[]) {
@@ -192,6 +320,7 @@ export async function persistEnrichedVocabularyEntries(
       ipa_us: entry.ipa_us,
       primary_meaning_zh: entry.primary_meaning_zh,
       ner_label: entry.ner_label,
+      morphology_summary_zh: entry.morphology.summary_zh,
       memory_tip: entry.memory_tip,
       source_type: existingSourceTypeByWord.get(normalizedWord) ?? options.sourceType ?? 'custom',
     };
@@ -213,6 +342,11 @@ export async function persistEnrichedVocabularyEntries(
   await Promise.all(preparedEnriched.map(async (entry) => {
     const vocabId = wordIdMap.get(normalizeWordKey(entry.word));
     if (!vocabId) return;
+    const confusions = entry.confusions.length > 0
+      ? entry.confusions
+      : entry.confused_word
+        ? [{ word: entry.confused_word, difference_zh: entry.confused_diff_zh ?? '' }]
+        : [];
 
     const { error: deleteSenseError } = await supabase
       .from('vocabulary_senses')
@@ -237,6 +371,72 @@ export async function persistEnrichedVocabularyEntries(
       }
     }
 
+    const { error: deleteMorphologyError } = await supabase
+      .from('vocabulary_morphology_parts')
+      .delete()
+      .eq('vocabulary_item_id', vocabId);
+    if (deleteMorphologyError) {
+      throw new Error(`morphology cleanup [${entry.word}]: ${deleteMorphologyError.message}`);
+    }
+
+    if (entry.morphology.parts.length > 0) {
+      const { error } = await supabase.from('vocabulary_morphology_parts').insert(
+        entry.morphology.parts.map((part, index) => ({
+          vocabulary_item_id: vocabId,
+          part_text: part.text,
+          part_kind: part.kind,
+          meaning_zh: part.meaning_zh,
+          note_zh: part.note_zh,
+          sort_order: index,
+        })),
+      );
+      if (error) {
+        throw new Error(`morphology [${entry.word}]: ${error.message}`);
+      }
+    }
+
+    const { error: deleteRelationError } = await supabase
+      .from('vocabulary_relations')
+      .delete()
+      .eq('vocabulary_item_id', vocabId);
+    if (deleteRelationError) {
+      throw new Error(`relations cleanup [${entry.word}]: ${deleteRelationError.message}`);
+    }
+
+    const relationRows = [
+      ...entry.derived_words.map((relation, index) => ({
+        vocabulary_item_id: vocabId,
+        relation_type: 'derived',
+        related_word: relation.word,
+        meaning_zh: relation.meaning_zh,
+        note_zh: relation.note_zh,
+        sort_order: index,
+      })),
+      ...entry.synonyms.map((relation, index) => ({
+        vocabulary_item_id: vocabId,
+        relation_type: 'synonym',
+        related_word: relation.word,
+        meaning_zh: relation.meaning_zh,
+        note_zh: relation.note_zh,
+        sort_order: index,
+      })),
+      ...entry.antonyms.map((relation, index) => ({
+        vocabulary_item_id: vocabId,
+        relation_type: 'antonym',
+        related_word: relation.word,
+        meaning_zh: relation.meaning_zh,
+        note_zh: relation.note_zh,
+        sort_order: index,
+      })),
+    ];
+
+    if (relationRows.length > 0) {
+      const { error } = await supabase.from('vocabulary_relations').insert(relationRows);
+      if (error) {
+        throw new Error(`relations [${entry.word}]: ${error.message}`);
+      }
+    }
+
     const { error: deleteConfusedError } = await supabase
       .from('confused_words')
       .delete()
@@ -245,12 +445,15 @@ export async function persistEnrichedVocabularyEntries(
       throw new Error(`confused_words cleanup [${entry.word}]: ${deleteConfusedError.message}`);
     }
 
-    if (entry.confused_word) {
-      const { error } = await supabase.from('confused_words').insert({
-        vocabulary_item_id: vocabId,
-        confused_word: entry.confused_word,
-        difference_note_zh: entry.confused_diff_zh,
-      });
+    if (confusions.length > 0) {
+      const { error } = await supabase.from('confused_words').insert(
+        confusions.map((item, index) => ({
+          vocabulary_item_id: vocabId,
+          confused_word: item.word,
+          difference_note_zh: item.difference_zh,
+          sort_order: index,
+        })),
+      );
       if (error) {
         throw new Error(`confused_words [${entry.word}]: ${error.message}`);
       }

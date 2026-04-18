@@ -190,20 +190,135 @@ const Round1ExampleCard = ({ word }: { word: Word }) => (
   </section>
 );
 
+const Round1MorphologyCard = ({ word }: { word: Word }) => (
+  <section className="rounded-[24px] border border-white/80 bg-white/60 p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
+    <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">词根词缀 / 派生词</p>
+    <p className="mt-4 text-sm leading-6 text-text-primary">
+      {word.morphology.summaryZh || '这个词暂时还没有词根词缀拆解。'}
+    </p>
+
+    <div className="mt-4 space-y-3">
+      {word.morphology.parts.length > 0 ? word.morphology.parts.map((part, index) => (
+        <div
+          key={`${word.id}-morphology-${index}`}
+          className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-black text-text-primary">{part.text}</p>
+            <span className="rounded-full bg-black/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">
+              {part.kind}
+            </span>
+          </div>
+          {(part.meaningZh || part.noteZh) && (
+            <p className="mt-2 text-xs leading-5 text-text-secondary">
+              {[part.meaningZh, part.noteZh].filter(Boolean).join(' · ')}
+            </p>
+          )}
+        </div>
+      )) : (
+        <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-sm leading-6 text-text-secondary">
+          这个词暂时还没有可展示的构词拆解。
+        </div>
+      )}
+    </div>
+
+    <div className="mt-4">
+      <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">派生词</p>
+      <div className="mt-3 space-y-3">
+        {word.derivedWords.length > 0 ? word.derivedWords.map((item) => (
+          <div
+            key={`${word.id}-derived-${item.word}`}
+            className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
+          >
+            <p className="text-sm font-black text-text-primary">{item.word}</p>
+            {(item.meaningZh || item.noteZh) && (
+              <p className="mt-2 text-xs leading-5 text-text-secondary">
+                {[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
+              </p>
+            )}
+          </div>
+        )) : (
+          <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-sm leading-6 text-text-secondary">
+            这个词暂时还没有派生词提示。
+          </div>
+        )}
+      </div>
+    </div>
+  </section>
+);
+
+const Round1RelationsCard = ({ word }: { word: Word }) => (
+  <section className="rounded-[24px] border border-white/80 bg-white/60 p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
+    <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">近义词 / 反义词</p>
+    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">近义词</p>
+        <div className="mt-3 space-y-3">
+          {word.synonyms.length > 0 ? word.synonyms.map((item) => (
+            <div
+              key={`${word.id}-synonym-${item.word}`}
+              className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
+            >
+              <p className="text-sm font-black text-text-primary">{item.word}</p>
+              {(item.meaningZh || item.noteZh) && (
+                <p className="mt-2 text-xs leading-5 text-text-secondary">
+                  {[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
+                </p>
+              )}
+            </div>
+          )) : (
+            <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-sm leading-6 text-text-secondary">
+              这个词暂时还没有近义词提示。
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">反义词</p>
+        <div className="mt-3 space-y-3">
+          {word.antonyms.length > 0 ? word.antonyms.map((item) => (
+            <div
+              key={`${word.id}-antonym-${item.word}`}
+              className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
+            >
+              <p className="text-sm font-black text-text-primary">{item.word}</p>
+              {(item.meaningZh || item.noteZh) && (
+                <p className="mt-2 text-xs leading-5 text-text-secondary">
+                  {[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
+                </p>
+              )}
+            </div>
+          )) : (
+            <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-sm leading-6 text-text-secondary">
+              这个词暂时还没有反义词提示。
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  </section>
+);
+
 const Round1ConfusingCard = ({ word }: { word: Word }) => (
   <section className="rounded-[24px] border border-white/80 bg-white/60 p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
-    <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">易混词</p>
-    {word.confusing_pair ? (
-      <>
-        <p className="mt-4 text-2xl font-black tracking-tight text-text-primary">
-          {word.confusing_pair.word}
-        </p>
-        {word.confusing_pair.difference && (
-          <p className="mt-4 text-sm leading-6 text-text-secondary">
-            {word.confusing_pair.difference}
-          </p>
-        )}
-      </>
+    <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">易混词义对比</p>
+    {word.confusingPairs.length > 0 ? (
+      <div className="mt-4 space-y-3">
+        {word.confusingPairs.map((pair, index) => (
+          <div
+            key={`${word.id}-confusion-${pair.word}-${index}`}
+            className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
+          >
+            <p className="text-lg font-black tracking-tight text-text-primary">{pair.word}</p>
+            {pair.difference && (
+              <p className="mt-2 text-sm leading-6 text-text-secondary">
+                {pair.difference}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
     ) : (
       <p className="mt-4 text-sm leading-6 text-text-secondary">
         这个词当前没有需要特别提醒的易混词。
@@ -836,6 +951,8 @@ const LearningEngine = ({
 
               <div className="grid gap-4 lg:grid-cols-2">
                 <Round1ExampleCard word={currentWord} />
+                <Round1MorphologyCard word={currentWord} />
+                <Round1RelationsCard word={currentWord} />
                 <Round1ConfusingCard word={currentWord} />
               </div>
 
