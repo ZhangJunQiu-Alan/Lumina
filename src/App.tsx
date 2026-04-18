@@ -25,9 +25,15 @@ import {
   Word,
 } from './types';
 import { Sidebar } from './components/layout/Sidebar';
+import { ExampleSentenceList } from './components/shared/ExampleSentenceList';
 import { HomeView } from './components/home/HomeView';
 import { ImportView } from './components/import/ImportView';
 import { supabase } from './lib/supabase';
+import {
+  cancelBrowserSpeech,
+  isBrowserSpeechSupported,
+  speakTextViaBrowser,
+} from './lib/browserSpeech';
 import { fetchDueReviewWords, submitReviewAttempt } from './lib/reviewApi';
 import {
   LibraryGroupDetailView,
@@ -79,13 +85,76 @@ function renderProgressBar(currentIndex: number, queueLength: number) {
   );
 }
 
-// Render **bold** markdown syntax as <strong> spans
-function renderBold(text: string): React.ReactNode {
-  const parts = text.split(/\*\*(.+?)\*\*/g);
-  return parts.map((part, i) =>
-    i % 2 === 1 ? <strong key={i}>{part}</strong> : part
-  );
+type PlaybackTarget =
+  | { kind: 'pronunciation'; locale: PronunciationLocale }
+  | { kind: 'example'; key: string };
+
+function getDisplaySenses(word: Word) {
+  const grouped = new Map<string, string[]>();
+
+  for (const sense of word.senses) {
+    const pos = sense.pos.trim() || '未标注';
+    const meaning = sense.meaning_zh.trim();
+
+    if (!meaning) continue;
+
+    const bucket = grouped.get(pos) ?? [];
+    if (!bucket.includes(meaning)) {
+      bucket.push(meaning);
+    }
+    grouped.set(pos, bucket);
+  }
+
+  if (grouped.size > 0) {
+    return Array.from(grouped.entries()).map(([pos, meanings]) => ({
+      pos,
+      meaning: meanings.join('；'),
+    }));
+  }
+
+  return [{
+    pos: word.pos_tags[0] ?? '未标注',
+    meaning: word.chinese_definition || '暂无释义',
+  }];
 }
+
+const WordSenseList = ({
+  word,
+  centered = false,
+  compact = false,
+}: {
+  word: Word;
+  centered?: boolean;
+  compact?: boolean;
+}) => {
+  const senses = getDisplaySenses(word);
+
+  return (
+    <div className={cx('space-y-3', centered && 'flex flex-col items-center')}>
+      {senses.map((sense, index) => (
+        <div
+          key={`${word.id}-sense-${sense.pos}-${index}`}
+          className={cx('flex flex-wrap items-start gap-3', centered && 'justify-center')}
+        >
+          <span className="rounded-full bg-black/5 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">
+            {sense.pos}
+          </span>
+          <p
+            className={cx(
+              'min-w-0 text-text-primary',
+              compact
+                ? 'flex-1 text-sm font-bold leading-6'
+                : 'flex-1 text-[1.15rem] font-black leading-snug md:text-[1.45rem]',
+              centered && 'text-center',
+            )}
+          >
+            {sense.meaning}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+};
 
 const RoundIndicator = ({ type, className }: { type: RoundType; className?: string }) => {
   const labels: Record<RoundType, string> = {
@@ -132,12 +201,12 @@ const SessionProgress = ({
 const PronunciationControls = ({
   phonetic,
   audioLocale,
-  isPlayingAudio,
+  activePronunciationLocale,
   onPlay,
 }: {
   phonetic: string;
   audioLocale: 'uk' | 'us';
-  isPlayingAudio: boolean;
+  activePronunciationLocale: PronunciationLocale | null;
   onPlay: (locale: 'uk' | 'us') => void;
 }) => (
   <div className="flex flex-wrap items-center gap-3">
@@ -156,7 +225,7 @@ const PronunciationControls = ({
             : 'bg-apple-blue/10 text-apple-blue hover:bg-apple-blue/15',
         )}
       >
-        {isPlayingAudio && audioLocale === loc
+        {activePronunciationLocale === loc
           ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
           : <Volume2 className="h-3.5 w-3.5" />}
         {loc.toUpperCase()}
@@ -165,38 +234,9 @@ const PronunciationControls = ({
   </div>
 );
 
-const Round1ExampleCard = ({ word }: { word: Word }) => (
-  <section className="rounded-[24px] border border-white/80 bg-white/60 p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
-    <div className="flex items-center justify-between gap-3">
-      <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">例句</p>
-      <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-text-secondary/70">
-        {word.example_sentences.length || 0} 条
-      </span>
-    </div>
-    <div className="mt-4 space-y-3">
-      {word.example_sentences.length > 0 ? word.example_sentences.map((sentence, index) => (
-        <div
-          key={`${word.id}-example-${index}`}
-          className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
-        >
-          <p className="text-sm leading-6 text-text-primary">{renderBold(sentence)}</p>
-        </div>
-      )) : (
-        <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-sm leading-6 text-text-secondary">
-          这个词暂时还没有例句。
-        </div>
-      )}
-    </div>
-  </section>
-);
-
 const Round1MorphologyCard = ({ word }: { word: Word }) => (
-  <section className="rounded-[24px] border border-white/80 bg-white/60 p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
-    <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">词根词缀 / 派生词</p>
-    <p className="mt-4 text-sm leading-6 text-text-primary">
-      {word.morphology.summaryZh || '这个词暂时还没有词根词缀拆解。'}
-    </p>
-
+  <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
+    <p className="text-[14px] font-bold uppercase tracking-[0.24em] text-text-secondary">词根词缀 / 派生词</p>
     <div className="mt-4 space-y-3">
       {word.morphology.parts.length > 0 ? word.morphology.parts.map((part, index) => (
         <div
@@ -204,41 +244,41 @@ const Round1MorphologyCard = ({ word }: { word: Word }) => (
           className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-black text-text-primary">{part.text}</p>
-            <span className="rounded-full bg-black/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">
+            <p className="text-[18px] font-black text-text-primary">{part.text}</p>
+            <span className="rounded-full bg-black/5 px-2 py-0.5 text-[13px] font-bold uppercase tracking-[0.18em] text-text-secondary">
               {part.kind}
             </span>
           </div>
           {(part.meaningZh || part.noteZh) && (
-            <p className="mt-2 text-xs leading-5 text-text-secondary">
+            <p className="mt-2 text-[16px] leading-[1.65] text-text-secondary">
               {[part.meaningZh, part.noteZh].filter(Boolean).join(' · ')}
             </p>
           )}
         </div>
       )) : (
-        <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-sm leading-6 text-text-secondary">
+        <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-[18px] leading-[1.75] text-text-secondary">
           这个词暂时还没有可展示的构词拆解。
         </div>
       )}
     </div>
 
     <div className="mt-4">
-      <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">派生词</p>
+      <p className="text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">派生词</p>
       <div className="mt-3 space-y-3">
         {word.derivedWords.length > 0 ? word.derivedWords.map((item) => (
           <div
             key={`${word.id}-derived-${item.word}`}
             className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
           >
-            <p className="text-sm font-black text-text-primary">{item.word}</p>
+            <p className="text-[18px] font-black text-text-primary">{item.word}</p>
             {(item.meaningZh || item.noteZh) && (
-              <p className="mt-2 text-xs leading-5 text-text-secondary">
+              <p className="mt-2 text-[16px] leading-[1.65] text-text-secondary">
                 {[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
               </p>
             )}
           </div>
         )) : (
-          <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-sm leading-6 text-text-secondary">
+          <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-[18px] leading-[1.75] text-text-secondary">
             这个词暂时还没有派生词提示。
           </div>
         )}
@@ -248,26 +288,25 @@ const Round1MorphologyCard = ({ word }: { word: Word }) => (
 );
 
 const Round1RelationsCard = ({ word }: { word: Word }) => (
-  <section className="rounded-[24px] border border-white/80 bg-white/60 p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
-    <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">近义词 / 反义词</p>
-    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+  <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
+    <div className="grid gap-4 sm:grid-cols-2">
       <div>
-        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">近义词</p>
+        <p className="text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">近义词</p>
         <div className="mt-3 space-y-3">
           {word.synonyms.length > 0 ? word.synonyms.map((item) => (
             <div
               key={`${word.id}-synonym-${item.word}`}
               className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
             >
-              <p className="text-sm font-black text-text-primary">{item.word}</p>
+              <p className="text-[18px] font-black text-text-primary">{item.word}</p>
               {(item.meaningZh || item.noteZh) && (
-                <p className="mt-2 text-xs leading-5 text-text-secondary">
+                <p className="mt-2 text-[16px] leading-[1.65] text-text-secondary">
                   {[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
                 </p>
               )}
             </div>
           )) : (
-            <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-sm leading-6 text-text-secondary">
+            <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-[18px] leading-[1.75] text-text-secondary">
               这个词暂时还没有近义词提示。
             </div>
           )}
@@ -275,22 +314,22 @@ const Round1RelationsCard = ({ word }: { word: Word }) => (
       </div>
 
       <div>
-        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">反义词</p>
+        <p className="text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">反义词</p>
         <div className="mt-3 space-y-3">
           {word.antonyms.length > 0 ? word.antonyms.map((item) => (
             <div
               key={`${word.id}-antonym-${item.word}`}
               className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
             >
-              <p className="text-sm font-black text-text-primary">{item.word}</p>
+              <p className="text-[18px] font-black text-text-primary">{item.word}</p>
               {(item.meaningZh || item.noteZh) && (
-                <p className="mt-2 text-xs leading-5 text-text-secondary">
+                <p className="mt-2 text-[16px] leading-[1.65] text-text-secondary">
                   {[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
                 </p>
               )}
             </div>
           )) : (
-            <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-sm leading-6 text-text-secondary">
+            <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-[18px] leading-[1.75] text-text-secondary">
               这个词暂时还没有反义词提示。
             </div>
           )}
@@ -300,30 +339,61 @@ const Round1RelationsCard = ({ word }: { word: Word }) => (
   </section>
 );
 
-const Round1ConfusingCard = ({ word }: { word: Word }) => (
-  <section className="rounded-[24px] border border-white/80 bg-white/60 p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
-    <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">易混词义对比</p>
-    {word.confusingPairs.length > 0 ? (
-      <div className="mt-4 space-y-3">
-        {word.confusingPairs.map((pair, index) => (
-          <div
-            key={`${word.id}-confusion-${pair.word}-${index}`}
-            className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
-          >
-            <p className="text-lg font-black tracking-tight text-text-primary">{pair.word}</p>
-            {pair.difference && (
-              <p className="mt-2 text-sm leading-6 text-text-secondary">
-                {pair.difference}
-              </p>
-            )}
-          </div>
-        ))}
+const Round1ConfusingCard = ({
+  word,
+  activeExampleKey,
+  canPlayExampleAudio,
+  exampleLocale,
+  onPlayExample,
+}: {
+  word: Word;
+  activeExampleKey: string | null;
+  canPlayExampleAudio: boolean;
+  exampleLocale: PronunciationLocale;
+  onPlayExample: (sentence: string, key: string) => void;
+}) => (
+  <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
+    <p className="text-[14px] font-bold uppercase tracking-[0.24em] text-text-secondary">易混词义对比</p>
+    <div className="mt-4 space-y-5">
+      {word.confusingPairs.length > 0 ? (
+        <div className="space-y-3">
+          {word.confusingPairs.map((pair, index) => (
+            <div
+              key={`${word.id}-confusion-${pair.word}-${index}`}
+              className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
+            >
+              <p className="text-[24px] font-black tracking-tight text-text-primary">{pair.word}</p>
+              {pair.difference && (
+                <p className="mt-2 text-[18px] leading-[1.75] text-text-secondary">
+                  {pair.difference}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[18px] leading-[1.75] text-text-secondary">
+          这个词当前没有需要特别提醒的易混词。
+        </p>
+      )}
+
+      <div className="border-t border-black/6 pt-5">
+        <p className="text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">例句</p>
+        <div className="mt-3">
+          <ExampleSentenceList
+            items={word.example_sentences.map((sentence, index) => ({
+              key: `${word.id}-example-${index}`,
+              sentence,
+            }))}
+            locale={exampleLocale}
+            activeExampleKey={activeExampleKey}
+            canPlayAudio={canPlayExampleAudio}
+            onPlayExample={({ sentence, key }) => { onPlayExample(sentence, key); }}
+            emptyMessage="这个词暂时还没有例句。"
+          />
+        </div>
       </div>
-    ) : (
-      <p className="mt-4 text-sm leading-6 text-text-secondary">
-        这个词当前没有需要特别提醒的易混词。
-      </p>
-    )}
+    </div>
   </section>
 );
 
@@ -338,7 +408,7 @@ const InputSessionShell = ({
   queueLength: number;
   main: React.ReactNode;
 }) => (
-  <div className="input-session-shell mx-auto flex w-full max-w-[1260px] flex-col gap-4">
+  <div className="input-session-shell mx-auto flex w-full max-w-[1400px] flex-col gap-4">
     <header className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
       <RoundIndicator type={type} className="min-w-0 flex-1" />
       <SessionProgress currentIndex={currentIndex} queueLength={queueLength} />
@@ -399,13 +469,14 @@ const LearningEngine = ({
   const [isSubmittingAttempt, setIsSubmittingAttempt] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [audioLocale, setAudioLocale] = useState<PronunciationLocale>(preferences.defaultPronunciationLocale);
-  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [playbackTarget, setPlaybackTarget] = useState<PlaybackTarget | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const promptStartedAtRef = useRef<number>(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const answerRevealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioGapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playbackRunIdRef = useRef(0);
+  const canPlayExampleAudio = useMemo(() => isBrowserSpeechSupported(), []);
 
   // Refs keep nextWord free of stale closures when called from setTimeout
   const queueRef = useRef<Word[]>(initialEngineState.queue);
@@ -415,6 +486,12 @@ const LearningEngine = ({
 
   const currentWord = queue[currentIndex];
   const roundSource = type === 'review' ? 'review' : type === 'round2' ? 'round2' : null;
+  const activePronunciationLocale = playbackTarget?.kind === 'pronunciation'
+    ? playbackTarget.locale
+    : null;
+  const activeExampleKey = playbackTarget?.kind === 'example'
+    ? playbackTarget.key
+    : null;
 
   const clearAnswerRevealTimeout = useCallback(() => {
     if (answerRevealTimeoutRef.current === null) return;
@@ -437,11 +514,8 @@ const LearningEngine = ({
       audioRef.current = null;
     }
 
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
-
-    setIsPlayingAudio(false);
+    cancelBrowserSpeech();
+    setPlaybackTarget(null);
   }, []);
 
   useEffect(() => {
@@ -467,33 +541,24 @@ const LearningEngine = ({
     inputRef.current?.focus();
   }, [currentIndex]);
 
-  const speakViaBrowser = useCallback((wordText: string, locale: PronunciationLocale, runId: number) => {
-    if (!('speechSynthesis' in window) || runId !== playbackRunIdRef.current) {
-      return Promise.resolve();
+  const speakViaBrowser = useCallback((
+    text: string,
+    locale: PronunciationLocale,
+    runId: number,
+    target: PlaybackTarget,
+  ) => {
+    if (!canPlayExampleAudio || runId !== playbackRunIdRef.current) {
+      return Promise.resolve(false);
     }
 
-    window.speechSynthesis.cancel();
-    setIsPlayingAudio(true);
+    setPlaybackTarget(target);
 
-    return new Promise<void>((resolve) => {
-      const utterance = new SpeechSynthesisUtterance(wordText);
-      utterance.lang = locale === 'uk' ? 'en-GB' : 'en-US';
-      utterance.rate = 0.85;
-      utterance.onend = () => {
-        if (runId === playbackRunIdRef.current) {
-          setIsPlayingAudio(false);
-        }
-        resolve();
-      };
-      utterance.onerror = () => {
-        if (runId === playbackRunIdRef.current) {
-          setIsPlayingAudio(false);
-        }
-        resolve();
-      };
-      window.speechSynthesis.speak(utterance);
+    return speakTextViaBrowser(text, locale).finally(() => {
+      if (runId === playbackRunIdRef.current) {
+        setPlaybackTarget(null);
+      }
     });
-  }, []);
+  }, [canPlayExampleAudio]);
 
   const resolveAudioUrl = useCallback(async (word: Word, locale: PronunciationLocale) => {
     const cachedUrl = locale === 'uk' ? word.audio_uk_url : word.audio_us_url;
@@ -524,14 +589,15 @@ const LearningEngine = ({
     if (runId !== playbackRunIdRef.current) return;
 
     const resolvedUrl = await resolveAudioUrl(word, locale);
+    const pronunciationTarget: PlaybackTarget = { kind: 'pronunciation', locale };
     if (runId !== playbackRunIdRef.current) return;
 
     if (!resolvedUrl) {
-      await speakViaBrowser(word.word, locale, runId);
+      await speakViaBrowser(word.word, locale, runId, pronunciationTarget);
       return;
     }
 
-    setIsPlayingAudio(true);
+    setPlaybackTarget(pronunciationTarget);
 
     await new Promise<void>((resolve) => {
       const audio = new Audio(resolvedUrl);
@@ -544,7 +610,7 @@ const LearningEngine = ({
           audioRef.current = null;
         }
         if (runId === playbackRunIdRef.current) {
-          setIsPlayingAudio(false);
+          setPlaybackTarget(null);
         }
         resolve();
       };
@@ -555,10 +621,7 @@ const LearningEngine = ({
         if (audioRef.current === audio) {
           audioRef.current = null;
         }
-        if (runId === playbackRunIdRef.current) {
-          setIsPlayingAudio(false);
-        }
-        void speakViaBrowser(word.word, locale, runId).then(resolve);
+        void speakViaBrowser(word.word, locale, runId, pronunciationTarget).then(() => resolve());
       };
 
       audioRef.current = audio;
@@ -589,6 +652,19 @@ const LearningEngine = ({
       }
     }
   }, [playAudioOnce, stopPlayback, waitForGap]);
+
+  const playExampleSentence = useCallback(async (sentence: string, key: string) => {
+    if (!canPlayExampleAudio) return;
+
+    if (playbackTarget?.kind === 'example' && playbackTarget.key === key) {
+      stopPlayback();
+      return;
+    }
+
+    stopPlayback();
+    const runId = playbackRunIdRef.current;
+    await speakViaBrowser(sentence, audioLocale, runId, { kind: 'example', key });
+  }, [audioLocale, canPlayExampleAudio, playbackTarget, speakViaBrowser, stopPlayback]);
 
   useEffect(() => {
     if (!currentWord) return;
@@ -783,12 +859,17 @@ const LearningEngine = ({
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 10 }}
-          className="mx-auto mt-6 flex w-fit max-w-full items-center gap-3 rounded-[22px] bg-[#10B981] px-5 py-4 text-left font-bold text-white shadow-[0_16px_36px_rgba(16,185,129,0.24)]"
+          className="mx-auto mt-6 w-fit max-w-full rounded-[22px] bg-[#10B981] px-5 py-4 text-left font-bold text-white shadow-[0_16px_36px_rgba(16,185,129,0.24)]"
         >
-          <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
-          <span className="text-sm leading-6 md:text-base">
-            {currentWord.word} · {primaryPos}: {currentWord.chinese_definition}
-          </span>
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0" />
+            <div className="space-y-2">
+              <p className="text-sm font-black leading-6 md:text-base">{currentWord.word}</p>
+              <div className="[&_p]:text-white [&_span]:bg-white/16 [&_span]:text-white/90">
+                <WordSenseList word={currentWord} compact />
+              </div>
+            </div>
+          </div>
         </motion.div>
       )}
     </AnimatePresence>
@@ -853,7 +934,7 @@ const LearningEngine = ({
                     : 'bg-apple-teal/10 text-apple-teal hover:bg-apple-teal/20'
                 }`}
               >
-                {isPlayingAudio && audioLocale === loc
+                {activePronunciationLocale === loc
                   ? <Loader2 className="w-3 h-3 animate-spin" />
                   : <Volume2 className="w-3 h-3" />}
                 {loc.toUpperCase()}
@@ -874,9 +955,24 @@ const LearningEngine = ({
                 exit={{ opacity: 0 }}
                 className="mt-4 text-center"
               >
-                <p className="text-3xl font-bold text-text-primary">{currentWord.chinese_definition}</p>
+                <div className="[&_span]:bg-black/5">
+                  <WordSenseList word={currentWord} centered />
+                </div>
                 {currentWord.example_sentences[0] && (
-                  <p className="mt-4 text-base text-text-secondary max-w-xl">{renderBold(currentWord.example_sentences[0])}</p>
+                  <div className="mx-auto mt-4 w-full max-w-xl">
+                    <ExampleSentenceList
+                      items={[{
+                        key: `${currentWord.id}-round3-example-0`,
+                        sentence: currentWord.example_sentences[0],
+                      }]}
+                      locale={audioLocale}
+                      activeExampleKey={activeExampleKey}
+                      canPlayAudio={canPlayExampleAudio}
+                      onPlayExample={({ sentence, key }) => { void playExampleSentence(sentence, key); }}
+                      emptyMessage="这个词暂时还没有例句。"
+                      variant="inline"
+                    />
+                  </div>
                 )}
               </motion.div>
             )}
@@ -922,39 +1018,34 @@ const LearningEngine = ({
                 <PronunciationControls
                   phonetic={currentWord.phonetic}
                   audioLocale={audioLocale}
-                  isPlayingAudio={isPlayingAudio}
+                  activePronunciationLocale={activePronunciationLocale}
                   onPlay={(locale) => {
                     setAudioLocale(locale);
                     void playAudioSequence(currentWord, locale, 1, 0);
                   }}
                 />
 
-                <div>
-                  <p className="text-[clamp(2.4rem,4.1vw,4.2rem)] font-black leading-[0.94] tracking-[-0.055em] text-text-primary">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
+                  <p className="text-[clamp(2.4rem,4.1vw,4.2rem)] font-black leading-[0.94] tracking-[-0.055em] text-text-primary lg:flex-shrink-0">
                     {currentWord.word}
                   </p>
-                  <div className="mt-4 flex flex-wrap items-center gap-3">
-                    <span className="rounded-full bg-black/5 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">
-                      {primaryPos}
-                    </span>
-                    {currentWord.pos_tags.length > 1 && (
-                      <span className="text-xs font-bold uppercase tracking-[0.18em] text-text-secondary">
-                        另有 {currentWord.pos_tags.length - 1} 个词性
-                      </span>
-                    )}
+                  <div className="min-w-0 lg:max-w-[960px] lg:flex-1 lg:pt-1">
+                    <WordSenseList word={currentWord} />
                   </div>
-                  <p className="mt-5 max-w-[680px] text-[1.9rem] font-black leading-tight text-text-primary md:text-[2rem]">
-                    {currentWord.chinese_definition}
-                  </p>
                 </div>
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-2">
-                <Round1ExampleCard word={currentWord} />
-                <Round1MorphologyCard word={currentWord} />
-                <Round1RelationsCard word={currentWord} />
-                <Round1ConfusingCard word={currentWord} />
-              </div>
+                <div className="grid gap-4 lg:grid-cols-3">
+                  <Round1MorphologyCard word={currentWord} />
+                  <Round1RelationsCard word={currentWord} />
+                  <Round1ConfusingCard
+                    word={currentWord}
+                    activeExampleKey={activeExampleKey}
+                    canPlayExampleAudio={canPlayExampleAudio}
+                    exampleLocale={audioLocale}
+                    onPlayExample={(sentence, key) => { void playExampleSentence(sentence, key); }}
+                  />
+                </div>
 
               <div className="space-y-4 rounded-[24px] border border-white/80 bg-white/45 p-4 shadow-[0_12px_30px_rgba(14,26,56,0.04)] md:p-5">
                 {inputField}

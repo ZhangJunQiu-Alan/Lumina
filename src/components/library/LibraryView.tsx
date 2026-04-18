@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type JSX } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   AlertCircle,
@@ -25,6 +25,12 @@ import {
   ResumeCandidate,
 } from '../../types';
 import { toConfusingPairs, toWordMorphology, toWordRelations } from '../../types';
+import { ExampleSentenceList } from '../shared/ExampleSentenceList';
+import {
+  cancelBrowserSpeech,
+  isBrowserSpeechSupported,
+  speakTextViaBrowser,
+} from '../../lib/browserSpeech';
 import {
   getCachedLibraryGroupDetail,
   getCachedLibraryGroups,
@@ -46,6 +52,7 @@ import {
 import { fetchOfficialResumeCandidate } from '../../lib/learningSessionApi';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
 
 interface LearningGroupRow {
   id: string;
@@ -526,6 +533,48 @@ function WordDetailDrawer({
   word: LibraryGroupWord;
   onClose: () => void;
 }) {
+  const { preferences } = useLearningPreferences();
+  const [activeExampleKey, setActiveExampleKey] = useState<string | null>(null);
+  const playbackRunIdRef = useRef(0);
+  const canPlayExampleAudio = useMemo(() => isBrowserSpeechSupported(), []);
+
+  const stopPlayback = useCallback(() => {
+    playbackRunIdRef.current += 1;
+    cancelBrowserSpeech();
+    setActiveExampleKey(null);
+  }, []);
+
+  const handleClose = useCallback(() => {
+    stopPlayback();
+    onClose();
+  }, [onClose, stopPlayback]);
+
+  const playExampleSentence = useCallback(async (sentence: string, key: string) => {
+    if (!canPlayExampleAudio) return;
+
+    if (activeExampleKey === key) {
+      stopPlayback();
+      return;
+    }
+
+    stopPlayback();
+    const runId = playbackRunIdRef.current;
+    setActiveExampleKey(key);
+    await speakTextViaBrowser(sentence, preferences.defaultPronunciationLocale);
+
+    if (runId === playbackRunIdRef.current) {
+      setActiveExampleKey(null);
+    }
+  }, [activeExampleKey, canPlayExampleAudio, preferences.defaultPronunciationLocale, stopPlayback]);
+
+  useEffect(() => () => {
+    stopPlayback();
+  }, [stopPlayback]);
+
+  useEffect(() => {
+    stopPlayback();
+  }, [stopPlayback, word.id]);
+
   return (
     <>
       <motion.button
@@ -533,7 +582,7 @@ function WordDetailDrawer({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        onClick={onClose}
+        onClick={handleClose}
         className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
       />
       <motion.aside
@@ -550,7 +599,7 @@ function WordDetailDrawer({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-black/5 text-text-secondary transition-colors hover:text-text-primary"
           >
             <X className="h-5 w-5" />
@@ -590,20 +639,19 @@ function WordDetailDrawer({
 
           <section className="glass rounded-2xl p-5">
             <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">例句</p>
-            {word.examples.length > 0 ? (
-              <div className="mt-3 space-y-4">
-                {word.examples.slice(0, 3).map((example, index) => (
-                  <div key={`${word.id}-detail-example-${index}`}>
-                    <p className="text-sm leading-6 text-text-primary">{example.sentence}</p>
-                    {example.translation && (
-                      <p className="mt-1 text-xs leading-5 text-text-secondary">{example.translation}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-3 text-sm leading-6 text-text-secondary">这个词暂时还没有例句。</p>
-            )}
+            <ExampleSentenceList
+              items={word.examples.slice(0, 3).map((example, index) => ({
+                key: `${word.id}-detail-example-${index}`,
+                sentence: example.sentence,
+                translation: example.translation,
+              }))}
+              locale={preferences.defaultPronunciationLocale}
+              activeExampleKey={activeExampleKey}
+              canPlayAudio={canPlayExampleAudio}
+              onPlayExample={({ sentence, key }) => { void playExampleSentence(sentence, key); }}
+              emptyMessage="这个词暂时还没有例句。"
+              variant="drawer"
+            />
           </section>
 
           <section className="glass rounded-2xl p-5">
