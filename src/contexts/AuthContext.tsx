@@ -82,6 +82,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         provider: 'google',
         options: {
           redirectTo: buildAuthRedirect(nextPath),
+          scopes: 'openid email profile https://www.googleapis.com/auth/userinfo.email',
         },
       });
 
