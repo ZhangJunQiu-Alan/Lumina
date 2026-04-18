@@ -20,10 +20,16 @@ interface ExistingVocabularyRow {
 interface VocabularyLookupRow {
   word: string;
   ipa_uk: string | null;
+  ipa_us: string | null;
   primary_meaning_zh: string | null;
   morphology_summary_zh: string | null;
   memory_tip: string | null;
-  vocabulary_senses: Array<{ pos: string | null }> | null;
+  vocabulary_senses: Array<{
+    pos: string | null;
+    meaning_zh: string | null;
+    example_sentence: string | null;
+    example_translation_zh: string | null;
+  }> | null;
 }
 
 const DEFAULT_BATCH_SIZE = 30;
@@ -113,12 +119,23 @@ function sleep(ms: number) {
 }
 
 function isVocabularyReady(row: VocabularyLookupRow) {
+  const senses = row.vocabulary_senses ?? [];
+  const senseReady = senses.length > 0 && senses.every((sense) => (
+    Boolean(
+      sense.pos?.trim()
+      && sense.meaning_zh?.trim()
+      && sense.example_sentence?.trim()
+      && sense.example_translation_zh?.trim()
+    )
+  ));
+
   return Boolean(
     row.ipa_uk?.trim()
+    && row.ipa_us?.trim()
     && row.primary_meaning_zh?.trim()
     && row.morphology_summary_zh?.trim()
     && row.memory_tip?.trim()
-    && (row.vocabulary_senses?.length ?? 0) > 0,
+    && senseReady,
   );
 }
 
@@ -131,11 +148,15 @@ async function collectMissingOfficialWords() {
       .select(`
         word,
         ipa_uk,
+        ipa_us,
         primary_meaning_zh,
         morphology_summary_zh,
         memory_tip,
         vocabulary_senses (
-          pos
+          pos,
+          meaning_zh,
+          example_sentence,
+          example_translation_zh
         )
       `)
       .in('word', words);

@@ -10,6 +10,14 @@ export const MOCK_WORDS: Word[] = [
       { label: 'Concept', text: 'Philosophy' }
     ],
     chinese_definition: '务实的，实事求是的',
+    senses: [
+      {
+        pos: 'Adjective',
+        meaning_zh: '务实的，实事求是的',
+        example_sentence: 'The council took a **pragmatic** approach to the problem of street crime.',
+        example_translation_zh: '',
+      },
+    ],
     example_sentences: [
       'The council took a **pragmatic** approach to the problem of street crime.',
       'In business, it is often necessary to be **pragmatic** rather than idealistic.'
@@ -52,6 +60,14 @@ export const MOCK_WORDS: Word[] = [
       { label: 'Action', text: 'Reduction' }
     ],
     chinese_definition: '减轻，缓和',
+    senses: [
+      {
+        pos: 'Verb',
+        meaning_zh: '减轻，缓和',
+        example_sentence: 'Drainage schemes have helped to **mitigate** the effects of the flooding.',
+        example_translation_zh: '',
+      },
+    ],
     example_sentences: [
       'Drainage schemes have helped to **mitigate** the effects of the flooding.',
       'The government is implementing measures to **mitigate** the impact of the economic crisis in **London**.'
@@ -94,6 +110,14 @@ export const MOCK_WORDS: Word[] = [
       { label: 'State', text: 'Pervasive' }
     ],
     chinese_definition: '无所不在的，普遍的',
+    senses: [
+      {
+        pos: 'Adjective',
+        meaning_zh: '无所不在的，普遍的',
+        example_sentence: 'The **ubiquitous** spread of English as a global language is undeniable.',
+        example_translation_zh: '',
+      },
+    ],
     example_sentences: [
       'The **ubiquitous** spread of English as a global language is undeniable.',
       'Coffee shops are **ubiquitous** in major cities like **New York** and **Tokyo**.'
@@ -135,6 +159,14 @@ export const MOCK_WORDS: Word[] = [
       { label: 'Emotion', text: 'Conflict' }
     ],
     chinese_definition: '矛盾的，犹豫不决的',
+    senses: [
+      {
+        pos: 'Adjective',
+        meaning_zh: '矛盾的，犹豫不决的',
+        example_sentence: 'She remained **ambivalent** about her marriage.',
+        example_translation_zh: '',
+      },
+    ],
     example_sentences: [
       'She remained **ambivalent** about her marriage.',
       'Many people are **ambivalent** about the use of nuclear energy.'

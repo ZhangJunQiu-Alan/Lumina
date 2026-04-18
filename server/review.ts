@@ -48,7 +48,9 @@ interface ReviewStateRow {
 
 interface VocabularySenseRow {
   pos: string | null;
+  meaning_zh: string | null;
   example_sentence: string | null;
+  example_translation_zh: string | null;
 }
 
 interface ConfusedWordRow {
@@ -120,6 +122,12 @@ function buildWord(row: DueReviewRow) {
       ? [{ label: vocabularyItem.ner_label, text: vocabularyItem.word }]
       : [],
     chinese_definition: vocabularyItem?.primary_meaning_zh ?? '',
+    senses: (vocabularyItem?.vocabulary_senses ?? []).map((sense) => ({
+      pos: sense.pos ?? '',
+      meaning_zh: sense.meaning_zh ?? '',
+      example_sentence: sense.example_sentence ?? '',
+      example_translation_zh: sense.example_translation_zh ?? '',
+    })),
     example_sentences: (vocabularyItem?.vocabulary_senses ?? [])
       .map((sense) => sense.example_sentence ?? '')
       .filter(Boolean),
@@ -274,7 +282,9 @@ export async function fetchDueReviewWords(userId: string) {
         morphology_summary_zh,
         vocabulary_senses (
           pos,
-          example_sentence
+          meaning_zh,
+          example_sentence,
+          example_translation_zh
         ),
         vocabulary_morphology_parts (
           part_text,
@@ -311,7 +321,9 @@ export async function fetchDueReviewWords(userId: string) {
         ner_label,
         vocabulary_senses (
           pos,
-          example_sentence
+          meaning_zh,
+          example_sentence,
+          example_translation_zh
         ),
         confused_words (
           confused_word,

@@ -81,6 +81,7 @@ export interface Word {
   pos_tags: string[];
   ner_entities: { label: string; text: string }[];
   chinese_definition: string;
+  senses: WordSense[];
   example_sentences: string[];
   morphology: WordMorphology;
   derivedWords: WordRelation[];
@@ -142,6 +143,7 @@ export function toWord(e: EnrichedWord): Word {
     pos_tags: e.senses.map(s => s.pos),
     ner_entities: e.ner_label ? [{ label: e.ner_label, text: e.word }] : [],
     chinese_definition: e.primary_meaning_zh,
+    senses: e.senses,
     example_sentences: e.senses.map(s => s.example_sentence),
     morphology: toWordMorphology(e.morphology),
     derivedWords: toWordRelations(e.derived_words),

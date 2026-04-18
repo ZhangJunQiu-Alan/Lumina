@@ -210,12 +210,22 @@ function mapVocabularyEntry(row: VocabularyItemRow): PersistedVocabularyEntry {
 }
 
 function isVocabularyEntryReady(entry: PersistedVocabularyEntry) {
+  const sensesReady = entry.senses.length > 0 && entry.senses.every((sense) => (
+    Boolean(
+      sense.pos.trim()
+      && sense.meaning_zh.trim()
+      && sense.example_sentence.trim()
+      && sense.example_translation_zh.trim()
+    )
+  ));
+
   return Boolean(
     entry.ipa_uk.trim()
+    && entry.ipa_us.trim()
     && entry.primary_meaning_zh.trim()
     && entry.morphology.summary_zh.trim()
     && entry.memory_tip.trim()
-    && entry.senses.length > 0,
+    && sensesReady,
   );
 }
 

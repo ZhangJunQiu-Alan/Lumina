@@ -1,6 +1,11 @@
 import 'dotenv/config';
 import express from 'express';
-import { enrichWords, EnrichmentResponseValidationError, generateArticle } from './gemini.js';
+import {
+  enrichWords,
+  EnrichmentResponseValidationError,
+  EnrichmentServiceUnavailableError,
+  generateArticle,
+} from './gemini.js';
 import { fetchDueReviewWords, recordReviewAttempt } from './review.js';
 import { getOrCreateAudio, batchGenerateAudio } from './audio.js';
 import { deleteLearningGroup } from './library.js';
@@ -76,7 +81,9 @@ app.post('/api/vocab/enrich', requireAuth, async (req, res) => {
     res.json({ data: enriched });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    const status = err instanceof EnrichmentResponseValidationError ? err.statusCode : 500;
+    const status = err instanceof EnrichmentResponseValidationError || err instanceof EnrichmentServiceUnavailableError
+      ? err.statusCode
+      : 500;
     console.error('[/api/vocab/enrich]', message);
     res.status(status).json({ error: message });
   }

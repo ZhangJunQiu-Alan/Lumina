@@ -15,6 +15,21 @@ import type {
 } from '../src/types.js';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+function readPositiveIntEnv(name: string, fallback: number) {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const ENRICH_MODEL = process.env.GEMINI_ENRICH_MODEL?.trim() || 'gemini-2.5-flash';
+const ARTICLE_MODEL = process.env.GEMINI_ARTICLE_MODEL?.trim() || 'gemini-2.5-flash';
+const DEFAULT_ENRICH_CHUNK_SIZE = readPositiveIntEnv('GEMINI_ENRICH_BATCH_SIZE', 5);
+const DEFAULT_ENRICH_MAX_CONCURRENCY = readPositiveIntEnv('GEMINI_ENRICH_MAX_CONCURRENCY', 3);
+const ENRICH_MAX_OUTPUT_TOKENS = readPositiveIntEnv('GEMINI_ENRICH_MAX_OUTPUT_TOKENS', 8192);
+const MAX_ENRICH_RETRIES = 2;
+const BASE_RETRY_DELAY_MS = 2500;
 
 export class EnrichmentResponseValidationError extends Error {
   readonly statusCode = 502;
@@ -22,6 +37,15 @@ export class EnrichmentResponseValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'EnrichmentResponseValidationError';
+  }
+}
+
+export class EnrichmentServiceUnavailableError extends Error {
+  readonly statusCode = 503;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'EnrichmentServiceUnavailableError';
   }
 }
 
@@ -51,6 +75,7 @@ const MORPHOLOGY_PART_KINDS: MorphologyPartKind[] = ['prefix', 'root', 'suffix']
 const MAX_MORPHOLOGY_PARTS = 4;
 const MAX_RELATED_WORDS = 4;
 const MAX_CONFUSIONS = 3;
+const MAX_SENSES = 6;
 
 function asTrimmedString(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
@@ -181,6 +206,102 @@ function normalizeConfusions(items: unknown, currentWord: string): EnrichedWordC
   return normalizedItems;
 }
 
+function normalizeSenses(items: unknown): GeminiWordResult['senses'] {
+  if (!Array.isArray(items)) return [];
+
+  const seen = new Set<string>();
+  const normalizedSenses: GeminiWordResult['senses'] = [];
+
+  for (const item of items) {
+    if (normalizedSenses.length >= MAX_SENSES || !item || typeof item !== 'object') {
+      continue;
+    }
+
+    const record = item as Record<string, unknown>;
+    const pos = clampText(asTrimmedString(record.pos), 20);
+    const meaningZh = clampText(asTrimmedString(record.meaning_zh), 80);
+    const exampleSentence = clampText(asTrimmedString(record.example_sentence), 220);
+    const exampleTranslationZh = clampText(asTrimmedString(record.example_translation_zh), 120);
+
+    if (!pos || !meaningZh || !exampleSentence || !exampleTranslationZh) {
+      continue;
+    }
+
+    const dedupeKey = `${pos.toLowerCase()}::${meaningZh.toLowerCase()}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    normalizedSenses.push({
+      pos,
+      meaning_zh: meaningZh,
+      example_sentence: exampleSentence,
+      example_translation_zh: exampleTranslationZh,
+    });
+  }
+
+  return normalizedSenses;
+}
+
+function chunkWords(words: string[], chunkSize: number) {
+  return Array.from(
+    { length: Math.ceil(words.length / chunkSize) },
+    (_, index) => words.slice(index * chunkSize, (index + 1) * chunkSize),
+  );
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function mapWithConcurrency<TInput, TOutput>(
+  items: TInput[],
+  concurrency: number,
+  mapper: (item: TInput, index: number) => Promise<TOutput>,
+): Promise<TOutput[]> {
+  if (items.length === 0) return [];
+
+  const results = new Array<TOutput>(items.length);
+  let nextIndex = 0;
+
+  const workers = Array.from(
+    { length: Math.min(Math.max(concurrency, 1), items.length) },
+    async () => {
+      while (nextIndex < items.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+      }
+    },
+  );
+
+  await Promise.all(workers);
+  return results;
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isRateLimitError(error: unknown) {
+  const message = getErrorMessage(error);
+  return message.includes('429') || message.includes('RESOURCE_EXHAUSTED');
+}
+
+function isRetriableEnrichmentError(error: unknown) {
+  if (error instanceof EnrichmentResponseValidationError) {
+    return true;
+  }
+
+  const message = getErrorMessage(error);
+  return [
+    'invalid JSON',
+    'response is not an array',
+    '整理结果无效',
+  ].some((marker) => message.includes(marker));
+}
+
 export function normalizeGeminiWordResult(
   entry: GeminiWordResult | Record<string, unknown>,
   wordOverride?: string,
@@ -195,7 +316,7 @@ export function normalizeGeminiWordResult(
     ipa_us: asTrimmedString(record.ipa_us),
     primary_meaning_zh: asTrimmedString(record.primary_meaning_zh),
     ner_label: asTrimmedString(record.ner_label) || null,
-    senses: Array.isArray(record.senses) ? record.senses as GeminiWordResult['senses'] : [],
+    senses: normalizeSenses(record.senses),
     morphology: normalizeMorphology(record.morphology),
     derived_words: normalizeWordRelations(record.derived_words, word),
     synonyms: normalizeWordRelations(record.synonyms, word),
@@ -205,6 +326,20 @@ export function normalizeGeminiWordResult(
     confused_diff_zh: confusions[0]?.difference_zh ?? null,
     memory_tip: asTrimmedString(record.memory_tip),
   };
+}
+
+function getMissingRequiredFields(entry: GeminiWordResult) {
+  const missingFields: string[] = [];
+
+  if (!entry.word) missingFields.push('word');
+  if (!entry.ipa_uk) missingFields.push('ipa_uk');
+  if (!entry.ipa_us) missingFields.push('ipa_us');
+  if (!entry.primary_meaning_zh) missingFields.push('primary_meaning_zh');
+  if (!entry.memory_tip) missingFields.push('memory_tip');
+  if (!entry.morphology.summary_zh) missingFields.push('morphology.summary_zh');
+  if (entry.senses.length === 0) missingFields.push('senses');
+
+  return missingFields;
 }
 
 const SYSTEM_PROMPT = `You are an IELTS vocabulary expert. For each English word provided, generate structured learning data for Chinese learners.
@@ -288,21 +423,25 @@ export async function generateArticle(words: string[]): Promise<string> {
   const prompt = `${ARTICLE_PROMPT}\n\nVocabulary words to incorporate: ${words.join(', ')}`;
 
   const result = await ai.models.generateContent({
-    model: 'gemini-2.0-flash',
+    model: ARTICLE_MODEL,
     contents: prompt,
   });
 
   return result.text?.trim() ?? '';
 }
 
-export async function enrichWords(words: string[]): Promise<GeminiWordResult[]> {
+async function enrichWordsChunk(words: string[]): Promise<GeminiWordResult[]> {
   const cleanedWords = words.map(sanitizeWordInput);
   const prompt = `${SYSTEM_PROMPT}\n\nWords to process: ${cleanedWords.join(', ')}`;
 
   const result = await ai.models.generateContent({
-    model: 'gemini-2.0-flash',
+    model: ENRICH_MODEL,
     contents: prompt,
-    config: { responseMimeType: 'application/json' },
+    config: {
+      responseMimeType: 'application/json',
+      temperature: 0.2,
+      maxOutputTokens: ENRICH_MAX_OUTPUT_TOKENS,
+    },
   });
 
   const raw = result.text?.trim() ?? '';
@@ -314,11 +453,12 @@ export async function enrichWords(words: string[]): Promise<GeminiWordResult[]> 
   try {
     parsed = JSON.parse(jsonText);
   } catch {
-    throw new Error(`Gemini returned invalid JSON:\n${jsonText.slice(0, 300)}`);
+    console.warn('[enrichWordsChunk] Gemini returned invalid JSON preview:', jsonText.slice(0, 300));
+    throw new EnrichmentResponseValidationError('整理结果无效：模型返回了不完整的数据。');
   }
 
   if (!Array.isArray(parsed)) {
-    throw new Error('Gemini response is not an array');
+    throw new EnrichmentResponseValidationError('整理结果无效：模型返回的数据结构不正确。');
   }
 
   const responseWords = parsed.map((entry) => sanitizeWordInput(typeof entry.word === 'string' ? entry.word : ''));
@@ -335,5 +475,73 @@ export async function enrichWords(words: string[]): Promise<GeminiWordResult[]> 
     throw new EnrichmentResponseValidationError(formatWordBatchMismatchMessage(mismatch));
   }
 
-  return parsed.map((entry, index) => normalizeGeminiWordResult(entry, responseWords[index]));
+  const normalizedEntries = parsed.map((entry, index) => normalizeGeminiWordResult(entry, responseWords[index]));
+  const invalidEntry = normalizedEntries.find((entry) => getMissingRequiredFields(entry).length > 0);
+
+  if (invalidEntry) {
+    throw new EnrichmentResponseValidationError(
+      `整理结果无效：${invalidEntry.word || 'unknown'} 缺少必要字段：${getMissingRequiredFields(invalidEntry).join(', ')}`,
+    );
+  }
+
+  return normalizedEntries;
+}
+
+async function enrichWordsResilient(words: string[], retryCount = 0): Promise<GeminiWordResult[]> {
+  try {
+    return await enrichWordsChunk(words);
+  } catch (error) {
+    const message = getErrorMessage(error);
+
+    if (isRateLimitError(error)) {
+      if (retryCount < MAX_ENRICH_RETRIES) {
+        const delayMs = BASE_RETRY_DELAY_MS * (retryCount + 1);
+        console.warn(
+          `[enrichWords] rate-limited for ${words.length} words, waiting ${delayMs}ms before retry ${retryCount + 1}/${MAX_ENRICH_RETRIES}`,
+        );
+        await sleep(delayMs);
+        return enrichWordsResilient(words, retryCount + 1);
+      }
+
+      throw new EnrichmentServiceUnavailableError('AI 词条整理服务当前较忙，请过一两分钟再试。');
+    }
+
+    if (retryCount < MAX_ENRICH_RETRIES) {
+      console.warn(
+        `[enrichWords] retry ${retryCount + 1}/${MAX_ENRICH_RETRIES} for ${words.length} words after error: ${message}`,
+      );
+      return enrichWordsResilient(words, retryCount + 1);
+    }
+
+    if (isRetriableEnrichmentError(error) && words.length > 1) {
+      const midpoint = Math.ceil(words.length / 2);
+      console.warn(
+        `[enrichWords] splitting ${words.length} words into ${midpoint} + ${words.length - midpoint} after validation failure: ${message}`,
+      );
+      const firstHalf = await enrichWordsResilient(words.slice(0, midpoint));
+      const secondHalf = await enrichWordsResilient(words.slice(midpoint));
+      return [...firstHalf, ...secondHalf];
+    }
+
+    if (isRetriableEnrichmentError(error)) {
+      throw new EnrichmentResponseValidationError('整理结果无效：模型多次返回不完整数据，请稍后重试。');
+    }
+
+    throw new EnrichmentServiceUnavailableError('AI 词条整理暂时不可用，请稍后重试。');
+  }
+}
+
+export async function enrichWords(words: string[]): Promise<GeminiWordResult[]> {
+  const cleanedWords = words.map(sanitizeWordInput).filter(Boolean);
+  const chunks = chunkWords(cleanedWords, DEFAULT_ENRICH_CHUNK_SIZE);
+  const chunkResults = await mapWithConcurrency(
+    chunks,
+    DEFAULT_ENRICH_MAX_CONCURRENCY,
+    (chunk, index) => {
+      console.log(`[enrichWords] chunk ${index + 1}/${chunks.length} start (${chunk.length} words)`);
+      return enrichWordsResilient(chunk);
+    },
+  );
+
+  return chunkResults.flat();
 }

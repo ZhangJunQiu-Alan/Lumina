@@ -40,7 +40,9 @@ interface LearningGroupBaseRow {
 
 interface VocabularySenseRow {
   pos: string | null;
+  meaning_zh: string | null;
   example_sentence: string | null;
+  example_translation_zh: string | null;
 }
 
 interface ConfusedWordRow {
@@ -180,6 +182,12 @@ function mapGroupWord(row: LearningGroupWordRow): Word | null {
       ? [{ label: vocabularyItem.ner_label, text: vocabularyItem.word }]
       : [],
     chinese_definition: vocabularyItem.primary_meaning_zh ?? '',
+    senses: vocabularyItem.vocabulary_senses.map((sense) => ({
+      pos: sense.pos ?? '',
+      meaning_zh: sense.meaning_zh ?? '',
+      example_sentence: sense.example_sentence ?? '',
+      example_translation_zh: sense.example_translation_zh ?? '',
+    })),
     example_sentences: vocabularyItem.vocabulary_senses
       .map((sense) => sense.example_sentence ?? '')
       .filter(Boolean),
@@ -360,7 +368,9 @@ export async function fetchLearningGroupSession(
           audio_us_url,
           vocabulary_senses (
             pos,
-            example_sentence
+            meaning_zh,
+            example_sentence,
+            example_translation_zh
           ),
           vocabulary_morphology_parts (
             part_text,
@@ -395,7 +405,9 @@ export async function fetchLearningGroupSession(
           audio_us_url,
           vocabulary_senses (
             pos,
-            example_sentence
+            meaning_zh,
+            example_sentence,
+            example_translation_zh
           ),
           confused_words (
             confused_word,
