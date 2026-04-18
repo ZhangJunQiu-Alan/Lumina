@@ -9,6 +9,7 @@ interface CliOptions {
   delayMs: number;
   limit: number | null;
   retryCount: number;
+  retryDelayMs: number;
 }
 
 interface ExistingVocabularyRow {
@@ -27,6 +28,7 @@ interface VocabularyLookupRow {
 const DEFAULT_BATCH_SIZE = 30;
 const DEFAULT_DELAY_MS = 400;
 const DEFAULT_RETRY_COUNT = 3;
+const DEFAULT_RETRY_DELAY_MS = 5000;
 const OFFICIAL_WORD_CHUNK_SIZE = 200;
 
 function parseArgs(argv: string[]): CliOptions {
@@ -35,6 +37,7 @@ function parseArgs(argv: string[]): CliOptions {
     delayMs: DEFAULT_DELAY_MS,
     limit: null,
     retryCount: DEFAULT_RETRY_COUNT,
+    retryDelayMs: DEFAULT_RETRY_DELAY_MS,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -64,6 +67,12 @@ function parseArgs(argv: string[]): CliOptions {
       index += 1;
       continue;
     }
+
+    if (arg === '--retry-delay-ms' && next) {
+      options.retryDelayMs = Number.parseInt(next, 10);
+      index += 1;
+      continue;
+    }
   }
 
   if (!Number.isInteger(options.batchSize) || options.batchSize <= 0 || options.batchSize > 30) {
@@ -80,6 +89,10 @@ function parseArgs(argv: string[]): CliOptions {
 
   if (!Number.isInteger(options.retryCount) || options.retryCount < 1) {
     throw new Error('--retry 必须是大于等于 1 的整数。');
+  }
+
+  if (!Number.isInteger(options.retryDelayMs) || options.retryDelayMs < 0) {
+    throw new Error('--retry-delay-ms 必须是大于等于 0 的整数。');
   }
 
   return options;
@@ -244,7 +257,7 @@ async function persistEnrichedBatch(enriched: GeminiWordResult[]) {
   }
 }
 
-async function enrichWithRetries(words: string[], retryCount: number) {
+async function enrichWithRetries(words: string[], retryCount: number, retryDelayMs: number) {
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= retryCount; attempt += 1) {
@@ -255,7 +268,7 @@ async function enrichWithRetries(words: string[], retryCount: number) {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`Batch failed (${attempt}/${retryCount}): ${message}`);
       if (attempt < retryCount) {
-        await sleep(attempt * 1000);
+        await sleep(retryDelayMs * attempt);
       }
     }
   }
@@ -282,7 +295,9 @@ async function main() {
     return;
   }
 
-  console.log(`准备补齐 ${targetWords.length} 个官方词条，batchSize=${options.batchSize} delayMs=${options.delayMs} retry=${options.retryCount}`);
+  console.log(
+    `准备补齐 ${targetWords.length} 个官方词条，batchSize=${options.batchSize} delayMs=${options.delayMs} retry=${options.retryCount} retryDelayMs=${options.retryDelayMs}`,
+  );
 
   const batches = chunkWords(targetWords, options.batchSize);
 
@@ -290,7 +305,7 @@ async function main() {
     const batchLabel = `${index + 1}/${batches.length}`;
     console.log(`\n[${batchLabel}] enriching ${words.length} words: ${words.slice(0, 3).join(', ')}${words.length > 3 ? '...' : ''}`);
 
-    const enriched = await enrichWithRetries(words, options.retryCount);
+    const enriched = await enrichWithRetries(words, options.retryCount, options.retryDelayMs);
     await persistEnrichedBatch(enriched);
 
     const processedCount = Math.min((index + 1) * options.batchSize, targetWords.length);

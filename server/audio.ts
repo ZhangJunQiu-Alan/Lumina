@@ -3,13 +3,25 @@ import { generateWordAudio } from './tts.js';
 
 const BUCKET = 'word-audio';
 
+function buildAudioStoragePath(word: string, locale: 'uk' | 'us') {
+  const normalizedWord = word.trim().toLowerCase();
+  const asciiSlug = normalizedWord
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const stableKey = Buffer.from(normalizedWord).toString('base64url');
+  const fileName = `${asciiSlug || 'word'}-${stableKey}.mp3`;
+  return `${locale}/${fileName}`;
+}
+
 async function uploadAndSave(
   word: string,
   vocabId: string | null,
   locale: 'uk' | 'us',
 ): Promise<string> {
   const buffer = await generateWordAudio(word, locale);
-  const path = `${locale}/${word.toLowerCase()}.mp3`;
+  const path = buildAudioStoragePath(word, locale);
 
   const { error: uploadErr } = await supabaseAdmin.storage
     .from(BUCKET)

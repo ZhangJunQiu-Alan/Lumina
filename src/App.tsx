@@ -29,7 +29,11 @@ import { HomeView } from './components/home/HomeView';
 import { ImportView } from './components/import/ImportView';
 import { supabase } from './lib/supabase';
 import { fetchDueReviewWords, submitReviewAttempt } from './lib/reviewApi';
-import { LibraryGroupDetailView, LibraryView } from './components/library/LibraryView';
+import {
+  LibraryGroupDetailView,
+  LibraryView,
+  OfficialLibraryDetailView,
+} from './components/library/LibraryView';
 import { ReviewResultsView } from './components/review/ReviewResultsView';
 import { SettingsView } from './components/settings/SettingsView';
 import { useAuth } from './contexts/AuthContext';
@@ -1393,6 +1397,15 @@ export default function App() {
                 path="library"
                 element={(
                   <LibraryView
+                    onLibraryMutated={() => { void fetchStats(); }}
+                    onStartLearningGroup={handleStartLearningGroup}
+                  />
+                )}
+              />
+              <Route
+                path="library/official"
+                element={(
+                  <OfficialLibraryDetailView
                     onLibraryMutated={() => { void fetchStats(); }}
                     onStartLearningGroup={handleStartLearningGroup}
                   />

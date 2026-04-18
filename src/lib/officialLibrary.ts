@@ -1,5 +1,5 @@
 import { IELTS_WORDS_FLAT } from '../data/ielts-vocab';
-import type { LibraryGroupSummary } from '../types';
+import type { LibraryGroupSummary, OfficialLibrarySummary, ResumeCandidate } from '../types';
 
 export const OFFICIAL_LIBRARY_TITLE = '雅思词汇真经';
 export const OFFICIAL_GROUP_PREFIX = `${OFFICIAL_LIBRARY_TITLE} · `;
@@ -8,6 +8,9 @@ export const OFFICIAL_BATCH_SIZE = 30;
 export const OFFICIAL_TOTAL_WORDS = IELTS_WORDS_FLAT.length;
 
 const OFFICIAL_GROUP_PATTERN = /^雅思词汇真经 · (\d{4})-(\d{4})$/;
+const officialWordOrder = new Map(
+  IELTS_WORDS_FLAT.map((word, index) => [word.trim().toLowerCase(), index]),
+);
 
 export interface OfficialBatchPlan {
   words: string[];
@@ -72,7 +75,7 @@ export function writeOfficialProgress(nextIndex: number) {
 }
 
 export function deriveOfficialProgress(groups: Pick<LibraryGroupSummary, 'sourceType' | 'title'>[]) {
-  const savedProgress = groups.reduce((maxProgress, group) => {
+  return groups.reduce((maxProgress, group) => {
     if (group.sourceType !== 'system') return maxProgress;
 
     const range = parseOfficialGroupRange(group.title);
@@ -80,12 +83,16 @@ export function deriveOfficialProgress(groups: Pick<LibraryGroupSummary, 'source
 
     return Math.max(maxProgress, range.end);
   }, 0);
+}
 
-  if (savedProgress > 0) {
-    return clampProgress(savedProgress);
-  }
-
-  return readOfficialProgress();
+export function countUnlockedOfficialWords(
+  groups: Pick<LibraryGroupSummary, 'sourceType' | 'wordCount'>[],
+) {
+  return clampProgress(
+    groups.reduce((count, group) => (
+      group.sourceType === 'system' ? count + group.wordCount : count
+    ), 0),
+  );
 }
 
 export function getOfficialBatchWords(progress: number) {
@@ -101,4 +108,47 @@ export function getOfficialBatchPlan(progress: number): OfficialBatchPlan | null
     groupName: formatOfficialGroupName(progress, words.length),
     nextProgress: progress + words.length,
   };
+}
+
+export function buildOfficialLibrarySummary(
+  groups: Pick<LibraryGroupSummary, 'sourceType' | 'title' | 'wordCount'>[],
+  resumeCandidate: ResumeCandidate | null,
+): OfficialLibrarySummary {
+  const progress = clampProgress(deriveOfficialProgress(groups));
+  const nextBatchPlan = getOfficialBatchPlan(progress);
+
+  return {
+    progress,
+    nextBatchSize: nextBatchPlan?.words.length ?? 0,
+    unlockedWordCount: countUnlockedOfficialWords(groups),
+    resumeCandidate,
+    completed: !nextBatchPlan,
+  };
+}
+
+export function resolveOfficialLibraryStartMode(
+  summary: Pick<OfficialLibrarySummary, 'resumeCandidate' | 'completed'>,
+) {
+  if (summary.resumeCandidate) {
+    return 'resume' as const;
+  }
+
+  return summary.completed ? 'completed' as const : 'new' as const;
+}
+
+export function getOfficialWordPosition(word: string) {
+  return officialWordOrder.get(word.trim().toLowerCase()) ?? Number.MAX_SAFE_INTEGER;
+}
+
+export function sortWordsByOfficialOrder<T extends { word: string }>(words: T[]) {
+  return [...words].sort((left, right) => {
+    const leftOrder = getOfficialWordPosition(left.word);
+    const rightOrder = getOfficialWordPosition(right.word);
+
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+
+    return left.word.localeCompare(right.word);
+  });
 }

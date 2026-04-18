@@ -143,6 +143,14 @@ export interface ResumeCandidate extends PersistedLearningSession {
   queueLength: number;
 }
 
+export interface OfficialLibrarySummary {
+  progress: number;
+  nextBatchSize: number;
+  unlockedWordCount: number;
+  resumeCandidate: ResumeCandidate | null;
+  completed: boolean;
+}
+
 export interface LearningSession {
   type: RoundType;
   words: Word[];

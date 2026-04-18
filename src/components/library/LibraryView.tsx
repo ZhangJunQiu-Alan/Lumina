@@ -14,12 +14,14 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import {
   LibraryGroupSummary,
   LibraryGroupWord,
   MemoryState,
+  OfficialLibrarySummary,
   ReviewResultType,
+  ResumeCandidate,
 } from '../../types';
 import {
   getCachedLibraryGroupDetail,
@@ -32,7 +34,14 @@ import {
 } from '../../lib/libraryCache';
 import { deleteLibraryGroup } from '../../lib/libraryApi';
 import { OfficialLibraryPanel } from './OfficialLibraryPanel';
-import { resolveLibraryGroupSourceType } from '../../lib/officialLibrary';
+import {
+  OFFICIAL_LIBRARY_TITLE,
+  buildOfficialLibrarySummary,
+  getOfficialWordPosition,
+  resolveLibraryGroupSourceType,
+  sortWordsByOfficialOrder,
+} from '../../lib/officialLibrary';
+import { fetchOfficialResumeCandidate } from '../../lib/learningSessionApi';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -73,6 +82,11 @@ interface DetailVocabularyItemRow {
 interface GroupWordRow {
   sequence_no: number | null;
   vocabulary_items: DetailVocabularyItemRow | DetailVocabularyItemRow[];
+}
+
+interface OfficialLibraryDetailData {
+  summary: OfficialLibrarySummary;
+  words: LibraryGroupWord[];
 }
 
 const memoryStateLabel: Record<MemoryState, string> = {
@@ -203,6 +217,66 @@ async function fetchLibraryGroupSummaries(userId: string): Promise<LibraryGroupS
 
   if (error) throw error;
   return ((data ?? []) as LearningGroupRow[]).map(mapGroupSummary);
+}
+
+async function fetchOfficialLibraryDetail(userId: string): Promise<OfficialLibraryDetailData> {
+  const [groups, officialResumeCandidate] = await Promise.all([
+    fetchLibraryGroupSummaries(userId),
+    fetchOfficialResumeCandidate(userId),
+  ]);
+
+  const systemGroups = groups.filter((group) => group.sourceType === 'system');
+  const summary = buildOfficialLibrarySummary(systemGroups, officialResumeCandidate);
+
+  if (systemGroups.length === 0) {
+    return {
+      summary,
+      words: [],
+    };
+  }
+
+  const { data, error } = await supabase
+    .from('learning_group_words')
+    .select(`
+      sequence_no,
+      vocabulary_items!inner (
+        id,
+        word,
+        ipa_uk,
+        primary_meaning_zh,
+        memory_tip,
+        created_at,
+        vocabulary_senses (
+          pos,
+          example_sentence,
+          example_translation_zh
+        ),
+        confused_words (
+          confused_word,
+          difference_note_zh
+        ),
+        review_states (
+          memory_state,
+          next_review_at,
+          last_result
+        )
+      )
+    `)
+    .in('learning_group_id', systemGroups.map((group) => group.id));
+
+  if (error) throw error;
+
+  const wordsById = new Map<string, LibraryGroupWord>();
+  for (const row of (data ?? []) as GroupWordRow[]) {
+    const mappedWord = mapGroupWord(row);
+    if (!mappedWord || wordsById.has(mappedWord.id)) continue;
+    wordsById.set(mappedWord.id, mappedWord);
+  }
+
+  return {
+    summary,
+    words: sortWordsByOfficialOrder([...wordsById.values()]),
+  };
 }
 
 async function fetchLibraryGroupDetail(
@@ -577,6 +651,7 @@ export const LibraryView = ({
   const navigate = useNavigate();
   const { user } = useAuth();
   const [groups, setGroups] = useState<LibraryGroupSummary[]>([]);
+  const [officialResumeCandidate, setOfficialResumeCandidate] = useState<ResumeCandidate | null | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [groupPendingDelete, setGroupPendingDelete] = useState<LibraryGroupSummary | null>(null);
@@ -589,6 +664,7 @@ export const LibraryView = ({
 
     if (!user) {
       setGroups([]);
+      setOfficialResumeCandidate(null);
       setIsLoading(false);
       setErrorMsg('');
       return () => { active = false; };
@@ -596,45 +672,58 @@ export const LibraryView = ({
 
     if (cachedGroups) {
       setGroups(cachedGroups.data);
-      setIsLoading(false);
       setErrorMsg('');
     }
 
     const loadGroups = async () => {
-      try {
-        if (!cachedGroups) {
-          setIsLoading(true);
-          setErrorMsg('');
-        }
+      setIsLoading(true);
+      setErrorMsg('');
 
-        const nextGroups = await refreshLibraryGroups(user.id, () => fetchLibraryGroupSummaries(user.id));
-        if (!active) return;
-        setGroups(nextGroups);
-        setErrorMsg('');
-      } catch (error) {
-        if (!active) return;
+      const shouldRefreshGroups = !cachedGroups || !isLibraryCacheFresh(cachedGroups);
+      const [groupsResult, officialResumeResult] = await Promise.allSettled([
+        shouldRefreshGroups
+          ? refreshLibraryGroups(user.id, () => fetchLibraryGroupSummaries(user.id))
+          : Promise.resolve(cachedGroups.data),
+        fetchOfficialResumeCandidate(user.id),
+      ]);
+
+      if (!active) return;
+
+      if (groupsResult.status === 'fulfilled') {
+        setGroups(groupsResult.value);
+      } else {
         const msg =
-          error instanceof Error
-            ? error.message
-            : (error as { message?: string })?.message ?? JSON.stringify(error);
+          groupsResult.reason instanceof Error
+            ? groupsResult.reason.message
+            : (groupsResult.reason as { message?: string })?.message ?? JSON.stringify(groupsResult.reason);
         if (!cachedGroups) {
           setErrorMsg(msg);
         } else {
           console.error('library groups refresh failed:', msg);
         }
-      } finally {
-        if (active) setIsLoading(false);
       }
+
+      if (officialResumeResult.status === 'fulfilled') {
+        setOfficialResumeCandidate(officialResumeResult.value);
+      } else {
+        const msg =
+          officialResumeResult.reason instanceof Error
+            ? officialResumeResult.reason.message
+            : (officialResumeResult.reason as { message?: string })?.message ?? JSON.stringify(officialResumeResult.reason);
+        console.error('official resume lookup failed:', msg);
+        setErrorMsg((current) => current || msg);
+        setOfficialResumeCandidate(null);
+      }
+
+      setIsLoading(false);
     };
 
-    if (!cachedGroups || !isLibraryCacheFresh(cachedGroups)) {
-      void loadGroups();
-    }
+    void loadGroups();
 
     return () => { active = false; };
   }, [user]);
 
-  if (isLoading) {
+  if (isLoading || officialResumeCandidate === undefined) {
     return <LibraryLoading message="正在把你的词库整理好" />;
   }
 
@@ -644,6 +733,7 @@ export const LibraryView = ({
 
   const systemGroups = groups.filter((group) => group.sourceType === 'system');
   const customGroups = groups.filter((group) => group.sourceType === 'custom');
+  const officialSummary = buildOfficialLibrarySummary(systemGroups, officialResumeCandidate ?? null);
 
   const handleDeleteGroup = async () => {
     if (!user || !groupPendingDelete) return;
@@ -678,33 +768,14 @@ export const LibraryView = ({
               </div>
               <h3 className="text-2xl font-black text-text-primary">系统词库</h3>
             </div>
-            {systemGroups.length > 0 && (
-              <div className="glass rounded-2xl px-4 py-2 text-sm font-bold text-text-secondary">
-                {systemGroups.length} 组
-              </div>
-            )}
           </div>
 
           <OfficialLibraryPanel
-            groups={systemGroups}
+            summary={officialSummary}
             onStartLearning={onStartLearningGroup}
+            onOpenDetail={() => navigate('/app/library/official')}
             onLibraryMutated={onLibraryMutated}
           />
-
-          {systemGroups.length > 0 && (
-            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-              {systemGroups.map((group, index) => (
-                <Fragment key={group.id}>
-                  {LibraryGroupCard({
-                    group,
-                    kind: 'system',
-                    index,
-                    onOpen: () => navigate(`/app/library/group/${group.id}`),
-                  })}
-                </Fragment>
-              ))}
-            </div>
-          )}
         </section>
 
         <section className="space-y-5">
@@ -770,6 +841,151 @@ export const LibraryView = ({
               setGroupPendingDelete(null);
             }}
             onConfirm={() => { void handleDeleteGroup(); }}
+          />
+        )}
+      </AnimatePresence>
+    </>
+  );
+};
+
+export const OfficialLibraryDetailView = ({
+  onLibraryMutated,
+  onStartLearningGroup,
+}: {
+  onLibraryMutated?: () => void | Promise<void>;
+  onStartLearningGroup?: (groupId: string) => Promise<void> | void;
+}) => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [summary, setSummary] = useState<OfficialLibrarySummary>(() => buildOfficialLibrarySummary([], null));
+  const [words, setWords] = useState<LibraryGroupWord[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  useEffect(() => {
+    let active = true;
+
+    if (!user) {
+      setSummary(buildOfficialLibrarySummary([], null));
+      setWords([]);
+      setIsLoading(false);
+      setErrorMsg('');
+      return () => { active = false; };
+    }
+
+    const loadOfficialDetail = async () => {
+      try {
+        setIsLoading(true);
+        setErrorMsg('');
+        const detail = await fetchOfficialLibraryDetail(user.id);
+        if (!active) return;
+        setSummary(detail.summary);
+        setWords(detail.words);
+      } catch (error) {
+        if (!active) return;
+        const msg =
+          error instanceof Error
+            ? error.message
+            : (error as { message?: string })?.message ?? JSON.stringify(error);
+        setErrorMsg(msg);
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    };
+
+    void loadOfficialDetail();
+
+    return () => { active = false; };
+  }, [user]);
+
+  const selectedWord = useMemo(
+    () => words.find((word) => word.id === selectedId) ?? null,
+    [selectedId, words],
+  );
+
+  if (isLoading) {
+    return <LibraryLoading message="正在整理官方词库" />;
+  }
+
+  if (errorMsg) {
+    return <LibraryError message={errorMsg} />;
+  }
+
+  return (
+    <>
+      <div className="w-full max-w-6xl mx-auto space-y-6">
+        <div>
+          <button
+            type="button"
+            onClick={() => navigate('/app/library')}
+            className="inline-flex items-center gap-2 rounded-full bg-white/78 px-4 py-2 text-sm font-bold text-text-secondary shadow-[0_10px_24px_rgba(0,0,0,0.05)] transition-colors hover:text-text-primary"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            词库 / 系统词库
+          </button>
+        </div>
+
+        <OfficialLibraryPanel
+          summary={summary}
+          onStartLearning={onStartLearningGroup ?? (() => undefined)}
+          onLibraryMutated={onLibraryMutated}
+          showOpenDetailAction={false}
+        />
+
+        {words.length === 0 ? (
+          <div className="glass rounded-[32px] p-12 text-center jelly-shadow">
+            <BookOpen className="mx-auto h-10 w-10 text-text-secondary/50" />
+            <p className="mt-4 text-2xl font-black text-text-primary">{OFFICIAL_LIBRARY_TITLE} 还没开始</p>
+            <p className="mt-3 text-sm leading-7 text-text-secondary">
+              点上面的继续学习，系统会从第一批开始把官方词汇发到这里。
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            {words.map((word, index) => (
+              <motion.button
+                key={word.id}
+                type="button"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.02 }}
+                onClick={() => setSelectedId(word.id)}
+                className="group rounded-[30px] border border-white/70 bg-white/78 p-5 text-left shadow-[0_14px_38px_rgba(0,0,0,0.05)] transition-all hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(0,0,0,0.08)]"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-2">
+                      <span className="rounded-full bg-black/5 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">
+                        {String(((getOfficialWordPosition(word.word) === Number.MAX_SAFE_INTEGER)
+                          ? index
+                          : getOfficialWordPosition(word.word)) + 1).padStart(4, '0')}
+                      </span>
+                      <h3 className="text-3xl font-black tracking-tight text-text-primary">{word.word}</h3>
+                      <span className="text-sm font-mono text-apple-blue">{word.phonetic || '暂无音标'}</span>
+                    </div>
+                    <p className="mt-3 text-lg text-text-primary/92">{word.meaning || '暂无释义'}</p>
+                  </div>
+                  <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest ${memoryStateStyle[word.memoryState]}`}>
+                    {memoryStateLabel[word.memoryState]}
+                  </span>
+                </div>
+
+                <div className="mt-6 flex items-center justify-between gap-4 text-sm text-text-secondary">
+                  <span>{word.posTags.slice(0, 2).join(' · ') || '暂无词性'}</span>
+                  <span>{formatDateTime(word.nextReviewAt)}</span>
+                </div>
+              </motion.button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {selectedWord && (
+          <WordDetailDrawer
+            word={selectedWord}
+            onClose={() => setSelectedId(null)}
           />
         )}
       </AnimatePresence>
@@ -889,6 +1105,10 @@ export const LibraryGroupDetailView = ({
   }
 
   const isSystemGroup = group.sourceType === 'system';
+  if (isSystemGroup) {
+    return <Navigate to="/app/library/official" replace />;
+  }
+
   const groupSectionLabel = isSystemGroup ? '系统词库' : '个人词库';
   const groupHelperLabel = isSystemGroup ? '官方词库' : '自己导入';
 
@@ -964,7 +1184,7 @@ export const LibraryGroupDetailView = ({
                 </>
               ) : (
                 <>
-                  {isSystemGroup ? '学习这一批词汇' : '学习这组词汇'}
+                  继续学习
                   <ChevronRight className="h-4 w-4" />
                 </>
               )}

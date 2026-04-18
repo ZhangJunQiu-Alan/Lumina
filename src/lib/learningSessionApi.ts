@@ -5,6 +5,7 @@ import type {
   Word,
 } from '../types';
 import { supabase } from './supabase';
+import { resolveLibraryGroupSourceType } from './officialLibrary';
 import {
   clampSessionIndex,
   createResumeCandidate,
@@ -16,6 +17,7 @@ import {
 interface LearningGroupSessionRow {
   id: string;
   group_name: string | null;
+  source_type: 'custom' | 'system' | null;
   created_at: string;
   status: 'active' | 'completed' | null;
   session_round: LearningRoundType | null;
@@ -27,6 +29,7 @@ interface LearningGroupSessionRow {
 interface LearningGroupBaseRow {
   id: string;
   group_name: string | null;
+  source_type: 'custom' | 'system' | null;
   created_at: string;
   status: 'active' | 'completed' | null;
 }
@@ -157,6 +160,14 @@ function toResumeCandidate(row: LearningGroupLookupRow): ResumeCandidate | null 
   });
 }
 
+function isResumeCandidateForSource(
+  row: Pick<LearningGroupSessionRow, 'source_type' | 'group_name'>,
+  sourceType: 'custom' | 'system' | undefined,
+) {
+  if (!sourceType) return true;
+  return resolveLibraryGroupSourceType(row.source_type, row.group_name) === sourceType;
+}
+
 async function fetchLearningGroupRow(
   userId: string,
   groupId: string,
@@ -166,6 +177,7 @@ async function fetchLearningGroupRow(
     .select(`
       id,
       group_name,
+      source_type,
       created_at,
       status,
       session_round,
@@ -190,6 +202,7 @@ async function fetchLearningGroupRow(
     .select(`
       id,
       group_name,
+      source_type,
       created_at,
       status
     `)
@@ -204,12 +217,16 @@ async function fetchLearningGroupRow(
   return (fallbackResult.data as LearningGroupBaseRow | null) ?? null;
 }
 
-export async function fetchResumeCandidate(userId: string): Promise<ResumeCandidate | null> {
+async function fetchResumeCandidateBySource(
+  userId: string,
+  sourceType?: 'custom' | 'system',
+): Promise<ResumeCandidate | null> {
   const { data, error } = await supabase
     .from('learning_groups')
     .select(`
       id,
       group_name,
+      source_type,
       created_at,
       status,
       session_round,
@@ -221,9 +238,7 @@ export async function fetchResumeCandidate(userId: string): Promise<ResumeCandid
     .neq('status', 'completed')
     .not('session_round', 'is', null)
     .order('session_last_active_at', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .order('created_at', { ascending: false });
 
   if (error) {
     if (isMissingLearningSessionColumnError(error)) {
@@ -232,11 +247,17 @@ export async function fetchResumeCandidate(userId: string): Promise<ResumeCandid
     throw new Error(`resume candidate lookup failed: ${error.message}`);
   }
 
-  if (!data) {
-    return null;
-  }
+  const rows = ((data ?? []) as LearningGroupSessionRow[]);
+  const match = rows.find((row) => isResumeCandidateForSource(row, sourceType));
+  return match ? toResumeCandidate(match) : null;
+}
 
-  return toResumeCandidate(data as LearningGroupSessionRow);
+export async function fetchResumeCandidate(userId: string): Promise<ResumeCandidate | null> {
+  return fetchResumeCandidateBySource(userId);
+}
+
+export async function fetchOfficialResumeCandidate(userId: string): Promise<ResumeCandidate | null> {
+  return fetchResumeCandidateBySource(userId, 'system');
 }
 
 export async function fetchLearningGroupSession(
