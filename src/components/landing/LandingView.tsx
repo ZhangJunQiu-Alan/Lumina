@@ -7,7 +7,7 @@ import {
   History,
   Sparkles,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { isGoogleAuthEnabled } from '../../lib/authFeatures';
 
@@ -172,6 +172,21 @@ export const LandingView = () => {
                 </div>
               </div>
             </div>
+
+            <p className="mt-6 text-xs leading-6 text-text-secondary">
+              继续使用即表示你同意
+              {' '}
+              <Link to="/terms" className="font-bold text-text-primary underline decoration-black/20 underline-offset-4">
+                服务条款
+              </Link>
+              {' '}
+              和
+              {' '}
+              <Link to="/privacy" className="font-bold text-text-primary underline decoration-black/20 underline-offset-4">
+                隐私政策
+              </Link>
+              。
+            </p>
           </div>
         </section>
       </div>

@@ -164,3 +164,50 @@ For a split deployment with Cloudflare Pages + Railway:
     - `APP_ORIGIN=https://primoria-english.pages.dev`
 
 Cloudflare Pages SPA routing is handled by [`public/_redirects`](/Users/zhangjunqiu/Desktop/Primoria_English/public/_redirects:1), and Supabase Auth should include your Pages domain plus `/auth` as an allowed redirect URL.
+
+### Google Login Go-Live Checklist
+
+If you want any Google user to sign in on the production site, the app needs all of the following aligned at the same time:
+
+1. Configure Google as a Supabase provider
+   - In Supabase Dashboard → `Authentication` → `Providers` → `Google`, turn Google on.
+   - Copy the callback URL shown there. For hosted Supabase projects it will be your project callback under `/auth/v1/callback`.
+   - Paste your Google OAuth `Client ID` and `Client Secret` into the same Supabase provider form.
+
+2. Create the correct Google OAuth client
+   - In Google Cloud, create an OAuth client of type `Web application`.
+   - Under `Authorized JavaScript origins`, add:
+     - `https://primoria-english.pages.dev`
+     - `http://localhost:3000`
+     - your custom production domain if you use one
+   - Under `Authorized redirect URIs`, add the exact Supabase callback URL copied from the Supabase Google provider page.
+   - The redirect URI must match exactly, including scheme, host, path, and trailing slash behavior.
+
+3. Configure Supabase Auth URL settings
+   - In Supabase Dashboard → `Authentication` → `URL Configuration`, set `Site URL` to your production frontend origin.
+   - Add these redirect URLs at minimum:
+     - `https://primoria-english.pages.dev/auth`
+     - `http://localhost:3000/auth`
+     - any preview or custom domain auth callback you actually use
+   - This repo sends Google users back to `/auth`, so `/auth` must be present in Supabase redirect allow lists.
+
+4. Turn the frontend switch on
+   - This codebase hides the Google button unless `VITE_GOOGLE_AUTH_ENABLED=true`.
+   - For the Cloudflare Pages GitHub Actions deploy, set the repository variable `VITE_GOOGLE_AUTH_ENABLED=true` in GitHub → `Settings` → `Secrets and variables` → `Actions` → `Variables`.
+   - The CI workflow intentionally builds with `VITE_GOOGLE_AUTH_ENABLED=false`, but the production Pages workflow reads the repository variable above.
+
+5. Keep backend origin aligned
+   - Railway must expose `APP_ORIGIN` with the exact frontend origin, for example `https://primoria-english.pages.dev`.
+   - If `APP_ORIGIN` does not match the browser origin, authenticated API calls will fail CORS even if Google login itself succeeds.
+
+6. Publish the Google app for public users
+   - If the Google OAuth app is only for your own Workspace, mark it internal-only.
+   - If anyone with a Google account should be able to log in, configure the app for external users and move the publishing status to `In production`.
+   - If you later request sensitive or restricted Google scopes, verification and user-cap rules will apply before broad public rollout.
+
+7. Add public policy pages on the site
+   - This repo now exposes:
+     - `/privacy`
+     - `/terms`
+   - Link these pages from your production homepage and auth flow, and keep their contents aligned with your actual data handling.
+   - If you plan to submit for Google verification or brand review, a custom domain is strongly recommended over relying only on a temporary deployment hostname.

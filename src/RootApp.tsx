@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import App from './App';
 import { AuthView } from './components/auth/AuthView';
 import { LandingView } from './components/landing/LandingView';
+import { PrivacyView, TermsView } from './components/legal/LegalView';
 import { useAuth } from './contexts/AuthContext';
 
 function FullscreenLoader({ message }: { message: string }) {
@@ -66,6 +67,8 @@ export default function RootApp() {
     <Routes>
       <Route path="/" element={<LandingView />} />
       <Route path="/auth" element={<PublicOnlyAuthRoute />} />
+      <Route path="/privacy" element={<PrivacyView />} />
+      <Route path="/terms" element={<TermsView />} />
       <Route
         path="/app/*"
         element={(

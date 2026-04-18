@@ -11,7 +11,7 @@ import {
   Sparkles,
   UserRound,
 } from 'lucide-react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { isGoogleAuthEnabled } from '../../lib/authFeatures';
 
@@ -35,6 +35,34 @@ function safeNextPath(searchParams: URLSearchParams) {
   const next = searchParams.get('next');
   if (!next || !next.startsWith('/app/')) return '/app/home';
   return next;
+}
+
+function normalizeOAuthError(message: string) {
+  const normalized = message.trim();
+
+  if (!normalized) return null;
+  if (normalized.includes('redirect_uri_mismatch')) {
+    return 'Google 回调地址不匹配。请检查 Google Cloud OAuth Client 的 Authorized redirect URIs，并确认其中包含 Supabase 提供的 callback URL。';
+  }
+  if (normalized.includes('provider is not enabled')) {
+    return 'Supabase 的 Google provider 还没有启用。请先在 Authentication > Providers > Google 中填好 Client ID / Secret 并打开开关。';
+  }
+  if (normalized.includes('access_denied')) {
+    return 'Google 授权被拒绝，或当前账号暂时没有权限使用这个应用。';
+  }
+
+  return normalized;
+}
+
+function readOAuthError(search: string, hash: string) {
+  const searchParams = new URLSearchParams(search);
+  const hashParams = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+  const rawMessage = searchParams.get('error_description')
+    ?? searchParams.get('error')
+    ?? hashParams.get('error_description')
+    ?? hashParams.get('error');
+
+  return rawMessage ? normalizeOAuthError(rawMessage) : null;
 }
 
 function AuthField({
@@ -77,7 +105,7 @@ function AuthField({
 
 export const AuthView = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const location = useLocation();
   const {
     isAuthenticated,
     isAuthLoading,
@@ -94,7 +122,9 @@ export const AuthView = () => {
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
 
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const nextPath = useMemo(() => safeNextPath(searchParams), [searchParams]);
+  const oauthError = useMemo(() => readOAuthError(location.search, location.hash), [location.hash, location.search]);
   const insightCards = useMemo(() => [
     {
       title: '先登录，再继续。',
@@ -120,6 +150,17 @@ export const AuthView = () => {
       setMode(nextMode);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!oauthError) return;
+
+    setFeedback((current) => {
+      if (current?.type === 'error' && current.text === oauthError) {
+        return current;
+      }
+      return { type: 'error', text: oauthError };
+    });
+  }, [oauthError]);
 
   useEffect(() => {
     if (!isAuthLoading && isAuthenticated) {
@@ -406,6 +447,21 @@ export const AuthView = () => {
               >
                 回到首页
               </button>
+
+              <p className="mt-5 text-center text-xs leading-6 text-text-secondary">
+                继续使用即表示你同意
+                {' '}
+                <Link to="/terms" className="font-bold text-text-primary underline decoration-black/20 underline-offset-4">
+                  服务条款
+                </Link>
+                {' '}
+                和
+                {' '}
+                <Link to="/privacy" className="font-bold text-text-primary underline decoration-black/20 underline-offset-4">
+                  隐私政策
+                </Link>
+                。
+              </p>
             </motion.div>
           </AnimatePresence>
         </motion.section>
