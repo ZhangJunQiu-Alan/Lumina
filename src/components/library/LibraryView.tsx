@@ -35,10 +35,14 @@ import {
 import {
   getCachedLibraryGroupDetail,
   getCachedLibraryGroups,
+  getCachedOfficialLibraryDetail,
+  getCachedOfficialResumeCandidates,
   isLibraryCacheFresh,
   removeLibraryGroupFromCache,
   refreshLibraryGroupDetail,
   refreshLibraryGroups,
+  refreshOfficialLibraryDetail,
+  refreshOfficialResumeCandidates,
   type LibraryGroupDetailCacheData,
 } from '../../lib/libraryCache';
 import { deleteLibraryGroup } from '../../lib/libraryApi';
@@ -1001,7 +1005,6 @@ export const LibraryView = ({
 
   useEffect(() => {
     let active = true;
-    const cachedGroups = user ? getCachedLibraryGroups(user.id) : null;
 
     if (!user) {
       setGroups([]);
@@ -1015,21 +1018,37 @@ export const LibraryView = ({
       return () => { active = false; };
     }
 
+    const cachedGroups = getCachedLibraryGroups(user.id);
+    const cachedResume = getCachedOfficialResumeCandidates(user.id);
+
     if (cachedGroups) {
       setGroups(cachedGroups.data);
       setErrorMsg('');
     }
+    if (cachedResume) {
+      setOfficialResumeCandidates(cachedResume.data);
+    }
 
-    const loadGroups = async () => {
+    const groupsFresh = cachedGroups && isLibraryCacheFresh(cachedGroups);
+    const resumeFresh = cachedResume && isLibraryCacheFresh(cachedResume);
+
+    if (groupsFresh && resumeFresh) {
+      setIsLoading(false);
+      return () => { active = false; };
+    }
+
+    if (!cachedGroups || !cachedResume) {
       setIsLoading(true);
-      setErrorMsg('');
+    }
 
-      const shouldRefreshGroups = !cachedGroups || !isLibraryCacheFresh(cachedGroups);
-      const [groupsResult, officialResumeResult] = await Promise.allSettled([
-        shouldRefreshGroups
-          ? refreshLibraryGroups(user.id, () => fetchLibraryGroupSummaries(user.id))
-          : Promise.resolve(cachedGroups.data),
-        fetchOfficialResumeCandidates(user.id),
+    const run = async () => {
+      const [groupsResult, resumeResult] = await Promise.allSettled([
+        groupsFresh
+          ? Promise.resolve(cachedGroups!.data)
+          : refreshLibraryGroups(user.id, () => fetchLibraryGroupSummaries(user.id)),
+        resumeFresh
+          ? Promise.resolve(cachedResume!.data)
+          : refreshOfficialResumeCandidates(user.id, () => fetchOfficialResumeCandidates(user.id)),
       ]);
 
       if (!active) return;
@@ -1048,26 +1067,28 @@ export const LibraryView = ({
         }
       }
 
-      if (officialResumeResult.status === 'fulfilled') {
-        setOfficialResumeCandidates(officialResumeResult.value);
+      if (resumeResult.status === 'fulfilled') {
+        setOfficialResumeCandidates(resumeResult.value);
       } else {
         const msg =
-          officialResumeResult.reason instanceof Error
-            ? officialResumeResult.reason.message
-            : (officialResumeResult.reason as { message?: string })?.message ?? JSON.stringify(officialResumeResult.reason);
+          resumeResult.reason instanceof Error
+            ? resumeResult.reason.message
+            : (resumeResult.reason as { message?: string })?.message ?? JSON.stringify(resumeResult.reason);
         console.error('official resume lookup failed:', msg);
-        setErrorMsg((current) => current || msg);
-        setOfficialResumeCandidates(
-          Object.fromEntries(
-            OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [definition.id, null]),
-          ) as Record<OfficialLibraryId, ResumeCandidate | null>,
-        );
+        if (!cachedResume) {
+          setErrorMsg((current) => current || msg);
+          setOfficialResumeCandidates(
+            Object.fromEntries(
+              OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [definition.id, null]),
+            ) as Record<OfficialLibraryId, ResumeCandidate | null>,
+          );
+        }
       }
 
       setIsLoading(false);
     };
 
-    void loadGroups();
+    void run();
 
     return () => { active = false; };
   }, [user]);
@@ -1244,21 +1265,43 @@ export const OfficialLibraryDetailView = ({
       return () => { active = false; };
     }
 
+    const cached = getCachedOfficialLibraryDetail(user.id, libraryId);
+    if (cached) {
+      setSummary(cached.data.summary);
+      setWords(cached.data.words);
+      setErrorMsg('');
+      setIsLoading(false);
+    } else {
+      setIsLoading(true);
+      setErrorMsg('');
+    }
+
+    if (cached && isLibraryCacheFresh(cached)) {
+      return () => { active = false; };
+    }
+
     const loadOfficialDetail = async () => {
       try {
-        setIsLoading(true);
-        setErrorMsg('');
-        const detail = await fetchOfficialLibraryDetail(user.id, libraryId);
+        const detail = await refreshOfficialLibraryDetail(
+          user.id,
+          libraryId,
+          () => fetchOfficialLibraryDetail(user.id, libraryId),
+        );
         if (!active) return;
         setSummary(detail.summary);
         setWords(detail.words);
+        setErrorMsg('');
       } catch (error) {
         if (!active) return;
         const msg =
           error instanceof Error
             ? error.message
             : (error as { message?: string })?.message ?? JSON.stringify(error);
-        setErrorMsg(msg);
+        if (!cached) {
+          setErrorMsg(msg);
+        } else {
+          console.error(`official library detail refresh failed for ${libraryId}:`, msg);
+        }
       } finally {
         if (active) setIsLoading(false);
       }

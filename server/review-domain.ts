@@ -35,20 +35,29 @@ export function resolveRound2State(previousState: MemoryState, result: ReviewRes
   return result === 'slow_correct' ? 'slow_recall' : 'stable_recall';
 }
 
-export function resolveReviewState(previousState: MemoryState, result: ReviewResultType): MemoryState {
+export function resolveReviewState(
+  previousState: MemoryState,
+  result: ReviewResultType,
+  totalSuccesses: number,
+): MemoryState {
   if (previousState === 'mastered') return 'mastered';
-  if (result === 'wrong') return 'fuzzy';
-  if (result === 'slow_correct') return 'slow_recall';
 
+  // Progression: new -> fuzzy -> slow_recall -> stable_recall -> mastered
   switch (previousState) {
+    case 'new':
+      return 'fuzzy';
     case 'fuzzy':
       return 'slow_recall';
     case 'slow_recall':
       return 'stable_recall';
     case 'stable_recall':
-      return 'mastered';
+      // Only graduate if total successes (including this attempt if correct) is >= 3
+      if (totalSuccesses >= 3) {
+        return 'mastered';
+      }
+      return 'stable_recall';
     default:
-      return 'slow_recall';
+      return 'fuzzy';
   }
 }
 

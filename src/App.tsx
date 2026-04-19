@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Loader2,
   Volume2,
+  XCircle,
 } from 'lucide-react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -465,6 +466,7 @@ const LearningEngine = ({
   const [currentIndex, setCurrentIndex] = useState(initialEngineState.currentIndex);
   const [inputValue, setInputValue] = useState('');
   const [isWrong, setIsWrong] = useState(false);
+  const [lastWrongInput, setLastWrongInput] = useState<string | null>(null);
   const [showAnswer, setShowAnswer] = useState(false);
   const [isSubmittingAttempt, setIsSubmittingAttempt] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -715,6 +717,7 @@ const LearningEngine = ({
       setCurrentIndex(prev => prev + 1);
       setInputValue('');
       setIsWrong(false);
+      setLastWrongInput(null);
       setShowAnswer(false);
     } else {
       void onComplete();
@@ -755,7 +758,9 @@ const LearningEngine = ({
   }, [showAnswer, nextWord]);
 
   const validateCurrentInput = useCallback(async () => {
-    const wasCorrect = inputValue.trim().toLowerCase() === currentWord.word.toLowerCase();
+    const trimmedInput = inputValue.trim().toLowerCase();
+    const wasCorrect = trimmedInput === currentWord.word.toLowerCase();
+    
     const persisted = await persistAttempt(wasCorrect);
     if (!persisted) return;
 
@@ -765,19 +770,22 @@ const LearningEngine = ({
     }
 
     setIsWrong(true);
+    setLastWrongInput(inputValue);
+
     if (type === 'round2' || type === 'review') {
       const newQueue = [...queue];
       const insertAt = Math.min(currentIndex + Math.floor(Math.random() * 3) + 2, newQueue.length);
       newQueue.splice(insertAt, 0, currentWord);
       setQueue(newQueue);
-      // Clear input immediately so the wrong text doesn't linger during the reveal
+      
       setInputValue('');
-      setIsWrong(false);
       setShowAnswer(true);
       clearAnswerRevealTimeout();
       answerRevealTimeoutRef.current = setTimeout(() => {
         answerRevealTimeoutRef.current = null;
         setShowAnswer(false);
+        setIsWrong(false);
+        setLastWrongInput(null);
         nextWord();
       }, preferences.wrongAnswerRevealMs);
     }
@@ -859,12 +867,29 @@ const LearningEngine = ({
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 10 }}
-          className="mx-auto mt-6 w-fit max-w-full rounded-[22px] bg-[#10B981] px-5 py-4 text-left font-bold text-white shadow-[0_16px_36px_rgba(16,185,129,0.24)]"
+          className={cx(
+            'mx-auto mt-6 w-fit max-w-full rounded-[22px] px-5 py-4 text-left font-bold text-white shadow-xl',
+            isWrong ? 'bg-apple-red shadow-apple-red/20' : 'bg-[#10B981] shadow-[#10B981]/20',
+          )}
         >
-          <div className="flex items-start gap-3">
-            <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0" />
-            <div className="space-y-2">
-              <p className="text-sm font-black leading-6 md:text-base">{currentWord.word}</p>
+          <div className="flex items-start gap-4">
+            <div className="mt-1 flex-shrink-0">
+              {isWrong ? <XCircle className="h-6 w-6" /> : <CheckCircle2 className="h-6 w-6" />}
+            </div>
+            <div className="space-y-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-widest opacity-70">
+                  {isWrong ? '拼写错误 · 正确如下' : '拼写正确'}
+                </p>
+                <div className="mt-1 flex flex-wrap items-baseline gap-3">
+                  <p className="text-lg font-black leading-none md:text-xl">{currentWord.word}</p>
+                  {isWrong && lastWrongInput && (
+                    <p className="text-sm font-medium line-through opacity-60">
+                      你输入了: {lastWrongInput}
+                    </p>
+                  )}
+                </div>
+              </div>
               <div className="[&_p]:text-white [&_span]:bg-white/16 [&_span]:text-white/90">
                 <WordSenseList word={currentWord} compact />
               </div>

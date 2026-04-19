@@ -201,10 +201,23 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
   }
 
   const currentState = existing?.memory_state ?? 'new';
+  const shouldIncrementReviewCounters = input.source === 'review';
+
+  // Calculate new success count: previous successes + (1 if current is correct)
+  // Successes = review_count - lapse_count
+  const previousSuccesses = (existing?.review_count ?? 0) - (existing?.lapse_count ?? 0);
+  const totalSuccesses = previousSuccesses + (result !== 'wrong' ? 1 : 0);
+
   const nextState = input.source === 'round2'
     ? resolveRound2State(currentState, result)
-    : resolveReviewState(currentState, result);
-  const nextReviewAt = toNextReviewAt(nextState, now);
+    : resolveReviewState(currentState, result, totalSuccesses);
+
+  // If the user got it wrong during a review, keep it "due" for today (don't push to future).
+  // This allows the word to stay in the queue if the user exits the session midway.
+  const nextReviewAt = (input.source === 'review' && result === 'wrong')
+    ? (existing?.next_review_at ?? now.toISOString())
+    : toNextReviewAt(nextState, now);
+
   const graduated = nextState === 'mastered';
   const shouldIncrementReviewCounters = input.source === 'review';
 
