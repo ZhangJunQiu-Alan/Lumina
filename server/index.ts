@@ -126,8 +126,10 @@ app.post('/api/review/attempt', requireAuth, async (req: AuthenticatedRequest, r
     return res.status(400).json({ error: 'Missing required attempt fields' });
   }
 
+  const userId = req.authUserId!;
   try {
-    const result = await recordReviewAttempt(req.user.id, {
+    const result = await recordReviewAttempt({
+      userId,
       vocabularyItemId,
       learningGroupId,
       source,
@@ -137,19 +139,20 @@ app.post('/api/review/attempt', requireAuth, async (req: AuthenticatedRequest, r
     res.json({ data: result });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/review/attempt', e, { endpoint: '/api/review/attempt', user_id: req.user.id });
+    logger.error('API Error: /api/review/attempt', e, { endpoint: '/api/review/attempt', user_id: userId });
     res.status(500).json({ error: message });
   }
 });
 
 // GET /api/review/due
 app.get('/api/review/due', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.authUserId!;
   try {
-    const words = await fetchDueReviewWords(req.user.id);
+    const words = await fetchDueReviewWords(userId);
     res.json({ data: words });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/review/due', e, { endpoint: '/api/review/due', user_id: req.user.id });
+    logger.error('API Error: /api/review/due', e, { endpoint: '/api/review/due', user_id: userId });
     res.status(500).json({ error: message });
   }
 });
@@ -159,12 +162,13 @@ app.delete('/api/library/groups/:groupId', requireAuth, async (req: Authenticate
   const { groupId } = req.params;
   if (!groupId) return res.status(400).json({ error: 'Missing group ID' });
 
+  const userId = req.authUserId!;
   try {
-    await deleteLearningGroup(req.user.id, groupId);
+    await deleteLearningGroup(userId, groupId);
     res.json({ data: { success: true } });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error(`API Error: /api/library/groups/${groupId}`, e, { endpoint: `/api/library/groups/${groupId}`, user_id: req.user.id });
+    logger.error(`API Error: /api/library/groups/${groupId}`, e, { endpoint: `/api/library/groups/${groupId}`, user_id: userId });
     res.status(500).json({ error: message });
   }
 });
