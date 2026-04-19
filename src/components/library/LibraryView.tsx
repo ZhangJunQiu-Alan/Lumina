@@ -932,9 +932,7 @@ function LibraryGroupCard({
       <div className="relative">
         <div className="flex items-start justify-between gap-5">
           <div className="min-w-0">
-            <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">{kindLabel}</p>
-            <h4 className="mt-5 text-2xl font-black leading-tight text-text-primary">{group.title}</h4>
-            <p className="mt-3 text-sm text-text-secondary">{formatGroupDateLong(group.createdAt)}</p>
+            <h4 className="mt-2 text-2xl font-black leading-tight text-text-primary">{group.title}</h4>
           </div>
 
           <div className="flex flex-col items-end gap-3">
@@ -975,8 +973,7 @@ function LibraryGroupCard({
           </span>
         </div>
 
-        <div className="mt-8 flex items-center justify-between gap-4 text-sm">
-          <p className="text-text-secondary">{helperText}</p>
+        <div className="mt-8 flex items-center justify-end gap-4 text-sm">
           <div className="inline-flex items-center gap-1 font-bold text-text-primary">
             进去看看
             <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />

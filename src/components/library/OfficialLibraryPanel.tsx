@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { AlertCircle, ArrowRight, BookOpen, Loader2, Shuffle } from 'lucide-react';
+import { AlertCircle, ArrowRight, BookOpen, ListOrdered, Loader2, Shuffle } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import {
   createLearningGroupFromVocabularyEntries,
@@ -24,7 +24,6 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import type { EnrichedWord, OfficialLibrarySummary, Word } from '../../types';
 import { normalizeWordKey } from '../../../shared/wordBatch';
-import { LEARNING_ROUND_LABELS } from '../../lib/learningSession';
 
 type Stage = 'idle' | 'preparing' | 'resuming' | 'error';
 
@@ -58,19 +57,12 @@ export function OfficialLibraryPanel({
   const startMode = resolveOfficialLibraryStartMode(summary);
   const actionDisabled = startMode === 'completed';
   const resumeActive = startMode === 'resume';
-  const resumeCopy = summary.resumeCandidate
-    ? summary.resumeCandidate.round === 'article'
-      ? '文章巩固'
-      : `${LEARNING_ROUND_LABELS[summary.resumeCandidate.round]} · 第 ${summary.resumeCandidate.currentIndex + 1} 个词`
-    : null;
 
   const ctaLabel = actionDisabled
     ? '已学完'
     : resumeActive
       ? '继续学习'
-      : mode === 'shuffle'
-        ? '乱序学习下一批'
-        : '顺序学习下一批';
+      : '开始学习下一批';
 
   const resolveLearnedWords = async (userId: string): Promise<Set<string>> => {
     const cached = getCachedOfficialLearnedWords(userId, definition.id);
@@ -201,15 +193,6 @@ export function OfficialLibraryPanel({
                   </button>
                 )}
               </div>
-              <p className="mt-3 max-w-4xl text-sm leading-7 text-text-secondary">
-                {definition.description}
-              </p>
-              {resumeCopy && (
-                <div className="mt-4 inline-flex max-w-full items-center gap-2 rounded-full bg-white/84 px-4 py-2 text-sm font-bold text-text-primary shadow-[0_10px_24px_rgba(0,0,0,0.05)]">
-                  <span className="text-text-secondary">继续位置</span>
-                  <span>{resumeCopy}</span>
-                </div>
-              )}
             </div>
 
             <div
@@ -220,6 +203,7 @@ export function OfficialLibraryPanel({
               {(['sequential', 'shuffle'] as OfficialStudyMode[]).map((option) => {
                 const active = mode === option;
                 const label = option === 'shuffle' ? '乱序' : '顺序';
+                const Icon = option === 'shuffle' ? Shuffle : ListOrdered;
                 const hint = option === 'shuffle' ? '从未学过的词里随机抽 30 个' : '按书本顺序取下一批';
                 return (
                   <button
@@ -236,14 +220,14 @@ export function OfficialLibraryPanel({
                         : 'text-text-secondary hover:text-text-primary'
                     } ${(resumeActive || actionDisabled) ? 'cursor-not-allowed opacity-60' : ''}`}
                   >
-                    {option === 'shuffle' && <Shuffle className="h-3.5 w-3.5" />}
+                    <Icon className="h-3.5 w-3.5" />
                     {label}
                   </button>
                 );
               })}
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <div className={infoCardClassName}>
                 <p className="text-[11px] font-bold tracking-[0.2em] text-text-secondary">已学进度</p>
                 <p className="text-right text-xl font-black text-text-primary">
@@ -255,10 +239,6 @@ export function OfficialLibraryPanel({
                 <p className="text-right text-xl font-black text-text-primary">
                   {summary.nextBatchSize} 词
                 </p>
-              </div>
-              <div className={infoCardClassName}>
-                <p className="text-[11px] font-bold tracking-[0.2em] text-text-secondary">已纳入词库</p>
-                <p className="text-right text-xl font-black text-text-primary">{summary.unlockedWordCount} 词</p>
               </div>
               <button
                 type="button"
