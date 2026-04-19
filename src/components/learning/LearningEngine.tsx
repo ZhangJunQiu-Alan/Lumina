@@ -13,13 +13,15 @@ import { useLearningPreferences } from '../../contexts/LearningPreferencesContex
 import { apiFetch } from '../../lib/api';
 import { cancelBrowserSpeech, isBrowserSpeechSupported, speakTextViaBrowser } from '../../lib/browserSpeech';
 import { ExampleSentenceList } from '../shared/ExampleSentenceList';
-import { 
-  cx, 
-  PronunciationControls, 
-  RoundIndicator, 
-  SessionProgress, 
-  WordSenseList 
+import {
+  cx,
+  PronunciationControls,
+  RoundIndicator,
+  SessionProgress,
+  WordSenseList
 } from '../shared/LearningUI';
+import { buildClozePrompt } from '../../lib/cloze';
+import { Round2ClozePrompt } from './Round2ClozePrompt';
 
 // --- Sub-components for Round 1 ---
 
@@ -304,6 +306,13 @@ export const LearningEngine = ({
   useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
 
   const currentWord = queue[currentIndex];
+  const clozePrompt = useMemo(() => {
+    if (type !== 'round2' || !currentWord) return null;
+    return buildClozePrompt({ word: currentWord.word, senses: currentWord.senses });
+  }, [currentWord, type]);
+  const expectedInput = clozePrompt
+    ? clozePrompt.expectedForm
+    : currentWord?.word.toLowerCase() ?? '';
   const roundSource = type === 'review' ? 'review' : type === 'round2' ? 'round2' : null;
   const activePronunciationLocale = playbackTarget?.kind === 'pronunciation'
     ? playbackTarget.locale
@@ -576,7 +585,7 @@ export const LearningEngine = ({
 
   const validateCurrentInput = useCallback(async () => {
     const trimmedInput = inputValue.trim().toLowerCase();
-    const wasCorrect = trimmedInput === currentWord.word.toLowerCase();
+    const wasCorrect = trimmedInput === expectedInput;
     
     const persisted = await persistAttempt(wasCorrect);
     if (!persisted) return;
@@ -606,7 +615,7 @@ export const LearningEngine = ({
         nextWord();
       }, preferences.wrongAnswerRevealMs);
     }
-  }, [clearAnswerRevealTimeout, currentIndex, currentWord, inputValue, nextWord, persistAttempt, preferences.wrongAnswerRevealMs, queue, type]);
+  }, [clearAnswerRevealTimeout, currentIndex, currentWord, expectedInput, inputValue, nextWord, persistAttempt, preferences.wrongAnswerRevealMs, queue, type]);
 
   useEffect(() => {
     if (type !== 'round3') return;
@@ -644,7 +653,7 @@ export const LearningEngine = ({
     );
   }
 
-  const isCorrect = inputValue.trim().toLowerCase() === currentWord.word.toLowerCase();
+  const isCorrect = inputValue.trim().toLowerCase() === expectedInput;
   const primaryPos = currentWord.pos_tags[0] ?? '未标注';
   const actionDisabled = isSubmittingAttempt || ((type === 'round2' || type === 'review') && showAnswer);
   const actionLabel = (type === 'round2' || type === 'review') && showAnswer
@@ -671,7 +680,7 @@ export const LearningEngine = ({
           autoComplete="off"
           autoCorrect="off"
           spellCheck="false"
-          placeholder={type === 'round1' ? '拼写这个单词' : '输入英文拼写'}
+          placeholder={type === 'round1' ? '拼写这个单词' : clozePrompt ? '填入正确词形' : '输入英文拼写'}
         />
       </div>
     </form>
@@ -699,7 +708,12 @@ export const LearningEngine = ({
                   {isWrong ? '拼写错误 · 正确如下' : '拼写正确'}
                 </p>
                 <div className="mt-1 flex flex-wrap items-baseline gap-3">
-                  <p className="text-lg font-black leading-none md:text-xl">{currentWord.word}</p>
+                  <p className="text-lg font-black leading-none md:text-xl">
+                    {clozePrompt ? clozePrompt.expectedForm : currentWord.word}
+                  </p>
+                  {clozePrompt && clozePrompt.expectedForm !== clozePrompt.baseForm && (
+                    <p className="text-xs font-medium opacity-70">原型 · {clozePrompt.baseForm}</p>
+                  )}
                   {isWrong && lastWrongInput && (
                     <p className="text-sm font-medium line-through opacity-60">
                       你输入了: {lastWrongInput}
@@ -897,19 +911,23 @@ export const LearningEngine = ({
             </div>
           ) : (
             <div className="flex h-full flex-col justify-center text-center">
-              <div className="mx-auto max-w-3xl">
-                <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary">
-                  {type === 'review' ? '今日到期复习' : '主动回忆拼写'}
-                </p>
-                <p className="mt-5 text-4xl font-black leading-tight text-text-primary md:text-5xl">
-                  {currentWord.chinese_definition}
-                </p>
-                <div className="mt-4 flex items-center justify-center gap-3">
-                  <span className="rounded-full bg-black/5 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">
-                    {primaryPos}
-                  </span>
+              {clozePrompt ? (
+                <Round2ClozePrompt prompt={clozePrompt} />
+              ) : (
+                <div className="mx-auto max-w-3xl">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary">
+                    {type === 'review' ? '今日到期复习' : '主动回忆拼写'}
+                  </p>
+                  <p className="mt-5 text-4xl font-black leading-tight text-text-primary md:text-5xl">
+                    {currentWord.chinese_definition}
+                  </p>
+                  <div className="mt-4 flex items-center justify-center gap-3">
+                    <span className="rounded-full bg-black/5 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">
+                      {primaryPos}
+                    </span>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="mx-auto mt-8 w-full max-w-3xl space-y-5">
                 {inputField}
