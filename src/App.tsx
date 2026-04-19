@@ -3,22 +3,17 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   AlertCircle,
-  BookOpen,
   CheckCircle2,
-  ChevronRight,
   Loader2,
-  Volume2,
-  XCircle,
 } from 'lucide-react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
   LearningRoundType,
   PersistedLearningSession,
-  PronunciationLocale,
   ReviewAttemptSource,
   ReviewSummaryItem,
   RoundType,
@@ -26,25 +21,9 @@ import {
   Word,
 } from './types';
 import { Sidebar } from './components/layout/Sidebar';
-import { ExampleSentenceList } from './components/shared/ExampleSentenceList';
-import { HomeView } from './components/home/HomeView';
-import { ImportView } from './components/import/ImportView';
 import { supabase } from './lib/supabase';
-import {
-  cancelBrowserSpeech,
-  isBrowserSpeechSupported,
-  speakTextViaBrowser,
-} from './lib/browserSpeech';
 import { fetchDueReviewWords, submitReviewAttempt } from './lib/reviewApi';
-import {
-  LibraryGroupDetailView,
-  LibraryView,
-  OfficialLibraryDetailView,
-} from './components/library/LibraryView';
-import { ReviewResultsView } from './components/review/ReviewResultsView';
-import { SettingsView } from './components/settings/SettingsView';
 import { useAuth } from './contexts/AuthContext';
-import { useLearningPreferences } from './contexts/LearningPreferencesContext';
 import { apiFetch } from './lib/api';
 import { invalidateLibraryCache } from './lib/libraryCache';
 import { createInitialLearningSession } from './lib/learningSession';
@@ -56,1095 +35,38 @@ import {
   persistLearningGroupSession,
   upsertGeneratedArticle,
 } from './lib/learningSessionApi';
+import { cx } from './components/shared/LearningUI';
+import { LibrarySkeleton } from './components/shared/Skeleton';
+import { useDeferredLoading } from './hooks/useDeferredLoading';
 
-// --- Learning sub-components (to be extracted in later sessions) ---
+// --- Lazy loaded views ---
+const HomeView = lazy(() => import('./components/home/HomeView').then(m => ({ default: m.HomeView })));
+const ImportView = lazy(() => import('./components/import/ImportView').then(m => ({ default: m.ImportView })));
+const LibraryView = lazy(() => import('./components/library/LibraryView').then(m => ({ default: m.LibraryView })));
+const OfficialLibraryDetailView = lazy(() => import('./components/library/LibraryView').then(m => ({ default: m.OfficialLibraryDetailView })));
+const LibraryGroupDetailView = lazy(() => import('./components/library/LibraryView').then(m => ({ default: m.LibraryGroupDetailView })));
+const ReviewResultsView = lazy(() => import('./components/review/ReviewResultsView').then(m => ({ default: m.ReviewResultsView })));
+const SettingsView = lazy(() => import('./components/settings/SettingsView').then(m => ({ default: m.SettingsView })));
 
-function cx(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(' ');
-}
+// --- Core Learning Components (Extracted) ---
+const LearningEngine = lazy(() => import('./components/learning/LearningEngine').then(m => ({ default: m.LearningEngine })));
+const ArticleView = lazy(() => import('./components/learning/ArticleView').then(m => ({ default: m.ArticleView })));
 
-// Plain helper — NOT a React component — avoids remount on every LearningEngine render
-function renderProgressBar(currentIndex: number, queueLength: number) {
+const LoadingShell = ({ children, isSkeleton = false }: { children: React.ReactNode, isSkeleton?: boolean }) => {
+  const shouldShow = useDeferredLoading(true, 300);
+  if (!shouldShow) return null;
   return (
-    <div className="mt-auto w-full max-w-3xl flex justify-between items-center px-4 pb-12">
-      <div className="text-xs font-bold text-text-secondary uppercase tracking-widest">
-        第 {currentIndex + 1} / {queueLength} 个词
-      </div>
-      <div className="flex gap-1">
-        {Array.from({ length: queueLength }, (_, i) => (
-          <div
-            key={i}
-            className={`h-1 rounded-full transition-all ${
-              i === currentIndex ? 'w-8 bg-apple-blue'
-              : i < currentIndex ? 'w-2 bg-apple-blue/30'
-              : 'w-2 bg-black/5'
-            }`}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-type PlaybackTarget =
-  | { kind: 'pronunciation'; locale: PronunciationLocale }
-  | { kind: 'example'; key: string };
-
-function getDisplaySenses(word: Word) {
-  const grouped = new Map<string, string[]>();
-
-  for (const sense of word.senses) {
-    const pos = sense.pos.trim() || '未标注';
-    const meaning = sense.meaning_zh.trim();
-
-    if (!meaning) continue;
-
-    const bucket = grouped.get(pos) ?? [];
-    if (!bucket.includes(meaning)) {
-      bucket.push(meaning);
-    }
-    grouped.set(pos, bucket);
-  }
-
-  if (grouped.size > 0) {
-    return Array.from(grouped.entries()).map(([pos, meanings]) => ({
-      pos,
-      meaning: meanings.join('；'),
-    }));
-  }
-
-  return [{
-    pos: word.pos_tags[0] ?? '未标注',
-    meaning: word.chinese_definition || '暂无释义',
-  }];
-}
-
-const WordSenseList = ({
-  word,
-  centered = false,
-  compact = false,
-}: {
-  word: Word;
-  centered?: boolean;
-  compact?: boolean;
-}) => {
-  const senses = getDisplaySenses(word);
-
-  return (
-    <div className={cx('space-y-3', centered && 'flex flex-col items-center')}>
-      {senses.map((sense, index) => (
-        <div
-          key={`${word.id}-sense-${sense.pos}-${index}`}
-          className={cx('flex flex-wrap items-start gap-3', centered && 'justify-center')}
-        >
-          <span className="rounded-full bg-black/5 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">
-            {sense.pos}
-          </span>
-          <p
-            className={cx(
-              'min-w-0 text-text-primary',
-              compact
-                ? 'flex-1 text-sm font-bold leading-6'
-                : 'flex-1 text-[1.15rem] font-black leading-snug md:text-[1.45rem]',
-              centered && 'text-center',
-            )}
-          >
-            {sense.meaning}
-          </p>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-const RoundIndicator = ({ type, className }: { type: RoundType; className?: string }) => {
-  const labels: Record<RoundType, string> = {
-    review: '今日复习',
-    round1: '第一轮：明示拼写',
-    round2: '第二轮：主动回忆',
-    round3: '第三轮：快速识别',
-    article: '文章巩固',
-  };
-  const colors: Record<RoundType, string> = {
-    review: 'bg-apple-red',
-    round1: 'bg-apple-indigo',
-    round2: 'bg-apple-blue',
-    round3: 'bg-apple-teal',
-    article: 'bg-apple-green',
-  };
-  return (
-    <div className={cx('flex items-center gap-3', className)}>
-      <div className={`px-4 py-1.5 ${colors[type]} text-white text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg`}>
-        {labels[type]}
-      </div>
-      <div className="h-px flex-1 bg-black/5" />
-    </div>
-  );
-};
-
-const SessionProgress = ({
-  currentIndex,
-  queueLength,
-}: {
-  currentIndex: number;
-  queueLength: number;
-}) => (
-  <div className="flex items-baseline gap-3 rounded-full border border-white/70 bg-white/70 px-4 py-2 shadow-[0_14px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl">
-    <div className="text-sm font-black tracking-[0.16em] text-text-primary">
-      {String(currentIndex + 1).padStart(2, '0')} / {String(queueLength).padStart(2, '0')}
-    </div>
-    <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-text-secondary">
-      当前进度
-    </span>
-  </div>
-);
-
-const PronunciationControls = ({
-  phonetic,
-  audioLocale,
-  activePronunciationLocale,
-  onPlay,
-}: {
-  phonetic: string;
-  audioLocale: 'uk' | 'us';
-  activePronunciationLocale: PronunciationLocale | null;
-  onPlay: (locale: 'uk' | 'us') => void;
-}) => (
-  <div className="flex flex-wrap items-center gap-3">
-    <span className="rounded-2xl bg-apple-blue px-4 py-2 text-lg font-black tracking-tight text-white shadow-[0_12px_30px_rgba(0,122,255,0.18)]">
-      {phonetic || '暂无音标'}
-    </span>
-    {(['uk', 'us'] as const).map((loc) => (
-      <button
-        key={loc}
-        type="button"
-        onClick={() => onPlay(loc)}
-        className={cx(
-          'flex items-center gap-1.5 rounded-2xl px-3 py-2 text-xs font-black tracking-wide transition-all',
-          audioLocale === loc
-            ? 'bg-apple-blue text-white shadow-[0_10px_24px_rgba(0,122,255,0.16)]'
-            : 'bg-apple-blue/10 text-apple-blue hover:bg-apple-blue/15',
-        )}
-      >
-        {activePronunciationLocale === loc
-          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          : <Volume2 className="h-3.5 w-3.5" />}
-        {loc.toUpperCase()}
-      </button>
-    ))}
-  </div>
-);
-
-const Round1MorphologyCard = ({ word }: { word: Word }) => (
-  <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
-    <p className="text-[14px] font-bold uppercase tracking-[0.24em] text-text-secondary">词根词缀 / 派生词</p>
-    <div className="mt-4 space-y-3">
-      {word.morphology.parts.length > 0 ? word.morphology.parts.map((part, index) => (
-        <div
-          key={`${word.id}-morphology-${index}`}
-          className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[18px] font-black text-text-primary">{part.text}</p>
-            <span className="rounded-full bg-black/5 px-2 py-0.5 text-[13px] font-bold uppercase tracking-[0.18em] text-text-secondary">
-              {part.kind}
-            </span>
-          </div>
-          {(part.meaningZh || part.noteZh) && (
-            <p className="mt-2 text-[16px] leading-[1.65] text-text-secondary">
-              {[part.meaningZh, part.noteZh].filter(Boolean).join(' · ')}
-            </p>
-          )}
-        </div>
-      )) : (
-        <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-[18px] leading-[1.75] text-text-secondary">
-          这个词暂时还没有可展示的构词拆解。
-        </div>
-      )}
-    </div>
-
-    <div className="mt-4">
-      <p className="text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">派生词</p>
-      <div className="mt-3 space-y-3">
-        {word.derivedWords.length > 0 ? word.derivedWords.map((item) => (
-          <div
-            key={`${word.id}-derived-${item.word}`}
-            className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
-          >
-            <p className="text-[18px] font-black text-text-primary">{item.word}</p>
-            {(item.meaningZh || item.noteZh) && (
-              <p className="mt-2 text-[16px] leading-[1.65] text-text-secondary">
-                {[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
-              </p>
-            )}
-          </div>
-        )) : (
-          <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-[18px] leading-[1.75] text-text-secondary">
-            这个词暂时还没有派生词提示。
-          </div>
-        )}
-      </div>
-    </div>
-  </section>
-);
-
-const Round1RelationsCard = ({ word }: { word: Word }) => (
-  <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
-    <div className="grid gap-4 sm:grid-cols-2">
-      <div>
-        <p className="text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">近义词</p>
-        <div className="mt-3 space-y-3">
-          {word.synonyms.length > 0 ? word.synonyms.map((item) => (
-            <div
-              key={`${word.id}-synonym-${item.word}`}
-              className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
-            >
-              <p className="text-[18px] font-black text-text-primary">{item.word}</p>
-              {(item.meaningZh || item.noteZh) && (
-                <p className="mt-2 text-[16px] leading-[1.65] text-text-secondary">
-                  {[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
-                </p>
-              )}
-            </div>
-          )) : (
-            <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-[18px] leading-[1.75] text-text-secondary">
-              这个词暂时还没有近义词提示。
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div>
-        <p className="text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">反义词</p>
-        <div className="mt-3 space-y-3">
-          {word.antonyms.length > 0 ? word.antonyms.map((item) => (
-            <div
-              key={`${word.id}-antonym-${item.word}`}
-              className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
-            >
-              <p className="text-[18px] font-black text-text-primary">{item.word}</p>
-              {(item.meaningZh || item.noteZh) && (
-                <p className="mt-2 text-[16px] leading-[1.65] text-text-secondary">
-                  {[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
-                </p>
-              )}
-            </div>
-          )) : (
-            <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-[18px] leading-[1.75] text-text-secondary">
-              这个词暂时还没有反义词提示。
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  </section>
-);
-
-const Round1ConfusingCard = ({
-  word,
-  activeExampleKey,
-  canPlayExampleAudio,
-  exampleLocale,
-  onPlayExample,
-}: {
-  word: Word;
-  activeExampleKey: string | null;
-  canPlayExampleAudio: boolean;
-  exampleLocale: PronunciationLocale;
-  onPlayExample: (sentence: string, key: string) => void;
-}) => (
-  <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
-    <p className="text-[14px] font-bold uppercase tracking-[0.24em] text-text-secondary">易混词义对比</p>
-    <div className="mt-4 space-y-5">
-      {word.confusingPairs.length > 0 ? (
-        <div className="space-y-3">
-          {word.confusingPairs.map((pair, index) => (
-            <div
-              key={`${word.id}-confusion-${pair.word}-${index}`}
-              className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
-            >
-              <p className="text-[24px] font-black tracking-tight text-text-primary">{pair.word}</p>
-              {pair.difference && (
-                <p className="mt-2 text-[18px] leading-[1.75] text-text-secondary">
-                  {pair.difference}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-[18px] leading-[1.75] text-text-secondary">
-          这个词当前没有需要特别提醒的易混词。
-        </p>
-      )}
-
-      <div className="border-t border-black/6 pt-5">
-        <p className="text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">例句</p>
-        <div className="mt-3">
-          <ExampleSentenceList
-            items={word.example_sentences.map((sentence, index) => ({
-              key: `${word.id}-example-${index}`,
-              sentence,
-            }))}
-            locale={exampleLocale}
-            activeExampleKey={activeExampleKey}
-            canPlayAudio={canPlayExampleAudio}
-            onPlayExample={({ sentence, key }) => { onPlayExample(sentence, key); }}
-            emptyMessage="这个词暂时还没有例句。"
-          />
-        </div>
-      </div>
-    </div>
-  </section>
-);
-
-const InputSessionShell = ({
-  type,
-  currentIndex,
-  queueLength,
-  main,
-}: {
-  type: RoundType;
-  currentIndex: number;
-  queueLength: number;
-  main: React.ReactNode;
-}) => (
-  <div className="input-session-shell mx-auto flex w-full max-w-[1400px] flex-col gap-4">
-    <header className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-      <RoundIndicator type={type} className="min-w-0 flex-1" />
-      <SessionProgress currentIndex={currentIndex} queueLength={queueLength} />
-    </header>
-
-    <div className="input-session-shell__body min-w-0">
-      {main}
-    </div>
-  </div>
-);
-
-const LearningEngine = ({
-  type,
-  words,
-  initialSession,
-  onComplete,
-  onAttempt,
-  onSessionChange,
-}: {
-  type: RoundType;
-  words: Word[];
-  initialSession?: PersistedLearningSession | null;
-  onComplete: () => void | Promise<void>;
-  onAttempt?: (params: {
-    word: Word;
-    source: ReviewAttemptSource;
-    wasCorrect: boolean;
-    elapsedMs: number;
-  }) => Promise<void>;
-  onSessionChange?: (session: {
-    round: LearningRoundType;
-    currentIndex: number;
-    queueWordIds: string[];
-  }) => void;
-}) => {
-  const { preferences } = useLearningPreferences();
-  const initialEngineState = useMemo(() => {
-    const hasMatchingSession = initialSession && initialSession.round === type;
-    const wordMap = new Map(words.map((word) => [word.id, word]));
-    const hydratedQueue = hasMatchingSession
-      ? initialSession.queueWordIds
-          .map((wordId) => wordMap.get(wordId))
-          .filter((word): word is Word => Boolean(word))
-      : [];
-    const queue = hydratedQueue.length > 0 ? hydratedQueue : [...words];
-    const currentIndex = hasMatchingSession
-      ? Math.min(Math.max(initialSession.currentIndex, 0), Math.max(queue.length - 1, 0))
-      : 0;
-
-    return { queue, currentIndex };
-  }, [initialSession, type, words]);
-
-  const [queue, setQueue] = useState<Word[]>(initialEngineState.queue);
-  const [currentIndex, setCurrentIndex] = useState(initialEngineState.currentIndex);
-  const [inputValue, setInputValue] = useState('');
-  const [isWrong, setIsWrong] = useState(false);
-  const [lastWrongInput, setLastWrongInput] = useState<string | null>(null);
-  const [showAnswer, setShowAnswer] = useState(false);
-  const [isSubmittingAttempt, setIsSubmittingAttempt] = useState(false);
-  const [submitError, setSubmitError] = useState('');
-  const [audioLocale, setAudioLocale] = useState<PronunciationLocale>(preferences.defaultPronunciationLocale);
-  const [playbackTarget, setPlaybackTarget] = useState<PlaybackTarget | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const promptStartedAtRef = useRef<number>(0);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const answerRevealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const audioGapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const playbackRunIdRef = useRef(0);
-  const canPlayExampleAudio = useMemo(() => isBrowserSpeechSupported(), []);
-
-  // Refs keep nextWord free of stale closures when called from setTimeout
-  const queueRef = useRef<Word[]>(initialEngineState.queue);
-  const currentIndexRef = useRef(initialEngineState.currentIndex);
-  useEffect(() => { queueRef.current = queue; }, [queue]);
-  useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
-
-  const currentWord = queue[currentIndex];
-  const roundSource = type === 'review' ? 'review' : type === 'round2' ? 'round2' : null;
-  const activePronunciationLocale = playbackTarget?.kind === 'pronunciation'
-    ? playbackTarget.locale
-    : null;
-  const activeExampleKey = playbackTarget?.kind === 'example'
-    ? playbackTarget.key
-    : null;
-
-  const clearAnswerRevealTimeout = useCallback(() => {
-    if (answerRevealTimeoutRef.current === null) return;
-    clearTimeout(answerRevealTimeoutRef.current);
-    answerRevealTimeoutRef.current = null;
-  }, []);
-
-  const stopPlayback = useCallback(() => {
-    playbackRunIdRef.current += 1;
-
-    if (audioGapTimeoutRef.current !== null) {
-      clearTimeout(audioGapTimeoutRef.current);
-      audioGapTimeoutRef.current = null;
-    }
-
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.onended = null;
-      audioRef.current.onerror = null;
-      audioRef.current = null;
-    }
-
-    cancelBrowserSpeech();
-    setPlaybackTarget(null);
-  }, []);
-
-  useEffect(() => {
-    clearAnswerRevealTimeout();
-    stopPlayback();
-    setQueue(initialEngineState.queue);
-    setCurrentIndex(initialEngineState.currentIndex);
-    setInputValue('');
-    setIsWrong(false);
-    setShowAnswer(false);
-    setIsSubmittingAttempt(false);
-    setSubmitError('');
-    queueRef.current = initialEngineState.queue;
-    currentIndexRef.current = initialEngineState.currentIndex;
-  }, [clearAnswerRevealTimeout, initialEngineState, stopPlayback, type, words]);
-
-  useEffect(() => () => {
-    clearAnswerRevealTimeout();
-    stopPlayback();
-  }, [clearAnswerRevealTimeout, stopPlayback]);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, [currentIndex]);
-
-  const speakViaBrowser = useCallback((
-    text: string,
-    locale: PronunciationLocale,
-    runId: number,
-    target: PlaybackTarget,
-  ) => {
-    if (!canPlayExampleAudio || runId !== playbackRunIdRef.current) {
-      return Promise.resolve(false);
-    }
-
-    setPlaybackTarget(target);
-
-    return speakTextViaBrowser(text, locale).finally(() => {
-      if (runId === playbackRunIdRef.current) {
-        setPlaybackTarget(null);
-      }
-    });
-  }, [canPlayExampleAudio]);
-
-  const resolveAudioUrl = useCallback(async (word: Word, locale: PronunciationLocale) => {
-    const cachedUrl = locale === 'uk' ? word.audio_uk_url : word.audio_us_url;
-    if (cachedUrl) return cachedUrl;
-
-    return apiFetch(`/api/audio/${encodeURIComponent(word.word)}?locale=${locale}`, {
-      requiresAuth: false,
-    })
-      .then((response) => response.ok ? response.json().then((payload: { data: string }) => payload.data) : null)
-      .catch(() => null);
-  }, []);
-
-  const waitForGap = useCallback((gapMs: number, runId: number) => (
-    new Promise<void>((resolve) => {
-      if (gapMs <= 0 || runId !== playbackRunIdRef.current) {
-        resolve();
-        return;
-      }
-
-      audioGapTimeoutRef.current = setTimeout(() => {
-        audioGapTimeoutRef.current = null;
-        resolve();
-      }, gapMs);
-    })
-  ), []);
-
-  const playAudioOnce = useCallback(async (word: Word, locale: PronunciationLocale, runId: number) => {
-    if (runId !== playbackRunIdRef.current) return;
-
-    const resolvedUrl = await resolveAudioUrl(word, locale);
-    const pronunciationTarget: PlaybackTarget = { kind: 'pronunciation', locale };
-    if (runId !== playbackRunIdRef.current) return;
-
-    if (!resolvedUrl) {
-      await speakViaBrowser(word.word, locale, runId, pronunciationTarget);
-      return;
-    }
-
-    setPlaybackTarget(pronunciationTarget);
-
-    await new Promise<void>((resolve) => {
-      const audio = new Audio(resolvedUrl);
-      let settled = false;
-
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        if (audioRef.current === audio) {
-          audioRef.current = null;
-        }
-        if (runId === playbackRunIdRef.current) {
-          setPlaybackTarget(null);
-        }
-        resolve();
-      };
-
-      const fallbackToSpeech = () => {
-        if (settled) return;
-        settled = true;
-        if (audioRef.current === audio) {
-          audioRef.current = null;
-        }
-        void speakViaBrowser(word.word, locale, runId, pronunciationTarget).then(() => resolve());
-      };
-
-      audioRef.current = audio;
-      audio.onended = finish;
-      audio.onerror = fallbackToSpeech;
-      audio.play().catch(fallbackToSpeech);
-    });
-  }, [resolveAudioUrl, speakViaBrowser]);
-
-  const playAudioSequence = useCallback(async (
-    word: Word,
-    locale: PronunciationLocale,
-    repeatCount: number,
-    gapMs: number,
-  ) => {
-    stopPlayback();
-    const runId = playbackRunIdRef.current;
-
-    for (let attempt = 0; attempt < repeatCount; attempt += 1) {
-      await playAudioOnce(word, locale, runId);
-
-      if (runId !== playbackRunIdRef.current) {
-        return;
-      }
-
-      if (attempt < repeatCount - 1) {
-        await waitForGap(gapMs, runId);
-      }
-    }
-  }, [playAudioOnce, stopPlayback, waitForGap]);
-
-  const playExampleSentence = useCallback(async (sentence: string, key: string) => {
-    if (!canPlayExampleAudio) return;
-
-    if (playbackTarget?.kind === 'example' && playbackTarget.key === key) {
-      stopPlayback();
-      return;
-    }
-
-    stopPlayback();
-    const runId = playbackRunIdRef.current;
-    await speakViaBrowser(sentence, audioLocale, runId, { kind: 'example', key });
-  }, [audioLocale, canPlayExampleAudio, playbackTarget, speakViaBrowser, stopPlayback]);
-
-  useEffect(() => {
-    if (!currentWord) return;
-
-    const locale = preferences.defaultPronunciationLocale;
-    setAudioLocale(locale);
-    stopPlayback();
-
-    if (!preferences.autoPlayEnabled) {
-      return;
-    }
-
-    void playAudioSequence(
-      currentWord,
-      locale,
-      preferences.autoPlayRepeatCount,
-      preferences.autoPlayRepeatGapMs,
-    );
-  }, [
-    currentWord,
-    playAudioSequence,
-    preferences.autoPlayEnabled,
-    preferences.autoPlayRepeatCount,
-    preferences.autoPlayRepeatGapMs,
-    preferences.defaultPronunciationLocale,
-    stopPlayback,
-  ]);
-
-  useEffect(() => {
-    if (!roundSource) return;
-    promptStartedAtRef.current = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    setSubmitError('');
-  }, [currentIndex, roundSource]);
-
-  useEffect(() => {
-    if (!onSessionChange || type === 'review') return;
-    onSessionChange({
-      round: type,
-      currentIndex,
-      queueWordIds: queue.map((word) => word.id),
-    });
-  }, [currentIndex, onSessionChange, queue, type]);
-
-  const nextWord = useCallback(() => {
-    clearAnswerRevealTimeout();
-    stopPlayback();
-    if (currentIndexRef.current < queueRef.current.length - 1) {
-      setCurrentIndex(prev => prev + 1);
-      setInputValue('');
-      setIsWrong(false);
-      setLastWrongInput(null);
-      setShowAnswer(false);
-    } else {
-      void onComplete();
-    }
-  }, [clearAnswerRevealTimeout, onComplete, stopPlayback]);
-
-  const persistAttempt = useCallback(async (wasCorrect: boolean) => {
-    if (!onAttempt || !roundSource) return true;
-
-    setIsSubmittingAttempt(true);
-    setSubmitError('');
-
-    try {
-      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-      const elapsedMs = Math.max(0, Math.round(now - promptStartedAtRef.current));
-      await onAttempt({
-        word: currentWord,
-        source: roundSource,
-        wasCorrect,
-        elapsedMs,
-      });
-      return true;
-    } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : String(error));
-      return false;
-    } finally {
-      setIsSubmittingAttempt(false);
-    }
-  }, [currentWord, onAttempt, roundSource]);
-
-  const handleRound3PrimaryAction = useCallback(() => {
-    if (!showAnswer) {
-      setShowAnswer(true);
-      return;
-    }
-
-    nextWord();
-  }, [showAnswer, nextWord]);
-
-  const validateCurrentInput = useCallback(async () => {
-    const trimmedInput = inputValue.trim().toLowerCase();
-    const wasCorrect = trimmedInput === currentWord.word.toLowerCase();
-    
-    const persisted = await persistAttempt(wasCorrect);
-    if (!persisted) return;
-
-    if (wasCorrect) {
-      nextWord();
-      return;
-    }
-
-    setIsWrong(true);
-    setLastWrongInput(inputValue);
-
-    if (type === 'round2' || type === 'review') {
-      const newQueue = [...queue];
-      const insertAt = Math.min(currentIndex + Math.floor(Math.random() * 3) + 2, newQueue.length);
-      newQueue.splice(insertAt, 0, currentWord);
-      setQueue(newQueue);
-      
-      setInputValue('');
-      setShowAnswer(true);
-      clearAnswerRevealTimeout();
-      answerRevealTimeoutRef.current = setTimeout(() => {
-        answerRevealTimeoutRef.current = null;
-        setShowAnswer(false);
-        setIsWrong(false);
-        setLastWrongInput(null);
-        nextWord();
-      }, preferences.wrongAnswerRevealMs);
-    }
-  }, [clearAnswerRevealTimeout, currentIndex, currentWord, inputValue, nextWord, persistAttempt, preferences.wrongAnswerRevealMs, queue, type]);
-
-  useEffect(() => {
-    if (type !== 'round3') return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Enter' || event.repeat) return;
-      event.preventDefault();
-      handleRound3PrimaryAction();
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleRound3PrimaryAction, type]);
-
-  const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setInputValue(val);
-    setIsWrong(false);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (type === 'round3') {
-      handleRound3PrimaryAction();
-      return;
-    }
-    void validateCurrentInput();
-  };
-
-  if (!currentWord) {
-    return (
-      <div className="glass rounded-apple-lg p-16 text-center">
-        <p className="text-xl font-black">当前会话里没有可用单词。</p>
-      </div>
-    );
-  }
-
-  const isCorrect = inputValue.trim().toLowerCase() === currentWord.word.toLowerCase();
-  const primaryPos = currentWord.pos_tags[0] ?? '未标注';
-  const actionDisabled = isSubmittingAttempt || ((type === 'round2' || type === 'review') && showAnswer);
-  const actionLabel = (type === 'round2' || type === 'review') && showAnswer
-    ? '答案展示中…'
-    : type === 'round1'
-      ? '验证拼写'
-      : '提交答案';
-
-  const inputField = (
-    <form onSubmit={handleSubmit} className="w-full">
-      <div className="rounded-[24px] border border-white/80 bg-white/60 px-4 py-4 shadow-[0_14px_40px_rgba(14,26,56,0.06)] backdrop-blur-xl md:px-5 md:py-5">
-        <input
-          ref={inputRef}
-          type="text"
-          value={inputValue}
-          onChange={handleInput}
-          disabled={isSubmittingAttempt}
-          className={cx(
-            'w-full bg-transparent text-center font-black outline-none transition-colors caret-gray-800 placeholder:text-text-secondary/35',
-            type === 'round1' ? 'text-3xl md:text-4xl' : 'text-4xl md:text-5xl',
-            isWrong ? 'text-apple-red' : isCorrect ? 'text-[#10B981]' : 'text-text-primary',
-          )}
-          autoFocus
-          autoComplete="off"
-          autoCorrect="off"
-          spellCheck="false"
-          placeholder={type === 'round1' ? '拼写这个单词' : '输入英文拼写'}
-        />
-      </div>
-    </form>
-  );
-
-  const feedbackReveal = (
-    <AnimatePresence>
-      {showAnswer && (
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 10 }}
-          className={cx(
-            'mx-auto mt-6 w-fit max-w-full rounded-[22px] px-5 py-4 text-left font-bold text-white shadow-xl',
-            isWrong ? 'bg-apple-red shadow-apple-red/20' : 'bg-[#10B981] shadow-[#10B981]/20',
-          )}
-        >
-          <div className="flex items-start gap-4">
-            <div className="mt-1 flex-shrink-0">
-              {isWrong ? <XCircle className="h-6 w-6" /> : <CheckCircle2 className="h-6 w-6" />}
-            </div>
-            <div className="space-y-3">
-              <div>
-                <p className="text-[10px] uppercase tracking-widest opacity-70">
-                  {isWrong ? '拼写错误 · 正确如下' : '拼写正确'}
-                </p>
-                <div className="mt-1 flex flex-wrap items-baseline gap-3">
-                  <p className="text-lg font-black leading-none md:text-xl">{currentWord.word}</p>
-                  {isWrong && lastWrongInput && (
-                    <p className="text-sm font-medium line-through opacity-60">
-                      你输入了: {lastWrongInput}
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div className="[&_p]:text-white [&_span]:bg-white/16 [&_span]:text-white/90">
-                <WordSenseList word={currentWord} compact />
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-
-  const submitErrorBanner = submitError ? (
-    <div className="rounded-2xl bg-apple-red/10 px-4 py-3 text-sm font-medium text-apple-red">
-      {submitError}
-    </div>
-  ) : null;
-
-  const actionButton = (
-    <button
-      type="button"
-      onClick={() => { void validateCurrentInput(); }}
-      disabled={actionDisabled}
-      className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-apple-blue px-5 py-3.5 text-base font-black text-white shadow-[0_18px_40px_rgba(0,122,255,0.22)] transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 sm:w-auto sm:min-w-[220px]"
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="w-full h-full"
     >
-      {isSubmittingAttempt ? (
-        <>
-          <Loader2 className="h-5 w-5 animate-spin" />
-          正在写入结果…
-        </>
-      ) : (
-        <>
-          {actionLabel}
-          <ChevronRight className="h-5 w-5" />
-        </>
+      {isSkeleton ? <LibrarySkeleton /> : (
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+          <Loader2 className="w-10 h-10 text-apple-blue animate-spin opacity-20" />
+        </div>
       )}
-    </button>
-  );
-
-  // Round 3: flip-card recognition — no input, just reveal and advance
-  if (type === 'round3') {
-    return (
-      <div className="w-full max-w-4xl mx-auto flex flex-col items-center">
-        <div className="w-full max-w-3xl">
-          <RoundIndicator type={type} />
-        </div>
-        <motion.div
-          key={currentWord.id + currentIndex}
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="w-full flex flex-col items-center justify-center min-h-[500px]"
-        >
-          <motion.div
-            initial={{ y: -10, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            className="flex items-center gap-2 mb-8"
-          >
-            <span className="bg-apple-teal text-white px-4 py-1 rounded-lg text-sm font-bold shadow-sm">
-              {currentWord.phonetic}
-            </span>
-            {(['uk', 'us'] as const).map(loc => (
-              <button
-                key={loc}
-                type="button"
-                onClick={() => { setAudioLocale(loc); void playAudioSequence(currentWord, loc, 1, 0); }}
-                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold transition-all ${
-                  audioLocale === loc
-                    ? 'bg-apple-teal text-white shadow-sm'
-                    : 'bg-apple-teal/10 text-apple-teal hover:bg-apple-teal/20'
-                }`}
-              >
-                {activePronunciationLocale === loc
-                  ? <Loader2 className="w-3 h-3 animate-spin" />
-                  : <Volume2 className="w-3 h-3" />}
-                {loc.toUpperCase()}
-              </button>
-            ))}
-          </motion.div>
-
-          <div className="text-7xl font-black text-text-primary mb-4">{currentWord.word}</div>
-          <div className="text-sm font-bold text-text-secondary uppercase tracking-widest mb-8">
-            {currentWord.pos_tags[0]}
-          </div>
-
-          <AnimatePresence>
-            {showAnswer && (
-              <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="mt-4 text-center"
-              >
-                <div className="[&_span]:bg-black/5">
-                  <WordSenseList word={currentWord} centered />
-                </div>
-                {currentWord.example_sentences[0] && (
-                  <div className="mx-auto mt-4 w-full max-w-xl">
-                    <ExampleSentenceList
-                      items={[{
-                        key: `${currentWord.id}-round3-example-0`,
-                        sentence: currentWord.example_sentences[0],
-                      }]}
-                      locale={audioLocale}
-                      activeExampleKey={activeExampleKey}
-                      canPlayAudio={canPlayExampleAudio}
-                      onPlayExample={({ sentence, key }) => { void playExampleSentence(sentence, key); }}
-                      emptyMessage="这个词暂时还没有例句。"
-                      variant="inline"
-                    />
-                  </div>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {!showAnswer && (
-            <p className="text-text-secondary/40 text-sm mt-8">先自己回想，再决定要不要翻开答案。</p>
-          )}
-        </motion.div>
-
-        {renderProgressBar(currentIndex, queue.length)}
-
-        <div className="w-full max-w-3xl px-4 pb-8">
-          <button
-            type="button"
-            onClick={handleRound3PrimaryAction}
-            className="w-full py-4 bg-apple-blue text-white font-bold rounded-2xl flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] transition-all"
-          >
-            {showAnswer ? '下一个词' : '显示释义'}
-            <ChevronRight className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Round 1 & 2 / Review: input-based
-  return (
-    <InputSessionShell
-      type={type}
-      currentIndex={currentIndex}
-      queueLength={queue.length}
-      main={(
-        <motion.div
-          key={currentWord.id + currentIndex}
-          initial={{ opacity: 0, scale: 0.97, y: 14 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          className="glass rounded-[30px] px-5 py-6 shadow-[0_24px_64px_rgba(14,26,56,0.08)] md:px-7 md:py-7 lg:px-8 lg:py-7"
-        >
-          {type === 'round1' ? (
-            <div className="flex flex-col gap-7">
-              <div className="space-y-5">
-                <PronunciationControls
-                  phonetic={currentWord.phonetic}
-                  audioLocale={audioLocale}
-                  activePronunciationLocale={activePronunciationLocale}
-                  onPlay={(locale) => {
-                    setAudioLocale(locale);
-                    void playAudioSequence(currentWord, locale, 1, 0);
-                  }}
-                />
-
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
-                  <p className="text-[clamp(2.4rem,4.1vw,4.2rem)] font-black leading-[0.94] tracking-[-0.055em] text-text-primary lg:flex-shrink-0">
-                    {currentWord.word}
-                  </p>
-                  <div className="min-w-0 lg:max-w-[960px] lg:flex-1 lg:pt-1">
-                    <WordSenseList word={currentWord} />
-                  </div>
-                </div>
-              </div>
-
-                <div className="grid gap-4 lg:grid-cols-3">
-                  <Round1MorphologyCard word={currentWord} />
-                  <Round1RelationsCard word={currentWord} />
-                  <Round1ConfusingCard
-                    word={currentWord}
-                    activeExampleKey={activeExampleKey}
-                    canPlayExampleAudio={canPlayExampleAudio}
-                    exampleLocale={audioLocale}
-                    onPlayExample={(sentence, key) => { void playExampleSentence(sentence, key); }}
-                  />
-                </div>
-
-              <div className="space-y-4 rounded-[24px] border border-white/80 bg-white/45 p-4 shadow-[0_12px_30px_rgba(14,26,56,0.04)] md:p-5">
-                {inputField}
-                {submitErrorBanner}
-                <div className="flex justify-end">
-                  {actionButton}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex h-full flex-col justify-center text-center">
-              <div className="mx-auto max-w-3xl">
-                <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary">
-                  {type === 'review' ? '今日到期复习' : '主动回忆拼写'}
-                </p>
-                <p className="mt-5 text-4xl font-black leading-tight text-text-primary md:text-5xl">
-                  {currentWord.chinese_definition}
-                </p>
-                <div className="mt-4 flex items-center justify-center gap-3">
-                  <span className="rounded-full bg-black/5 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">
-                    {primaryPos}
-                  </span>
-                </div>
-              </div>
-
-              <div className="mx-auto mt-8 w-full max-w-3xl space-y-5">
-                {inputField}
-                {feedbackReveal}
-                {submitErrorBanner}
-                <div className="flex justify-center sm:justify-end">
-                  {actionButton}
-                </div>
-              </div>
-            </div>
-          )}
-        </motion.div>
-      )}
-    />
-  );
-};
-
-const ArticleView = ({ essay, words, onFinish }: { essay: string; words: Word[]; onFinish: () => void }) => {
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-4xl mx-auto py-12">
-      <div className="glass rounded-apple-lg p-16 jelly-shadow relative">
-        <div className="flex items-center justify-between mb-12">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-apple-green rounded-2xl flex items-center justify-center">
-              <BookOpen className="text-white w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-black tracking-tight">文章巩固</h2>
-              <p className="text-xs font-bold text-text-secondary uppercase tracking-widest">收个尾</p>
-            </div>
-          </div>
-          <button
-            onClick={onFinish}
-            className="px-8 py-3 bg-apple-blue text-white font-bold rounded-2xl shadow-lg shadow-apple-blue/20"
-          >
-            读完了，回首页
-          </button>
-        </div>
-        <div className="prose prose-xl max-w-none text-gray-800 leading-[1.8] font-medium">
-          {essay.split(' ').map((word, i) => {
-            const cleanWord = word.replace(/[.,!?;]/g, '').toLowerCase();
-            const isTarget = words.some((w) => w.word.toLowerCase() === cleanWord);
-            return (
-              <span key={i} className={isTarget ? 'bg-apple-blue/10 text-apple-blue font-bold px-1 rounded' : ''}>
-                {word}{' '}
-              </span>
-            );
-          })}
-        </div>
-      </div>
     </motion.div>
   );
 };
@@ -1621,145 +543,147 @@ export default function App() {
                 </button>
               </div>
             )}
-            <Routes>
-              <Route
-                path="home"
-                element={<HomeView stats={stats} onStart={() => { void handleStart(); }} isLoading={isStartingSession} />}
-              />
-              <Route
-                path="library"
-                element={(
-                  <LibraryView
-                    onLibraryMutated={() => { void fetchStats(); }}
-                    onStartLearningGroup={handleStartLearningGroup}
-                  />
-                )}
-              />
-              <Route
-                path="library/official/:libraryId?"
-                element={(
-                  <OfficialLibraryDetailView
-                    onLibraryMutated={() => { void fetchStats(); }}
-                    onStartLearningGroup={handleStartLearningGroup}
-                  />
-                )}
-              />
-              <Route
-                path="library/group/:groupId"
-                element={(
-                  <LibraryGroupDetailView
-                    isStartingLearningGroup={isStartingSession}
-                    onLibraryMutated={() => { void fetchStats(); }}
-                    onStartLearningGroup={handleStartLearningGroup}
-                  />
-                )}
-              />
-              <Route
-                path="library/custom/:groupId"
-                element={(
-                  <LibraryGroupDetailView
-                    isStartingLearningGroup={isStartingSession}
-                    onLibraryMutated={() => { void fetchStats(); }}
-                    onStartLearningGroup={handleStartLearningGroup}
-                  />
-                )}
-              />
-              <Route path="import" element={<ImportView onStartLearning={handleStartLearningGroup} />} />
-              <Route
-                path="session"
-                element={activeWords.length === 0 ? sessionEmptyState : (
-                  round === 'article' ? (
-                    essay === null ? (
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="glass p-16 rounded-apple-lg jelly-shadow flex flex-col items-center gap-6"
-                      >
-                        <Loader2 className="w-10 h-10 text-apple-green animate-spin" />
-                        <p className="font-black text-xl">正在生成收尾文章</p>
-                      </motion.div>
-                    ) : (
-                      <ArticleView essay={essay} words={activeWords} onFinish={handleRoundComplete} />
-                    )
-                  ) : (
-                    <React.Fragment
-                      key={`${activeLearningGroupId ?? 'review'}:${round}:${activeSessionSeed?.lastActiveAt ?? activeWords.map((word) => word.id).join('|')}`}
-                    >
-                      <LearningEngine
-                        type={round}
-                        words={activeWords}
-                        initialSession={activeSessionSeed}
-                        onComplete={handleRoundComplete}
-                        onAttempt={handleAttempt}
-                        onSessionChange={handleLearningSessionChange}
-                      />
-                    </React.Fragment>
-                  )
-                )}
-              />
-              <Route
-                path="review-results"
-                element={(
-                  <ReviewResultsView
-                    items={[...reviewSummary].sort((left, right) => left.word.localeCompare(right.word))}
-                    onBackHome={handleReviewResultsBackHome}
-                  />
-                )}
-              />
-              <Route
-                path="profile"
-                element={(
-                  <div className="w-full max-w-5xl mx-auto space-y-6">
-                    <div className="glass relative overflow-hidden rounded-[36px] p-8 shadow-[0_30px_80px_rgba(14,26,56,0.08)] md:p-10">
-                      <div className="pointer-events-none absolute -left-8 top-0 h-40 w-40 rounded-full bg-apple-blue/12 blur-3xl" />
-                      <div className="pointer-events-none absolute right-0 bottom-0 h-44 w-44 rounded-full bg-apple-green/10 blur-3xl" />
-
-                      <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-                        <div>
-                          <div className="flex h-24 w-24 items-center justify-center rounded-[30px] bg-apple-blue text-4xl font-black text-white shadow-[0_22px_44px_rgba(0,122,255,0.22)]">
-                            {(user?.email?.[0] ?? 'L').toUpperCase()}
-                          </div>
-                          <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">Account</p>
-                          <h2 className="mt-3 text-4xl font-black text-text-primary">
-                            {(user?.user_metadata.full_name as string | undefined) ?? '当前账号'}
-                          </h2>
-                          <p className="mt-3 text-base text-text-secondary">{user?.email ?? '还没拿到邮箱'}</p>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => navigate('/app/settings')}
-                          className="inline-flex items-center gap-2 rounded-full bg-[#12192b] px-5 py-3 text-sm font-black text-white shadow-[0_18px_34px_rgba(18,25,43,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
+            <Suspense fallback={<LoadingShell isSkeleton={location.pathname.includes('/library')}>{null}</LoadingShell>}>
+              <Routes>
+                <Route
+                  path="home"
+                  element={<HomeView stats={stats} onStart={() => { void handleStart(); }} isLoading={isStartingSession} />}
+                />
+                <Route
+                  path="library"
+                  element={(
+                    <LibraryView
+                      onLibraryMutated={() => { void fetchStats(); }}
+                      onStartLearningGroup={handleStartLearningGroup}
+                    />
+                  )}
+                />
+                <Route
+                  path="library/official/:libraryId?"
+                  element={(
+                    <OfficialLibraryDetailView
+                      onLibraryMutated={() => { void fetchStats(); }}
+                      onStartLearningGroup={handleStartLearningGroup}
+                    />
+                  )}
+                />
+                <Route
+                  path="library/group/:groupId"
+                  element={(
+                    <LibraryGroupDetailView
+                      isStartingLearningGroup={isStartingSession}
+                      onLibraryMutated={() => { void fetchStats(); }}
+                      onStartLearningGroup={handleStartLearningGroup}
+                    />
+                  )}
+                />
+                <Route
+                  path="library/custom/:groupId"
+                  element={(
+                    <LibraryGroupDetailView
+                      isStartingLearningGroup={isStartingSession}
+                      onLibraryMutated={() => { void fetchStats(); }}
+                      onStartLearningGroup={handleStartLearningGroup}
+                    />
+                  )}
+                />
+                <Route path="import" element={<ImportView onStartLearning={handleStartLearningGroup} />} />
+                <Route
+                  path="session"
+                  element={activeWords.length === 0 ? sessionEmptyState : (
+                    round === 'article' ? (
+                      essay === null ? (
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="glass p-16 rounded-apple-lg jelly-shadow flex flex-col items-center gap-6"
                         >
-                          打开学习设置
-                          <ChevronRight className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
+                          <Loader2 className="w-10 h-10 text-apple-green animate-spin" />
+                          <p className="font-black text-xl">正在生成收尾文章</p>
+                        </motion.div>
+                      ) : (
+                        <ArticleView essay={essay} words={activeWords} onFinish={handleRoundComplete} />
+                      )
+                    ) : (
+                      <React.Fragment
+                        key={`${activeLearningGroupId ?? 'review'}:${round}:${activeSessionSeed?.lastActiveAt ?? activeWords.map((word) => word.id).join('|')}`}
+                      >
+                        <LearningEngine
+                          type={round}
+                          words={activeWords}
+                          initialSession={activeSessionSeed}
+                          onComplete={handleRoundComplete}
+                          onAttempt={handleAttempt}
+                          onSessionChange={handleLearningSessionChange}
+                        />
+                      </React.Fragment>
+                    )
+                  )}
+                />
+                <Route
+                  path="review-results"
+                  element={(
+                    <ReviewResultsView
+                      items={[...reviewSummary].sort((left, right) => left.word.localeCompare(right.word))}
+                      onBackHome={handleReviewResultsBackHome}
+                    />
+                  )}
+                />
+                <Route
+                  path="profile"
+                  element={(
+                    <div className="w-full max-w-5xl mx-auto space-y-6">
+                      <div className="glass relative overflow-hidden rounded-[36px] p-8 shadow-[0_30px_80px_rgba(14,26,56,0.08)] md:p-10">
+                        <div className="pointer-events-none absolute -left-8 top-0 h-40 w-40 rounded-full bg-apple-blue/12 blur-3xl" />
+                        <div className="pointer-events-none absolute right-0 bottom-0 h-44 w-44 rounded-full bg-apple-green/10 blur-3xl" />
 
-                    <div className="grid gap-5 md:grid-cols-3">
-                      <div className="glass rounded-[30px] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.06)]">
-                        <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">已掌握</p>
-                        <p className="mt-3 text-4xl font-black text-text-primary">{stats.totalLearned}</p>
-                        <p className="mt-3 text-sm leading-6 text-text-secondary">已经稳定掌握、进入长期记忆的词。</p>
+                        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                          <div>
+                            <div className="flex h-24 w-24 items-center justify-center rounded-[30px] bg-apple-blue text-4xl font-black text-white shadow-[0_22px_44px_rgba(0,122,255,0.22)]">
+                              {(user?.email?.[0] ?? 'L').toUpperCase()}
+                            </div>
+                            <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">Account</p>
+                            <h2 className="mt-3 text-4xl font-black text-text-primary">
+                              {(user?.user_metadata.full_name as string | undefined) ?? '当前账号'}
+                            </h2>
+                            <p className="mt-3 text-base text-text-secondary">{user?.email ?? '还没拿到邮箱'}</p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => navigate('/app/settings')}
+                            className="inline-flex items-center gap-2 rounded-full bg-[#12192b] px-5 py-3 text-sm font-black text-white shadow-[0_18px_34px_rgba(18,25,43,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
+                          >
+                            打开学习设置
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="glass rounded-[30px] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.06)]">
-                        <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">待复习</p>
-                        <p className="mt-3 text-4xl font-black text-text-primary">{stats.todayReviewCount}</p>
-                        <p className="mt-3 text-sm leading-6 text-text-secondary">今天还在等待你回看的词。</p>
-                      </div>
-                      <div className="glass rounded-[30px] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.06)]">
-                        <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">连续天数</p>
-                        <p className="mt-3 text-4xl font-black text-text-primary">{stats.streak}</p>
-                        <p className="mt-3 text-sm leading-6 text-text-secondary">最近连续学习没有断开的天数。</p>
+
+                      <div className="grid gap-5 md:grid-cols-3">
+                        <div className="glass rounded-[30px] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.06)]">
+                          <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">已掌握</p>
+                          <p className="mt-3 text-4xl font-black text-text-primary">{stats.totalLearned}</p>
+                          <p className="mt-3 text-sm leading-6 text-text-secondary">已经稳定掌握、进入长期记忆的词。</p>
+                        </div>
+                        <div className="glass rounded-[30px] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.06)]">
+                          <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">待复习</p>
+                          <p className="mt-3 text-4xl font-black text-text-primary">{stats.todayReviewCount}</p>
+                          <p className="mt-3 text-sm leading-6 text-text-secondary">今天还在等待你回看的词。</p>
+                        </div>
+                        <div className="glass rounded-[30px] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.06)]">
+                          <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">连续天数</p>
+                          <p className="mt-3 text-4xl font-black text-text-primary">{stats.streak}</p>
+                          <p className="mt-3 text-sm leading-6 text-text-secondary">最近连续学习没有断开的天数。</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
-              />
-              <Route path="settings" element={<SettingsView />} />
-              <Route path="*" element={<Navigate to="/app/home" replace />} />
-            </Routes>
+                  )}
+                />
+                <Route path="settings" element={<SettingsView />} />
+                <Route path="*" element={<Navigate to="/app/home" replace />} />
+              </Routes>
+            </Suspense>
           </div>
         </main>
       </div>

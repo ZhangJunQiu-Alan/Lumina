@@ -96,6 +96,9 @@ dist
 # Gemini CLI personal config
 .gemini/
 
+# Claude CLI personal config
+.claude/
+
 # Playwright / local tooling output
 output/
 

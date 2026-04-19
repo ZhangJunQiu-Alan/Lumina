@@ -6,6 +6,16 @@ import { defineConfig } from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-ui': ['motion/react', 'lucide-react', 'react-router-dom'],
+            'vendor-db': ['@supabase/supabase-js'],
+          },
+        },
+      },
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
