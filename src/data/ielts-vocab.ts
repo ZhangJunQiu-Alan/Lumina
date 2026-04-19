@@ -3816,4 +3816,19 @@ export const IELTS_CHAPTERS: IELTSChapter[] = [
   }
 ];
 
-export const IELTS_WORDS_FLAT: string[] = IELTS_CHAPTERS.flatMap((chapter) => chapter.words);
+export const IELTS_WORDS_FLAT: string[] = (() => {
+  const seen = new Set<string>();
+
+  return IELTS_CHAPTERS
+    .flatMap((chapter) => chapter.words)
+    .filter((word) => {
+      const normalizedWord = word.trim().toLowerCase();
+
+      if (seen.has(normalizedWord)) {
+        return false;
+      }
+
+      seen.add(normalizedWord);
+      return true;
+    });
+})();

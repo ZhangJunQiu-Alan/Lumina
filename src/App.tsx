@@ -1611,7 +1611,7 @@ export default function App() {
                 )}
               />
               <Route
-                path="library/official"
+                path="library/official/:libraryId?"
                 element={(
                   <OfficialLibraryDetailView
                     onLibraryMutated={() => { void fetchStats(); }}

@@ -10,8 +10,8 @@ interface SharedWordRow {
 
 const OFFICIAL_GROUP_PATTERN = /^雅思词汇真经 · \d{4}-\d{4}$/;
 
-function isSystemLibraryGroup(sourceType: string | null, groupName: string | null) {
-  return sourceType === 'system' || OFFICIAL_GROUP_PATTERN.test(groupName ?? '');
+function isSystemLibraryGroup(sourceType: string | null, libraryId: string | null, groupName: string | null) {
+  return sourceType === 'system' || Boolean(libraryId) || OFFICIAL_GROUP_PATTERN.test(groupName ?? '');
 }
 
 export interface DeleteLearningGroupResult {
@@ -23,7 +23,7 @@ export interface DeleteLearningGroupResult {
 export async function deleteLearningGroup(userId: string, groupId: string): Promise<DeleteLearningGroupResult> {
   const { data: group, error: groupError } = await supabaseAdmin
     .from('learning_groups')
-    .select('id, source_type, group_name')
+    .select('id, source_type, library_id, group_name')
     .eq('id', groupId)
     .eq('user_id', userId)
     .maybeSingle();
@@ -36,7 +36,7 @@ export async function deleteLearningGroup(userId: string, groupId: string): Prom
     throw new Error('这组词不存在，或它不属于你。');
   }
 
-  if (isSystemLibraryGroup(group.source_type, group.group_name)) {
+  if (isSystemLibraryGroup(group.source_type, group.library_id, group.group_name)) {
     throw new Error('系统词库暂时不支持删除。');
   }
 

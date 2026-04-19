@@ -1,8 +1,14 @@
 import 'dotenv/config';
-import { IELTS_WORDS_FLAT } from '../src/data/ielts-vocab.ts';
+import { OFFICIAL_LIBRARY_DEFINITIONS } from '../src/lib/officialLibrary.ts';
 import { enrichWords, type GeminiWordResult } from '../server/gemini.ts';
 import { supabaseAdmin } from '../server/supabase.ts';
 import { analyzeWordBatch, formatDuplicateWordsMessage, normalizeWordKey, sanitizeWordInput } from '../shared/wordBatch.ts';
+
+const ALL_OFFICIAL_WORDS = Array.from(
+  new Set(
+    OFFICIAL_LIBRARY_DEFINITIONS.flatMap((def) => def.words)
+  )
+);
 
 interface CliOptions {
   batchSize: number;
@@ -142,7 +148,7 @@ function isVocabularyReady(row: VocabularyLookupRow) {
 async function collectMissingOfficialWords() {
   const readyWords = new Set<string>();
 
-  for (const words of chunkWords(IELTS_WORDS_FLAT.map(normalizeWordKey), OFFICIAL_WORD_CHUNK_SIZE)) {
+  for (const words of chunkWords(ALL_OFFICIAL_WORDS.map(normalizeWordKey), OFFICIAL_WORD_CHUNK_SIZE)) {
     const { data, error } = await supabaseAdmin
       .from('vocabulary_items')
       .select(`
@@ -172,7 +178,7 @@ async function collectMissingOfficialWords() {
     }
   }
 
-  return IELTS_WORDS_FLAT.filter((word) => !readyWords.has(normalizeWordKey(word)));
+  return ALL_OFFICIAL_WORDS.filter((word) => !readyWords.has(normalizeWordKey(word)));
 }
 
 async function persistEnrichedBatch(enriched: GeminiWordResult[]) {
@@ -381,8 +387,8 @@ async function enrichWithRetries(words: string[], retryCount: number, retryDelay
 
 async function printCoverageSummary(label: string) {
   const missingWords = await collectMissingOfficialWords();
-  const readyCount = IELTS_WORDS_FLAT.length - missingWords.length;
-  console.log(`[${label}] ready=${readyCount} missing=${missingWords.length} total=${IELTS_WORDS_FLAT.length}`);
+  const readyCount = ALL_OFFICIAL_WORDS.length - missingWords.length;
+  console.log(`[${label}] ready=${readyCount} missing=${missingWords.length} total=${ALL_OFFICIAL_WORDS.length}`);
 }
 
 async function main() {

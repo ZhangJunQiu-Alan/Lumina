@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS learning_groups (
   user_id       TEXT DEFAULT 'demo',
   group_name    TEXT,
   source_type   TEXT DEFAULT 'custom',
+  library_id    TEXT,
   status        TEXT DEFAULT 'active',   -- 'active' | 'completed'
   session_round TEXT,                    -- 'round1' | 'round2' | 'round3' | 'article'
   session_current_index INTEGER,

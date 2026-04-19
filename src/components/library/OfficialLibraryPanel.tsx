@@ -11,12 +11,10 @@ import {
 import { invalidateLibraryCache } from '../../lib/libraryCache';
 import {
   getOfficialBatchPlan,
-  OFFICIAL_LIBRARY_TITLE,
-  OFFICIAL_TOTAL_WORDS,
+  type OfficialLibraryDefinition,
   resolveOfficialLibraryStartMode,
 } from '../../lib/officialLibrary';
 import { useAuth } from '../../contexts/AuthContext';
-import { IELTS_CHAPTERS } from '../../data/ielts-vocab';
 import type { EnrichedWord, OfficialLibrarySummary, Word } from '../../types';
 import { normalizeWordKey } from '../../../shared/wordBatch';
 import { LEARNING_ROUND_LABELS } from '../../lib/learningSession';
@@ -24,6 +22,7 @@ import { LEARNING_ROUND_LABELS } from '../../lib/learningSession';
 type Stage = 'idle' | 'preparing' | 'resuming' | 'error';
 
 interface OfficialLibraryPanelProps {
+  definition: OfficialLibraryDefinition;
   summary: OfficialLibrarySummary;
   onStartLearning: (groupId: string, words?: Word[]) => Promise<void> | void;
   onOpenDetail?: () => void | Promise<void>;
@@ -35,6 +34,7 @@ const infoCardClassName =
   'flex h-[76px] min-w-0 items-center justify-between rounded-[22px] bg-white/84 px-4 shadow-[0_12px_28px_rgba(0,0,0,0.05)]';
 
 export function OfficialLibraryPanel({
+  definition,
   summary,
   onStartLearning,
   onOpenDetail,
@@ -45,7 +45,7 @@ export function OfficialLibraryPanel({
   const [stage, setStage] = useState<Stage>('idle');
   const [errorMsg, setErrorMsg] = useState('');
 
-  const nextBatchPlan = getOfficialBatchPlan(summary.progress);
+  const nextBatchPlan = getOfficialBatchPlan(definition.id, summary.progress);
   const startMode = resolveOfficialLibraryStartMode(summary);
   const actionDisabled = startMode === 'completed';
   const resumeCopy = summary.resumeCandidate
@@ -113,6 +113,7 @@ export function OfficialLibraryPanel({
       const result = await createLearningGroupFromVocabularyEntries(user.id, persistedEntries, {
         groupName: nextBatchPlan.groupName,
         groupSourceType: 'system',
+        libraryId: definition.id,
       });
 
       invalidateLibraryCache(user.id);
@@ -134,7 +135,7 @@ export function OfficialLibraryPanel({
     <AnimatePresence mode="wait">
       {(stage === 'idle' || stage === 'error') && (
         <motion.div
-          key="official-idle"
+          key={`official-idle-${definition.id}`}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -12 }}
@@ -150,7 +151,7 @@ export function OfficialLibraryPanel({
                     <BookOpen className="h-7 w-7" />
                   </div>
                   <h3 className="text-3xl font-black leading-tight text-text-primary">
-                    {OFFICIAL_LIBRARY_TITLE}
+                    {definition.title}
                   </h3>
                 </div>
                 {showOpenDetailAction && onOpenDetail && (
@@ -165,8 +166,7 @@ export function OfficialLibraryPanel({
                 )}
               </div>
               <p className="mt-3 max-w-4xl text-sm leading-7 text-text-secondary">
-                {IELTS_CHAPTERS.length} 章 · {OFFICIAL_TOTAL_WORDS} 词 · 按顺序推进。每次直接取接下来的 30
-                词，优先复用已经整理好的词条，缺的再补齐后直接开始。
+                {definition.description}
               </p>
               {resumeCopy && (
                 <div className="mt-4 inline-flex max-w-full items-center gap-2 rounded-full bg-white/84 px-4 py-2 text-sm font-bold text-text-primary shadow-[0_10px_24px_rgba(0,0,0,0.05)]">
@@ -180,7 +180,7 @@ export function OfficialLibraryPanel({
               <div className={infoCardClassName}>
                 <p className="text-[11px] font-bold tracking-[0.2em] text-text-secondary">已学进度</p>
                 <p className="text-right text-xl font-black text-text-primary">
-                  {summary.progress} / {OFFICIAL_TOTAL_WORDS}
+                  {summary.progress} / {definition.words.length}
                 </p>
               </div>
               <div className={infoCardClassName}>
@@ -220,7 +220,7 @@ export function OfficialLibraryPanel({
 
       {(stage === 'preparing' || stage === 'resuming') && (
         <motion.div
-          key={`official-${stage}`}
+          key={`official-${definition.id}-${stage}`}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -12 }}

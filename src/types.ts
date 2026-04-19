@@ -191,12 +191,15 @@ export interface ReviewSummaryItem {
   transition: ReviewTransition;
 }
 
+export type OfficialLibraryId = 'ielts-vocab' | 'gre-zhenkao-v7';
+
 export interface LibraryGroupSummary {
   id: string;
   title: string;
   createdAt: string;
   wordCount: number;
   sourceType: 'custom' | 'system';
+  libraryId: OfficialLibraryId | null;
   status: 'active' | 'completed';
 }
 
@@ -229,6 +232,7 @@ export interface PersistedLearningSession {
   currentIndex: number;
   queueWordIds: string[];
   lastActiveAt: string;
+  libraryId?: OfficialLibraryId | null;
   article?: string | null;
 }
 

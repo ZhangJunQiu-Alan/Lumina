@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { EnrichedWord, toWord, Word } from '../types';
+import { EnrichedWord, toWord, type OfficialLibraryId, Word } from '../types';
 import { analyzeWordBatch, formatDuplicateWordsMessage, normalizeWordKey, sanitizeWordInput } from '../../shared/wordBatch';
 
 export type GroupSourceType = 'custom' | 'system';
@@ -7,6 +7,7 @@ export type GroupSourceType = 'custom' | 'system';
 interface SaveToSupabaseOptions {
   groupName?: string;
   groupSourceType?: GroupSourceType;
+  libraryId?: OfficialLibraryId | null;
 }
 
 interface VocabularySenseRow {
@@ -507,6 +508,7 @@ export async function createLearningGroupFromVocabularyEntries(
       user_id: userId,
       group_name: options.groupName ?? `Custom · ${new Date().toLocaleDateString()}`,
       source_type: options.groupSourceType ?? 'custom',
+      library_id: options.libraryId ?? null,
     })
     .select('id')
     .single();

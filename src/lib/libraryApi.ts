@@ -21,7 +21,7 @@ export async function deleteLibraryGroup(
 ): Promise<DeleteLibraryGroupResponse> {
   const { data: group, error: groupError } = await supabase
     .from('learning_groups')
-    .select('id, source_type, group_name')
+    .select('id, source_type, library_id, group_name')
     .eq('id', groupId)
     .eq('user_id', userId)
     .maybeSingle();
@@ -34,7 +34,7 @@ export async function deleteLibraryGroup(
     throw new Error('这组词不存在，或它不属于你。');
   }
 
-  if (resolveLibraryGroupSourceType(group.source_type, group.group_name) === 'system') {
+  if (resolveLibraryGroupSourceType(group.source_type, group.library_id, group.group_name) === 'system') {
     throw new Error('系统词库暂时不支持删除。');
   }
 

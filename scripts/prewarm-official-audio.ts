@@ -1,8 +1,14 @@
 import 'dotenv/config';
-import { IELTS_WORDS_FLAT } from '../src/data/ielts-vocab.ts';
+import { OFFICIAL_LIBRARY_DEFINITIONS } from '../src/lib/officialLibrary.ts';
 import { getOrCreateAudio } from '../server/audio.ts';
 import { supabaseAdmin } from '../server/supabase.ts';
 import { normalizeWordKey } from '../shared/wordBatch.ts';
+
+const ALL_OFFICIAL_WORDS = Array.from(
+  new Set(
+    OFFICIAL_LIBRARY_DEFINITIONS.flatMap((def) => def.words)
+  )
+);
 
 interface CliOptions {
   batchSize: number;
@@ -117,7 +123,7 @@ function isReadyForAudio(row: AudioLookupRow) {
 }
 
 async function collectOfficialWordsMissingAudio() {
-  const officialWords = IELTS_WORDS_FLAT.map(normalizeWordKey);
+  const officialWords = ALL_OFFICIAL_WORDS.map(normalizeWordKey);
   const missingWords: string[] = [];
   let readyCount = 0;
 

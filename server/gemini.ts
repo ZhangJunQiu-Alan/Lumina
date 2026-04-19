@@ -25,11 +25,11 @@ function readPositiveIntEnv(name: string, fallback: number) {
 
 const ENRICH_MODEL = process.env.GEMINI_ENRICH_MODEL?.trim() || 'gemini-2.5-flash';
 const ARTICLE_MODEL = process.env.GEMINI_ARTICLE_MODEL?.trim() || 'gemini-2.5-flash';
-const DEFAULT_ENRICH_CHUNK_SIZE = readPositiveIntEnv('GEMINI_ENRICH_BATCH_SIZE', 5);
-const DEFAULT_ENRICH_MAX_CONCURRENCY = readPositiveIntEnv('GEMINI_ENRICH_MAX_CONCURRENCY', 3);
+const DEFAULT_ENRICH_CHUNK_SIZE = readPositiveIntEnv('GEMINI_ENRICH_BATCH_SIZE', 10);
+const DEFAULT_ENRICH_MAX_CONCURRENCY = readPositiveIntEnv('GEMINI_ENRICH_MAX_CONCURRENCY', 5);
 const ENRICH_MAX_OUTPUT_TOKENS = readPositiveIntEnv('GEMINI_ENRICH_MAX_OUTPUT_TOKENS', 8192);
-const MAX_ENRICH_RETRIES = 2;
-const BASE_RETRY_DELAY_MS = 2500;
+const MAX_ENRICH_RETRIES = 3;
+const BASE_RETRY_DELAY_MS = 2000;
 
 export class EnrichmentResponseValidationError extends Error {
   readonly statusCode = 502;
@@ -72,10 +72,10 @@ export interface GeminiWordResult {
 }
 
 const MORPHOLOGY_PART_KINDS: MorphologyPartKind[] = ['prefix', 'root', 'suffix'];
-const MAX_MORPHOLOGY_PARTS = 4;
-const MAX_RELATED_WORDS = 4;
-const MAX_CONFUSIONS = 3;
-const MAX_SENSES = 6;
+const MAX_MORPHOLOGY_PARTS = 3;
+const MAX_RELATED_WORDS = 3;
+const MAX_CONFUSIONS = 2;
+const MAX_SENSES = 3;
 
 function asTrimmedString(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
@@ -344,72 +344,30 @@ function getMissingRequiredFields(entry: GeminiWordResult) {
 
 const SYSTEM_PROMPT = `You are an IELTS vocabulary expert. For each English word provided, generate structured learning data for Chinese learners.
 
-Return ONLY a valid JSON array — no markdown fences, no explanation, no extra text.
+Return ONLY a valid JSON array — no markdown fences, no extra text. Keep descriptions CONCISE.
 
-Each element must follow this exact schema:
+Schema per element:
 {
-  "word": "the word exactly as given",
-  "ipa_uk": "British IPA using forward slashes e.g. /ˈæl.ə.keɪt/",
-  "ipa_us": "American IPA using forward slashes e.g. /ˈæl.ə.keɪt/",
-  "primary_meaning_zh": "primary Chinese definition, concise",
+  "word": "...",
+  "ipa_uk": "...",
+  "ipa_us": "...",
+  "primary_meaning_zh": "...",
   "ner_label": null,
-  "senses": [
-    {
-      "pos": "v",
-      "meaning_zh": "Chinese meaning for this POS",
-      "example_sentence": "Natural English example sentence using the word.",
-      "example_translation_zh": "Chinese translation of the example"
-    }
-  ],
-  "morphology": {
-    "summary_zh": "Chinese summary of the root/prefix/suffix memory strategy",
-    "parts": [
-      {
-        "text": "gran",
-        "kind": "root",
-        "meaning_zh": "颗粒；谷粒",
-        "note_zh": "提示这个词和颗粒、岩石质地相关"
-      }
-    ]
-  },
-  "derived_words": [
-    {
-      "word": "granular",
-      "meaning_zh": "颗粒状的",
-      "note_zh": "和原词同根，常见学术表达"
-    }
-  ],
-  "synonyms": [
-    {
-      "word": "stone",
-      "meaning_zh": "石头",
-      "note_zh": "语义接近，但更泛"
-    }
-  ],
-  "antonyms": [
-    {
-      "word": "soil",
-      "meaning_zh": "土壤",
-      "note_zh": "在材质语境里可作对照"
-    }
-  ],
-  "confusions": [
-    {
-      "word": "graphite",
-      "difference_zh": "graphite 是石墨，常用于铅笔芯；granite 是花岗岩，属于坚硬岩石。"
-    }
-  ],
-  "memory_tip": "A creative Chinese mnemonic or memory hook for this word"
+  "senses": [{"pos": "...", "meaning_zh": "...", "example_sentence": "...", "example_translation_zh": "..."}],
+  "morphology": {"summary_zh": "...", "parts": [{"text": "...", "kind": "root/prefix/suffix", "meaning_zh": "...", "note_zh": "..."}]},
+  "derived_words": [{"word": "...", "meaning_zh": "...", "note_zh": "..."}],
+  "synonyms": [{"word": "...", "meaning_zh": "...", "note_zh": "..."}],
+  "antonyms": [{"word": "...", "meaning_zh": "...", "note_zh": "..."}],
+  "confusions": [{"word": "...", "difference_zh": "..."}],
+  "memory_tip": "..."
 }
 
 Rules:
-- ner_label: only set for proper nouns (e.g. "LOCATION", "ORGANIZATION"). For all common words set null.
-- senses: include all major POS forms (n/v/adj/adv). At minimum 1 sense.
-- memory_tip: must be in Chinese, creative and memorable, ideally using etymology, imagery, or sound association.
-- morphology.summary_zh: always provide a concise Chinese summary, even if parts is empty.
-- morphology.parts: 0 to 4 items. kind must be prefix, root, or suffix.
-- derived_words / synonyms / antonyms: 0 to 4 items each. Exclude the original word itself.
-- confusions: 0 to 3 items. Each must explain the Chinese difference clearly.
+- primary_meaning_zh: very concise.
+- senses: max 3 major POS forms. Short examples.
+- memory_tip: creative, memorable, but short.
+- morphology: summary_zh under 80 chars. max 3 parts.
+- derived_words/synonyms/antonyms: max 3 each.
 - All Chinese text must be Simplified Chinese.`;
 
 const ARTICLE_PROMPT = `You are an IELTS reading passage expert. Write a short IELTS-style academic reading passage (250–350 words) that naturally incorporates every vocabulary word provided.

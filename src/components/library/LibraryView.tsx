@@ -20,6 +20,7 @@ import {
   LibraryGroupSummary,
   LibraryGroupWord,
   MemoryState,
+  OfficialLibraryId,
   OfficialLibrarySummary,
   ReviewResultType,
   ResumeCandidate,
@@ -43,13 +44,16 @@ import {
 import { deleteLibraryGroup } from '../../lib/libraryApi';
 import { OfficialLibraryPanel } from './OfficialLibraryPanel';
 import {
-  OFFICIAL_LIBRARY_TITLE,
+  OFFICIAL_LIBRARY_DEFINITIONS,
   buildOfficialLibrarySummary,
+  getOfficialLibraryDefinition,
   getOfficialWordPosition,
+  isOfficialLibraryId,
   resolveLibraryGroupSourceType,
+  resolveOfficialLibraryId,
   sortWordsByOfficialOrder,
 } from '../../lib/officialLibrary';
-import { fetchOfficialResumeCandidate } from '../../lib/learningSessionApi';
+import { fetchOfficialResumeCandidate, fetchOfficialResumeCandidates } from '../../lib/learningSessionApi';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
@@ -58,6 +62,7 @@ interface LearningGroupRow {
   id: string;
   group_name: string | null;
   source_type: 'custom' | 'system' | null;
+  library_id: string | null;
   status: 'active' | 'completed' | null;
   created_at: string;
   learning_group_words: { id: string }[] | null;
@@ -110,6 +115,7 @@ interface GroupWordRow {
 }
 
 interface OfficialLibraryDetailData {
+  libraryId: OfficialLibraryId;
   summary: OfficialLibrarySummary;
   words: LibraryGroupWord[];
 }
@@ -195,7 +201,8 @@ function formatMonthDay(createdAt: string): string {
 }
 
 function mapGroupSummary(row: LearningGroupRow): LibraryGroupSummary {
-  const sourceType = resolveLibraryGroupSourceType(row.source_type, row.group_name);
+  const libraryId = resolveOfficialLibraryId(row.library_id, row.group_name, row.source_type);
+  const sourceType = resolveLibraryGroupSourceType(row.source_type, row.library_id, row.group_name);
 
   return {
     id: row.id,
@@ -203,6 +210,7 @@ function mapGroupSummary(row: LearningGroupRow): LibraryGroupSummary {
     createdAt: row.created_at,
     wordCount: row.learning_group_words?.length ?? 0,
     sourceType,
+    libraryId,
     status: row.status === 'completed' ? 'completed' : 'active',
   };
 }
@@ -279,6 +287,7 @@ async function fetchLibraryGroupSummaries(userId: string): Promise<LibraryGroupS
       id,
       group_name,
       source_type,
+      library_id,
       status,
       created_at,
       learning_group_words ( id )
@@ -290,17 +299,22 @@ async function fetchLibraryGroupSummaries(userId: string): Promise<LibraryGroupS
   return ((data ?? []) as LearningGroupRow[]).map(mapGroupSummary);
 }
 
-async function fetchOfficialLibraryDetail(userId: string): Promise<OfficialLibraryDetailData> {
+async function fetchOfficialLibraryDetail(
+  userId: string,
+  libraryId: OfficialLibraryId,
+): Promise<OfficialLibraryDetailData> {
   const [groups, officialResumeCandidate] = await Promise.all([
     fetchLibraryGroupSummaries(userId),
-    fetchOfficialResumeCandidate(userId),
+    fetchOfficialResumeCandidate(userId, libraryId),
   ]);
 
-  const systemGroups = groups.filter((group) => group.sourceType === 'system');
-  const summary = buildOfficialLibrarySummary(systemGroups, officialResumeCandidate);
+  const definition = getOfficialLibraryDefinition(libraryId);
+  const systemGroups = groups.filter((group) => group.sourceType === 'system' && group.libraryId === libraryId);
+  const summary = buildOfficialLibrarySummary(libraryId, groups, officialResumeCandidate);
 
   if (systemGroups.length === 0) {
     return {
+      libraryId,
       summary,
       words: [],
     };
@@ -401,8 +415,9 @@ async function fetchOfficialLibraryDetail(userId: string): Promise<OfficialLibra
   }
 
   return {
+    libraryId,
     summary,
-    words: sortWordsByOfficialOrder([...wordsById.values()]),
+    words: sortWordsByOfficialOrder(definition.id, [...wordsById.values()]),
   };
 }
 
@@ -975,7 +990,9 @@ export const LibraryView = ({
   const navigate = useNavigate();
   const { user } = useAuth();
   const [groups, setGroups] = useState<LibraryGroupSummary[]>([]);
-  const [officialResumeCandidate, setOfficialResumeCandidate] = useState<ResumeCandidate | null | undefined>(undefined);
+  const [officialResumeCandidates, setOfficialResumeCandidates] = useState<
+    Record<OfficialLibraryId, ResumeCandidate | null> | undefined
+  >(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [groupPendingDelete, setGroupPendingDelete] = useState<LibraryGroupSummary | null>(null);
@@ -988,7 +1005,11 @@ export const LibraryView = ({
 
     if (!user) {
       setGroups([]);
-      setOfficialResumeCandidate(null);
+      setOfficialResumeCandidates(
+        Object.fromEntries(
+          OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [definition.id, null]),
+        ) as Record<OfficialLibraryId, ResumeCandidate | null>,
+      );
       setIsLoading(false);
       setErrorMsg('');
       return () => { active = false; };
@@ -1008,7 +1029,7 @@ export const LibraryView = ({
         shouldRefreshGroups
           ? refreshLibraryGroups(user.id, () => fetchLibraryGroupSummaries(user.id))
           : Promise.resolve(cachedGroups.data),
-        fetchOfficialResumeCandidate(user.id),
+        fetchOfficialResumeCandidates(user.id),
       ]);
 
       if (!active) return;
@@ -1028,7 +1049,7 @@ export const LibraryView = ({
       }
 
       if (officialResumeResult.status === 'fulfilled') {
-        setOfficialResumeCandidate(officialResumeResult.value);
+        setOfficialResumeCandidates(officialResumeResult.value);
       } else {
         const msg =
           officialResumeResult.reason instanceof Error
@@ -1036,7 +1057,11 @@ export const LibraryView = ({
             : (officialResumeResult.reason as { message?: string })?.message ?? JSON.stringify(officialResumeResult.reason);
         console.error('official resume lookup failed:', msg);
         setErrorMsg((current) => current || msg);
-        setOfficialResumeCandidate(null);
+        setOfficialResumeCandidates(
+          Object.fromEntries(
+            OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [definition.id, null]),
+          ) as Record<OfficialLibraryId, ResumeCandidate | null>,
+        );
       }
 
       setIsLoading(false);
@@ -1047,7 +1072,7 @@ export const LibraryView = ({
     return () => { active = false; };
   }, [user]);
 
-  if (isLoading || officialResumeCandidate === undefined) {
+  if (isLoading || officialResumeCandidates === undefined) {
     return <LibraryLoading message="正在把你的词库整理好" />;
   }
 
@@ -1055,9 +1080,15 @@ export const LibraryView = ({
     return <LibraryError message={errorMsg} />;
   }
 
-  const systemGroups = groups.filter((group) => group.sourceType === 'system');
   const customGroups = groups.filter((group) => group.sourceType === 'custom');
-  const officialSummary = buildOfficialLibrarySummary(systemGroups, officialResumeCandidate ?? null);
+  const officialLibraries = OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => ({
+    definition,
+    summary: buildOfficialLibrarySummary(
+      definition.id,
+      groups,
+      officialResumeCandidates[definition.id] ?? null,
+    ),
+  }));
 
   const handleDeleteGroup = async () => {
     if (!user || !groupPendingDelete) return;
@@ -1094,12 +1125,19 @@ export const LibraryView = ({
             </div>
           </div>
 
-          <OfficialLibraryPanel
-            summary={officialSummary}
-            onStartLearning={onStartLearningGroup}
-            onOpenDetail={() => navigate('/app/library/official')}
-            onLibraryMutated={onLibraryMutated}
-          />
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+            {officialLibraries.map(({ definition, summary }) => (
+              <Fragment key={definition.id}>
+                <OfficialLibraryPanel
+                  definition={definition}
+                  summary={summary}
+                  onStartLearning={onStartLearningGroup}
+                  onOpenDetail={() => navigate(`/app/library/official/${definition.id}`)}
+                  onLibraryMutated={onLibraryMutated}
+                />
+              </Fragment>
+            ))}
+          </div>
         </section>
 
         <section className="space-y-5">
@@ -1180,8 +1218,16 @@ export const OfficialLibraryDetailView = ({
   onStartLearningGroup?: (groupId: string) => Promise<void> | void;
 }) => {
   const navigate = useNavigate();
+  const { libraryId: rawLibraryId } = useParams();
   const { user } = useAuth();
-  const [summary, setSummary] = useState<OfficialLibrarySummary>(() => buildOfficialLibrarySummary([], null));
+  
+  if (!rawLibraryId || !isOfficialLibraryId(rawLibraryId)) {
+    return <Navigate to="/app/library/official/ielts-vocab" replace />;
+  }
+
+  const libraryId = rawLibraryId;
+  const definition = getOfficialLibraryDefinition(libraryId);
+  const [summary, setSummary] = useState<OfficialLibrarySummary>(() => buildOfficialLibrarySummary(libraryId, [], null));
   const [words, setWords] = useState<LibraryGroupWord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -1191,7 +1237,7 @@ export const OfficialLibraryDetailView = ({
     let active = true;
 
     if (!user) {
-      setSummary(buildOfficialLibrarySummary([], null));
+      setSummary(buildOfficialLibrarySummary(libraryId, [], null));
       setWords([]);
       setIsLoading(false);
       setErrorMsg('');
@@ -1202,7 +1248,7 @@ export const OfficialLibraryDetailView = ({
       try {
         setIsLoading(true);
         setErrorMsg('');
-        const detail = await fetchOfficialLibraryDetail(user.id);
+        const detail = await fetchOfficialLibraryDetail(user.id, libraryId);
         if (!active) return;
         setSummary(detail.summary);
         setWords(detail.words);
@@ -1221,7 +1267,7 @@ export const OfficialLibraryDetailView = ({
     void loadOfficialDetail();
 
     return () => { active = false; };
-  }, [user]);
+  }, [libraryId, user]);
 
   const selectedWord = useMemo(
     () => words.find((word) => word.id === selectedId) ?? null,
@@ -1246,11 +1292,12 @@ export const OfficialLibraryDetailView = ({
             className="inline-flex items-center gap-2 rounded-full bg-white/78 px-4 py-2 text-sm font-bold text-text-secondary shadow-[0_10px_24px_rgba(0,0,0,0.05)] transition-colors hover:text-text-primary"
           >
             <ArrowLeft className="h-4 w-4" />
-            词库 / 系统词库
+            词库 / 系统词库 / {definition.title}
           </button>
         </div>
 
         <OfficialLibraryPanel
+          definition={definition}
           summary={summary}
           onStartLearning={onStartLearningGroup ?? (() => undefined)}
           onLibraryMutated={onLibraryMutated}
@@ -1260,7 +1307,7 @@ export const OfficialLibraryDetailView = ({
         {words.length === 0 ? (
           <div className="glass rounded-[32px] p-12 text-center jelly-shadow">
             <BookOpen className="mx-auto h-10 w-10 text-text-secondary/50" />
-            <p className="mt-4 text-2xl font-black text-text-primary">{OFFICIAL_LIBRARY_TITLE} 还没开始</p>
+            <p className="mt-4 text-2xl font-black text-text-primary">{definition.title} 还没开始</p>
             <p className="mt-3 text-sm leading-7 text-text-secondary">
               点上面的继续学习，系统会从第一批开始把官方词汇发到这里。
             </p>
@@ -1281,9 +1328,9 @@ export const OfficialLibraryDetailView = ({
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-2">
                       <span className="rounded-full bg-black/5 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">
-                        {String(((getOfficialWordPosition(word.word) === Number.MAX_SAFE_INTEGER)
+                        {String(((getOfficialWordPosition(libraryId, word.word) === Number.MAX_SAFE_INTEGER)
                           ? index
-                          : getOfficialWordPosition(word.word)) + 1).padStart(4, '0')}
+                          : getOfficialWordPosition(libraryId, word.word)) + 1).padStart(4, '0')}
                       </span>
                       <h3 className="text-3xl font-black tracking-tight text-text-primary">{word.word}</h3>
                       <span className="text-sm font-mono text-apple-blue">{word.phonetic || '暂无音标'}</span>
@@ -1430,7 +1477,7 @@ export const LibraryGroupDetailView = ({
 
   const isSystemGroup = group.sourceType === 'system';
   if (isSystemGroup) {
-    return <Navigate to="/app/library/official" replace />;
+    return <Navigate to={`/app/library/official/${group.libraryId || 'ielts-vocab'}`} replace />;
   }
 
   const groupSectionLabel = isSystemGroup ? '系统词库' : '个人词库';

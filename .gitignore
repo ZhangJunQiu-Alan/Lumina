@@ -93,6 +93,15 @@ out
 .nuxt
 dist
 
+# Gemini CLI personal config
+.gemini/
+
+# Playwright / local tooling output
+output/
+
+# Reference PDFs (kept locally, not in repo)
+*.pdf
+
 # Gatsby files
 .cache/
 # Comment in the public line in if your project uses Gatsby and not Next.js

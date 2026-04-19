@@ -7,6 +7,7 @@ const APP_URL = 'https://hefengxian.github.io/my-ielts/';
 const OUTPUT_FILE = path.resolve(process.cwd(), 'src/data/ielts-vocab.ts');
 const EXPECTED_CHAPTER_COUNT = 22;
 const EXPECTED_WORD_COUNT = 3674;
+const EXPECTED_UNIQUE_WORD_COUNT = 3631;
 
 async function fetchText(url) {
   const res = await fetch(url);
@@ -64,6 +65,14 @@ function normalizeChapters(rawVocabulary) {
   }));
 }
 
+function countUniqueWords(chapters) {
+  return new Set(
+    chapters
+      .flatMap((chapter) => chapter.words)
+      .map((word) => word.trim().toLowerCase()),
+  ).size;
+}
+
 function renderTypeScript(chapters, sourceUrl) {
   const generatedAt = new Date().toISOString();
   const serialized = JSON.stringify(chapters, null, 2);
@@ -79,7 +88,22 @@ export interface IELTSChapter {
 
 export const IELTS_CHAPTERS: IELTSChapter[] = ${serialized};
 
-export const IELTS_WORDS_FLAT: string[] = IELTS_CHAPTERS.flatMap((chapter) => chapter.words);
+export const IELTS_WORDS_FLAT: string[] = (() => {
+  const seen = new Set<string>();
+
+  return IELTS_CHAPTERS
+    .flatMap((chapter) => chapter.words)
+    .filter((word) => {
+      const normalizedWord = word.trim().toLowerCase();
+
+      if (seen.has(normalizedWord)) {
+        return false;
+      }
+
+      seen.add(normalizedWord);
+      return true;
+    });
+})();
 `;
 }
 
@@ -108,6 +132,7 @@ async function main() {
 
   const chapters = normalizeChapters(rawVocabulary);
   const totalWords = chapters.reduce((sum, chapter) => sum + chapter.words.length, 0);
+  const uniqueWordCount = countUniqueWords(chapters);
 
   if (chapters.length !== EXPECTED_CHAPTER_COUNT) {
     throw new Error(
@@ -121,10 +146,18 @@ async function main() {
     );
   }
 
+  if (uniqueWordCount !== EXPECTED_UNIQUE_WORD_COUNT) {
+    throw new Error(
+      `Expected ${EXPECTED_UNIQUE_WORD_COUNT} unique words, received ${uniqueWordCount}. Review the upstream vocabulary source before updating local data.`,
+    );
+  }
+
   await mkdir(path.dirname(OUTPUT_FILE), { recursive: true });
   await writeFile(OUTPUT_FILE, renderTypeScript(chapters, vocabularyChunkUrl), 'utf8');
 
-  console.log(`Wrote ${chapters.length} chapters and ${totalWords} words to ${OUTPUT_FILE}`);
+  console.log(
+    `Wrote ${chapters.length} chapters, ${totalWords} raw words, and ${uniqueWordCount} unique words to ${OUTPUT_FILE}`,
+  );
   console.log(`First chapter sample: ${chapters[0].words.slice(0, 3).join(', ')}`);
 }
 

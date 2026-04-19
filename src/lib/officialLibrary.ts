@@ -1,16 +1,22 @@
-import { IELTS_WORDS_FLAT } from '../data/ielts-vocab';
-import type { LibraryGroupSummary, OfficialLibrarySummary, ResumeCandidate } from '../types';
+import { GRE_ZHENKAO_V7_TITLE, GRE_ZHENKAO_V7_WORDS } from '../data/gre-zhenkao-v7';
+import { IELTS_CHAPTERS, IELTS_WORDS_FLAT } from '../data/ielts-vocab';
+import type {
+  LibraryGroupSummary,
+  OfficialLibraryId,
+  OfficialLibrarySummary,
+  ResumeCandidate,
+} from '../types';
 
-export const OFFICIAL_LIBRARY_TITLE = '雅思词汇真经';
-export const OFFICIAL_GROUP_PREFIX = `${OFFICIAL_LIBRARY_TITLE} · `;
-export const OFFICIAL_PROGRESS_KEY = 'ielts_vocab_progress';
-export const OFFICIAL_BATCH_SIZE = 30;
-export const OFFICIAL_TOTAL_WORDS = IELTS_WORDS_FLAT.length;
-
-const OFFICIAL_GROUP_PATTERN = /^雅思词汇真经 · (\d{4})-(\d{4})$/;
-const officialWordOrder = new Map(
-  IELTS_WORDS_FLAT.map((word, index) => [word.trim().toLowerCase(), index]),
-);
+export interface OfficialLibraryDefinition {
+  id: OfficialLibraryId;
+  title: string;
+  groupPrefix: string;
+  batchSize: number;
+  words: string[];
+  description: string;
+  groupPattern: RegExp;
+  legacyGroupPatterns?: RegExp[];
+}
 
 export interface OfficialBatchPlan {
   words: string[];
@@ -18,17 +24,112 @@ export interface OfficialBatchPlan {
   nextProgress: number;
 }
 
-function clampProgress(value: number): number {
+const DEFAULT_BATCH_SIZE = 30;
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildOfficialGroupPattern(prefix: string) {
+  return new RegExp(`^${escapeRegExp(prefix)}(\\d{4})-(\\d{4})$`);
+}
+
+export const OFFICIAL_LIBRARY_DEFINITIONS: OfficialLibraryDefinition[] = [
+  {
+    id: 'ielts-vocab',
+    title: '雅思词汇真经',
+    groupPrefix: '雅思词汇真经 · ',
+    batchSize: DEFAULT_BATCH_SIZE,
+    words: IELTS_WORDS_FLAT,
+    description: `${IELTS_CHAPTERS.length} 章 · ${IELTS_WORDS_FLAT.length} 词 · 按顺序推进。每次直接取接下来的 ${DEFAULT_BATCH_SIZE} 词，优先复用已经整理好的词条，缺的再补齐后直接开始。`,
+    groupPattern: buildOfficialGroupPattern('雅思词汇真经 · '),
+    legacyGroupPatterns: [/^雅思词汇真经 · (\d{4})-(\d{4})$/],
+  },
+  {
+    id: 'gre-zhenkao-v7',
+    title: GRE_ZHENKAO_V7_TITLE,
+    groupPrefix: `${GRE_ZHENKAO_V7_TITLE} · `,
+    batchSize: DEFAULT_BATCH_SIZE,
+    words: GRE_ZHENKAO_V7_WORDS,
+    description: `机经词表 · ${GRE_ZHENKAO_V7_WORDS.length} 词 · 按顺序推进。每次直接取接下来的 ${DEFAULT_BATCH_SIZE} 词，优先复用已经整理好的词条，缺的再补齐后直接开始。`,
+    groupPattern: buildOfficialGroupPattern(`${GRE_ZHENKAO_V7_TITLE} · `),
+  },
+];
+
+const officialLibraryDefinitionById = new Map(
+  OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [definition.id, definition]),
+);
+
+const officialWordOrder = new Map(
+  OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [
+    definition.id,
+    new Map(definition.words.map((word, index) => [word.trim().toLowerCase(), index])),
+  ]),
+);
+
+function clampProgress(libraryId: OfficialLibraryId, value: number): number {
+  const totalWords = getOfficialLibraryDefinition(libraryId).words.length;
   if (Number.isNaN(value)) return 0;
-  return Math.min(Math.max(value, 0), OFFICIAL_TOTAL_WORDS);
+  return Math.min(Math.max(value, 0), totalWords);
+}
+
+function matchOfficialGroupRange(definition: OfficialLibraryDefinition, groupName: string | null | undefined) {
+  const patterns = [definition.groupPattern, ...(definition.legacyGroupPatterns ?? [])];
+
+  for (const pattern of patterns) {
+    const match = pattern.exec(groupName ?? '');
+    if (match) {
+      return match;
+    }
+  }
+
+  return null;
+}
+
+export function isOfficialLibraryId(value: string | null | undefined): value is OfficialLibraryId {
+  return officialLibraryDefinitionById.has((value ?? '') as OfficialLibraryId);
+}
+
+export function getOfficialLibraryDefinition(libraryId: OfficialLibraryId): OfficialLibraryDefinition {
+  const definition = officialLibraryDefinitionById.get(libraryId);
+  if (!definition) {
+    throw new Error(`Unknown official library: ${libraryId}`);
+  }
+
+  return definition;
+}
+
+export function resolveOfficialLibraryId(
+  libraryId: string | null | undefined,
+  groupName: string | null | undefined,
+  sourceType: 'custom' | 'system' | null | undefined,
+): OfficialLibraryId | null {
+  if (isOfficialLibraryId(libraryId)) {
+    return libraryId;
+  }
+
+  for (const definition of OFFICIAL_LIBRARY_DEFINITIONS) {
+    if (matchOfficialGroupRange(definition, groupName)) {
+      return definition.id;
+    }
+  }
+
+  if (sourceType !== 'system') {
+    return null;
+  }
+
+  return null;
 }
 
 export function isOfficialGroupName(groupName: string | null | undefined): boolean {
-  return OFFICIAL_GROUP_PATTERN.test(groupName ?? '');
+  return OFFICIAL_LIBRARY_DEFINITIONS.some((definition) => Boolean(matchOfficialGroupRange(definition, groupName)));
 }
 
-export function parseOfficialGroupRange(groupName: string | null | undefined) {
-  const match = OFFICIAL_GROUP_PATTERN.exec(groupName ?? '');
+export function parseOfficialGroupRange(
+  libraryId: OfficialLibraryId,
+  groupName: string | null | undefined,
+) {
+  const match = matchOfficialGroupRange(getOfficialLibraryDefinition(libraryId), groupName);
   if (!match) return null;
 
   const start = Number.parseInt(match[1], 10);
@@ -43,42 +144,37 @@ export function parseOfficialGroupRange(groupName: string | null | undefined) {
 
 export function resolveLibraryGroupSourceType(
   sourceType: 'custom' | 'system' | null | undefined,
+  libraryId: string | null | undefined,
   groupName: string | null | undefined,
 ): 'custom' | 'system' {
-  if (sourceType === 'system' || isOfficialGroupName(groupName)) {
+  if (sourceType === 'system' || resolveOfficialLibraryId(libraryId, groupName, sourceType)) {
     return 'system';
   }
 
   return 'custom';
 }
 
-export function formatOfficialGroupName(progress: number, batchLength: number): string {
+export function formatOfficialGroupName(
+  libraryId: OfficialLibraryId,
+  progress: number,
+  batchLength: number,
+): string {
+  const definition = getOfficialLibraryDefinition(libraryId);
   const start = String(progress + 1).padStart(4, '0');
   const end = String(progress + batchLength).padStart(4, '0');
-  return `${OFFICIAL_LIBRARY_TITLE} · ${start}-${end}`;
+  return `${definition.groupPrefix}${start}-${end}`;
 }
 
-export function readOfficialProgress() {
-  if (typeof window === 'undefined') return 0;
-
-  const stored = window.localStorage.getItem(OFFICIAL_PROGRESS_KEY);
-  return clampProgress(Number.parseInt(stored ?? '0', 10));
-}
-
-export function writeOfficialProgress(nextIndex: number) {
-  const clamped = clampProgress(nextIndex);
-  if (typeof window !== 'undefined') {
-    window.localStorage.setItem(OFFICIAL_PROGRESS_KEY, String(clamped));
-  }
-
-  return clamped;
-}
-
-export function deriveOfficialProgress(groups: Pick<LibraryGroupSummary, 'sourceType' | 'title'>[]) {
+export function deriveOfficialProgress(
+  libraryId: OfficialLibraryId,
+  groups: Pick<LibraryGroupSummary, 'sourceType' | 'title' | 'libraryId'>[],
+) {
   return groups.reduce((maxProgress, group) => {
-    if (group.sourceType !== 'system') return maxProgress;
+    if (group.sourceType !== 'system' || group.libraryId !== libraryId) {
+      return maxProgress;
+    }
 
-    const range = parseOfficialGroupRange(group.title);
+    const range = parseOfficialGroupRange(libraryId, group.title);
     if (!range) return maxProgress;
 
     return Math.max(maxProgress, range.end);
@@ -86,41 +182,46 @@ export function deriveOfficialProgress(groups: Pick<LibraryGroupSummary, 'source
 }
 
 export function countUnlockedOfficialWords(
-  groups: Pick<LibraryGroupSummary, 'sourceType' | 'wordCount'>[],
+  libraryId: OfficialLibraryId,
+  groups: Pick<LibraryGroupSummary, 'sourceType' | 'wordCount' | 'libraryId'>[],
 ) {
   return clampProgress(
+    libraryId,
     groups.reduce((count, group) => (
-      group.sourceType === 'system' ? count + group.wordCount : count
+      group.sourceType === 'system' && group.libraryId === libraryId ? count + group.wordCount : count
     ), 0),
   );
 }
 
-export function getOfficialBatchWords(progress: number) {
-  return IELTS_WORDS_FLAT.slice(progress, progress + OFFICIAL_BATCH_SIZE);
+export function getOfficialBatchWords(libraryId: OfficialLibraryId, progress: number) {
+  const definition = getOfficialLibraryDefinition(libraryId);
+  return definition.words.slice(progress, progress + definition.batchSize);
 }
 
-export function getOfficialBatchPlan(progress: number): OfficialBatchPlan | null {
-  const words = getOfficialBatchWords(progress);
+export function getOfficialBatchPlan(libraryId: OfficialLibraryId, progress: number): OfficialBatchPlan | null {
+  const definition = getOfficialLibraryDefinition(libraryId);
+  const words = getOfficialBatchWords(libraryId, progress);
   if (words.length === 0) return null;
 
   return {
     words,
-    groupName: formatOfficialGroupName(progress, words.length),
+    groupName: formatOfficialGroupName(libraryId, progress, words.length),
     nextProgress: progress + words.length,
   };
 }
 
 export function buildOfficialLibrarySummary(
-  groups: Pick<LibraryGroupSummary, 'sourceType' | 'title' | 'wordCount'>[],
+  libraryId: OfficialLibraryId,
+  groups: Pick<LibraryGroupSummary, 'sourceType' | 'title' | 'wordCount' | 'libraryId'>[],
   resumeCandidate: ResumeCandidate | null,
 ): OfficialLibrarySummary {
-  const progress = clampProgress(deriveOfficialProgress(groups));
-  const nextBatchPlan = getOfficialBatchPlan(progress);
+  const progress = clampProgress(libraryId, deriveOfficialProgress(libraryId, groups));
+  const nextBatchPlan = getOfficialBatchPlan(libraryId, progress);
 
   return {
     progress,
     nextBatchSize: nextBatchPlan?.words.length ?? 0,
-    unlockedWordCount: countUnlockedOfficialWords(groups),
+    unlockedWordCount: countUnlockedOfficialWords(libraryId, groups),
     resumeCandidate,
     completed: !nextBatchPlan,
   };
@@ -136,14 +237,17 @@ export function resolveOfficialLibraryStartMode(
   return summary.completed ? 'completed' as const : 'new' as const;
 }
 
-export function getOfficialWordPosition(word: string) {
-  return officialWordOrder.get(word.trim().toLowerCase()) ?? Number.MAX_SAFE_INTEGER;
+export function getOfficialWordPosition(libraryId: OfficialLibraryId, word: string) {
+  return officialWordOrder.get(libraryId)?.get(word.trim().toLowerCase()) ?? Number.MAX_SAFE_INTEGER;
 }
 
-export function sortWordsByOfficialOrder<T extends { word: string }>(words: T[]) {
+export function sortWordsByOfficialOrder<T extends { word: string }>(
+  libraryId: OfficialLibraryId,
+  words: T[],
+) {
   return [...words].sort((left, right) => {
-    const leftOrder = getOfficialWordPosition(left.word);
-    const rightOrder = getOfficialWordPosition(right.word);
+    const leftOrder = getOfficialWordPosition(libraryId, left.word);
+    const rightOrder = getOfficialWordPosition(libraryId, right.word);
 
     if (leftOrder !== rightOrder) {
       return leftOrder - rightOrder;
