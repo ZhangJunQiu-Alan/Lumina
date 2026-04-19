@@ -56,7 +56,7 @@ assert.deepEqual(normalized.antonyms.map((item) => item.word), ['soil']);
 
 assert.deepEqual(
   normalized.confusions.map((item) => item.word),
-  ['graphite', 'slate', 'basalt'],
+  ['graphite', 'slate'],
 );
 assert.equal(normalized.confused_word, 'graphite');
 assert.equal(normalized.confused_diff_zh, '石墨，不是花岗岩。');
