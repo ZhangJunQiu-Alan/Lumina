@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import {
   AlertCircle,
-  ArrowLeft,
   CheckCircle2,
   ChevronRight,
   Clock3,
@@ -11,7 +10,6 @@ import {
   Volume2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
 import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
 import {
   AUTO_PLAY_GAP_OPTIONS,
@@ -214,7 +212,6 @@ function SettingsCard({
 
 export const SettingsView = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
   const { preferences, isLoading, loadError, savePreferences } = useLearningPreferences();
   const [feedbackByKey, setFeedbackByKey] = useState<Partial<Record<PreferenceKey, PreferenceFeedback>>>({});
   const feedbackTimeoutsRef = useRef<Partial<Record<PreferenceKey, ReturnType<typeof setTimeout>>>>({});
@@ -282,50 +279,6 @@ export const SettingsView = () => {
 
   return (
     <div className="w-full max-w-6xl mx-auto space-y-6">
-      <motion.header
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-[36px] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.88),rgba(245,247,255,0.72))] p-6 shadow-[0_30px_80px_rgba(14,26,56,0.08)] backdrop-blur-2xl md:p-8"
-      >
-        <div className="pointer-events-none absolute -left-10 top-0 h-40 w-40 rounded-full bg-apple-blue/10 blur-3xl" />
-        <div className="pointer-events-none absolute right-0 bottom-0 h-40 w-40 rounded-full bg-apple-teal/10 blur-3xl" />
-
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <button
-              type="button"
-              onClick={() => navigate('/app/profile')}
-              className="inline-flex items-center gap-2 rounded-full bg-white/82 px-4 py-2 text-sm font-bold text-text-secondary shadow-[0_10px_24px_rgba(0,0,0,0.05)] transition-colors hover:text-text-primary"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              回到我的
-            </button>
-
-            <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.28em] text-apple-blue">Learning Settings</p>
-            <h1 className="mt-3 text-4xl font-black tracking-tight text-text-primary md:text-5xl">
-              把发音和节奏调成你习惯的样子。
-            </h1>
-            <p className="mt-4 max-w-3xl text-sm leading-7 text-text-secondary md:text-base">
-              这里改的是整个学习系统默认怎么发音、怎么连播、答错后给你留多久看答案。改完会直接同步到当前账号，
-              下次回来还是这一套。
-            </p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-[28px] border border-white/75 bg-white/72 px-5 py-4 shadow-[0_16px_32px_rgba(0,0,0,0.05)]">
-              <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">同步状态</p>
-              <p className="mt-2 text-lg font-black text-text-primary">即时保存到账号</p>
-            </div>
-            <div className="rounded-[28px] border border-white/75 bg-white/72 px-5 py-4 shadow-[0_16px_32px_rgba(0,0,0,0.05)]">
-              <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">当前账号</p>
-              <p className="mt-2 truncate text-lg font-black text-text-primary">
-                {user?.email ?? '还没拿到邮箱'}
-              </p>
-            </div>
-          </div>
-        </div>
-      </motion.header>
-
       {loadError && (
         <div className="rounded-[28px] border border-apple-red/15 bg-apple-red/8 px-5 py-4 text-apple-red shadow-[0_18px_40px_rgba(255,59,48,0.08)]">
           <div className="flex items-start gap-3">

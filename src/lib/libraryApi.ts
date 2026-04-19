@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { resolveLibraryGroupSourceType } from './officialLibrary';
+import type { OfficialLibraryId } from '../types';
 
 interface GroupWordRow {
   vocabulary_item_id: string;
@@ -110,4 +111,33 @@ export async function deleteLibraryGroup(
     deletedWordCount: targetWordIds.length,
     removedReviewStateCount,
   };
+}
+
+interface LearnedWordRow {
+  vocabulary_items: { word: string | null } | { word: string | null }[] | null;
+}
+
+export async function fetchOfficialLearnedWords(
+  userId: string,
+  libraryId: OfficialLibraryId,
+): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from('learning_group_words')
+    .select('vocabulary_items!inner(word), learning_groups!inner(user_id, source_type, library_id)')
+    .eq('learning_groups.user_id', userId)
+    .eq('learning_groups.source_type', 'system')
+    .eq('learning_groups.library_id', libraryId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const result = new Set<string>();
+  for (const row of (data ?? []) as LearnedWordRow[]) {
+    const vocab = Array.isArray(row.vocabulary_items) ? row.vocabulary_items[0] : row.vocabulary_items;
+    const word = vocab?.word?.trim().toLowerCase();
+    if (word) result.add(word);
+  }
+
+  return result;
 }

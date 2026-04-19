@@ -121,6 +121,7 @@ interface GroupWordRow {
 interface OfficialLibraryDetailData {
   libraryId: OfficialLibraryId;
   summary: OfficialLibrarySummary;
+  existingGroupCount: number;
   words: LibraryGroupWord[];
 }
 
@@ -320,6 +321,7 @@ async function fetchOfficialLibraryDetail(
     return {
       libraryId,
       summary,
+      existingGroupCount: 0,
       words: [],
     };
   }
@@ -421,6 +423,7 @@ async function fetchOfficialLibraryDetail(
   return {
     libraryId,
     summary,
+    existingGroupCount: systemGroups.length,
     words: sortWordsByOfficialOrder(definition.id, [...wordsById.values()]),
   };
 }
@@ -1109,6 +1112,9 @@ export const LibraryView = ({
       groups,
       officialResumeCandidates[definition.id] ?? null,
     ),
+    existingGroupCount: groups.filter(
+      (group) => group.sourceType === 'system' && group.libraryId === definition.id,
+    ).length,
   }));
 
   const handleDeleteGroup = async () => {
@@ -1147,11 +1153,12 @@ export const LibraryView = ({
           </div>
 
           <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-            {officialLibraries.map(({ definition, summary }) => (
+            {officialLibraries.map(({ definition, summary, existingGroupCount }) => (
               <Fragment key={definition.id}>
                 <OfficialLibraryPanel
                   definition={definition}
                   summary={summary}
+                  existingGroupCount={existingGroupCount}
                   onStartLearning={onStartLearningGroup}
                   onOpenDetail={() => navigate(`/app/library/official/${definition.id}`)}
                   onLibraryMutated={onLibraryMutated}
@@ -1250,6 +1257,7 @@ export const OfficialLibraryDetailView = ({
   const definition = getOfficialLibraryDefinition(libraryId);
   const [summary, setSummary] = useState<OfficialLibrarySummary>(() => buildOfficialLibrarySummary(libraryId, [], null));
   const [words, setWords] = useState<LibraryGroupWord[]>([]);
+  const [existingGroupCount, setExistingGroupCount] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -1260,6 +1268,7 @@ export const OfficialLibraryDetailView = ({
     if (!user) {
       setSummary(buildOfficialLibrarySummary(libraryId, [], null));
       setWords([]);
+      setExistingGroupCount(0);
       setIsLoading(false);
       setErrorMsg('');
       return () => { active = false; };
@@ -1269,6 +1278,7 @@ export const OfficialLibraryDetailView = ({
     if (cached) {
       setSummary(cached.data.summary);
       setWords(cached.data.words);
+      setExistingGroupCount(cached.data.existingGroupCount);
       setErrorMsg('');
       setIsLoading(false);
     } else {
@@ -1290,6 +1300,7 @@ export const OfficialLibraryDetailView = ({
         if (!active) return;
         setSummary(detail.summary);
         setWords(detail.words);
+        setExistingGroupCount(detail.existingGroupCount);
         setErrorMsg('');
       } catch (error) {
         if (!active) return;
@@ -1342,6 +1353,7 @@ export const OfficialLibraryDetailView = ({
         <OfficialLibraryPanel
           definition={definition}
           summary={summary}
+          existingGroupCount={existingGroupCount}
           onStartLearning={onStartLearningGroup ?? (() => undefined)}
           onLibraryMutated={onLibraryMutated}
           showOpenDetailAction={false}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { AlertCircle, ArrowRight, BookOpen, Loader2 } from 'lucide-react';
+import { AlertCircle, ArrowRight, BookOpen, Loader2, Shuffle } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import {
   createLearningGroupFromVocabularyEntries,
@@ -8,10 +8,17 @@ import {
   persistEnrichedVocabularyEntries,
   type PersistedVocabularyEntry,
 } from '../../lib/importFlow';
-import { invalidateLibraryCache } from '../../lib/libraryCache';
 import {
-  getOfficialBatchPlan,
+  getCachedOfficialLearnedWords,
+  invalidateLibraryCache,
+  isLibraryCacheFresh,
+  refreshOfficialLearnedWords,
+} from '../../lib/libraryCache';
+import { fetchOfficialLearnedWords } from '../../lib/libraryApi';
+import {
+  getOfficialNextBatch,
   type OfficialLibraryDefinition,
+  type OfficialStudyMode,
   resolveOfficialLibraryStartMode,
 } from '../../lib/officialLibrary';
 import { useAuth } from '../../contexts/AuthContext';
@@ -24,6 +31,7 @@ type Stage = 'idle' | 'preparing' | 'resuming' | 'error';
 interface OfficialLibraryPanelProps {
   definition: OfficialLibraryDefinition;
   summary: OfficialLibrarySummary;
+  existingGroupCount: number;
   onStartLearning: (groupId: string, words?: Word[]) => Promise<void> | void;
   onOpenDetail?: () => void | Promise<void>;
   onLibraryMutated?: () => void | Promise<void>;
@@ -36,6 +44,7 @@ const infoCardClassName =
 export function OfficialLibraryPanel({
   definition,
   summary,
+  existingGroupCount,
   onStartLearning,
   onOpenDetail,
   onLibraryMutated,
@@ -44,15 +53,34 @@ export function OfficialLibraryPanel({
   const { user } = useAuth();
   const [stage, setStage] = useState<Stage>('idle');
   const [errorMsg, setErrorMsg] = useState('');
+  const [mode, setMode] = useState<OfficialStudyMode>('sequential');
 
-  const nextBatchPlan = getOfficialBatchPlan(definition.id, summary.progress);
   const startMode = resolveOfficialLibraryStartMode(summary);
   const actionDisabled = startMode === 'completed';
+  const resumeActive = startMode === 'resume';
   const resumeCopy = summary.resumeCandidate
     ? summary.resumeCandidate.round === 'article'
       ? '文章巩固'
       : `${LEARNING_ROUND_LABELS[summary.resumeCandidate.round]} · 第 ${summary.resumeCandidate.currentIndex + 1} 个词`
     : null;
+
+  const ctaLabel = actionDisabled
+    ? '已学完'
+    : resumeActive
+      ? '继续学习'
+      : mode === 'shuffle'
+        ? '乱序学习下一批'
+        : '顺序学习下一批';
+
+  const resolveLearnedWords = async (userId: string): Promise<Set<string>> => {
+    const cached = getCachedOfficialLearnedWords(userId, definition.id);
+    if (cached && isLibraryCacheFresh(cached)) {
+      return cached.data;
+    }
+    return refreshOfficialLearnedWords(userId, definition.id, () =>
+      fetchOfficialLearnedWords(userId, definition.id),
+    );
+  };
 
   const handleStartOfficial = async () => {
     if (!user) {
@@ -70,10 +98,18 @@ export function OfficialLibraryPanel({
         return;
       }
 
-      if (startMode === 'completed' || !nextBatchPlan) return;
+      if (startMode === 'completed') return;
 
       setStage('preparing');
-      const { existing, missing } = await fetchVocabularyEntriesByWords(nextBatchPlan.words);
+
+      const learnedSet = await resolveLearnedWords(user.id);
+      const nextBatch = getOfficialNextBatch(definition.id, learnedSet, mode, existingGroupCount);
+      if (!nextBatch) {
+        setStage('idle');
+        return;
+      }
+
+      const { existing, missing } = await fetchVocabularyEntriesByWords(nextBatch.words);
       const existingByWord = new Map(
         existing.map((entry) => [normalizeWordKey(entry.word), entry]),
       );
@@ -100,18 +136,18 @@ export function OfficialLibraryPanel({
           persistedMissingEntries.map((entry) => [normalizeWordKey(entry.word), entry]),
         );
 
-        persistedEntries = nextBatchPlan.words.map((word) => {
+        persistedEntries = nextBatch.words.map((word) => {
           const normalizedWord = normalizeWordKey(word);
           return existingByWord.get(normalizedWord) ?? missingByWord.get(normalizedWord);
         }).filter((entry): entry is PersistedVocabularyEntry => Boolean(entry));
 
-        if (persistedEntries.length !== nextBatchPlan.words.length) {
+        if (persistedEntries.length !== nextBatch.words.length) {
           throw new Error('这批官方词汇补齐后没有全部写回数据库，请再试一次。');
         }
       }
 
       const result = await createLearningGroupFromVocabularyEntries(user.id, persistedEntries, {
-        groupName: nextBatchPlan.groupName,
+        groupName: nextBatch.groupName,
         groupSourceType: 'system',
         libraryId: definition.id,
       });
@@ -176,6 +212,37 @@ export function OfficialLibraryPanel({
               )}
             </div>
 
+            <div
+              role="tablist"
+              aria-label="学习顺序"
+              className="inline-flex items-center gap-1 rounded-full bg-white/72 p-1 shadow-[0_10px_24px_rgba(0,0,0,0.05)]"
+            >
+              {(['sequential', 'shuffle'] as OfficialStudyMode[]).map((option) => {
+                const active = mode === option;
+                const label = option === 'shuffle' ? '乱序' : '顺序';
+                const hint = option === 'shuffle' ? '从未学过的词里随机抽 30 个' : '按书本顺序取下一批';
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    title={hint}
+                    onClick={() => setMode(option)}
+                    disabled={resumeActive || actionDisabled}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold transition-colors ${
+                      active
+                        ? 'bg-apple-blue text-white shadow-[0_8px_18px_rgba(0,122,255,0.22)]'
+                        : 'text-text-secondary hover:text-text-primary'
+                    } ${(resumeActive || actionDisabled) ? 'cursor-not-allowed opacity-60' : ''}`}
+                  >
+                    {option === 'shuffle' && <Shuffle className="h-3.5 w-3.5" />}
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className={infoCardClassName}>
                 <p className="text-[11px] font-bold tracking-[0.2em] text-text-secondary">已学进度</p>
@@ -201,7 +268,7 @@ export function OfficialLibraryPanel({
                 disabled={actionDisabled}
                 className="inline-flex h-[76px] w-full items-center justify-center gap-2 rounded-[22px] bg-apple-blue px-5 text-base font-black text-white shadow-[0_18px_34px_rgba(0,122,255,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
               >
-                {actionDisabled ? '已学完' : '继续学习'}
+                {ctaLabel}
                 {!actionDisabled && <ArrowRight className="h-5 w-5" />}
               </button>
             </div>

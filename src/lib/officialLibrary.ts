@@ -7,6 +7,8 @@ import type {
   ResumeCandidate,
 } from '../types';
 
+export type OfficialStudyMode = 'sequential' | 'shuffle';
+
 export interface OfficialLibraryDefinition {
   id: OfficialLibraryId;
   title: string;
@@ -15,6 +17,7 @@ export interface OfficialLibraryDefinition {
   words: string[];
   description: string;
   groupPattern: RegExp;
+  counterPattern: RegExp;
   legacyGroupPatterns?: RegExp[];
 }
 
@@ -34,6 +37,10 @@ function buildOfficialGroupPattern(prefix: string) {
   return new RegExp(`^${escapeRegExp(prefix)}(\\d{4})-(\\d{4})$`);
 }
 
+function buildOfficialCounterPattern(prefix: string) {
+  return new RegExp(`^${escapeRegExp(prefix)}(顺序|乱序) · 第(\\d+)组 · (\\d+)词$`);
+}
+
 export const OFFICIAL_LIBRARY_DEFINITIONS: OfficialLibraryDefinition[] = [
   {
     id: 'ielts-vocab',
@@ -41,8 +48,9 @@ export const OFFICIAL_LIBRARY_DEFINITIONS: OfficialLibraryDefinition[] = [
     groupPrefix: '雅思词汇真经 · ',
     batchSize: DEFAULT_BATCH_SIZE,
     words: IELTS_WORDS_FLAT,
-    description: `${IELTS_CHAPTERS.length} 章 · ${IELTS_WORDS_FLAT.length} 词 · 按顺序推进。每次直接取接下来的 ${DEFAULT_BATCH_SIZE} 词，优先复用已经整理好的词条，缺的再补齐后直接开始。`,
+    description: `${IELTS_CHAPTERS.length} 章 · ${IELTS_WORDS_FLAT.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过。`,
     groupPattern: buildOfficialGroupPattern('雅思词汇真经 · '),
+    counterPattern: buildOfficialCounterPattern('雅思词汇真经 · '),
     legacyGroupPatterns: [/^雅思词汇真经 · (\d{4})-(\d{4})$/],
   },
   {
@@ -51,8 +59,9 @@ export const OFFICIAL_LIBRARY_DEFINITIONS: OfficialLibraryDefinition[] = [
     groupPrefix: `${GRE_ZHENKAO_V7_TITLE} · `,
     batchSize: DEFAULT_BATCH_SIZE,
     words: GRE_ZHENKAO_V7_WORDS,
-    description: `机经词表 · ${GRE_ZHENKAO_V7_WORDS.length} 词 · 按顺序推进。每次直接取接下来的 ${DEFAULT_BATCH_SIZE} 词，优先复用已经整理好的词条，缺的再补齐后直接开始。`,
+    description: `机经词表 · ${GRE_ZHENKAO_V7_WORDS.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过。`,
     groupPattern: buildOfficialGroupPattern(`${GRE_ZHENKAO_V7_TITLE} · `),
+    counterPattern: buildOfficialCounterPattern(`${GRE_ZHENKAO_V7_TITLE} · `),
   },
 ];
 
@@ -86,6 +95,13 @@ function matchOfficialGroupRange(definition: OfficialLibraryDefinition, groupNam
   return null;
 }
 
+function isGroupOwnedByLibrary(definition: OfficialLibraryDefinition, groupName: string | null | undefined) {
+  return (
+    matchOfficialGroupRange(definition, groupName) !== null
+    || definition.counterPattern.test(groupName ?? '')
+  );
+}
+
 export function isOfficialLibraryId(value: string | null | undefined): value is OfficialLibraryId {
   return officialLibraryDefinitionById.has((value ?? '') as OfficialLibraryId);
 }
@@ -109,7 +125,7 @@ export function resolveOfficialLibraryId(
   }
 
   for (const definition of OFFICIAL_LIBRARY_DEFINITIONS) {
-    if (matchOfficialGroupRange(definition, groupName)) {
+    if (isGroupOwnedByLibrary(definition, groupName)) {
       return definition.id;
     }
   }
@@ -122,7 +138,7 @@ export function resolveOfficialLibraryId(
 }
 
 export function isOfficialGroupName(groupName: string | null | undefined): boolean {
-  return OFFICIAL_LIBRARY_DEFINITIONS.some((definition) => Boolean(matchOfficialGroupRange(definition, groupName)));
+  return OFFICIAL_LIBRARY_DEFINITIONS.some((definition) => isGroupOwnedByLibrary(definition, groupName));
 }
 
 export function parseOfficialGroupRange(
@@ -163,6 +179,17 @@ export function formatOfficialGroupName(
   const start = String(progress + 1).padStart(4, '0');
   const end = String(progress + batchLength).padStart(4, '0');
   return `${definition.groupPrefix}${start}-${end}`;
+}
+
+export function formatOfficialCounterGroupName(
+  libraryId: OfficialLibraryId,
+  mode: OfficialStudyMode,
+  groupIndex: number,
+  batchLength: number,
+): string {
+  const definition = getOfficialLibraryDefinition(libraryId);
+  const modeLabel = mode === 'shuffle' ? '乱序' : '顺序';
+  return `${definition.groupPrefix}${modeLabel} · 第${groupIndex}组 · ${batchLength}词`;
 }
 
 export function deriveOfficialProgress(
@@ -210,20 +237,63 @@ export function getOfficialBatchPlan(libraryId: OfficialLibraryId, progress: num
   };
 }
 
+export function getOfficialNextBatch(
+  libraryId: OfficialLibraryId,
+  learnedLowercase: ReadonlySet<string>,
+  mode: OfficialStudyMode,
+  existingGroupCount: number,
+): { words: string[]; groupName: string } | null {
+  const definition = getOfficialLibraryDefinition(libraryId);
+  const remaining = definition.words.filter(
+    (word) => !learnedLowercase.has(word.trim().toLowerCase()),
+  );
+
+  if (remaining.length === 0) return null;
+
+  let picked: string[];
+  if (mode === 'shuffle') {
+    const pool = [...remaining];
+    for (let i = pool.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    picked = pool.slice(0, definition.batchSize);
+  } else {
+    picked = remaining.slice(0, definition.batchSize);
+  }
+
+  const groupIndex = existingGroupCount + 1;
+  return {
+    words: picked,
+    groupName: formatOfficialCounterGroupName(libraryId, mode, groupIndex, picked.length),
+  };
+}
+
+export function countExistingOfficialGroups(
+  libraryId: OfficialLibraryId,
+  groups: Pick<LibraryGroupSummary, 'sourceType' | 'libraryId'>[],
+) {
+  return groups.reduce((count, group) => (
+    group.sourceType === 'system' && group.libraryId === libraryId ? count + 1 : count
+  ), 0);
+}
+
 export function buildOfficialLibrarySummary(
   libraryId: OfficialLibraryId,
   groups: Pick<LibraryGroupSummary, 'sourceType' | 'title' | 'wordCount' | 'libraryId'>[],
   resumeCandidate: ResumeCandidate | null,
 ): OfficialLibrarySummary {
-  const progress = clampProgress(libraryId, deriveOfficialProgress(libraryId, groups));
-  const nextBatchPlan = getOfficialBatchPlan(libraryId, progress);
+  const definition = getOfficialLibraryDefinition(libraryId);
+  const unlockedWordCount = countUnlockedOfficialWords(libraryId, groups);
+  const remaining = Math.max(0, definition.words.length - unlockedWordCount);
+  const nextBatchSize = Math.min(definition.batchSize, remaining);
 
   return {
-    progress,
-    nextBatchSize: nextBatchPlan?.words.length ?? 0,
-    unlockedWordCount: countUnlockedOfficialWords(libraryId, groups),
+    progress: unlockedWordCount,
+    nextBatchSize,
+    unlockedWordCount,
     resumeCandidate,
-    completed: !nextBatchPlan,
+    completed: remaining === 0,
   };
 }
 
