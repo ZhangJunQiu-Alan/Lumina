@@ -42,6 +42,7 @@ interface ReviewStateRow {
   review_count: number;
   lapse_count: number;
   last_reviewed_at: string | null;
+  next_review_at: string | null;
   ease_factor: number | null;
   graduated_at: string | null;
 }
@@ -191,7 +192,7 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
 
   const { data: existing, error: existingError } = await supabaseAdmin
     .from('review_states')
-    .select('user_id, vocabulary_item_id, memory_state, review_count, lapse_count, last_reviewed_at, ease_factor, graduated_at')
+    .select('user_id, vocabulary_item_id, memory_state, review_count, lapse_count, last_reviewed_at, next_review_at, ease_factor, graduated_at')
     .eq('user_id', input.userId)
     .eq('vocabulary_item_id', input.vocabularyItemId)
     .maybeSingle<ReviewStateRow>();
@@ -219,7 +220,6 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
     : toNextReviewAt(nextState, now);
 
   const graduated = nextState === 'mastered';
-  const shouldIncrementReviewCounters = input.source === 'review';
 
   const { error: upsertError } = await supabaseAdmin
     .from('review_states')
