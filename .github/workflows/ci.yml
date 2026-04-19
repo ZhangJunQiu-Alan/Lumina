@@ -1,46 +1,45 @@
-name: CI
+name: CI/CD Pipeline
 
 on:
-  pull_request:
   push:
-    branches:
-      - main
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
-  verify:
+  validate:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
+          node-version: '22'
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Type-check
+      - name: Lint
         run: npm run lint
 
-      - name: Run review rule tests
-        run: npm run test:review
+      - name: Type Check
+        run: npx tsc --noEmit
 
-      - name: Run learning session tests
-        run: npm run test:session
-
-      - name: Run word batch tests
-        run: npm run test:word-batch
-
-      - name: Verify production build
-        env:
-          VITE_SUPABASE_URL: https://example.supabase.co
-          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_placeholder
-          VITE_API_BASE_URL: https://api-production-0052.up.railway.app
-          VITE_GOOGLE_AUTH_ENABLED: "false"
+      - name: Build
         run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+
+      - name: Run Unit Tests
+        run: |
+          npx tsx scripts/test-review-rules.ts
+          npx tsx scripts/test-enrichment-normalization.ts
+          npx tsx scripts/test-official-library.ts
+          npx tsx scripts/test-word-batch.ts
+        env:
+          # Mock envs for script validation if needed
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

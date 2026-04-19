@@ -3,6 +3,12 @@ import { generateWordAudio } from './tts.js';
 
 const BUCKET = 'word-audio';
 
+// --- In-memory cache for ultra-fast response ---
+// Stores: word:locale -> publicUrl
+const urlCache = new Map<string, string>();
+// Stores: promise for pending requests to avoid duplicate work
+const pendingRequests = new Map<string, Promise<string>>();
+
 function buildAudioStoragePath(word: string, locale: 'uk' | 'us') {
   const normalizedWord = word.trim().toLowerCase();
   const asciiSlug = normalizedWord
@@ -20,39 +26,68 @@ async function uploadAndSave(
   vocabId: string | null,
   locale: 'uk' | 'us',
 ): Promise<string> {
-  const buffer = await generateWordAudio(word, locale);
-  const path = buildAudioStoragePath(word, locale);
-
-  const { error: uploadErr } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(path, buffer, { contentType: 'audio/mpeg', upsert: true });
-
-  if (uploadErr) throw new Error(`Storage upload failed: ${uploadErr.message}`);
-
-  const { data: urlData } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
-  const url = urlData.publicUrl;
-
-  // Persist URL back to vocabulary_items if we have the row ID
-  if (vocabId) {
-    const col = locale === 'uk' ? 'audio_uk_url' : 'audio_us_url';
-    await supabaseAdmin.from('vocabulary_items').update({ [col]: url }).eq('id', vocabId);
+  const cacheKey = `${word.toLowerCase()}:${locale}`;
+  
+  // Check pending requests (deduplication)
+  if (pendingRequests.has(cacheKey)) {
+    return pendingRequests.get(cacheKey)!;
   }
 
-  return url;
+  const work = (async () => {
+    try {
+      const buffer = await generateWordAudio(word, locale);
+      const path = buildAudioStoragePath(word, locale);
+
+      const { error: uploadErr } = await supabaseAdmin.storage
+        .from(BUCKET)
+        .upload(path, buffer, { contentType: 'audio/mpeg', upsert: true });
+
+      if (uploadErr) throw new Error(`Storage upload failed: ${uploadErr.message}`);
+
+      const { data: urlData } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
+      const url = urlData.publicUrl;
+
+      // Persist URL back to vocabulary_items if we have the row ID
+      if (vocabId) {
+        const col = locale === 'uk' ? 'audio_uk_url' : 'audio_us_url';
+        await supabaseAdmin.from('vocabulary_items').update({ [col]: url }).eq('id', vocabId);
+      }
+
+      urlCache.set(cacheKey, url);
+      return url;
+    } finally {
+      pendingRequests.delete(cacheKey);
+    }
+  })();
+
+  pendingRequests.set(cacheKey, work);
+  return work;
 }
 
 /** Get (or generate+cache) audio URL for a single word. */
 export async function getOrCreateAudio(word: string, locale: 'uk' | 'us'): Promise<string> {
+  const normalizedWord = word.toLowerCase();
+  const cacheKey = `${normalizedWord}:${locale}`;
+
+  // 1. Level 1 Cache: In-memory
+  if (urlCache.has(cacheKey)) return urlCache.get(cacheKey)!;
+
+  // 2. Level 2 Cache: Database
   const col = locale === 'uk' ? 'audio_uk_url' : 'audio_us_url';
 
   const { data } = await supabaseAdmin
     .from('vocabulary_items')
     .select(`id, ${col}`)
-    .eq('word', word.toLowerCase())
+    .eq('word', normalizedWord)
     .maybeSingle();
 
-  if (data?.[col]) return data[col] as string;
+  if (data?.[col]) {
+    const url = data[col] as string;
+    urlCache.set(cacheKey, url);
+    return url;
+  }
 
+  // 3. Fallback: Generate & Upload
   return uploadAndSave(word, data?.id ?? null, locale);
 }
 
@@ -82,10 +117,10 @@ export async function batchGenerateAudio(
       const [ukUrl, usUrl] = await Promise.all([
         row?.audio_uk_url
           ? Promise.resolve(row.audio_uk_url)
-          : uploadAndSave(word, row?.id ?? null, 'uk'),
+          : getOrCreateAudio(word, 'uk'),
         row?.audio_us_url
           ? Promise.resolve(row.audio_us_url)
-          : uploadAndSave(word, row?.id ?? null, 'us'),
+          : getOrCreateAudio(word, 'us'),
       ]);
 
       result[word.toLowerCase()] = { uk_url: ukUrl, us_url: usUrl };

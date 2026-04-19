@@ -62,22 +62,28 @@ function PublicOnlyAuthRoute() {
   return <AuthView />;
 }
 
+import { GlobalErrorBoundary } from './components/shared/GlobalErrorBoundary';
+
+// ... existing code ...
+
 export default function RootApp() {
   return (
-    <Routes>
-      <Route path="/" element={<LandingView />} />
-      <Route path="/auth" element={<PublicOnlyAuthRoute />} />
-      <Route path="/privacy" element={<PrivacyView />} />
-      <Route path="/terms" element={<TermsView />} />
-      <Route
-        path="/app/*"
-        element={(
-          <ProtectedRoute>
-            <App />
-          </ProtectedRoute>
-        )}
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <GlobalErrorBoundary>
+      <Routes>
+        <Route path="/" element={<LandingView />} />
+        <Route path="/auth" element={<PublicOnlyAuthRoute />} />
+        <Route path="/privacy" element={<PrivacyView />} />
+        <Route path="/terms" element={<TermsView />} />
+        <Route
+          path="/app/*"
+          element={(
+            <ProtectedRoute>
+              <App />
+            </ProtectedRoute>
+          )}
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </GlobalErrorBoundary>
   );
 }

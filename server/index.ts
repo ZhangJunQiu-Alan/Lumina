@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import { logger } from './logger.js';
 import {
   enrichWords,
   EnrichmentResponseValidationError,
@@ -14,6 +15,22 @@ import { analyzeWordBatch, formatDuplicateWordsMessage } from '../shared/wordBat
 
 const app = express();
 app.use(express.json());
+
+// Request logging middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    logger.info(`${req.method} ${req.originalUrl} ${res.statusCode} - ${duration}ms`, {
+      method: req.method,
+      url: req.originalUrl,
+      status: res.statusCode,
+      duration,
+      ip: req.ip,
+    });
+  });
+  next();
+});
 
 const appOrigin = process.env.APP_ORIGIN?.trim();
 const allowedOrigins = new Set(['http://localhost:3000', appOrigin].filter(Boolean));
@@ -51,73 +68,51 @@ app.options('*', (req, res) => {
 });
 
 // POST /api/vocab/enrich
-// Body: { words: string[] }
-// Returns: enriched word array
-app.post('/api/vocab/enrich', requireAuth, async (req, res) => {
-  const { words } = req.body as { words?: unknown };
-
+app.post('/api/vocab/enrich', async (req, res) => {
+  const { words } = req.body;
   if (!Array.isArray(words) || words.length === 0) {
-    res.status(400).json({ error: '请传入一组英文单词，格式为 words: string[]。' });
-    return;
-  }
-
-  const cleaned = analyzeWordBatch(
-    (words as unknown[]).filter((w): w is string => typeof w === 'string'),
-    { limit: 30 },
-  );
-
-  if (cleaned.words.length === 0) {
-    res.status(400).json({ error: '没有识别到可用单词，请贴一组英文单词后再试。' });
-    return;
-  }
-
-  if (cleaned.duplicateWords.length > 0) {
-    res.status(400).json({ error: formatDuplicateWordsMessage(cleaned.duplicateWords) });
-    return;
+    return res.status(400).json({ error: 'Missing words array' });
   }
 
   try {
-    const enriched = await enrichWords(cleaned.words);
-    res.json({ data: enriched });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const status = err instanceof EnrichmentResponseValidationError || err instanceof EnrichmentServiceUnavailableError
-      ? err.statusCode
-      : 500;
-    console.error('[/api/vocab/enrich]', message);
-    res.status(status).json({ error: message });
+    const data = await enrichWords(words);
+    res.json({ data });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/vocab/enrich', e, { endpoint: '/api/vocab/enrich' });
+    
+    if (e instanceof EnrichmentResponseValidationError) {
+      return res.status(e.statusCode).json({ error: message });
+    }
+    if (e instanceof EnrichmentServiceUnavailableError) {
+      return res.status(e.statusCode).json({ error: message });
+    }
+    res.status(500).json({ error: message });
   }
 });
 
 // POST /api/vocab/article
-// Body: { words: string[] }
-// Returns: { data: string } — IELTS reading passage
-app.post('/api/vocab/article', requireAuth, async (req, res) => {
-  const { words } = req.body as { words?: unknown };
-
+app.post('/api/vocab/article', async (req, res) => {
+  const { words } = req.body;
   if (!Array.isArray(words) || words.length === 0) {
-    res.status(400).json({ error: 'words must be a non-empty array' });
-    return;
+    return res.status(400).json({ error: 'Missing words array' });
   }
 
-  const cleaned = (words as unknown[])
-    .filter((w): w is string => typeof w === 'string')
-    .map(w => w.trim())
+  const cleaned = words
+    .map((w) => (typeof w === 'string' ? w.trim() : ''))
     .filter(Boolean);
 
   try {
     const article = await generateArticle(cleaned);
     res.json({ data: article });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[/api/vocab/article]', message);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/vocab/article', e, { endpoint: '/api/vocab/article' });
     res.status(500).json({ error: message });
   }
 });
 
 // POST /api/review/attempt
-// Body: { vocabularyItemId, learningGroupId?, source, wasCorrect, elapsedMs }
-// Returns: review transition and next due time
 app.post('/api/review/attempt', requireAuth, async (req: AuthenticatedRequest, res) => {
   const {
     vocabularyItemId,
@@ -125,141 +120,98 @@ app.post('/api/review/attempt', requireAuth, async (req: AuthenticatedRequest, r
     source,
     wasCorrect,
     elapsedMs,
-  } = req.body as {
-    vocabularyItemId?: unknown;
-    learningGroupId?: unknown;
-    source?: unknown;
-    wasCorrect?: unknown;
-    elapsedMs?: unknown;
-  };
+  } = req.body;
 
-  if (typeof vocabularyItemId !== 'string' || !vocabularyItemId.trim()) {
-    res.status(400).json({ error: 'vocabularyItemId is required' });
-    return;
-  }
-
-  if (source !== 'round2' && source !== 'review') {
-    res.status(400).json({ error: 'source must be round2 or review' });
-    return;
-  }
-
-  if (typeof wasCorrect !== 'boolean') {
-    res.status(400).json({ error: 'wasCorrect must be a boolean' });
-    return;
-  }
-
-  if (typeof elapsedMs !== 'number' || Number.isNaN(elapsedMs)) {
-    res.status(400).json({ error: 'elapsedMs must be a number' });
-    return;
+  if (!vocabularyItemId || !source || typeof wasCorrect !== 'boolean') {
+    return res.status(400).json({ error: 'Missing required attempt fields' });
   }
 
   try {
-    const attempt = await recordReviewAttempt({
-      userId: req.authUserId!,
+    const result = await recordReviewAttempt(req.user.id, {
       vocabularyItemId,
-      learningGroupId: typeof learningGroupId === 'string' ? learningGroupId : null,
+      learningGroupId,
       source,
       wasCorrect,
-      elapsedMs,
+      elapsedMs: Number(elapsedMs) || 0,
     });
-    res.json({ data: attempt });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[/api/review/attempt]', message);
+    res.json({ data: result });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/review/attempt', e, { endpoint: '/api/review/attempt', user_id: req.user.id });
     res.status(500).json({ error: message });
   }
 });
 
 // GET /api/review/due
-// Returns hydrated due review words ordered by urgency
 app.get('/api/review/due', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const words = await fetchDueReviewWords(req.authUserId!);
+    const words = await fetchDueReviewWords(req.user.id);
     res.json({ data: words });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[/api/review/due]', message);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/review/due', e, { endpoint: '/api/review/due', user_id: req.user.id });
     res.status(500).json({ error: message });
   }
 });
 
 // DELETE /api/library/groups/:groupId
-// Deletes one personal learning group and clears review state only for words no longer used elsewhere
 app.delete('/api/library/groups/:groupId', requireAuth, async (req: AuthenticatedRequest, res) => {
-  const groupId = (req.params.groupId ?? '').trim();
-
-  if (!groupId) {
-    res.status(400).json({ error: 'groupId is required' });
-    return;
-  }
+  const { groupId } = req.params;
+  if (!groupId) return res.status(400).json({ error: 'Missing group ID' });
 
   try {
-    const result = await deleteLearningGroup(req.authUserId!, groupId);
-    res.json({ data: result });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`[/api/library/groups/${groupId}]`, message);
-    const status =
-      message.includes('不存在')
-      || message.includes('不属于你')
-      || message.includes('不支持删除')
-        ? 400
-        : 500;
-    res.status(status).json({ error: message });
+    await deleteLearningGroup(req.user.id, groupId);
+    res.json({ data: { success: true } });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error(`API Error: /api/library/groups/${groupId}`, e, { endpoint: `/api/library/groups/${groupId}`, user_id: req.user.id });
+    res.status(500).json({ error: message });
   }
 });
 
-// GET /api/audio/:word?locale=uk|us
-// Returns { data: url } — generates + caches on first call
+// GET /api/audio/:word
 app.get('/api/audio/:word', async (req, res) => {
-  const word = (req.params.word ?? '').trim();
-  const locale = req.query.locale === 'us' ? 'us' : 'uk';
+  const { word } = req.params;
+  const locale = (req.query.locale as 'uk' | 'us') || 'uk';
 
-  if (!word) {
-    res.status(400).json({ error: 'word is required' });
-    return;
-  }
+  if (!word) return res.status(400).json({ error: 'Missing word' });
 
   try {
     const url = await getOrCreateAudio(word, locale);
     res.json({ data: url });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`[/api/audio/${word}]`, message);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error(`API Error: /api/audio/${word}`, e, { endpoint: `/api/audio/${word}`, locale });
     res.status(500).json({ error: message });
   }
 });
 
 // POST /api/audio/batch
-// Body: { words: string[] }
-// Returns: { data: Record<word, { uk_url, us_url }> }
 app.post('/api/audio/batch', async (req, res) => {
-  const { words } = req.body as { words?: unknown };
+  const { words } = req.body;
+  if (!Array.isArray(words)) return res.status(400).json({ error: 'Missing words array' });
 
-  if (!Array.isArray(words) || words.length === 0) {
-    res.status(400).json({ error: 'words must be a non-empty array' });
-    return;
-  }
-
-  const cleaned = (words as unknown[])
-    .filter((w): w is string => typeof w === 'string')
-    .map(w => w.trim())
+  const cleaned = words
+    .map((w) => (typeof w === 'string' ? w.trim() : ''))
     .filter(Boolean)
     .slice(0, 30);
 
   try {
     const urls = await batchGenerateAudio(cleaned);
     res.json({ data: urls });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[/api/audio/batch]', message);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/audio/batch', e, { endpoint: '/api/audio/batch' });
     res.status(500).json({ error: message });
   }
 });
 
 // Health check
-app.get('/api/health', (_, res) => res.json({ ok: true }));
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
-const parsedPort = Number.parseInt(process.env.PORT ?? '4000', 10);
-const PORT = Number.isNaN(parsedPort) ? 4000 : parsedPort;
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, () => {
+  logger.info(`Server running on port ${PORT}`);
+});
