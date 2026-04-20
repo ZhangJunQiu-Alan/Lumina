@@ -23,15 +23,15 @@ export const ArticleView = ({ essay, words, onFinish }: ArticleViewProps) => {
               <BookOpen className="text-white w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-2xl font-black tracking-tight">文章巩固</h2>
-              <p className="text-xs font-bold text-text-secondary uppercase tracking-widest">收个尾</p>
+              <h2 className="text-2xl font-black tracking-tight">最后用短文收口</h2>
+              <p className="text-xs font-bold text-text-secondary uppercase tracking-widest">把这一组放回语境里</p>
             </div>
           </div>
           <button
             onClick={onFinish}
             className="px-8 py-4 bg-apple-blue text-white font-black rounded-2xl shadow-xl shadow-apple-blue/25 hover:scale-[1.02] active:scale-[0.98] transition-all"
           >
-            读完了，回首页
+            这段读完了，回到今天路线
           </button>
         </div>
         <div className="prose prose-xl max-w-none text-gray-800 leading-[1.85] font-medium selection:bg-apple-blue/10">

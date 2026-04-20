@@ -3,10 +3,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import { BookOpen, ChevronRight, LayoutDashboard, LogOut, PlusCircle, Settings, User } from 'lucide-react';
 
 const NAV_ITEMS = [
-  { to: '/app/home', icon: LayoutDashboard, label: '首页' },
-  { to: '/app/library', icon: BookOpen, label: '词库' },
-  { to: '/app/import', icon: PlusCircle, label: '导入' },
-  { to: '/app/profile', icon: User, label: '我的' },
+  { to: '/app/home', icon: LayoutDashboard, label: '路线' },
+  { to: '/app/library', icon: BookOpen, label: '地图' },
+  { to: '/app/import', icon: PlusCircle, label: '接入' },
+  { to: '/app/profile', icon: User, label: '账号' },
 ] as const;
 
 interface SidebarProps {
@@ -94,10 +94,10 @@ export const Sidebar = ({
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-black text-text-primary">
-                    {userName ?? '当前账号'}
+                    {userName ?? '当前在用账号'}
                   </p>
                   <p className="truncate text-xs font-medium text-text-secondary">
-                    {userEmail ?? '还没拿到邮箱'}
+                    {userEmail ?? '邮箱稍后显示'}
                   </p>
                 </div>
               </div>
@@ -112,7 +112,7 @@ export const Sidebar = ({
               >
                 <span className="inline-flex items-center gap-2">
                   <Settings className="h-4 w-4 text-apple-blue" />
-                  学习设置
+                  学习节奏
                 </span>
                 <ChevronRight className="h-4 w-4 text-text-secondary" />
               </button>

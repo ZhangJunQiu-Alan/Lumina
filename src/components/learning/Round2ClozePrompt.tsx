@@ -24,7 +24,7 @@ function renderBlankedSentence(sentence: string) {
 export const Round2ClozePrompt = ({ prompt }: { prompt: ClozePrompt }) => (
   <div className="mx-auto max-w-3xl">
     <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary">
-      主动回忆 · 例句填空
+      先在语境里把它想起来
     </p>
 
     <p className="mt-5 text-2xl font-black leading-[1.5] text-text-primary md:text-[1.95rem] md:leading-[1.55]">

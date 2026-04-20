@@ -187,7 +187,7 @@ function formatGroupTitle(createdAt: string): string {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, '0');
   const day = `${date.getDate()}`.padStart(2, '0');
-  return `${year}.${month}.${day} 导入词组`;
+  return `${year}.${month}.${day} 接入词组`;
 }
 
 function formatGroupDateLong(createdAt: string): string {
@@ -615,7 +615,7 @@ function WordDetailDrawer({
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">这个词</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">这个词现在</p>
             <h3 className="mt-2 text-3xl font-black text-text-primary">{word.word}</h3>
             <p className="mt-2 text-sm font-mono text-apple-blue">{word.phonetic || '暂无音标'}</p>
           </div>
@@ -644,14 +644,14 @@ function WordDetailDrawer({
 
         <div className="mt-8 space-y-6">
           <section className="glass rounded-2xl p-5">
-            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">释义</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">当前意思</p>
             <p className="mt-3 text-lg font-bold text-text-primary">{word.meaning || '暂无释义'}</p>
           </section>
 
           <section className="glass rounded-2xl p-5">
             <div className="flex items-center gap-2 text-text-secondary">
               <Clock3 className="h-4 w-4" />
-              <p className="text-xs font-bold uppercase tracking-widest">下次复习</p>
+              <p className="text-xs font-bold uppercase tracking-widest">下次可能再见</p>
             </div>
             <p className="mt-3 text-sm text-text-primary">{formatDateTime(word.nextReviewAt)}</p>
             {word.lastResult && (
@@ -671,15 +671,15 @@ function WordDetailDrawer({
               activeExampleKey={activeExampleKey}
               canPlayAudio={canPlayExampleAudio}
               onPlayExample={({ sentence, key }) => { void playExampleSentence(sentence, key); }}
-              emptyMessage="这个词暂时还没有例句。"
+              emptyMessage="这个词目前还没有例句。"
               variant="drawer"
             />
           </section>
 
           <section className="glass rounded-2xl p-5">
-            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">词根词缀</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">构词拆解</p>
             <p className="mt-3 text-sm leading-6 text-text-primary">
-              {word.morphology.summaryZh || '这个词暂时还没有词根词缀拆解。'}
+              {word.morphology.summaryZh || '这个词目前还没有构词拆解。'}
             </p>
 
             <div className="mt-4 space-y-3">
@@ -698,7 +698,7 @@ function WordDetailDrawer({
                   )}
                 </div>
               )) : (
-                <p className="text-sm leading-6 text-text-secondary">这个词暂时还没有可展示的构词拆解。</p>
+                <p className="text-sm leading-6 text-text-secondary">这个词目前还没有可展示的构词拆解。</p>
               )}
             </div>
 
@@ -718,7 +718,7 @@ function WordDetailDrawer({
                   ))}
                 </div>
               ) : (
-                <p className="mt-3 text-sm leading-6 text-text-secondary">这个词暂时还没有派生词提示。</p>
+                <p className="mt-3 text-sm leading-6 text-text-secondary">这个词目前还没有派生词线索。</p>
               )}
             </div>
           </section>
@@ -742,7 +742,7 @@ function WordDetailDrawer({
                     ))}
                   </div>
                 ) : (
-                  <p className="mt-3 text-sm leading-6 text-text-secondary">这个词暂时还没有近义词提示。</p>
+                  <p className="mt-3 text-sm leading-6 text-text-secondary">这个词目前还没有近义词线索。</p>
                 )}
               </div>
 
@@ -762,7 +762,7 @@ function WordDetailDrawer({
                     ))}
                   </div>
                 ) : (
-                  <p className="mt-3 text-sm leading-6 text-text-secondary">这个词暂时还没有反义词提示。</p>
+                  <p className="mt-3 text-sm leading-6 text-text-secondary">这个词目前还没有反义词线索。</p>
                 )}
               </div>
             </div>
@@ -780,7 +780,7 @@ function WordDetailDrawer({
                 ))}
               </div>
             ) : (
-              <p className="mt-3 text-sm leading-6 text-text-secondary">这个词当前没有需要特别提醒的易混词。</p>
+              <p className="mt-3 text-sm leading-6 text-text-secondary">这个词目前没有需要特别提醒的易混点。</p>
             )}
           </section>
 
@@ -813,7 +813,7 @@ function LibraryError({ message }: { message: string }) {
     <div className="glass rounded-apple-lg p-12 flex items-start gap-3 text-apple-red">
       <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
       <div>
-        <p className="font-bold">词库读取失败</p>
+        <p className="font-bold">记忆地图暂时没展开</p>
         <p className="mt-1 text-sm">{message}</p>
       </div>
     </div>
@@ -854,10 +854,10 @@ function DeleteGroupDialog({
             <AlertTriangle className="h-6 w-6" />
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">删除个人词库</p>
-            <h3 className="mt-3 text-2xl font-black text-text-primary">确认删除这组词？</h3>
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">移出个人材料</p>
+            <h3 className="mt-3 text-2xl font-black text-text-primary">确认把这组材料移出系统？</h3>
             <p className="mt-3 text-sm leading-7 text-text-secondary">
-              删除后，这组词会从你的个人词库里移除；如果这些词没有出现在你其他词组里，对应的复习状态也会一起清掉。
+              删除后，这组词会从你的个人材料里移除；如果这些词没有出现在其他词组里，对应的复习状态也会一起清掉。
             </p>
             <p className="mt-4 rounded-2xl bg-black/5 px-4 py-3 text-sm font-bold text-text-primary">
               {groupTitle}
@@ -887,7 +887,7 @@ function DeleteGroupDialog({
             className="inline-flex items-center gap-2 rounded-[22px] bg-apple-red px-5 py-3 text-sm font-black text-white shadow-[0_18px_34px_rgba(255,59,48,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:scale-100"
           >
             {isDeleting && <Loader2 className="h-4 w-4 animate-spin" />}
-            确认删除
+            确认移出
           </button>
         </div>
       </motion.div>
@@ -908,9 +908,9 @@ function LibraryGroupCard({
   onOpen: () => void | Promise<void>;
   onDelete?: () => void | Promise<void>;
 }): JSX.Element {
-  const kindLabel = kind === 'system' ? '官方词库' : '自己导入';
+  const kindLabel = kind === 'system' ? '系统路径' : '外部接入';
   const kindTone = kind === 'system' ? 'bg-[#12192b]/8 text-[#12192b]' : 'bg-apple-blue/10 text-apple-blue';
-  const helperText = kind === 'system' ? '这一批会保留在系统词库里。' : '这一组的状态和安排都在里面。';
+  const helperText = kind === 'system' ? '系统会沿着这条路径继续往下发词。' : '这组词已经接进同一套状态判断里。';
 
   return (
     <motion.div
@@ -973,9 +973,13 @@ function LibraryGroupCard({
           </span>
         </div>
 
+        <p className="mt-5 text-sm leading-6 text-text-secondary">
+          {helperText}
+        </p>
+
         <div className="mt-8 flex items-center justify-end gap-4 text-sm">
           <div className="inline-flex items-center gap-1 font-bold text-text-primary">
-            进去看看
+            打开看看
             <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
           </div>
         </div>
@@ -1094,7 +1098,7 @@ export const LibraryView = ({
   }, [user]);
 
   if (isLoading || officialResumeCandidates === undefined) {
-    return <LibraryLoading message="正在把你的词库整理好" />;
+    return <LibraryLoading message="正在把你的记忆地图展开" />;
   }
 
   if (errorMsg) {
@@ -1140,12 +1144,17 @@ export const LibraryView = ({
     <>
       <div className="w-full max-w-6xl mx-auto space-y-10">
         <section className="space-y-5">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#12192b] text-white">
                 <BookOpen className="h-5 w-5" />
               </div>
-              <h3 className="text-2xl font-black text-text-primary">系统词库</h3>
+              <div>
+                <h3 className="text-2xl font-black text-text-primary">系统路径</h3>
+                <p className="mt-2 text-sm leading-7 text-text-secondary">
+                  官方词库不是一堆散词，而是系统替你推进的学习路径。
+                </p>
+              </div>
             </div>
           </div>
 
@@ -1166,12 +1175,17 @@ export const LibraryView = ({
         </section>
 
         <section className="space-y-5">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-apple-blue/10 text-apple-blue">
                 <CalendarDays className="h-5 w-5" />
               </div>
-              <h3 className="text-2xl font-black text-text-primary">个人词库</h3>
+              <div>
+                <h3 className="text-2xl font-black text-text-primary">你带进系统的材料</h3>
+                <p className="mt-2 text-sm leading-7 text-text-secondary">
+                  自己带进来的词，也会走同一套状态判断和接续机制。
+                </p>
+              </div>
             </div>
             {customGroups.length > 0 && (
               <div className="glass rounded-2xl px-4 py-2 text-sm font-bold text-text-secondary">
@@ -1183,16 +1197,16 @@ export const LibraryView = ({
           {customGroups.length === 0 ? (
             <div className="glass rounded-[32px] p-12 text-center jelly-shadow">
               <PlusCircle className="mx-auto h-10 w-10 text-text-secondary/50" />
-              <p className="mt-4 text-2xl font-black text-text-primary">你还没导入自己的词</p>
+              <p className="mt-4 text-2xl font-black text-text-primary">你还没把自己的词接进来</p>
               <p className="mt-3 text-sm leading-7 text-text-secondary">
-                去导入一组词，回来这里就能按词组看了。
+                去接入一组词，回来这里就能按组看状态、进度和下次安排。
               </p>
               <button
                 type="button"
                 onClick={() => navigate('/app/import')}
                 className="mt-8 rounded-[24px] bg-apple-blue px-6 py-4 text-base font-black text-white shadow-[0_18px_34px_rgba(0,122,255,0.24)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
               >
-                去导入
+                去接一组
               </button>
             </div>
           ) : (
@@ -1326,7 +1340,7 @@ export const OfficialLibraryDetailView = ({
   );
 
   if (isLoading) {
-    return <LibraryLoading message="正在整理官方词库" />;
+    return <LibraryLoading message="正在展开这条系统路径" />;
   }
 
   if (errorMsg) {
@@ -1343,7 +1357,7 @@ export const OfficialLibraryDetailView = ({
             className="inline-flex items-center gap-2 rounded-full bg-white/78 px-4 py-2 text-sm font-bold text-text-secondary shadow-[0_10px_24px_rgba(0,0,0,0.05)] transition-colors hover:text-text-primary"
           >
             <ArrowLeft className="h-4 w-4" />
-            词库 / 系统词库 / {definition.title}
+            记忆地图 / 系统路径 / {definition.title}
           </button>
         </div>
 
@@ -1359,9 +1373,9 @@ export const OfficialLibraryDetailView = ({
         {words.length === 0 ? (
           <div className="glass rounded-[32px] p-12 text-center jelly-shadow">
             <BookOpen className="mx-auto h-10 w-10 text-text-secondary/50" />
-            <p className="mt-4 text-2xl font-black text-text-primary">{definition.title} 还没开始</p>
+            <p className="mt-4 text-2xl font-black text-text-primary">{definition.title} 这条路径还没开始</p>
             <p className="mt-3 text-sm leading-7 text-text-secondary">
-              点上面的继续学习，系统会从第一批开始把官方词汇发到这里。
+              点上面的开始下一批，系统会从第一批开始把官方词汇发到这里。
             </p>
           </div>
         ) : (
@@ -1501,7 +1515,7 @@ export const LibraryGroupDetailView = ({
   );
 
   if (isLoading) {
-    return <LibraryLoading message="正在打开这一组词" />;
+    return <LibraryLoading message="正在展开这组状态" />;
   }
 
   if (errorMsg) {
@@ -1512,16 +1526,16 @@ export const LibraryGroupDetailView = ({
     return (
       <div className="glass mx-auto max-w-3xl rounded-apple-lg p-14 text-center jelly-shadow">
         <BookOpen className="mx-auto h-10 w-10 text-text-secondary/50" />
-        <p className="mt-4 text-2xl font-black text-text-primary">这组词现在打不开</p>
+        <p className="mt-4 text-2xl font-black text-text-primary">这组材料暂时打不开</p>
         <p className="mt-3 text-sm leading-7 text-text-secondary">
-          可能是这组词已经不在了，也可能它不属于你。
+          可能是这组材料已经不在了，也可能它不属于你。
         </p>
         <button
           type="button"
           onClick={() => navigate('/app/library')}
           className="mt-8 rounded-[24px] bg-apple-blue px-6 py-4 text-base font-black text-white"
         >
-          回到词库首页
+          回到记忆地图
         </button>
       </div>
     );
@@ -1532,8 +1546,8 @@ export const LibraryGroupDetailView = ({
     return <Navigate to={`/app/library/official/${group.libraryId || 'ielts-vocab'}`} replace />;
   }
 
-  const groupSectionLabel = isSystemGroup ? '系统词库' : '个人词库';
-  const groupHelperLabel = isSystemGroup ? '官方词库' : '自己导入';
+  const groupSectionLabel = isSystemGroup ? '系统路径' : '你带进系统的材料';
+  const groupHelperLabel = isSystemGroup ? '官方词库' : '你带进来的';
 
   const handleDeleteGroup = async () => {
     if (!user || !group || isSystemGroup) return;
@@ -1569,11 +1583,11 @@ export const LibraryGroupDetailView = ({
               className="inline-flex items-center gap-2 rounded-full bg-white/78 px-4 py-2 text-sm font-bold text-text-secondary shadow-[0_10px_24px_rgba(0,0,0,0.05)] transition-colors hover:text-text-primary"
             >
               <ArrowLeft className="h-4 w-4" />
-              词库 / {groupSectionLabel}
+              记忆地图 / {groupSectionLabel}
             </button>
 
             <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">
-              词库 / {groupSectionLabel} / {formatMonthDay(group.createdAt)}
+              记忆地图 / {groupSectionLabel} / {formatMonthDay(group.createdAt)}
             </p>
             <h2 className="mt-3 text-4xl font-black tracking-tight text-text-primary">{group.title}</h2>
 
@@ -1603,11 +1617,11 @@ export const LibraryGroupDetailView = ({
               {isStartingLearningGroup ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  正在打开学习流程
+                  正在接回这一组
                 </>
               ) : (
                 <>
-                  继续学习
+                  接上这一组
                   <ChevronRight className="h-4 w-4" />
                 </>
               )}
@@ -1623,7 +1637,7 @@ export const LibraryGroupDetailView = ({
                 className="inline-flex items-center gap-2 rounded-full bg-white/82 px-4 py-3 text-sm font-bold text-text-secondary shadow-[0_10px_24px_rgba(0,0,0,0.05)] transition-colors hover:text-apple-red"
               >
                 <Trash2 className="h-4 w-4" />
-                删除这组词
+                移出这组材料
               </button>
             )}
           </div>
@@ -1631,11 +1645,11 @@ export const LibraryGroupDetailView = ({
 
         {words.length === 0 ? (
           <div className="glass rounded-[32px] p-12 text-center jelly-shadow">
-            <p className="text-2xl font-black text-text-primary">这组词还没显示出来</p>
+            <p className="text-2xl font-black text-text-primary">这组材料还没展开出来</p>
             <p className="mt-3 text-sm leading-7 text-text-secondary">
               {isSystemGroup
-                ? '稍后再回来看看，正常情况下这里会有系统词包里的那些词。'
-                : '稍后再回来看看，正常情况下这里会有你导入的那些词。'}
+                ? '稍后再回来看看，正常情况下这里会出现系统路径里的那些词。'
+                : '稍后再回来看看，正常情况下这里会出现你接进来的那些词。'}
             </p>
           </div>
         ) : (

@@ -30,7 +30,7 @@ function StatusPill({ feedback }: { feedback?: PreferenceFeedback }) {
   if (!feedback || feedback.status === 'idle') {
     return (
       <span className="rounded-full bg-black/5 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">
-        自动同步
+        跟账号同步
       </span>
     );
   }
@@ -39,7 +39,7 @@ function StatusPill({ feedback }: { feedback?: PreferenceFeedback }) {
     return (
       <span className="inline-flex items-center gap-2 rounded-full bg-[#12192b]/8 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-text-primary">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        保存中
+        正在写回
       </span>
     );
   }
@@ -48,7 +48,7 @@ function StatusPill({ feedback }: { feedback?: PreferenceFeedback }) {
     return (
       <span className="inline-flex items-center gap-2 rounded-full bg-apple-green/12 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-apple-green">
         <CheckCircle2 className="h-3.5 w-3.5" />
-        已保存
+        已接上
       </span>
     );
   }
@@ -56,7 +56,7 @@ function StatusPill({ feedback }: { feedback?: PreferenceFeedback }) {
   return (
     <span className="inline-flex items-center gap-2 rounded-full bg-apple-red/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-apple-red">
       <AlertCircle className="h-3.5 w-3.5" />
-      保存失败
+      稍后重试
     </span>
   );
 }
@@ -261,7 +261,7 @@ export const SettingsView = () => {
         ...prev,
         [key]: {
           status: 'error',
-          message: error instanceof Error ? error.message : '保存失败，请稍后再试。',
+          message: error instanceof Error ? error.message : '这次没写回账号，请稍后再试。',
         },
       }));
     }
@@ -271,8 +271,8 @@ export const SettingsView = () => {
     return (
       <div className="glass mx-auto max-w-3xl rounded-[34px] p-16 text-center shadow-[0_28px_64px_rgba(14,26,56,0.08)]">
         <Loader2 className="mx-auto h-10 w-10 animate-spin text-apple-blue" />
-        <p className="mt-5 text-2xl font-black text-text-primary">正在把你的学习设置接回来</p>
-        <p className="mt-2 text-sm text-text-secondary">默认读音、连播节奏和纠错节奏都会跟着账号走。</p>
+        <p className="mt-5 text-2xl font-black text-text-primary">正在把你的学习节奏接回来</p>
+        <p className="mt-2 text-sm text-text-secondary">默认读音、自动连播和纠错停留都会跟着账号走。</p>
       </div>
     );
   }
@@ -284,7 +284,7 @@ export const SettingsView = () => {
           <div className="flex items-start gap-3">
             <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
             <div>
-              <p className="text-sm font-black">设置同步暂时不顺</p>
+              <p className="text-sm font-black">学习节奏暂时没接上</p>
               <p className="mt-1 text-sm leading-6">{loadError}</p>
             </div>
           </div>
@@ -293,12 +293,12 @@ export const SettingsView = () => {
 
       <SettingsCard
         icon={Volume2}
-        eyebrow="发音偏好"
-        title="先决定默认读什么口音"
-        description="新词切进来时会先按这里的口音走。手动点 UK / US 试听时，仍然只播一次，不会受连播设置影响。"
+        eyebrow="默认读音"
+        title="先决定系统默认怎么开口"
+        description="新词切进来时，系统会先按这里的口音走。你手动点 UK / US 时，仍然只播一次。"
       >
         <SettingRow
-          title="默认读音"
+          title="默认口音"
           description="自动播放默认先读英音还是美音。切到新词时，高亮的口音按钮也会跟着这里走。"
           feedback={feedbackByKey.defaultPronunciationLocale}
           control={(
@@ -314,8 +314,8 @@ export const SettingsView = () => {
         />
 
         <SettingRow
-          title="切到新词时自动播放"
-          description="开启后，每次进入新词都会按默认读音自动播；关闭后只保留手动播放按钮。"
+          title="切到新词时自动开口"
+          description="开启后，每次进入新词都会按默认口音自动播；关闭后只保留手动播放。"
           feedback={feedbackByKey.autoPlayEnabled}
           control={(
             <ToggleControl
@@ -328,13 +328,13 @@ export const SettingsView = () => {
 
       <SettingsCard
         icon={Repeat2}
-        eyebrow="连播节奏"
-        title="自动播放要不要多念几遍"
-        description="这组配置只影响自动播放。你手动点口音按钮时，系统始终只念一遍，保证试听足够干脆。"
+        eyebrow="自动连播"
+        title="系统要不要多念几遍"
+        description="这组设置只影响自动播放。你手动点口音按钮时，系统始终只念一遍。"
       >
         <SettingRow
           title="每个单词自动读几遍"
-          description="新词自动播放时，按这里设定的遍数重复播放。"
+          description="进入新词时，系统会按这里设定的遍数自动重复。"
           feedback={feedbackByKey.autoPlayRepeatCount}
           control={(
             <SegmentedOptionGroup<number>
@@ -350,8 +350,8 @@ export const SettingsView = () => {
         />
 
         <SettingRow
-          title="重复间隔"
-          description="自动连播时，两遍发音之间空多久。单次播放时这个设置会保留，但当前不会生效。"
+          title="两遍之间隔多久"
+          description="自动连播时，两遍发音之间空多久。单次播放时，这个设置会保留但不会生效。"
           feedback={feedbackByKey.autoPlayRepeatGapMs}
           disabled={preferences.autoPlayRepeatCount === 1}
           hint={preferences.autoPlayRepeatCount === 1 ? '单次播放时不生效' : undefined}
@@ -372,13 +372,13 @@ export const SettingsView = () => {
 
       <SettingsCard
         icon={Clock3}
-        eyebrow="纠错节奏"
-        title="答错之后，留多久给你看正确答案"
-        description="这会影响第二轮和复习模式里，答错后绿色答案提示停留多久再自动跳到下一个词。"
+        eyebrow="纠错停留"
+        title="答错之后，答案留多久给你看"
+        description="这会影响第二轮和日常复习里，答错后正确答案停留多久再自动跳到下一个词。"
       >
         <SettingRow
-          title="答案展示时长"
-          description="默认 5 秒。如果你想看得更仔细，可以延长；如果想保持强节奏，可以缩短。"
+          title="答案停留时长"
+          description="默认 5 秒。想看细一点可以延长，想保持节奏可以缩短。"
           feedback={feedbackByKey.wrongAnswerRevealMs}
           control={(
             <SegmentedOptionGroup<number>
@@ -400,7 +400,7 @@ export const SettingsView = () => {
           onClick={() => navigate('/app/profile')}
           className="inline-flex items-center gap-2 rounded-full bg-[#12192b] px-5 py-3 text-sm font-black text-white shadow-[0_18px_34px_rgba(18,25,43,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
         >
-          回到账号页
+          回到账户入口
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>

@@ -54,10 +54,10 @@ export class GlobalErrorBoundary extends Component<Props, State> {
               <AlertCircle className="w-8 h-8 text-apple-red" />
             </div>
             
-            <h1 className="text-3xl font-black text-text-primary tracking-tight">糟了，页面断开了</h1>
+            <h1 className="text-3xl font-black text-text-primary tracking-tight">这页刚刚断开了</h1>
             <p className="mt-4 text-text-secondary leading-7">
-              代码遇到了一点意外（可能是网络波动或未处理的异常）。
-              别担心，你的进度通常已经自动保存了。
+              刚才出了点意外，可能是网络波动，也可能是页面状态没有接稳。
+              别担心，你的学习进度通常已经自动写回了。
             </p>
 
             {process.env.NODE_ENV === 'development' && this.state.error && (
@@ -72,14 +72,14 @@ export class GlobalErrorBoundary extends Component<Props, State> {
                 className="flex items-center justify-center gap-2 px-8 py-4 bg-apple-blue text-white font-black rounded-2xl shadow-xl shadow-apple-blue/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
               >
                 <RefreshCcw className="w-5 h-5" />
-                刷新重试
+                刷新后重试
               </button>
               <button
                 onClick={this.handleGoHome}
                 className="flex items-center justify-center gap-2 px-8 py-4 bg-white/80 text-text-primary font-black rounded-2xl border border-black/5 hover:bg-white transition-all"
               >
                 <Home className="w-5 h-5" />
-                回到首页
+                回到今天路线
               </button>
             </div>
           </motion.div>

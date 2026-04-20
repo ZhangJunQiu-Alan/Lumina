@@ -4,6 +4,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import App from './App';
 import { AuthView } from './components/auth/AuthView';
+import { LuminaLogo } from './components/brand/LuminaLogo';
 import { LandingView } from './components/landing/LandingView';
 import { PrivacyView, TermsView } from './components/legal/LegalView';
 import { useAuth } from './contexts/AuthContext';
@@ -19,7 +20,12 @@ function FullscreenLoader({ message }: { message: string }) {
         >
           <Loader2 className="h-10 w-10 animate-spin text-apple-blue" />
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">Lumina IELTS</p>
+            <LuminaLogo
+              size={22}
+              className="justify-center"
+              markClassName="h-6 w-6"
+              wordmarkClassName="h-4.5"
+            />
             <p className="mt-3 text-2xl font-black text-text-primary">{message}</p>
           </div>
         </motion.div>
@@ -33,7 +39,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   if (isAuthLoading) {
-    return <FullscreenLoader message="正在把你的进度接回来" />;
+    return <FullscreenLoader message="正在把你的学习轨迹接回来" />;
   }
 
   if (!isAuthenticated) {
@@ -49,7 +55,7 @@ function PublicOnlyAuthRoute() {
   const location = useLocation();
 
   if (isAuthLoading) {
-    return <FullscreenLoader message="正在确认登录状态" />;
+    return <FullscreenLoader message="正在确认你该从哪里接上" />;
   }
 
   if (isAuthenticated) {

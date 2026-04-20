@@ -59,10 +59,10 @@ export function OfficialLibraryPanel({
   const resumeActive = startMode === 'resume';
 
   const ctaLabel = actionDisabled
-    ? '已学完'
+    ? '这条路径已走完'
     : resumeActive
-      ? '继续学习'
-      : '开始学习下一批';
+      ? '接上上次那组'
+      : '开始下一批';
 
   const resolveLearnedWords = async (userId: string): Promise<Set<string>> => {
     const cached = getCachedOfficialLearnedWords(userId, definition.id);
@@ -76,7 +76,7 @@ export function OfficialLibraryPanel({
 
   const handleStartOfficial = async () => {
     if (!user) {
-      setErrorMsg('先登录一下，再继续官方词库。');
+      setErrorMsg('先登录，再把官方词库接进系统。');
       setStage('error');
       return;
     }
@@ -134,7 +134,7 @@ export function OfficialLibraryPanel({
         }).filter((entry): entry is PersistedVocabularyEntry => Boolean(entry));
 
         if (persistedEntries.length !== nextBatch.words.length) {
-          throw new Error('这批官方词汇补齐后没有全部写回数据库，请再试一次。');
+          throw new Error('这批官方词暂时没整理完整，再试一次。');
         }
       }
 
@@ -188,7 +188,7 @@ export function OfficialLibraryPanel({
                     onClick={() => { void onOpenDetail(); }}
                     className="inline-flex items-center gap-2 rounded-full bg-white/82 px-4 py-2 text-sm font-bold text-text-secondary shadow-[0_10px_24px_rgba(0,0,0,0.05)] transition-colors hover:text-text-primary"
                   >
-                    查看词库
+                    看这条路径
                     <ArrowRight className="h-4 w-4" />
                   </button>
                 )}
@@ -197,14 +197,14 @@ export function OfficialLibraryPanel({
 
             <div
               role="tablist"
-              aria-label="学习顺序"
+              aria-label="选择发放顺序"
               className="inline-flex items-center gap-1 rounded-full bg-white/72 p-1 shadow-[0_10px_24px_rgba(0,0,0,0.05)]"
             >
               {(['sequential', 'shuffle'] as OfficialStudyMode[]).map((option) => {
                 const active = mode === option;
-                const label = option === 'shuffle' ? '乱序' : '顺序';
+                const label = option === 'shuffle' ? '随机' : '顺序';
                 const Icon = option === 'shuffle' ? Shuffle : ListOrdered;
-                const hint = option === 'shuffle' ? '从未学过的词里随机抽 30 个' : '按书本顺序取下一批';
+                const hint = option === 'shuffle' ? '从没学过的词里抽下一批' : '按官方顺序取下一批';
                 return (
                   <button
                     key={option}
@@ -229,7 +229,7 @@ export function OfficialLibraryPanel({
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <div className={infoCardClassName}>
-                <p className="text-[11px] font-bold tracking-[0.2em] text-text-secondary">已学进度</p>
+                <p className="text-[11px] font-bold tracking-[0.2em] text-text-secondary">已走到</p>
                 <p className="text-right text-xl font-black text-text-primary">
                   {summary.progress} / {definition.words.length}
                 </p>
@@ -277,12 +277,12 @@ export function OfficialLibraryPanel({
             <Loader2 className="h-10 w-10 animate-spin text-apple-blue" />
             <div>
               <p className="text-xl font-black text-text-primary">
-                {stage === 'resuming' ? '正在恢复上次进度…' : '这批官方词汇正在准备中…'}
+                {stage === 'resuming' ? '正在把你接回上次那一组…' : '这批官方词正在整理中…'}
               </p>
               <p className="mt-1 text-sm text-text-secondary">
                 {stage === 'resuming'
                   ? '会直接回到上次那一轮、那个词位。'
-                  : '先查数据库，缺的再补齐，准备好就直接开始。'}
+                  : '先看系统里有没有，缺的再补齐；准备好就直接开始。'}
               </p>
             </div>
           </div>

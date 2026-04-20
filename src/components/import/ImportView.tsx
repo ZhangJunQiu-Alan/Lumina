@@ -124,7 +124,7 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
 
   const handleStartLearning = async () => {
     if (!user) {
-      setErrorMsg('先登录一下，再开始这一组。');
+      setErrorMsg('先登录，再把这组词接进系统。');
       setStage('error');
       return;
     }
@@ -184,9 +184,9 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
             <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-full border-2 border-dashed border-gray-300">
               <PlusCircle className="h-7 w-7 text-gray-400" />
             </div>
-            <h2 className="mb-2 text-2xl font-black">导入一组新词</h2>
+            <h2 className="mb-2 text-2xl font-black">把一组外部词汇接进系统</h2>
             <p className="mb-6 text-sm text-text-secondary">
-              把单词贴进来就行，逗号或换行都可以，最多 30 个
+              逗号或换行都可以。先整理成可学状态，再决定要不要开始这一组。
             </p>
 
             <textarea
@@ -200,9 +200,9 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
             />
 
             <div className="mb-6 flex items-center justify-between px-1">
-              <span className="text-xs text-text-secondary">一共识别到 {wordCount} 个词</span>
+              <span className="text-xs text-text-secondary">当前识别到 {wordCount} 个词</span>
               {wordCount > MANUAL_BATCH_SIZE && (
-                <span className="text-xs font-bold text-apple-red">只会取前 30 个</span>
+                <span className="text-xs font-bold text-apple-red">这次会先接前 30 个</span>
               )}
             </div>
 
@@ -221,7 +221,7 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
               disabled={wordCount === 0}
               className="w-full rounded-2xl bg-apple-blue py-4 font-bold text-white transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              先帮我整理一下
+              先整理成可学状态
             </button>
           </motion.div>
         )}
@@ -236,8 +236,8 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
           >
             <Loader2 className="h-10 w-10 animate-spin text-apple-blue" />
             <div className="text-center">
-              <p className="text-xl font-black">这组词正在整理中…</p>
-              <p className="mt-1 text-sm text-text-secondary">音标、释义、例句这些马上就好</p>
+              <p className="text-xl font-black">正在把这组词整理成可学状态…</p>
+              <p className="mt-1 text-sm text-text-secondary">释义、例句、构词和关系会一起补齐。</p>
             </div>
           </motion.div>
         )}
@@ -251,13 +251,13 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
             className="space-y-4"
           >
             <div className="mb-2 flex items-center justify-between px-1">
-              <h2 className="text-2xl font-black">这一组已经准备好了</h2>
+              <h2 className="text-2xl font-black">这组词已经可以进入系统了</h2>
               <button
                 type="button"
                 onClick={handleBackToInput}
                 className="text-sm text-text-secondary transition-colors hover:text-text-primary"
               >
-                ← 返回改一下
+                ← 回去改一下
               </button>
             </div>
 
@@ -283,7 +283,7 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
                     <p className="mt-1 truncate text-sm text-text-secondary">{entry.primary_meaning_zh}</p>
                     <div className="mt-4 grid gap-2 sm:grid-cols-2">
                       <div className="rounded-2xl bg-white/70 px-3 py-2">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">词根词缀</p>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">构词拆解</p>
                         <p className="mt-1 text-xs leading-5 text-text-primary">
                           {entry.morphology.summary_zh || '暂无'}
                         </p>
@@ -301,7 +301,7 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
                         </p>
                       </div>
                       <div className="rounded-2xl bg-white/70 px-3 py-2">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">易混词</p>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">易混提示</p>
                         <p className="mt-1 text-xs leading-5 text-text-primary">
                           {formatConfusionPreview(entry)}
                         </p>
@@ -321,7 +321,7 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
               className="flex w-full items-center justify-center gap-3 rounded-2xl bg-apple-blue py-5 text-lg font-black text-white transition-all hover:scale-[1.01] active:scale-[0.99] jelly-shadow"
             >
               <BookOpen className="h-5 w-5" />
-              就从这一组开始
+              把这组词接进去
               <ArrowRight className="h-5 w-5" />
             </button>
           </motion.div>
@@ -335,7 +335,7 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
             className="glass flex flex-col items-center gap-6 rounded-apple-lg p-16 jelly-shadow"
           >
             <Loader2 className="h-10 w-10 animate-spin text-apple-green" />
-            <p className="text-xl font-black">正在放进你的词库…</p>
+            <p className="text-xl font-black">正在把这组词接进你的记忆地图…</p>
           </motion.div>
         )}
 
@@ -348,8 +348,8 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
           >
             <Loader2 className="h-10 w-10 animate-spin text-apple-blue" />
             <div className="text-center">
-              <p className="text-xl font-black">正在补发音…</p>
-              <p className="mt-1 text-sm text-text-secondary">英音和美音会慢一点，没补齐也不耽误你先学</p>
+              <p className="text-xl font-black">正在补齐发音…</p>
+              <p className="mt-1 text-sm text-text-secondary">英音和美音会慢一点，但不影响你先开始这一组。</p>
             </div>
           </motion.div>
         )}

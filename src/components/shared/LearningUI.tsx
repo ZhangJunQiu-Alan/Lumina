@@ -75,11 +75,11 @@ export const WordSenseList = ({
 
 export const RoundIndicator = ({ type, className }: { type: RoundType; className?: string }) => {
   const labels: Record<RoundType, string> = {
-    review: '今日复习',
-    round1: '第一轮：明示拼写',
-    round2: '第二轮：主动回忆',
-    round3: '第三轮：快速识别',
-    article: '文章巩固',
+    review: '先处理到期复习',
+    round1: '第一轮：先对上词形和意思',
+    round2: '第二轮：在语境里想起来',
+    round3: '第三轮：先判断，再确认',
+    article: '最后用短文收口',
   };
   const colors: Record<RoundType, string> = {
     review: 'bg-apple-red',
@@ -110,7 +110,7 @@ export const SessionProgress = ({
       {String(currentIndex + 1).padStart(2, '0')} / {String(queueLength).padStart(2, '0')}
     </div>
     <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-text-secondary">
-      当前进度
+      这一轮进度
     </span>
   </div>
 );

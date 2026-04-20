@@ -42,13 +42,13 @@ function normalizeOAuthError(message: string) {
 
   if (!normalized) return null;
   if (normalized.includes('redirect_uri_mismatch')) {
-    return 'Google 回调地址不匹配。请检查 Google Cloud OAuth Client 的 Authorized redirect URIs，并确认其中包含 Supabase 提供的 callback URL。';
+    return 'Google 入口这次没接上。你可以先改用邮箱进入；如果这个问题一直出现，再联系支持处理。';
   }
   if (normalized.includes('provider is not enabled')) {
-    return 'Supabase 的 Google provider 还没有启用。请先在 Authentication > Providers > Google 中填好 Client ID / Secret 并打开开关。';
+    return 'Google 入口暂时还没恢复，你可以先用邮箱进入。';
   }
   if (normalized.includes('access_denied')) {
-    return 'Google 授权被拒绝，或当前账号暂时没有权限使用这个应用。';
+    return '这次没有完成 Google 授权。你可以重试一次，或先改用邮箱进入。';
   }
 
   return normalized;
@@ -127,20 +127,20 @@ export const AuthView = () => {
   const oauthError = useMemo(() => readOAuthError(location.search, location.hash), [location.hash, location.search]);
   const insightCards = useMemo(() => [
     {
-      title: '先登录，再继续。',
-      body: '这样你下次回来，词库和进度才能接得上。',
+      title: '不是先登录再学习，是先接上轨迹再学习。',
+      body: '系统要先认出你，后面才能把词库、复习安排和上次停下的位置一起接回来。',
     },
     {
-      title: isGoogleAuthEnabled ? 'Google 会更省事。' : '邮箱登录已经可用。',
+      title: isGoogleAuthEnabled ? 'Google 和邮箱，只是两种进入方式。' : '邮箱已经可以直接进入。',
       body: isGoogleAuthEnabled
-        ? '想快一点进来，通常点一下就够了。'
-        : '当前线上先开放邮箱密码，先把学习系统稳定跑起来。',
+        ? '赶时间就走 Google；想慢一点也可以用邮箱，后面接上的都是同一条轨迹。'
+        : '先把学习轨迹接起来，比入口多一个少一个更重要。',
     },
     {
-      title: isGoogleAuthEnabled ? '邮箱密码也能用。' : 'Google 稍后再开。',
+      title: '你不是每次都从零开始。',
       body: isGoogleAuthEnabled
-        ? '如果你更习惯老办法，这边也留着，不着急。'
-        : '等 Supabase 的 Google provider 配好之后，再把它放回主入口。',
+        ? 'Lumina 记的不是“你今天来没来”，而是你已经走到了哪。'
+        : '先用邮箱进入就够了。等 Google 入口恢复后，它会自动回到这里。',
     },
   ], []);
 
@@ -174,16 +174,16 @@ export const AuthView = () => {
 
   const title = mode === 'login'
     ? {
-      kicker: '欢迎回来',
-      heading: '登录一下，继续刚才那一段。',
-      body: '账号一接上，词库、复习安排和学习进度都会跟着回来。',
-      cta: '用邮箱登录',
+      kicker: '接上进度',
+      heading: '登录一下，把上次那一段接回来。',
+      body: '账号一接上，词库、复习安排和学习进度都会跟着回来，不用重新找感觉。',
+      cta: '用邮箱接上',
     }
     : {
-      kicker: '第一次来',
-      heading: '先把账号建好，后面就能一直接着学。',
-      body: '先把入口留住，之后每次回来都能接上原来的进度。',
-      cta: '创建账户',
+      kicker: '建立轨迹',
+      heading: '先建一个账号，让这条词汇轨迹留下来。',
+      body: '从这次开始，系统会记住你学过什么、卡在哪，以及下次该从哪里继续。',
+      cta: '创建并进入系统',
     };
 
   const handleGoogle = async () => {
@@ -194,7 +194,7 @@ export const AuthView = () => {
     } catch (error) {
       setFeedback({
         type: 'error',
-        text: error instanceof Error ? error.message : 'Google 登录没跳起来，再试一次看看。',
+        text: error instanceof Error ? error.message : 'Google 入口这次没接上。你可以再试一次，或者先用邮箱进入。',
       });
       setIsGoogleSubmitting(false);
     }
@@ -205,13 +205,13 @@ export const AuthView = () => {
     setFeedback(null);
 
     if (!form.email.trim() || !form.password.trim()) {
-      setFeedback({ type: 'error', text: '邮箱和密码都不能为空。' });
+      setFeedback({ type: 'error', text: '邮箱和密码都还没填。' });
       return;
     }
 
     if (mode === 'register') {
       if (!form.fullName.trim()) {
-        setFeedback({ type: 'error', text: '注册时需要填写你的名字。' });
+        setFeedback({ type: 'error', text: '先留一个你想显示的名字。' });
         return;
       }
       if (form.password.length < 8) {
@@ -219,7 +219,7 @@ export const AuthView = () => {
         return;
       }
       if (form.password !== form.confirmPassword) {
-        setFeedback({ type: 'error', text: '两次输入的密码不一致。' });
+        setFeedback({ type: 'error', text: '两次输入的密码没对上。' });
         return;
       }
     }
@@ -238,14 +238,14 @@ export const AuthView = () => {
         if (result.requiresEmailConfirmation) {
           setFeedback({
             type: 'success',
-            text: '已经提交好了。如果邮箱里有确认信，先点一下，再回来登录。',
+            text: '账号已经建好。如果邮箱里有确认信，先点一下，再回来接上进度。',
           });
         }
       }
     } catch (error) {
       setFeedback({
         type: 'error',
-        text: error instanceof Error ? error.message : '这次没登进去，再试一次看看。',
+        text: error instanceof Error ? error.message : '这次没有接上账号，再试一次看看。',
       });
     } finally {
       setIsFormSubmitting(false);
@@ -269,14 +269,14 @@ export const AuthView = () => {
           <div className="relative">
             <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.28em] text-apple-blue">
               <Sparkles className="h-3.5 w-3.5" />
-              登录入口
+              进入系统
             </div>
 
             <h1 className="mt-6 max-w-3xl text-5xl font-black leading-[0.98] tracking-tight text-text-primary md:text-6xl">
-              先登录，回来时才接得上。
+              不是为了管住你，是为了把你的进度接回来。
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-8 text-text-secondary">
-              词库、复习安排和学习进度都跟着账号走。先把你认出来，后面就不会乱。
+              Lumina 不靠催你回来。它只是需要先认出你，这样你下次回来，系统知道该从哪里继续。
             </p>
 
             <div className="mt-10 grid gap-4">
@@ -344,18 +344,18 @@ export const AuthView = () => {
                   className="mt-8 flex w-full items-center justify-center gap-3 rounded-[30px] bg-[#111827] px-6 py-5 text-base font-black text-white shadow-[0_22px_40px_rgba(17,24,39,0.24)] transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   <Chrome className="h-5 w-5" />
-                  {isGoogleSubmitting ? '正在跳转到 Google…' : '使用 Google 继续'}
+                  {isGoogleSubmitting ? '正在跳到 Google…' : '用 Google 接上'}
                 </button>
               ) : (
                 <div className="mt-8 rounded-[28px] border border-[#D6B36A]/30 bg-[#FFF6DF] px-5 py-4 text-sm font-medium leading-7 text-[#8A5A14]">
-                  当前线上先开放邮箱密码登录，Google 登录会在 provider 配好之后再打开。
+                  当前先开放邮箱进入。Google 入口恢复后，会自动回到这里。
                 </div>
               )}
 
               <div className="mt-8 rounded-[28px] border border-white/60 bg-white/56 p-5 backdrop-blur-xl">
-                <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">备用方式</p>
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">另一种进入方式</p>
                 <p className="mt-2 text-sm leading-7 text-text-secondary">
-                  如果你更习惯邮箱密码，也可以用这个。不赶时间的话，慢一点也没关系。
+                  同一套词库，同一条轨迹，只是入口不同。你用顺手的方式进来就行。
                 </p>
               </div>
 
@@ -363,11 +363,11 @@ export const AuthView = () => {
                 {mode === 'register' && (
                   <AuthField
                     icon={UserRound}
-                    label="名字"
+                    label="显示名字"
                     type="text"
                     value={form.fullName}
                     onChange={(value) => updateField('fullName', value)}
-                    placeholder="例如：Alex"
+                    placeholder="例如：Alex Chen"
                   />
                 )}
 
@@ -386,7 +386,7 @@ export const AuthView = () => {
                   type={showPassword ? 'text' : 'password'}
                   value={form.password}
                   onChange={(value) => updateField('password', value)}
-                  placeholder="输入你的密码"
+                  placeholder="输入一个至少 8 位的密码"
                   trailing={(
                     <button
                       type="button"
@@ -435,7 +435,7 @@ export const AuthView = () => {
                   disabled={isFormSubmitting}
                   className="group flex w-full items-center justify-center gap-3 rounded-[30px] bg-apple-blue px-6 py-5 text-base font-black text-white shadow-[0_22px_40px_rgba(0,122,255,0.28)] transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
                   >
-                  {isFormSubmitting ? '稍等一下…' : title.cta}
+                  {isFormSubmitting ? '正在接入…' : title.cta}
                   <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1.5" />
                 </button>
               </form>
@@ -445,7 +445,7 @@ export const AuthView = () => {
                 onClick={() => navigate('/')}
                 className="mt-6 w-full rounded-[24px] border border-white/65 bg-white/70 px-5 py-4 text-sm font-black text-text-secondary transition-colors hover:bg-white"
               >
-                回到首页
+                先回首页看看
               </button>
 
               <p className="mt-5 text-center text-xs leading-6 text-text-secondary">

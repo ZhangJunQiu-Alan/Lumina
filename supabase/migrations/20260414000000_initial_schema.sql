@@ -1,5 +1,5 @@
 -- ============================================================
--- Lumina IELTS — Database Schema
+-- Lumina — Database Schema
 -- Run this in Supabase SQL Editor (Dashboard → SQL Editor → New query)
 -- ============================================================
 

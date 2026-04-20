@@ -1,6 +1,7 @@
 import { motion } from 'motion/react';
 import { ArrowRight, Calendar, CheckCircle2, Lock, RotateCcw, Trophy, Zap } from 'lucide-react';
 import { UserStats } from '../../types';
+import { LuminaLogo } from '../brand/LuminaLogo';
 import { LEARNING_ROUND_LABELS } from '../../lib/learningSession';
 import { StatCard } from './StatCard';
 
@@ -26,7 +27,7 @@ const TodayPlan = ({
       transition={{ delay: 0.08 }}
       className="glass rounded-apple-lg p-6 jelly-shadow"
     >
-      <p className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-4">今天先做什么</p>
+      <p className="text-xs font-bold text-text-secondary uppercase tracking-widest mb-4">今天先走哪一步</p>
       <div className="flex items-center gap-3">
         {/* Step 1: Review */}
         <div
@@ -44,8 +45,8 @@ const TodayPlan = ({
             <RotateCcw className="w-4 h-4" />
           )}
           {reviewDone || reviewCount === 0
-            ? '今天复习完了'
-            : `先过 ${reviewCount} 个词`}
+            ? '到期的已经清掉'
+            : `先处理 ${reviewCount} 个到期词`}
         </div>
 
         <ArrowRight className="w-4 h-4 text-text-secondary flex-shrink-0" />
@@ -63,7 +64,7 @@ const TodayPlan = ({
           ) : (
             <Lock className="w-4 h-4" />
           )}
-          {hasResumeCandidate ? '继续上次那组' : '再学新的一组'}
+          {hasResumeCandidate ? '接上上一组' : '开下一组'}
         </div>
       </div>
     </motion.div>
@@ -75,8 +76,8 @@ export const HomeView = ({ stats, onStart, isLoading = false }: HomeViewProps) =
   const resumeCandidate = stats.resumeCandidate;
   const resumeCopy = resumeCandidate
     ? resumeCandidate.round === 'article'
-      ? '文章巩固'
-      : `${LEARNING_ROUND_LABELS[resumeCandidate.round]} · 第 ${resumeCandidate.currentIndex + 1} 个词`
+      ? '文章巩固 · 接着上次继续'
+      : `${LEARNING_ROUND_LABELS[resumeCandidate.round]} · 接着第 ${resumeCandidate.currentIndex + 1} 个词`
     : null;
 
   return (
@@ -88,12 +89,16 @@ export const HomeView = ({ stats, onStart, isLoading = false }: HomeViewProps) =
       {/* Header */}
       <header className="flex justify-between items-start">
         <div>
-          <h1 className="text-4xl font-black tracking-tight text-text-primary">Lumina IELTS</h1>
-          <p className="text-text-secondary font-medium mt-1">先把今天该复习的过一遍，再开始新的。</p>
+          <LuminaLogo
+            size={38}
+            markClassName="h-10 w-10"
+            wordmarkClassName="h-8 md:h-10"
+          />
+          <p className="text-text-secondary font-medium mt-1">今天先做什么，系统已经按记忆状态替你排好了。</p>
         </div>
         <div className="glass px-4 py-2 rounded-2xl flex items-center gap-2 jelly-shadow">
           <Calendar className="w-4 h-4 text-apple-orange" />
-          <span className="text-sm font-bold">连续 {stats.streak} 天</span>
+          <span className="text-sm font-bold">轨迹 {stats.streak} 天</span>
         </div>
       </header>
 
@@ -111,7 +116,7 @@ export const HomeView = ({ stats, onStart, isLoading = false }: HomeViewProps) =
           iconColor="text-apple-red"
           iconBg="bg-apple-red/10"
           value={stats.todayReviewCount}
-          label="待复习"
+          label="到期词"
           index={0}
         />
         <StatCard
@@ -119,7 +124,7 @@ export const HomeView = ({ stats, onStart, isLoading = false }: HomeViewProps) =
           iconColor="text-apple-blue"
           iconBg="bg-apple-blue/10"
           value={stats.todayNewGroups}
-          label="今日新组"
+          label="今日推进"
           index={1}
         />
         <StatCard
@@ -127,7 +132,7 @@ export const HomeView = ({ stats, onStart, isLoading = false }: HomeViewProps) =
           iconColor="text-apple-green"
           iconBg="bg-apple-green/10"
           value={stats.totalLearned}
-          label="已掌握"
+          label="已稳定"
           index={2}
         />
       </div>
@@ -143,22 +148,22 @@ export const HomeView = ({ stats, onStart, isLoading = false }: HomeViewProps) =
       >
         <span className="text-2xl font-black flex items-center gap-3">
           {isLoading
-            ? '正在准备今天的内容'
+            ? '正在接回今天这一轮'
             : stats.todayReviewCount > 0
-            ? '开始今天这轮'
+            ? '先处理到期复习'
             : resumeCandidate
-            ? '继续上次学习'
-            : '开始学新的一组'}
+            ? '接上上一组'
+            : '开始下一组'}
           <ArrowRight className="w-6 h-6 group-hover:translate-x-2 transition-transform" />
         </span>
         <span className="text-sm font-medium opacity-80">
           {stats.todayReviewCount > 0
             ? resumeCandidate
-              ? `先把这 ${stats.todayReviewCount} 个词过一遍，再回到上次那组。`
-              : `先把这 ${stats.todayReviewCount} 个词过一遍，后面会轻松一点。`
+              ? `先把这 ${stats.todayReviewCount} 个到期词处理掉，再回到上次那组。`
+              : `先把这 ${stats.todayReviewCount} 个到期词处理掉，后面系统再带你往前走。`
             : resumeCopy
             ? resumeCopy
-            : '30 个词，走 3 轮，再读一小段文章。'}
+            : '30 个词，3 轮判断，最后再用一段短文收口。'}
         </span>
       </motion.button>
     </motion.div>

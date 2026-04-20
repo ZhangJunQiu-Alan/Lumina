@@ -98,7 +98,7 @@ const termsSections: LegalSection[] = [
   {
     title: '服务说明',
     paragraphs: [
-      'Lumina IELTS 是一个英语词汇学习服务。你可以通过邮箱密码或 Google 账户登录，并使用词汇导入、学习、复习与内容生成等功能。',
+      'Lumina 是一个英语词汇学习服务。你可以通过邮箱密码或 Google 账户登录，并使用词汇导入、学习、复习与内容生成等功能。',
       '你需要对自己提交的内容、账户操作以及由此产生的后果负责。你应确保自己有权上传或输入相关学习材料。',
     ],
   },
@@ -137,7 +137,7 @@ export function PrivacyView() {
     <LegalDocument
       eyebrow="Privacy"
       title="隐私政策"
-      intro="这份页面说明 Lumina IELTS 在你使用登录、学习和同步功能时会处理哪些信息，以及这些信息会如何被使用。"
+      intro="这份页面说明 Lumina 在你使用登录、学习和同步功能时会处理哪些信息，以及这些信息会如何被使用。"
       sections={privacySections}
     />
   );
@@ -148,7 +148,7 @@ export function TermsView() {
     <LegalDocument
       eyebrow="Terms"
       title="服务条款"
-      intro="这份页面说明你在使用 Lumina IELTS 时应遵守的基本规则，以及服务能力和责任边界。"
+      intro="这份页面说明你在使用 Lumina 时应遵守的基本规则，以及服务能力和责任边界。"
       sections={termsSections}
     />
   );

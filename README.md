@@ -1,6 +1,6 @@
-# Lumina IELTS
+# Lumina
 
-AI-powered vocabulary learning app for IELTS preparation. Paste any English words, get instant AI enrichment (IPA, definitions, examples, memory tips), then learn through a 3-round memorization system with spaced repetition review.
+AI-powered English vocabulary learning app. Study from official libraries or your own word lists, get instant AI enrichment (IPA, definitions, examples, memory tips), then learn through a 3-round memorization system with spaced repetition review.
 
 ---
 

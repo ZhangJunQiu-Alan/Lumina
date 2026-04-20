@@ -27,7 +27,7 @@ import { Round2ClozePrompt } from './Round2ClozePrompt';
 
 const Round1MorphologyCard = ({ word }: { word: Word }) => (
   <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
-    <p className="text-[14px] font-bold uppercase tracking-[0.24em] text-text-secondary">词根词缀 / 派生词</p>
+    <p className="text-[14px] font-bold uppercase tracking-[0.24em] text-text-secondary">构词拆解 / 派生词</p>
     <div className="mt-4 space-y-3">
       {word.morphology.parts.length > 0 ? word.morphology.parts.map((part, index) => (
         <div
@@ -48,7 +48,7 @@ const Round1MorphologyCard = ({ word }: { word: Word }) => (
         </div>
       )) : (
         <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-[18px] leading-[1.75] text-text-secondary">
-          这个词暂时还没有可展示的构词拆解。
+          这个词目前还没有可展示的构词拆解。
         </div>
       )}
     </div>
@@ -70,7 +70,7 @@ const Round1MorphologyCard = ({ word }: { word: Word }) => (
           </div>
         )) : (
           <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-[18px] leading-[1.75] text-text-secondary">
-            这个词暂时还没有派生词提示。
+            这个词目前还没有派生词线索。
           </div>
         )}
       </div>
@@ -98,7 +98,7 @@ const Round1RelationsCard = ({ word }: { word: Word }) => (
             </div>
           )) : (
             <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-[18px] leading-[1.75] text-text-secondary">
-              这个词暂时还没有近义词提示。
+              这个词目前还没有近义词线索。
             </div>
           )}
         </div>
@@ -121,7 +121,7 @@ const Round1RelationsCard = ({ word }: { word: Word }) => (
             </div>
           )) : (
             <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-[18px] leading-[1.75] text-text-secondary">
-              这个词暂时还没有反义词提示。
+              这个词目前还没有反义词线索。
             </div>
           )}
         </div>
@@ -164,7 +164,7 @@ const Round1ConfusingCard = ({
         </div>
       ) : (
         <p className="text-[18px] leading-[1.75] text-text-secondary">
-          这个词当前没有需要特别提醒的易混词。
+          这个词目前没有需要特别提醒的易混点。
         </p>
       )}
 
@@ -180,7 +180,7 @@ const Round1ConfusingCard = ({
             activeExampleKey={activeExampleKey}
             canPlayAudio={canPlayExampleAudio}
             onPlayExample={({ sentence, key }) => { onPlayExample(sentence, key); }}
-            emptyMessage="这个词暂时还没有例句。"
+            emptyMessage="这个词目前还没有例句。"
           />
         </div>
       </div>
@@ -648,7 +648,7 @@ export const LearningEngine = ({
   if (!currentWord) {
     return (
       <div className="glass rounded-apple-lg p-16 text-center">
-        <p className="text-xl font-black">当前会话里没有可用单词。</p>
+        <p className="text-xl font-black">这一轮现在没有可学的词。</p>
       </div>
     );
   }
@@ -659,8 +659,8 @@ export const LearningEngine = ({
   const actionLabel = (type === 'round2' || type === 'review') && showAnswer
     ? '答案展示中…'
     : type === 'round1'
-      ? '验证拼写'
-      : '提交答案';
+      ? '确认这一词'
+      : '提交这次判断';
 
   const inputField = (
     <form onSubmit={handleSubmit} className="w-full">
@@ -680,7 +680,7 @@ export const LearningEngine = ({
           autoComplete="off"
           autoCorrect="off"
           spellCheck="false"
-          placeholder={type === 'round1' ? '拼写这个单词' : clozePrompt ? '填入正确词形' : '输入英文拼写'}
+          placeholder={type === 'round1' ? '把这个词拼出来' : clozePrompt ? '填入正确词形' : '写出英文词形'}
         />
       </div>
     </form>
@@ -705,7 +705,7 @@ export const LearningEngine = ({
             <div className="space-y-3">
               <div>
                 <p className="text-[10px] uppercase tracking-widest opacity-70">
-                  {isWrong ? '拼写错误 · 正确如下' : '拼写正确'}
+                  {isWrong ? '这次没对上 · 正确答案如下' : '这次对上了'}
                 </p>
                 <div className="mt-1 flex flex-wrap items-baseline gap-3">
                   <p className="text-lg font-black leading-none md:text-xl">
@@ -716,7 +716,7 @@ export const LearningEngine = ({
                   )}
                   {isWrong && lastWrongInput && (
                     <p className="text-sm font-medium line-through opacity-60">
-                      你输入了: {lastWrongInput}
+                      你刚才写的是：{lastWrongInput}
                     </p>
                   )}
                 </div>
@@ -747,7 +747,7 @@ export const LearningEngine = ({
       {isSubmittingAttempt ? (
         <>
           <Loader2 className="h-5 w-5 animate-spin" />
-          正在写入结果…
+          正在写回这次判断…
         </>
       ) : (
         <>
@@ -824,7 +824,7 @@ export const LearningEngine = ({
                       activeExampleKey={activeExampleKey}
                       canPlayAudio={canPlayExampleAudio}
                       onPlayExample={({ sentence, key }) => { void playExampleSentence(sentence, key); }}
-                      emptyMessage="这个词暂时还没有例句。"
+                      emptyMessage="这个词目前还没有例句。"
                       variant="inline"
                     />
                   </div>
@@ -834,7 +834,7 @@ export const LearningEngine = ({
           </AnimatePresence>
 
           {!showAnswer && (
-            <p className="text-text-secondary/40 text-sm mt-8">先自己回想，再决定要不要翻开答案。</p>
+            <p className="text-text-secondary/40 text-sm mt-8">先自己判断，再决定要不要展开答案。</p>
           )}
         </motion.div>
 
@@ -846,7 +846,7 @@ export const LearningEngine = ({
             onClick={handleRound3PrimaryAction}
             className="w-full py-4 bg-apple-blue text-white font-bold rounded-2xl flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] transition-all"
           >
-            {showAnswer ? '下一个词' : '显示释义'}
+            {showAnswer ? '继续下一个词' : '展开释义'}
             <ChevronRight className="w-5 h-5" />
           </button>
         </div>
@@ -916,7 +916,7 @@ export const LearningEngine = ({
               ) : (
                 <div className="mx-auto max-w-3xl">
                   <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary">
-                    {type === 'review' ? '今日到期复习' : '主动回忆拼写'}
+                    {type === 'review' ? '先写出这个到期词' : '先把这个词从记忆里提出来'}
                   </p>
                   <p className="mt-5 text-4xl font-black leading-tight text-text-primary md:text-5xl">
                     {currentWord.chinese_definition}

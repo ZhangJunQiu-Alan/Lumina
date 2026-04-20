@@ -1,6 +1,6 @@
 {
-  "name": "Lumina IELTS",
-  "description": "A high-end IELTS vocabulary learning tool featuring Apple's Liquid Glass design language, spaced repetition study, and immersive reading mode.",
+  "name": "Lumina",
+  "description": "An AI-powered English vocabulary learning app with official libraries, custom imports, spaced repetition review, and immersive reading practice.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }
