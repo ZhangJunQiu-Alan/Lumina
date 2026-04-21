@@ -1,0 +1,119 @@
+import { ReviewAttemptSource } from '../types';
+import { submitReviewAttempt } from './reviewApi';
+
+export interface QueuedAttempt {
+  vocabularyItemId: string;
+  learningGroupId?: string | null;
+  source: ReviewAttemptSource;
+  wasCorrect: boolean;
+  elapsedMs: number;
+  timestamp: number;
+}
+
+const STORAGE_KEY = 'lumina_attempt_queue';
+const SYNC_THRESHOLD = 5; // 每积攒 5 个词同步一次
+const SYNC_INTERVAL_MS = 30000; // 每 30 秒强制检查一次同步
+
+class AttemptBuffer {
+  private queue: QueuedAttempt[] = [];
+  private isSyncing = false;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor() {
+    this.loadFromStorage();
+    this.startTimer();
+  }
+
+  private loadFromStorage() {
+    if (typeof window === 'undefined') return;
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        this.queue = JSON.parse(stored);
+      }
+    } catch (e) {
+      console.error('Failed to load attempt buffer from storage', e);
+      this.queue = [];
+    }
+  }
+
+  private saveToStorage() {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.queue));
+    } catch (e) {
+      console.error('Failed to save attempt buffer to storage', e);
+    }
+  }
+
+  private startTimer() {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = setInterval(() => {
+      if (this.queue.length > 0) {
+        void this.flush();
+      }
+    }, SYNC_INTERVAL_MS);
+  }
+
+  /**
+   * 将一次练习结果加入队列
+   */
+  async pushAttempt(attempt: Omit<QueuedAttempt, 'timestamp'>) {
+    const item: QueuedAttempt = {
+      ...attempt,
+      timestamp: Date.now(),
+    };
+
+    this.queue.push(item);
+    this.saveToStorage();
+
+    // 如果达到阈值且当前没有正在同步，则触发同步
+    if (this.queue.length >= SYNC_THRESHOLD && !this.isSyncing) {
+      void this.flush();
+    }
+  }
+
+  /**
+   * 强制清空缓冲区并同步到服务器
+   */
+  async flush() {
+    if (this.isSyncing || this.queue.length === 0) return;
+
+    this.isSyncing = true;
+    const batchToSync = [...this.queue];
+    
+    try {
+      // 目前后端暂不支持批量接口，先用并发请求模拟
+      // 注意：这里按顺序发送以保证 SRS 状态迁移的正确性（如果同一词在同一批里出现了两次）
+      for (const item of batchToSync) {
+        await submitReviewAttempt({
+          vocabularyItemId: item.vocabularyItemId,
+          learningGroupId: item.learningGroupId,
+          source: item.source,
+          wasCorrect: item.wasCorrect,
+          elapsedMs: item.elapsedMs,
+        });
+      }
+
+      // 同步成功，从主队列中移除这些已同步的项
+      // 我们只移除那些时间戳匹配的，防止 flush 期间有新项目进来
+      const syncedTimestamps = new Set(batchToSync.map(i => i.timestamp));
+      this.queue = this.queue.filter(i => !syncedTimestamps.has(i.timestamp));
+      this.saveToStorage();
+    } catch (e) {
+      console.error('Batch sync failed, will retry later', e);
+    } finally {
+      this.isSyncing = false;
+    }
+  }
+
+  /**
+   * 获取当前待同步的数量
+   */
+  getPendingCount() {
+    return this.queue.length;
+  }
+}
+
+// 导出单例
+export const attemptBuffer = new AttemptBuffer();

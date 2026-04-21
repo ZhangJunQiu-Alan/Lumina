@@ -3,10 +3,10 @@ import { AnimatePresence, motion } from 'motion/react';
 import { AlertCircle, ArrowRight, BookOpen, CheckCircle2, Loader2, PlusCircle } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { invalidateLibraryCache } from '../../lib/libraryCache';
-import { saveToSupabase } from '../../lib/importFlow';
+import { fetchVocabularyEntriesByWords, saveToSupabase } from '../../lib/importFlow';
 import { useAuth } from '../../contexts/AuthContext';
 import { EnrichedWord, Word } from '../../types';
-import { analyzeWordBatch, formatDuplicateWordsMessage } from '../../../shared/wordBatch';
+import { analyzeWordBatch, formatDuplicateWordsMessage, normalizeWordKey } from '../../../shared/wordBatch';
 
 interface ImportViewProps {
   onStartLearning: (groupId: string, words?: Word[]) => Promise<void> | void;
@@ -83,19 +83,45 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
     setEnriched([]);
 
     try {
-      const res = await apiFetch('/api/vocab/enrich', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ words }),
-      });
+      // 1. 先从本地词库查找已经整理好的词条
+      const { existing, missing } = await fetchVocabularyEntriesByWords(words);
+      let newlyEnriched: EnrichedWord[] = [];
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(err.error ?? `HTTP ${res.status}`);
+      // 2. 只有缺失或者数据不完整的词才发给 AI 整理
+      if (missing.length > 0) {
+        const res = await apiFetch('/api/vocab/enrich', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ words: missing }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+          throw new Error(err.error ?? `HTTP ${res.status}`);
+        }
+
+        const { data } = await res.json();
+        newlyEnriched = data;
       }
 
-      const { data } = await res.json();
-      setEnriched(data);
+      // 3. 合并两部分结果，并尽量保持用户的输入顺序
+      const wordMap = new Map<string, EnrichedWord>();
+      for (const item of existing) {
+        wordMap.set(normalizeWordKey(item.word), item);
+      }
+      for (const item of newlyEnriched) {
+        wordMap.set(normalizeWordKey(item.word), item);
+      }
+
+      const combined: EnrichedWord[] = [];
+      for (const word of words) {
+        const item = wordMap.get(normalizeWordKey(word));
+        if (item) {
+          combined.push(item);
+        }
+      }
+
+      setEnriched(combined);
       setStage('preview');
     } catch (error) {
       setErrorMsg(error instanceof Error ? error.message : String(error));

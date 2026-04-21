@@ -22,6 +22,7 @@ import {
 } from '../shared/LearningUI';
 import { buildClozePrompt } from '../../lib/cloze';
 import { Round2ClozePrompt } from './Round2ClozePrompt';
+import { attemptBuffer } from '../../lib/attemptBuffer';
 
 // --- Sub-components for Round 1 ---
 
@@ -307,7 +308,7 @@ export const LearningEngine = ({
 
   const currentWord = queue[currentIndex];
   const clozePrompt = useMemo(() => {
-    if (type !== 'round2' || !currentWord) return null;
+    if ((type !== 'round2' && type !== 'review') || !currentWord) return null;
     return buildClozePrompt({ word: currentWord.word, senses: currentWord.senses });
   }, [currentWord, type]);
   const expectedInput = clozePrompt
@@ -546,33 +547,47 @@ export const LearningEngine = ({
       setLastWrongInput(null);
       setShowAnswer(false);
     } else {
+      // 学习一轮结束，强制触发一次同步
+      void attemptBuffer.flush();
       void onComplete();
     }
   }, [clearAnswerRevealTimeout, onComplete, stopPlayback]);
 
-  const persistAttempt = useCallback(async (wasCorrect: boolean) => {
-    if (!onAttempt || !roundSource) return true;
+  // 组件卸载或页面关闭时，尝试清空缓冲区
+  useEffect(() => {
+    const handleUnmount = () => {
+      void attemptBuffer.flush();
+    };
 
-    setIsSubmittingAttempt(true);
-    setSubmitError('');
+    window.addEventListener('beforeunload', handleUnmount);
+    return () => {
+      window.removeEventListener('beforeunload', handleUnmount);
+      handleUnmount();
+    };
+  }, []);
+
+  const persistAttempt = useCallback(async (wasCorrect: boolean) => {
+    if (!roundSource) return true;
 
     try {
       const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
       const elapsedMs = Math.max(0, Math.round(now - promptStartedAtRef.current));
-      await onAttempt({
-        word: currentWord,
-        source: roundSource,
+      
+      // 使用缓冲模块，不再直接调用后端 API
+      void attemptBuffer.pushAttempt({
+        vocabularyItemId: currentWord.id,
+        learningGroupId: initialSession?.groupId,
+        source: roundSource as ReviewAttemptSource,
         wasCorrect,
         elapsedMs,
       });
+      
       return true;
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : String(error));
+      console.error('Failed to buffer attempt:', error);
       return false;
-    } finally {
-      setIsSubmittingAttempt(false);
     }
-  }, [currentWord, onAttempt, roundSource]);
+  }, [currentWord.id, initialSession?.groupId, roundSource]);
 
   const handleRound3PrimaryAction = useCallback(() => {
     if (!showAnswer) {
@@ -587,8 +602,8 @@ export const LearningEngine = ({
     const trimmedInput = inputValue.trim().toLowerCase();
     const wasCorrect = trimmedInput === expectedInput;
     
-    const persisted = await persistAttempt(wasCorrect);
-    if (!persisted) return;
+    // 后台静默保存，不再阻塞 UI 切换
+    void persistAttempt(wasCorrect);
 
     if (wasCorrect) {
       nextWord();

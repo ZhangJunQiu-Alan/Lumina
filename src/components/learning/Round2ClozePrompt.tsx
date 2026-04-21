@@ -23,8 +23,8 @@ function renderBlankedSentence(sentence: string) {
 
 export const Round2ClozePrompt = ({ prompt }: { prompt: ClozePrompt }) => (
   <div className="mx-auto max-w-3xl">
-    <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary">
-      先在语境里把它想起来
+    <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary/60">
+      根据语境复现单词
     </p>
 
     <p className="mt-5 text-2xl font-black leading-[1.5] text-text-primary md:text-[1.95rem] md:leading-[1.55]">
@@ -34,9 +34,6 @@ export const Round2ClozePrompt = ({ prompt }: { prompt: ClozePrompt }) => (
     <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
       <span className="rounded-full bg-apple-blue/12 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-apple-blue">
         {prompt.formLabel}
-      </span>
-      <span className="rounded-full bg-black/5 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">
-        原型 · {prompt.baseForm}
       </span>
     </div>
 

@@ -69,6 +69,7 @@ function PublicOnlyAuthRoute() {
 }
 
 import { GlobalErrorBoundary } from './components/shared/GlobalErrorBoundary';
+import { LightRailDemo } from './components/demo/LightRailDemo';
 
 // ... existing code ...
 
@@ -80,6 +81,7 @@ export default function RootApp() {
         <Route path="/auth" element={<PublicOnlyAuthRoute />} />
         <Route path="/privacy" element={<PrivacyView />} />
         <Route path="/terms" element={<TermsView />} />
+        <Route path="/demo/lightrail" element={<LightRailDemo />} />
         <Route
           path="/app/*"
           element={(
