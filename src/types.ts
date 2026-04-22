@@ -257,10 +257,51 @@ export interface LearningSession {
   queue: Word[]; // Used for Round 2 re-insertion logic
 }
 
+export type OrbitDayStatus = 'gap' | 'ordinary' | 'perfect' | 'shielded';
+export type RoutineStepKey = 'review' | 'round1' | 'round2' | 'round3' | 'article';
+export type RoutineCardState = 'not_started' | 'in_progress' | 'completed';
+export type RoutineVisibleStepStatus = 'completed' | 'current' | 'upcoming';
+export type RoutineCardCtaMode =
+  | 'start_review'
+  | 'continue_review'
+  | 'start_learning'
+  | 'continue_learning'
+  | 'open_library';
+
+export interface OrbitDay {
+  date: string;
+  weekdayLabel: string;
+  shortDateLabel: string;
+  status: OrbitDayStatus;
+  reviewWordCount: number;
+  learnedWordCount: number;
+}
+
+export interface RoutineVisibleStep {
+  key: RoutineStepKey;
+  label: string;
+  status: RoutineVisibleStepStatus;
+}
+
+export interface RoutineCard {
+  state: RoutineCardState;
+  title: string;
+  subtitle: string;
+  ctaLabel: string;
+  ctaMode: RoutineCardCtaMode;
+  boundLearningGroupId: string | null;
+  visibleSteps: RoutineVisibleStep[];
+}
+
 export interface UserStats {
   todayReviewCount: number;
-  todayNewGroups: number;
   streak: number;
+  perfectCheckinDays: number;
   totalLearned: number;
+  orbitDays: OrbitDay[];
+  selectedDate: string;
+  selectedDayReviewWordCount: number;
+  selectedDayLearnedWordCount: number;
   resumeCandidate: ResumeCandidate | null;
+  routineCard: RoutineCard;
 }

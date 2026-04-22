@@ -3,13 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
+import React, { useState, useRef, useEffect, useCallback, Suspense, lazy } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   AlertCircle,
-  CheckCircle2,
-  ChevronRight,
   Loader2,
+  ChevronRight,
 } from 'lucide-react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -22,7 +21,6 @@ import {
   Word,
 } from './types';
 import { Sidebar } from './components/layout/Sidebar';
-import { supabase } from './lib/supabase';
 import { fetchDueReviewWords, submitReviewAttempt } from './lib/reviewApi';
 import { useAuth } from './contexts/AuthContext';
 import { apiFetch } from './lib/api';
@@ -32,13 +30,18 @@ import {
   clearLearningGroupSession,
   fetchGeneratedArticle,
   fetchLearningGroupSession,
-  fetchResumeCandidate,
   persistLearningGroupSession,
   upsertGeneratedArticle,
 } from './lib/learningSessionApi';
+import {
+  bindRoutineMainLearningGroup,
+  markRoutineReviewStarted,
+  markRoutineStepCompleted,
+} from './lib/dailyRoutineApi';
 import { cx } from './components/shared/LearningUI';
 import { LibrarySkeleton } from './components/shared/Skeleton';
 import { useDeferredLoading } from './hooks/useDeferredLoading';
+import { fetchHomeOverview, resolveBrowserTimeZone } from './lib/homeApi';
 
 // --- Lazy loaded views ---
 const HomeView = lazy(() => import('./components/home/HomeView').then(m => ({ default: m.HomeView })));
@@ -52,6 +55,16 @@ const SettingsView = lazy(() => import('./components/settings/SettingsView').the
 // --- Core Learning Components (Extracted) ---
 const LearningEngine = lazy(() => import('./components/learning/LearningEngine').then(m => ({ default: m.LearningEngine })));
 const ArticleView = lazy(() => import('./components/learning/ArticleView').then(m => ({ default: m.ArticleView })));
+
+function AmbientBackground() {
+  return (
+    <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-apple-blue/8 blur-[120px] animate-fluid" />
+      <div className="absolute top-[20%] right-[-5%] w-[35%] h-[35%] rounded-full bg-apple-orange/6 blur-[100px] animate-fluid" style={{ animationDelay: '-5s' }} />
+      <div className="absolute bottom-[-10%] left-[15%] w-[45%] h-[45%] rounded-full bg-apple-teal/6 blur-[130px] animate-fluid" style={{ animationDelay: '-10s' }} />
+    </div>
+  );
+}
 
 const LoadingShell = ({ children, isSkeleton = false }: { children: React.ReactNode, isSkeleton?: boolean }) => {
   const shouldShow = useDeferredLoading(true, 300);
@@ -72,15 +85,82 @@ const LoadingShell = ({ children, isSkeleton = false }: { children: React.ReactN
   );
 };
 
-// --- Main App ---
+function buildFallbackOrbitDays(timeZone: string) {
+  const dayFormatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const weekdayFormatter = new Intl.DateTimeFormat('zh-CN', {
+    timeZone,
+    weekday: 'short',
+  });
+  const shortDateFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    month: '2-digit',
+    day: '2-digit',
+  });
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (6 - index));
+
+    const dayParts = dayFormatter.formatToParts(date);
+    const year = dayParts.find((part) => part.type === 'year')?.value ?? '0000';
+    const month = dayParts.find((part) => part.type === 'month')?.value ?? '01';
+    const day = dayParts.find((part) => part.type === 'day')?.value ?? '01';
+
+    const shortDateParts = shortDateFormatter.formatToParts(date);
+    const shortMonth = shortDateParts.find((part) => part.type === 'month')?.value ?? '01';
+    const shortDay = shortDateParts.find((part) => part.type === 'day')?.value ?? '01';
+
+    return {
+      date: `${year}-${month}-${day}`,
+      weekdayLabel: weekdayFormatter.format(date),
+      shortDateLabel: `${shortMonth}.${shortDay}`,
+      status: 'gap' as const,
+      reviewWordCount: 0,
+      learnedWordCount: 0,
+    };
+  });
+}
 
 function buildEmptyStats(): UserStats {
+  const timeZone = resolveBrowserTimeZone();
+  const todayParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const year = todayParts.find((part) => part.type === 'year')?.value ?? '0000';
+  const month = todayParts.find((part) => part.type === 'month')?.value ?? '01';
+  const day = todayParts.find((part) => part.type === 'day')?.value ?? '01';
+  const todayKey = `${year}-${month}-${day}`;
+
   return {
     todayReviewCount: 0,
-    todayNewGroups: 0,
     streak: 0,
+    perfectCheckinDays: 0,
     totalLearned: 0,
+    orbitDays: buildFallbackOrbitDays(timeZone),
+    selectedDate: todayKey,
+    selectedDayReviewWordCount: 0,
+    selectedDayLearnedWordCount: 0,
     resumeCandidate: null,
+    routineCard: {
+      state: 'not_started',
+      title: '开始新的学习旅程',
+      subtitle: '从 Round 1 开始今天的主线任务',
+      ctaLabel: '开始学习',
+      ctaMode: 'start_learning',
+      boundLearningGroupId: null,
+      visibleSteps: [
+        { key: 'round1', label: 'Round 1 · 明示关联', status: 'current' },
+        { key: 'round2', label: 'Round 2 · 语境复现', status: 'upcoming' },
+      ],
+    },
   };
 }
 
@@ -105,7 +185,6 @@ export default function App() {
     activeLearningGroupIdRef.current = activeLearningGroupId;
   }, [activeLearningGroupId]);
 
-  // Fetch real stats from Supabase on mount
   const fetchStats = useCallback(async () => {
     if (!user) {
       setStats(buildEmptyStats());
@@ -113,61 +192,35 @@ export default function App() {
     }
 
     try {
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-
-      const [masteredRes, dueWords, groupTodayRes, allGroupsRes, resumeCandidate] = await Promise.all([
-        supabase.from('review_states').select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('memory_state', 'mastered'),
-        fetchDueReviewWords(),
-        supabase.from('learning_groups').select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .gte('created_at', todayStart.toISOString()),
-        supabase.from('learning_groups')
-          .select('created_at')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false }),
-        fetchResumeCandidate(user.id),
-      ]);
-
-      const totalLearned = masteredRes.count ?? 0;
-      const todayReviewCount = dueWords.length;
-      const todayNewGroups = groupTodayRes.count ?? 0;
-
-      // Compute streak: consecutive days with at least one learning group created
-      const dates = new Set(
-        (allGroupsRes.data ?? []).map(r => r.created_at.split('T')[0])
-      );
-      let streak = 0;
-      const check = new Date();
-      check.setHours(0, 0, 0, 0);
-      // If no activity today, start checking from yesterday
-      const todayStr = check.toISOString().split('T')[0];
-      if (!dates.has(todayStr)) {
-        check.setDate(check.getDate() - 1);
-      }
-      while (true) {
-        const dateStr = check.toISOString().split('T')[0];
-        if (dates.has(dateStr)) {
-          streak++;
-          check.setDate(check.getDate() - 1);
-        } else {
-          break;
-        }
-      }
-
+      const overview = await fetchHomeOverview(resolveBrowserTimeZone());
+      const fallback = buildEmptyStats();
       setStats({
-        todayReviewCount,
-        todayNewGroups,
-        streak,
-        totalLearned,
-        resumeCandidate,
+        ...fallback,
+        ...overview,
+        orbitDays: overview.orbitDays?.length ? overview.orbitDays : fallback.orbitDays,
+        routineCard: overview.routineCard ?? fallback.routineCard,
       });
     } catch (err) {
       console.error('Failed to fetch stats:', err);
+      setStats(buildEmptyStats());
     }
   }, [user]);
+
+  const handleSelectOrbitDate = useCallback((date: string) => {
+    setStats((current) => {
+      const selectedDay = current.orbitDays.find((day) => day.date === date);
+      if (!selectedDay) {
+        return current;
+      }
+
+      return {
+        ...current,
+        selectedDate: selectedDay.date,
+        selectedDayReviewWordCount: selectedDay.reviewWordCount,
+        selectedDayLearnedWordCount: selectedDay.learnedWordCount,
+      };
+    });
+  }, []);
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => {
@@ -284,6 +337,13 @@ export default function App() {
 
       await persistLearningGroupSession(user.id, nextSession);
       invalidateLibraryCache(user.id);
+      void bindRoutineMainLearningGroup(user.id, {
+        groupId,
+        round: nextSession.round,
+        timeZone: resolveBrowserTimeZone(),
+      }).catch((error) => {
+        console.error('Failed to bind daily routine main learning group:', error);
+      });
 
       if (nextSession.round === 'article' && !nextSession.article) {
         void ensureArticleForGroup(groupId, words);
@@ -297,8 +357,15 @@ export default function App() {
   }, [ensureArticleForGroup, navigate, user]);
 
   const handleStart = async () => {
+    if (!user) return;
+
     setSessionStartError('');
-    if (stats.todayReviewCount > 0) {
+    if (stats.routineCard.ctaMode === 'open_library') {
+      navigate('/app/library');
+      return;
+    }
+
+    if (stats.routineCard.ctaMode === 'start_review' || stats.routineCard.ctaMode === 'continue_review') {
       setIsStartingSession(true);
       try {
         const dueWords = await fetchDueReviewWords();
@@ -306,6 +373,13 @@ export default function App() {
           await fetchStats();
           return;
         }
+
+        await markRoutineReviewStarted(user.id, {
+          timeZone: resolveBrowserTimeZone(),
+          startingDueCount: dueWords.length,
+        }).catch((error) => {
+          console.error('Failed to mark review step as started:', error);
+        });
 
         setReviewSummary([]);
         setActiveLearningGroupId(null);
@@ -323,8 +397,16 @@ export default function App() {
       return;
     }
 
-    if (stats.resumeCandidate) {
-      await openLearningGroup(stats.resumeCandidate.groupId);
+    if (stats.routineCard.ctaMode === 'continue_learning') {
+      const targetGroupId = stats.routineCard.boundLearningGroupId ?? stats.resumeCandidate?.groupId;
+      if (targetGroupId) {
+        await openLearningGroup(targetGroupId);
+        return;
+      }
+    }
+
+    if (stats.routineCard.ctaMode === 'start_learning') {
+      navigate('/app/import');
       return;
     }
 
@@ -390,6 +472,14 @@ export default function App() {
 
   const handleRoundComplete = async () => {
     if (round === 'review') {
+      if (user) {
+        await markRoutineStepCompleted(user.id, {
+          step: 'review',
+          timeZone: resolveBrowserTimeZone(),
+        }).catch((error) => {
+          console.error('Failed to mark review step as completed:', error);
+        });
+      }
       navigate('/app/review-results');
       return;
     }
@@ -402,6 +492,14 @@ export default function App() {
       const nextRound: LearningRoundType = round === 'round1' ? 'round2' : 'round3';
       const nextSession = createInitialLearningSession(activeLearningGroupId, activeWords, nextRound);
 
+      void markRoutineStepCompleted(user.id, {
+        step: round,
+        groupId: activeLearningGroupId,
+        timeZone: resolveBrowserTimeZone(),
+      }).catch((error) => {
+        console.error(`Failed to mark ${round} as completed:`, error);
+      });
+
       setActiveSessionSeed(nextSession);
       setRound(nextRound);
       void persistLearningGroupSession(user.id, nextSession).catch((error) => {
@@ -413,6 +511,14 @@ export default function App() {
     if (round === 'round3') {
       const nextSession = createInitialLearningSession(activeLearningGroupId, activeWords, 'article');
 
+      void markRoutineStepCompleted(user.id, {
+        step: 'round3',
+        groupId: activeLearningGroupId,
+        timeZone: resolveBrowserTimeZone(),
+      }).catch((error) => {
+        console.error('Failed to mark round3 as completed:', error);
+      });
+
       setActiveSessionSeed(nextSession);
       setRound('article');
       setEssay(null);
@@ -423,6 +529,13 @@ export default function App() {
       return;
     }
 
+    await markRoutineStepCompleted(user.id, {
+      step: 'article',
+      groupId: activeLearningGroupId,
+      timeZone: resolveBrowserTimeZone(),
+    }).catch((error) => {
+      console.error('Failed to mark article as completed:', error);
+    });
     await completeLearningGroup();
     resetActiveLearningState();
     navigate('/app/home');
@@ -464,21 +577,27 @@ export default function App() {
       return;
     }
 
-    if (!user || activeWords.length > 0 || isStartingSession || !stats.resumeCandidate) {
+    const resumeGroupId = stats.routineCard.ctaMode === 'continue_learning'
+      ? stats.routineCard.boundLearningGroupId ?? stats.resumeCandidate?.groupId ?? null
+      : null;
+
+    if (!user || activeWords.length > 0 || isStartingSession || !resumeGroupId) {
       return;
     }
 
-    if (sessionAutoRestoreRef.current === stats.resumeCandidate.groupId) {
+    if (sessionAutoRestoreRef.current === resumeGroupId) {
       return;
     }
 
-    sessionAutoRestoreRef.current = stats.resumeCandidate.groupId;
-    void openLearningGroup(stats.resumeCandidate.groupId);
+    sessionAutoRestoreRef.current = resumeGroupId;
+    void openLearningGroup(resumeGroupId);
   }, [
     activeWords.length,
     isSessionRoute,
     isStartingSession,
     openLearningGroup,
+    stats.routineCard.boundLearningGroupId,
+    stats.routineCard.ctaMode,
     stats.resumeCandidate,
     user,
   ]);
@@ -501,7 +620,8 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex selection:bg-apple-blue/20">
+      <AmbientBackground />
       <Sidebar
         activePath={activeNavPath}
         onNavigate={(to) => navigate(to)}
@@ -514,7 +634,7 @@ export default function App() {
         <main
           ref={mainScrollRef}
           className={cx(
-            'h-full overflow-y-auto',
+            'h-full overflow-y-auto relative z-10',
             isSessionRoute
               ? 'session-main px-4 py-6 md:px-6 md:py-7 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10'
               : 'px-6 pt-24 pb-32 lg:px-6 lg:py-7 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10',
@@ -545,145 +665,121 @@ export default function App() {
               </div>
             )}
             <Suspense fallback={<LoadingShell isSkeleton={location.pathname.includes('/library')}>{null}</LoadingShell>}>
-              <Routes>
-                <Route
-                  path="home"
-                  element={<HomeView stats={stats} onStart={() => { void handleStart(); }} isLoading={isStartingSession} />}
-                />
-                <Route
-                  path="library"
-                  element={(
-                    <LibraryView
-                      onLibraryMutated={() => { void fetchStats(); }}
-                      onStartLearningGroup={handleStartLearningGroup}
-                    />
-                  )}
-                />
-                <Route
-                  path="library/official/:libraryId?"
-                  element={(
-                    <OfficialLibraryDetailView
-                      onLibraryMutated={() => { void fetchStats(); }}
-                      onStartLearningGroup={handleStartLearningGroup}
-                    />
-                  )}
-                />
-                <Route
-                  path="library/group/:groupId"
-                  element={(
-                    <LibraryGroupDetailView
-                      isStartingLearningGroup={isStartingSession}
-                      onLibraryMutated={() => { void fetchStats(); }}
-                      onStartLearningGroup={handleStartLearningGroup}
-                    />
-                  )}
-                />
-                <Route
-                  path="library/custom/:groupId"
-                  element={(
-                    <LibraryGroupDetailView
-                      isStartingLearningGroup={isStartingSession}
-                      onLibraryMutated={() => { void fetchStats(); }}
-                      onStartLearningGroup={handleStartLearningGroup}
-                    />
-                  )}
-                />
-                <Route path="import" element={<ImportView onStartLearning={handleStartLearningGroup} />} />
-                <Route
-                  path="session"
-                  element={activeWords.length === 0 ? sessionEmptyState : (
-                    round === 'article' ? (
-                      essay === null ? (
-                        <motion.div
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          className="glass p-16 rounded-apple-lg jelly-shadow flex flex-col items-center gap-6"
-                        >
-                          <Loader2 className="w-10 h-10 text-apple-green animate-spin" />
-                          <p className="font-black text-xl">正在生成收尾文章</p>
-                        </motion.div>
-                      ) : (
-                        <ArticleView essay={essay} words={activeWords} onFinish={handleRoundComplete} />
-                      )
-                    ) : (
-                      <React.Fragment
-                        key={`${activeLearningGroupId ?? 'review'}:${round}:${activeSessionSeed?.lastActiveAt ?? activeWords.map((word) => word.id).join('|')}`}
-                      >
-                        <LearningEngine
-                          type={round}
-                          words={activeWords}
-                          initialSession={activeSessionSeed}
-                          onComplete={handleRoundComplete}
-                          onAttempt={handleAttempt}
-                          onSessionChange={handleLearningSessionChange}
-                        />
-                      </React.Fragment>
-                    )
-                  )}
-                />
-                <Route
-                  path="review-results"
-                  element={(
-                    <ReviewResultsView
-                      items={[...reviewSummary].sort((left, right) => left.word.localeCompare(right.word))}
-                      onBackHome={handleReviewResultsBackHome}
-                    />
-                  )}
-                />
-                <Route
-                  path="profile"
-                  element={(
-                    <div className="w-full max-w-5xl mx-auto space-y-6">
-                      <div className="glass relative overflow-hidden rounded-[36px] p-8 shadow-[0_30px_80px_rgba(14,26,56,0.08)] md:p-10">
-                        <div className="pointer-events-none absolute -left-8 top-0 h-40 w-40 rounded-full bg-apple-blue/12 blur-3xl" />
-                        <div className="pointer-events-none absolute right-0 bottom-0 h-44 w-44 rounded-full bg-apple-green/10 blur-3xl" />
-
-                        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-                          <div>
-                            <div className="flex h-24 w-24 items-center justify-center rounded-[30px] bg-apple-blue text-4xl font-black text-white shadow-[0_22px_44px_rgba(0,122,255,0.22)]">
-                              {(user?.email?.[0] ?? 'L').toUpperCase()}
-                            </div>
-                            <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">Account</p>
-                            <h2 className="mt-3 text-4xl font-black text-text-primary">
-                              {(user?.user_metadata.full_name as string | undefined) ?? '当前账号'}
-                            </h2>
-                            <p className="mt-3 text-base text-text-secondary">{user?.email ?? '还没拿到邮箱'}</p>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => navigate('/app/settings')}
-                            className="inline-flex items-center gap-2 rounded-full bg-[#12192b] px-5 py-3 text-sm font-black text-white shadow-[0_18px_34px_rgba(18,25,43,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
+                <Routes>
+                  <Route
+                    path="home"
+                    element={(
+                      <HomeView
+                        stats={stats}
+                        onSelectOrbitDate={handleSelectOrbitDate}
+                        onStart={() => { void handleStart(); }}
+                        isLoading={isStartingSession}
+                      />
+                    )}
+                  />
+                  <Route
+                    path="library"
+                    element={(
+                      <LibraryView
+                        onLibraryMutated={() => { void fetchStats(); }}
+                        onStartLearningGroup={handleStartLearningGroup}
+                      />
+                    )}
+                  />
+                  <Route
+                    path="library/official/:libraryId?"
+                    element={(
+                      <OfficialLibraryDetailView
+                        onLibraryMutated={() => { void fetchStats(); }}
+                        onStartLearningGroup={handleStartLearningGroup}
+                      />
+                    )}
+                  />
+                  <Route
+                    path="library/group/:groupId"
+                    element={(
+                      <LibraryGroupDetailView
+                        isStartingLearningGroup={isStartingSession}
+                        onLibraryMutated={() => { void fetchStats(); }}
+                        onStartLearningGroup={handleStartLearningGroup}
+                      />
+                    )}
+                  />
+                  <Route
+                    path="library/custom/:groupId"
+                    element={(
+                      <LibraryGroupDetailView
+                        isStartingLearningGroup={isStartingSession}
+                        onLibraryMutated={() => { void fetchStats(); }}
+                        onStartLearningGroup={handleStartLearningGroup}
+                      />
+                    )}
+                  />
+                  <Route path="import" element={<ImportView onStartLearning={handleStartLearningGroup} />} />
+                  <Route
+                    path="session"
+                    element={activeWords.length === 0 ? sessionEmptyState : (
+                      round === 'article' ? (
+                        essay === null ? (
+                          <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            className="glass p-16 rounded-apple-lg jelly-shadow flex flex-col items-center gap-6"
                           >
-                            打开学习设置
-                            <ChevronRight className="h-4 w-4" />
-                          </button>
+                            <Loader2 className="w-10 h-10 text-apple-green animate-spin" />
+                            <p className="font-black text-xl">正在生成收尾文章</p>
+                          </motion.div>
+                        ) : (
+                          <ArticleView essay={essay} words={activeWords} onFinish={handleRoundComplete} />
+                        )
+                      ) : (
+                        <React.Fragment
+                          key={`${activeLearningGroupId ?? 'review'}:${round}:${activeSessionSeed?.lastActiveAt ?? activeWords.map((word) => word.id).join('|')}`}
+                        >
+                          <LearningEngine
+                            type={round}
+                            words={activeWords}
+                            initialSession={activeSessionSeed}
+                            onComplete={handleRoundComplete}
+                            onAttempt={handleAttempt}
+                            onSessionChange={handleLearningSessionChange}
+                          />
+                        </React.Fragment>
+                      )
+                    )}
+                  />
+                  <Route
+                    path="review-results"
+                    element={(
+                      <ReviewResultsView
+                        items={[...reviewSummary].sort((left, right) => left.word.localeCompare(right.word))}
+                        onBackHome={handleReviewResultsBackHome}
+                      />
+                    )}
+                  />
+                  <Route
+                    path="profile"
+                    element={(
+                      <div className="w-full max-w-5xl mx-auto space-y-6">
+                        <div className="glass relative overflow-hidden rounded-[36px] p-8 md:p-10">
+                          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                            <div>
+                              <div className="flex h-24 w-24 items-center justify-center rounded-[30px] bg-apple-blue text-4xl font-black text-white shadow-lg">
+                                {(user?.email?.[0] ?? 'L').toUpperCase()}
+                              </div>
+                              <h2 className="mt-6 text-4xl font-black text-text-primary prose-serif">
+                                {(user?.user_metadata.full_name as string | undefined) ?? '当前账号'}
+                              </h2>
+                              <p className="mt-3 text-base text-text-secondary">{user?.email ?? '还没拿到邮箱'}</p>
+                            </div>
+                          </div>
                         </div>
                       </div>
-
-                      <div className="grid gap-5 md:grid-cols-3">
-                        <div className="glass rounded-[30px] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.06)]">
-                          <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">已掌握</p>
-                          <p className="mt-3 text-4xl font-black text-text-primary">{stats.totalLearned}</p>
-                          <p className="mt-3 text-sm leading-6 text-text-secondary">已经稳定掌握、进入长期记忆的词。</p>
-                        </div>
-                        <div className="glass rounded-[30px] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.06)]">
-                          <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">待复习</p>
-                          <p className="mt-3 text-4xl font-black text-text-primary">{stats.todayReviewCount}</p>
-                          <p className="mt-3 text-sm leading-6 text-text-secondary">今天还在等待你回看的词。</p>
-                        </div>
-                        <div className="glass rounded-[30px] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.06)]">
-                          <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">连续天数</p>
-                          <p className="mt-3 text-4xl font-black text-text-primary">{stats.streak}</p>
-                          <p className="mt-3 text-sm leading-6 text-text-secondary">最近连续学习没有断开的天数。</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                />
-                <Route path="settings" element={<SettingsView />} />
-                <Route path="*" element={<Navigate to="/app/home" replace />} />
-              </Routes>
+                    )}
+                  />
+                  <Route path="settings" element={<SettingsView />} />
+                  <Route path="*" element={<Navigate to="/app/home" replace />} />
+                </Routes>
             </Suspense>
           </div>
         </main>

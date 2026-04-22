@@ -11,6 +11,7 @@ import { fetchDueReviewWords, recordReviewAttempt } from './review.js';
 import { getOrCreateAudio, batchGenerateAudio } from './audio.js';
 import { deleteLearningGroup } from './library.js';
 import { requireAuth, type AuthenticatedRequest } from './auth.js';
+import { getHomeOverview } from './home.js';
 import { analyzeWordBatch, formatDuplicateWordsMessage } from '../shared/wordBatch.js';
 
 const app = express();
@@ -143,7 +144,6 @@ app.post('/api/review/attempt', requireAuth, async (req: AuthenticatedRequest, r
     res.status(500).json({ error: message });
   }
 });
-
 // GET /api/review/due
 app.get('/api/review/due', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.authUserId!;
@@ -153,6 +153,25 @@ app.get('/api/review/due', requireAuth, async (req: AuthenticatedRequest, res) =
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     logger.error('API Error: /api/review/due', e, { endpoint: '/api/review/due', user_id: userId });
+    res.status(500).json({ error: message });
+  }
+});
+
+// GET /api/home/overview
+app.get('/api/home/overview', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.authUserId!;
+  const timeZone = typeof req.query.timezone === 'string' ? req.query.timezone : null;
+
+  try {
+    const overview = await getHomeOverview(userId, timeZone);
+    res.json({ data: overview });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/home/overview', e, {
+      endpoint: '/api/home/overview',
+      user_id: userId,
+      timezone: timeZone,
+    });
     res.status(500).json({ error: message });
   }
 });
