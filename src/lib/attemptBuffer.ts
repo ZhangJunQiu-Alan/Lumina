@@ -1,5 +1,6 @@
 import { ReviewAttemptSource } from '../types';
 import { submitBatchReviewAttempts } from './reviewApi';
+import { getCachedAccessToken, resolveApiUrl } from './api';
 
 export interface QueuedAttempt {
   vocabularyItemId: string;
@@ -101,6 +102,43 @@ class AttemptBuffer {
       console.error('Batch sync failed, will retry later', e);
     } finally {
       this.isSyncing = false;
+    }
+  }
+
+  /**
+   * 页面隐藏 / 关闭时使用。通过 fetch keepalive 立即把队列送出去，
+   * 不清空本地队列——服务端按 timestamp 做幂等校验，重复到达会被 skip。
+   * 下次启动若前次请求实际到达，重放也是安全的；若未到达，重放即兜底。
+   */
+  flushKeepalive() {
+    if (this.queue.length === 0) return;
+    const token = getCachedAccessToken();
+    if (!token) return;
+
+    const snapshot = [...this.queue];
+    const payload = JSON.stringify({
+      attempts: snapshot.map((item) => ({
+        vocabularyItemId: item.vocabularyItemId,
+        learningGroupId: item.learningGroupId,
+        source: item.source,
+        wasCorrect: item.wasCorrect,
+        elapsedMs: item.elapsedMs,
+        timestamp: item.timestamp,
+      })),
+    });
+
+    try {
+      fetch(resolveApiUrl('/api/review/batch-attempt'), {
+        method: 'POST',
+        keepalive: true,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: payload,
+      }).catch(() => {});
+    } catch {
+      // keepalive 超过 64KB 等极端情况会同步抛错，留给下次启动重放
     }
   }
 

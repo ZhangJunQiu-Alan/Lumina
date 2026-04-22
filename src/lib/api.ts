@@ -6,6 +6,19 @@ interface ApiFetchOptions extends RequestInit {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
 
+let cachedAccessToken: string | null = null;
+
+void supabase.auth.getSession().then(({ data }) => {
+  cachedAccessToken = data.session?.access_token ?? null;
+});
+supabase.auth.onAuthStateChange((_event, session) => {
+  cachedAccessToken = session?.access_token ?? null;
+});
+
+export function getCachedAccessToken() {
+  return cachedAccessToken;
+}
+
 export function resolveApiUrl(path: string) {
   if (!path || !apiBaseUrl || !path.startsWith('/')) {
     return path;

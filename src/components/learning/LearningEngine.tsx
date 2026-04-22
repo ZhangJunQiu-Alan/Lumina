@@ -561,16 +561,24 @@ export const LearningEngine = ({
     }
   }, [clearAnswerRevealTimeout, onComplete, stopPlayback]);
 
-  // 组件卸载或页面关闭时，尝试清空缓冲区
+  // 页面隐藏 / 关闭时走 keepalive 通道确保送达；
+  // 组件正常卸载（SPA 内路由切换）时走普通 async flush。
   useEffect(() => {
-    const handleUnmount = () => {
-      void attemptBuffer.flush();
+    const handleHidden = () => {
+      if (document.visibilityState === 'hidden') {
+        attemptBuffer.flushKeepalive();
+      }
+    };
+    const handlePageHide = () => {
+      attemptBuffer.flushKeepalive();
     };
 
-    window.addEventListener('beforeunload', handleUnmount);
+    document.addEventListener('visibilitychange', handleHidden);
+    window.addEventListener('pagehide', handlePageHide);
     return () => {
-      window.removeEventListener('beforeunload', handleUnmount);
-      handleUnmount();
+      document.removeEventListener('visibilitychange', handleHidden);
+      window.removeEventListener('pagehide', handlePageHide);
+      void attemptBuffer.flush();
     };
   }, []);
 
