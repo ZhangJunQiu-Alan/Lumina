@@ -715,14 +715,9 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     throw new Error(`review_states due count failed: ${dueCountResult.error.message}`);
   }
 
-  const completedGroups = learningGroups.filter((group) => Boolean(group.completed_at));
-  const completedGroupIds = completedGroups.map((group) => group.id);
-  const groupWordCounts = completedGroupIds.length > 0
-    ? await fetchLearningGroupWordCounts(completedGroupIds)
-    : new Map<string, number>();
   const learningGroupsById = new Map(learningGroups.map((group) => [group.id, group]));
   const reviewWordIdsByDate = new Map<string, Set<string>>();
-  const learnedWordCountByDate = new Map<string, number>();
+  const learnedWordIdsByDate = new Map<string, Set<string>>();
   const protectedDates = new Set(
     protectionEvents
       .map((event) => event.protected_date)
@@ -730,6 +725,8 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
   );
 
   const relevantDateKeys = [todayKey];
+  
+  // 核心逻辑改进：从 review_events 中精准统计
   const eventsWithDateKey = reviewEvents.map((event) => {
     const dayKey = dateKeyFromIso(event.created_at, timeZone) ?? todayKey;
     relevantDateKeys.push(dayKey);
@@ -738,18 +735,15 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
       const seen = reviewWordIdsByDate.get(dayKey) ?? new Set<string>();
       seen.add(event.vocabulary_item_id);
       reviewWordIdsByDate.set(dayKey, seen);
+    } else if (event.source === 'round2') {
+      // 只要在 Round 2 产生过成功判定，就计入当天的“新学”成果
+      const seen = learnedWordIdsByDate.get(dayKey) ?? new Set<string>();
+      seen.add(event.vocabulary_item_id);
+      learnedWordIdsByDate.set(dayKey, seen);
     }
 
     return { ...event, dayKey };
   });
-
-  for (const group of completedGroups) {
-    const dayKey = dateKeyFromIso(group.completed_at, timeZone);
-    if (!dayKey) continue;
-
-    relevantDateKeys.push(dayKey);
-    learnedWordCountByDate.set(dayKey, (learnedWordCountByDate.get(dayKey) ?? 0) + (groupWordCounts.get(group.id) ?? 0));
-  }
 
   for (const protectedDate of protectedDates) {
     relevantDateKeys.push(protectedDate);
@@ -775,7 +769,7 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
 
     const dueAtEndCount = countDueWords(reconstructedStates, dateKey, timeZone);
     const reviewWordCount = reviewWordIdsByDate.get(dateKey)?.size ?? 0;
-    const learnedWordCount = learnedWordCountByDate.get(dateKey) ?? 0;
+    const learnedWordCount = learnedWordIdsByDate.get(dateKey)?.size ?? 0;
     const status = resolveDayStatus({
       dueAtStartCount,
       dueAtEndCount,
