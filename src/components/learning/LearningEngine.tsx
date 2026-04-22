@@ -291,6 +291,13 @@ export const LearningEngine = ({
   const [showAnswer, setShowAnswer] = useState(false);
   const [isSubmittingAttempt, setIsSubmittingAttempt] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [completedWordIds, setCompletedWordIds] = useState<Set<string>>(new Set());
+
+  // 计算进度：分母固定为初始单词数，分子为已正确完成的单词数 + 1（代表当前正在进行的第几个）
+  const initialUniqueCount = words.length;
+  const completedCount = completedWordIds.size;
+  const displayNumerator = Math.min(completedCount + 1, initialUniqueCount);
+
   const [audioLocale, setAudioLocale] = useState<PronunciationLocale>(preferences.defaultPronunciationLocale);
   const [playbackTarget, setPlaybackTarget] = useState<PlaybackTarget | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -357,6 +364,7 @@ export const LearningEngine = ({
     setShowAnswer(false);
     setIsSubmittingAttempt(false);
     setSubmitError('');
+    setCompletedWordIds(new Set());
     queueRef.current = initialEngineState.queue;
     currentIndexRef.current = initialEngineState.currentIndex;
   }, [clearAnswerRevealTimeout, initialEngineState, stopPlayback, type, words]);
@@ -599,6 +607,9 @@ export const LearningEngine = ({
   }, [showAnswer, nextWord]);
 
   const validateCurrentInput = useCallback(async () => {
+    // 防止重复提交
+    if (showAnswer || isSubmittingAttempt) return;
+
     const trimmedInput = inputValue.trim().toLowerCase();
     const wasCorrect = trimmedInput === expectedInput;
     
@@ -606,6 +617,24 @@ export const LearningEngine = ({
     void persistAttempt(wasCorrect);
 
     if (wasCorrect) {
+      setCompletedWordIds(prev => {
+        const next = new Set(prev);
+        next.add(currentWord.id);
+        return next;
+      });
+
+      if (type === 'round2' || type === 'review' || type === 'round1') {
+        setShowAnswer(true);
+        setIsWrong(false);
+        clearAnswerRevealTimeout();
+        answerRevealTimeoutRef.current = setTimeout(() => {
+          answerRevealTimeoutRef.current = null;
+          setShowAnswer(false);
+          nextWord();
+        }, 800); // 正确反馈展示 800ms
+        return;
+      }
+
       nextWord();
       return;
     }
@@ -630,7 +659,7 @@ export const LearningEngine = ({
         nextWord();
       }, preferences.wrongAnswerRevealMs);
     }
-  }, [clearAnswerRevealTimeout, currentIndex, currentWord, expectedInput, inputValue, nextWord, persistAttempt, preferences.wrongAnswerRevealMs, queue, type]);
+  }, [showAnswer, isSubmittingAttempt, inputValue, expectedInput, persistAttempt, currentWord.id, type, nextWord, clearAnswerRevealTimeout, queue, currentIndex, preferences.wrongAnswerRevealMs]);
 
   useEffect(() => {
     if (type !== 'round3') return;
@@ -672,7 +701,7 @@ export const LearningEngine = ({
   const primaryPos = currentWord.pos_tags[0] ?? '未标注';
   const actionDisabled = isSubmittingAttempt || ((type === 'round2' || type === 'review') && showAnswer);
   const actionLabel = (type === 'round2' || type === 'review') && showAnswer
-    ? '答案展示中…'
+    ? (isWrong ? '答案展示中…' : '判断正确！')
     : type === 'round1'
       ? '确认这一词'
       : '提交这次判断';
@@ -891,7 +920,7 @@ export const LearningEngine = ({
           )}
         </motion.div>
 
-        {renderProgressBar(currentIndex, queue.length)}
+        {renderProgressBar(displayNumerator - 1, initialUniqueCount)}
 
         <div className="w-full max-w-3xl px-4 pb-8">
           <button
@@ -910,8 +939,8 @@ export const LearningEngine = ({
   return (
     <InputSessionShell
       type={type}
-      currentIndex={currentIndex}
-      queueLength={queue.length}
+      currentIndex={displayNumerator - 1}
+      queueLength={initialUniqueCount}
       main={(
         <motion.div
           key={currentWord.id + currentIndex}

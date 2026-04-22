@@ -791,6 +791,33 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     });
   }
 
+  const resumeCandidate = [...learningGroups]
+    .filter((group) => group.status !== 'completed' && isLearningRoundType(group.session_round))
+    .sort((left, right) => {
+      const leftActive = Date.parse(left.session_last_active_at ?? left.created_at);
+      const rightActive = Date.parse(right.session_last_active_at ?? right.created_at);
+      if (rightActive !== leftActive) {
+        return rightActive - leftActive;
+      }
+      return Date.parse(right.created_at) - Date.parse(left.created_at);
+    })
+    .map(buildResumeCandidate)
+    .find((candidate): candidate is ResumeCandidatePayload => Boolean(candidate)) ?? null;
+
+  const routineCard = buildRoutineCard({
+    todayReviewCount: dueCountResult.count ?? 0,
+    todaySummary: dailySummaries.get(todayKey),
+    resumeCandidate,
+    routineProgress,
+    learningGroupsById,
+  });
+
+  // If the routine is explicitly completed, ensure today's status reflects this.
+  const todaySummary = dailySummaries.get(todayKey);
+  if (todaySummary && routineCard.state === 'completed' && todaySummary.status === 'gap') {
+    todaySummary.status = 'perfect';
+  }
+
   let perfectCheckinDays = 0;
   let streak = 0;
   for (const dateKey of dateKeys) {
@@ -829,26 +856,6 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     reviewWordCount: 0,
     learnedWordCount: 0,
   };
-
-  const resumeCandidate = [...learningGroups]
-    .filter((group) => group.status !== 'completed' && isLearningRoundType(group.session_round))
-    .sort((left, right) => {
-      const leftActive = Date.parse(left.session_last_active_at ?? left.created_at);
-      const rightActive = Date.parse(right.session_last_active_at ?? right.created_at);
-      if (rightActive !== leftActive) {
-        return rightActive - leftActive;
-      }
-      return Date.parse(right.created_at) - Date.parse(left.created_at);
-    })
-    .map(buildResumeCandidate)
-    .find((candidate): candidate is ResumeCandidatePayload => Boolean(candidate)) ?? null;
-  const routineCard = buildRoutineCard({
-    todayReviewCount: dueCountResult.count ?? 0,
-    todaySummary: dailySummaries.get(todayKey),
-    resumeCandidate,
-    routineProgress,
-    learningGroupsById,
-  });
 
   return {
     todayReviewCount: dueCountResult.count ?? 0,
