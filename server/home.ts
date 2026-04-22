@@ -270,40 +270,75 @@ function countDueWords(states: Map<string, ReconstructedWordState>, dayKey: stri
   return count;
 }
 
+async function fetchRecentDailyRoutineProgress(userId: string, dateKeys: string[]) {
+  const { data, error } = await supabaseAdmin
+    .from('daily_routine_progress')
+    .select(`
+      id,
+      local_date,
+      status
+    `)
+    .eq('user_id', userId)
+    .in('local_date', dateKeys);
+
+  if (error) {
+    if (isMissingDailyRoutineProgressError(error)) {
+      return new Map<string, string>();
+    }
+    throw new Error(`daily_routine_progress batch lookup failed: ${error.message}`);
+  }
+
+  const statusMap = new Map<string, string>();
+  (data ?? []).forEach((row) => {
+    statusMap.set(row.local_date, row.status);
+  });
+  return statusMap;
+}
+
 function resolveDayStatus(input: {
   dueAtStartCount: number;
   dueAtEndCount: number;
   reviewWordCount: number;
   learnedWordCount: number;
   protectedByCard: boolean;
+  routineStatus: string | null;
 }): OrbitDayStatus {
   const {
-    dueAtStartCount,
     dueAtEndCount,
     reviewWordCount,
     learnedWordCount,
     protectedByCard,
+    routineStatus,
   } = input;
 
-  const reviewCleared = dueAtEndCount === 0;
-  const isReviewDay = dueAtStartCount > 50;
-  const completedReviewRound = reviewCleared && (dueAtStartCount > 0 || reviewWordCount > 0);
-
-  let status: OrbitDayStatus = 'gap';
-
-  if (isReviewDay) {
-    status = reviewCleared ? 'perfect' : 'gap';
-  } else if (reviewCleared && learnedWordCount > 0) {
-    status = 'perfect';
-  } else if (completedReviewRound) {
-    status = 'ordinary';
+  // 核心原则：如果有 Routine 记录，必须 Completed 才是完美
+  if (routineStatus) {
+    if (routineStatus === 'completed') {
+      return 'perfect';
+    }
+    // 只要有任何学习行为，就是普通打卡
+    if (reviewWordCount > 0 || learnedWordCount > 0) {
+      return 'ordinary';
+    }
+  } else {
+    // 兜底逻辑（针对没有 Routine 记录的情况，比如旧数据）
+    const reviewCleared = dueAtEndCount === 0;
+    // 旧数据下，学了 10 个词以上或者清空了 50 个复习才算完美
+    const significantLearning = learnedWordCount >= 10 || (reviewWordCount >= 50 && reviewCleared);
+    
+    if (significantLearning) {
+      return 'perfect';
+    }
+    if (reviewWordCount > 0 || learnedWordCount > 0) {
+      return 'ordinary';
+    }
   }
 
-  if (status === 'gap' && protectedByCard) {
+  if (protectedByCard) {
     return 'shielded';
   }
 
-  return status;
+  return 'gap';
 }
 
 function isRoutineStepKey(value: unknown): value is RoutineStepKey {
@@ -749,8 +784,16 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     relevantDateKeys.push(protectedDate);
   }
 
+  // 扩展日期范围：确保至少包含过去 7 天，以便星轨显示和连续学习计算
+  const pastSevenDaysStart = addDays(todayKey, -6);
+  relevantDateKeys.push(pastSevenDaysStart);
+
   const startDateKey = [...relevantDateKeys].sort()[0] ?? todayKey;
   const dateKeys = buildDateRange(startDateKey, todayKey);
+  
+  // 批量获取这些日期的 Routine 进度状态
+  const recentRoutineStatusMap = await fetchRecentDailyRoutineProgress(userId, dateKeys);
+
   const reconstructedStates = new Map<string, ReconstructedWordState>();
   const dailySummaries = new Map<string, DailySummary>();
 
@@ -776,6 +819,7 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
       reviewWordCount,
       learnedWordCount,
       protectedByCard: protectedDates.has(dateKey),
+      routineStatus: recentRoutineStatusMap.get(dateKey) ?? null,
     });
 
     dailySummaries.set(dateKey, {
@@ -806,23 +850,28 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     learningGroupsById,
   });
 
-  // If the routine is explicitly completed, ensure today's status reflects this.
+  // 如果今天的 Routine 状态因为实时操作变成了 Completed，同步更新 summary
   const todaySummary = dailySummaries.get(todayKey);
-  if (todaySummary && routineCard.state === 'completed' && todaySummary.status === 'gap') {
+  if (todaySummary && routineCard.state === 'completed' && todaySummary.status !== 'perfect') {
     todaySummary.status = 'perfect';
   }
 
   let perfectCheckinDays = 0;
   let streak = 0;
+  
+  // 计算完美打卡总数 (perfect 状态)
   for (const dateKey of dateKeys) {
     const summary = dailySummaries.get(dateKey);
     if (summary?.status === 'perfect') {
       perfectCheckinDays += 1;
     }
   }
+
+  // 计算连续学习天数 (perfect, ordinary, shielded 均计入)
   for (let index = dateKeys.length - 1; index >= 0; index -= 1) {
     const summary = dailySummaries.get(dateKeys[index]);
     if (!summary || summary.status === 'gap') {
+      // 只有 gap 会中断 streak
       break;
     }
     streak += 1;
