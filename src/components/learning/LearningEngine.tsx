@@ -200,13 +200,13 @@ const InputSessionShell = ({
   queueLength: number;
   main: React.ReactNode;
 }) => (
-  <div className="input-session-shell mx-auto flex w-full max-w-[1400px] flex-col gap-4">
-    <header className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+  <div className="input-session-shell mx-auto flex h-full min-h-0 w-full max-w-[1400px] flex-col gap-4">
+    <header className="shrink-0 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
       <RoundIndicator type={type} className="min-w-0 flex-1" />
       <SessionProgress currentIndex={currentIndex} queueLength={queueLength} />
     </header>
 
-    <div className="input-session-shell__body min-w-0">
+    <div className="input-session-shell__body min-w-0 flex-1 min-h-0">
       {main}
     </div>
   </div>
@@ -676,6 +676,10 @@ export const LearningEngine = ({
     : type === 'round1'
       ? '确认这一词'
       : '提交这次判断';
+  const allowLiveCorrectTint = type === 'round1';
+  const contentAreaClassName = 'flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-6 md:px-7 md:py-7 lg:px-8 lg:py-7';
+  const inputDockClassName = 'shrink-0 border-t border-black/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(247,249,253,0.92))] px-5 py-4 shadow-[0_-18px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl md:px-7 md:py-5 lg:px-8';
+  const round1InputDockClassName = 'shrink-0 border-t border-black/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.76),rgba(247,249,253,0.94))] px-5 pt-2.5 pb-3.5 shadow-[0_-18px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl md:px-7 md:pt-3 md:pb-4 lg:px-8';
 
   const inputField = (
     <form onSubmit={handleSubmit} className="w-full">
@@ -689,7 +693,7 @@ export const LearningEngine = ({
           className={cx(
             'w-full bg-transparent text-center font-black outline-none transition-colors caret-gray-800 placeholder:text-text-secondary/35',
             type === 'round1' ? 'text-3xl md:text-4xl' : 'text-4xl md:text-5xl',
-            isWrong ? 'text-apple-red' : isCorrect ? 'text-[#10B981]' : 'text-text-primary',
+            isWrong ? 'text-apple-red' : allowLiveCorrectTint && isCorrect ? 'text-[#10B981]' : 'text-text-primary',
           )}
           autoFocus
           autoComplete="off"
@@ -709,7 +713,7 @@ export const LearningEngine = ({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 10 }}
           className={cx(
-            'mx-auto mt-6 w-fit max-w-full rounded-[22px] px-5 py-4 text-left font-bold text-white shadow-xl',
+            'mx-auto w-fit max-w-full rounded-[22px] px-5 py-4 text-left font-bold text-white shadow-xl',
             isWrong ? 'bg-apple-red shadow-apple-red/20' : 'bg-[#10B981] shadow-[#10B981]/20',
           )}
         >
@@ -745,6 +749,40 @@ export const LearningEngine = ({
       )}
     </AnimatePresence>
   );
+
+  const round2ReplayControls = type === 'round2' ? (
+    <div className="mx-auto mb-8 flex flex-wrap items-center justify-center gap-2.5">
+      <span className="rounded-full bg-black/5 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-text-secondary">
+        想再听就点这里
+      </span>
+      {(['uk', 'us'] as const).map((loc) => (
+        <button
+          key={`round2-replay-${loc}`}
+          type="button"
+          onClick={() => {
+            setAudioLocale(loc);
+            void playAudioSequence(
+              currentWord,
+              loc,
+              preferences.autoPlayRepeatCount,
+              preferences.autoPlayRepeatGapMs,
+            );
+          }}
+          className={cx(
+            'flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-black tracking-[0.14em] transition-all',
+            audioLocale === loc
+              ? 'bg-apple-blue text-white shadow-[0_12px_24px_rgba(0,122,255,0.18)]'
+              : 'bg-apple-blue/10 text-apple-blue hover:bg-apple-blue/15',
+          )}
+        >
+          {activePronunciationLocale === loc
+            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            : <Volume2 className="h-3.5 w-3.5" />}
+          再听 {loc.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  ) : null;
 
   const submitErrorBanner = submitError ? (
     <div className="rounded-2xl bg-apple-red/10 px-4 py-3 text-sm font-medium text-apple-red">
@@ -879,77 +917,94 @@ export const LearningEngine = ({
           key={currentWord.id + currentIndex}
           initial={{ opacity: 0, scale: 0.97, y: 14 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          className="glass rounded-[30px] px-5 py-6 shadow-[0_24px_64px_rgba(14,26,56,0.08)] md:px-7 md:py-7 lg:px-8 lg:py-7"
+          className="glass flex h-full min-h-0 flex-col overflow-hidden rounded-[30px] shadow-[0_24px_64px_rgba(14,26,56,0.08)]"
         >
           {type === 'round1' ? (
-            <div className="flex flex-col gap-7">
-              <div className="space-y-5">
-                <PronunciationControls
-                  phonetic={currentWord.phonetic}
-                  audioLocale={audioLocale}
-                  activePronunciationLocale={activePronunciationLocale}
-                  onPlay={(locale) => {
-                    setAudioLocale(locale);
-                    void playAudioSequence(currentWord, locale, 1, 0);
-                  }}
-                />
+            <div className="flex h-full min-h-0 flex-col">
+              <div className={cx(contentAreaClassName, 'pb-5')}>
+                <div className="space-y-7">
+                  <div className="space-y-5">
+                    <PronunciationControls
+                      phonetic={currentWord.phonetic}
+                      audioLocale={audioLocale}
+                      activePronunciationLocale={activePronunciationLocale}
+                      onPlay={(locale) => {
+                        setAudioLocale(locale);
+                        void playAudioSequence(currentWord, locale, 1, 0);
+                      }}
+                    />
 
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
-                  <p className="text-[clamp(2.4rem,4.1vw,4.2rem)] font-black leading-[0.94] tracking-[-0.055em] text-text-primary lg:flex-shrink-0">
-                    {currentWord.word}
-                  </p>
-                  <div className="min-w-0 lg:max-w-[960px] lg:flex-1 lg:pt-1">
-                    <WordSenseList word={currentWord} />
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
+                      <p className="text-[clamp(2.4rem,4.1vw,4.2rem)] font-black leading-[0.94] tracking-[-0.055em] text-text-primary lg:flex-shrink-0">
+                        {currentWord.word}
+                      </p>
+                      <div className="min-w-0 lg:max-w-[960px] lg:flex-1 lg:pt-1">
+                        <WordSenseList word={currentWord} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-3">
+                    <Round1MorphologyCard word={currentWord} />
+                    <Round1RelationsCard word={currentWord} />
+                    <Round1ConfusingCard
+                      word={currentWord}
+                      activeExampleKey={activeExampleKey}
+                      canPlayExampleAudio={canPlayExampleAudio}
+                      exampleLocale={audioLocale}
+                      onPlayExample={(sentence, key) => { void playExampleSentence(sentence, key); }}
+                    />
                   </div>
                 </div>
               </div>
 
-                <div className="grid gap-4 lg:grid-cols-3">
-                  <Round1MorphologyCard word={currentWord} />
-                  <Round1RelationsCard word={currentWord} />
-                  <Round1ConfusingCard
-                    word={currentWord}
-                    activeExampleKey={activeExampleKey}
-                    canPlayExampleAudio={canPlayExampleAudio}
-                    exampleLocale={audioLocale}
-                    onPlayExample={(sentence, key) => { void playExampleSentence(sentence, key); }}
-                  />
-                </div>
-
-              <div className="space-y-4 rounded-[24px] border border-white/80 bg-white/45 p-4 shadow-[0_12px_30px_rgba(14,26,56,0.04)] md:p-5">
-                {inputField}
-                {submitErrorBanner}
-                <div className="flex justify-end">
-                  {actionButton}
+              <div className={round1InputDockClassName}>
+                <div className="rounded-[24px] border border-white/80 bg-white/45 p-3.5 shadow-[0_12px_30px_rgba(14,26,56,0.04)] md:p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
+                    <div className="min-w-0 flex-1">
+                      {inputField}
+                    </div>
+                    <div className="flex justify-end lg:shrink-0">
+                      {actionButton}
+                    </div>
+                  </div>
+                  {submitErrorBanner && <div className="mt-3">{submitErrorBanner}</div>}
                 </div>
               </div>
             </div>
           ) : (
-            <div className="flex h-full flex-col justify-center text-center">
-              {clozePrompt ? (
-                <Round2ClozePrompt prompt={clozePrompt} />
-              ) : (
-                <div className="mx-auto max-w-3xl">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary">
-                    {type === 'review' ? '先写出这个到期词' : '先把这个词从记忆里提出来'}
-                  </p>
-                  <p className="mt-5 text-4xl font-black leading-tight text-text-primary md:text-5xl">
-                    {currentWord.chinese_definition}
-                  </p>
-                  <div className="mt-4 flex items-center justify-center gap-3">
-                    <span className="rounded-full bg-black/5 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">
-                      {primaryPos}
-                    </span>
-                  </div>
+            <div className="flex h-full min-h-0 flex-col">
+              <div className={cx(contentAreaClassName, 'py-8')}>
+                <div className="flex min-h-full flex-col justify-center text-center">
+                  {round2ReplayControls}
+                  {clozePrompt ? (
+                    <Round2ClozePrompt prompt={clozePrompt} />
+                  ) : (
+                    <div className="mx-auto max-w-3xl">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary">
+                        {type === 'review' ? '先写出这个到期词' : '先把这个词从记忆里提出来'}
+                      </p>
+                      <p className="mt-5 text-4xl font-black leading-tight text-text-primary md:text-5xl">
+                        {currentWord.chinese_definition}
+                      </p>
+                      <div className="mt-4 flex items-center justify-center gap-3">
+                        <span className="rounded-full bg-black/5 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">
+                          {primaryPos}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
 
-              <div className="mx-auto mt-8 w-full max-w-3xl space-y-5">
-                {inputField}
-                {feedbackReveal}
-                {submitErrorBanner}
-                <div className="flex justify-center sm:justify-end">
-                  {actionButton}
+              <div className={inputDockClassName}>
+                <div className="mx-auto w-full max-w-3xl space-y-5">
+                  {inputField}
+                  {feedbackReveal}
+                  {submitErrorBanner}
+                  <div className="flex justify-center sm:justify-end">
+                    {actionButton}
+                  </div>
                 </div>
               </div>
             </div>

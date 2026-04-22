@@ -603,12 +603,9 @@ export default function App() {
   ]);
 
   const sessionEmptyState = (
-      <div className="glass mx-auto max-w-3xl rounded-apple-lg p-16 text-center jelly-shadow">
+    <div className="glass mx-auto max-w-3xl rounded-apple-lg p-16 text-center shadow-xl">
       <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">这里还没有内容</p>
       <h2 className="mt-4 text-3xl font-black text-text-primary">先回首页，从今天该做的开始。</h2>
-      <p className="mt-4 text-sm leading-7 text-text-secondary">
-        如果今天有复习，会先带你去复习；没有的话，就去导入新的一组。
-      </p>
       <button
         type="button"
         onClick={() => navigate('/app/home')}
@@ -644,12 +641,12 @@ export default function App() {
             className={cx(
               'min-h-full',
               isSessionRoute
-                ? 'session-route-shell mx-auto flex w-full max-w-[1460px] flex-col'
+                ? 'session-route-shell mx-auto flex h-full min-h-0 w-full max-w-[1460px] flex-col'
                 : 'flex w-full flex-col',
             )}
           >
             {sessionStartError && (
-              <div className="mx-auto mb-4 flex w-full max-w-6xl items-start gap-3 rounded-[28px] border border-apple-red/15 bg-apple-red/8 px-5 py-4 text-apple-red shadow-[0_18px_40px_rgba(255,59,48,0.08)]">
+              <div className="mx-auto mb-4 flex w-full max-w-6xl items-start gap-3 rounded-[28px] border border-apple-red/15 bg-apple-red/8 px-5 py-4 text-apple-red shadow-xl">
                 <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-black">没能开始这组学习</p>
@@ -664,7 +661,8 @@ export default function App() {
                 </button>
               </div>
             )}
-            <Suspense fallback={<LoadingShell isSkeleton={location.pathname.includes('/library')}>{null}</LoadingShell>}>
+            <div className={cx(isSessionRoute && 'flex-1 min-h-0')}>
+              <Suspense fallback={<LoadingShell isSkeleton={location.pathname.includes('/library')}>{null}</LoadingShell>}>
                 <Routes>
                   <Route
                     path="home"
@@ -724,7 +722,7 @@ export default function App() {
                           <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
-                            className="glass p-16 rounded-apple-lg jelly-shadow flex flex-col items-center gap-6"
+                            className="glass p-16 rounded-apple-lg shadow-2xl flex flex-col items-center gap-6"
                           >
                             <Loader2 className="w-10 h-10 text-apple-green animate-spin" />
                             <p className="font-black text-xl">正在生成收尾文章</p>
@@ -780,7 +778,8 @@ export default function App() {
                   <Route path="settings" element={<SettingsView />} />
                   <Route path="*" element={<Navigate to="/app/home" replace />} />
                 </Routes>
-            </Suspense>
+              </Suspense>
+            </div>
           </div>
         </main>
       </div>
