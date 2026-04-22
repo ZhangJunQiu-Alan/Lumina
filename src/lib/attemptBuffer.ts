@@ -1,5 +1,5 @@
 import { ReviewAttemptSource } from '../types';
-import { submitReviewAttempt } from './reviewApi';
+import { submitBatchReviewAttempts } from './reviewApi';
 
 export interface QueuedAttempt {
   vocabularyItemId: string;
@@ -83,20 +83,17 @@ class AttemptBuffer {
     const batchToSync = [...this.queue];
     
     try {
-      // 目前后端暂不支持批量接口，先用并发请求模拟
-      // 注意：这里按顺序发送以保证 SRS 状态迁移的正确性（如果同一词在同一批里出现了两次）
-      for (const item of batchToSync) {
-        await submitReviewAttempt({
-          vocabularyItemId: item.vocabularyItemId,
-          learningGroupId: item.learningGroupId,
-          source: item.source,
-          wasCorrect: item.wasCorrect,
-          elapsedMs: item.elapsedMs,
-        });
-      }
+      // 使用批量接口一次性同步，提高效率
+      await submitBatchReviewAttempts(batchToSync.map(item => ({
+        vocabularyItemId: item.vocabularyItemId,
+        learningGroupId: item.learningGroupId,
+        source: item.source,
+        wasCorrect: item.wasCorrect,
+        elapsedMs: item.elapsedMs,
+        timestamp: item.timestamp, // 携带产生时间，用于后端冲突校验
+      })));
 
       // 同步成功，从主队列中移除这些已同步的项
-      // 我们只移除那些时间戳匹配的，防止 flush 期间有新项目进来
       const syncedTimestamps = new Set(batchToSync.map(i => i.timestamp));
       this.queue = this.queue.filter(i => !syncedTimestamps.has(i.timestamp));
       this.saveToStorage();

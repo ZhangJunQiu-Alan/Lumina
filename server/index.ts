@@ -7,7 +7,7 @@ import {
   EnrichmentServiceUnavailableError,
   generateArticle,
 } from './gemini.js';
-import { fetchDueReviewWords, recordReviewAttempt } from './review.js';
+import { fetchDueReviewWords, recordReviewAttempt, recordBatchReviewAttempts } from './review.js';
 import { getOrCreateAudio, batchGenerateAudio } from './audio.js';
 import { deleteLearningGroup } from './library.js';
 import { requireAuth, type AuthenticatedRequest } from './auth.js';
@@ -144,6 +144,25 @@ app.post('/api/review/attempt', requireAuth, async (req: AuthenticatedRequest, r
     res.status(500).json({ error: message });
   }
 });
+
+// POST /api/review/batch-attempt
+app.post('/api/review/batch-attempt', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { attempts } = req.body;
+  if (!Array.isArray(attempts)) {
+    return res.status(400).json({ error: 'Missing attempts array' });
+  }
+
+  const userId = req.authUserId!;
+  try {
+    const results = await recordBatchReviewAttempts(userId, attempts);
+    res.json({ data: results });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/review/batch-attempt', e, { endpoint: '/api/review/batch-attempt', user_id: userId });
+    res.status(500).json({ error: message });
+  }
+});
+
 // GET /api/review/due
 app.get('/api/review/due', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.authUserId!;

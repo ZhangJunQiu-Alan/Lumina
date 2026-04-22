@@ -19,6 +19,25 @@ export interface ReviewAttemptInput {
   source: ReviewAttemptSource;
   wasCorrect: boolean;
   elapsedMs: number;
+  timestamp?: number;
+}
+
+export async function recordBatchReviewAttempts(
+  userId: string,
+  attempts: Omit<ReviewAttemptInput, 'userId'>[]
+): Promise<ReviewAttemptResponse[]> {
+  const results: ReviewAttemptResponse[] = [];
+
+  // Sequential processing to maintain SRS logic consistency per word
+  for (const attempt of attempts) {
+    const result = await recordReviewAttempt({
+      userId,
+      ...attempt,
+    });
+    results.push(result);
+  }
+
+  return results;
 }
 
 export interface ReviewAttemptResponse {
@@ -186,19 +205,38 @@ function isMissingRichVocabularySchemaError(error: { message?: string } | null |
 }
 
 export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<ReviewAttemptResponse> {
-  const now = new Date();
+  const now = input.timestamp ? new Date(input.timestamp) : new Date();
   const elapsedMs = normalizeElapsedMs(input.elapsedMs);
   const result = toResultType(input.wasCorrect, elapsedMs);
 
   const { data: existing, error: existingError } = await supabaseAdmin
     .from('review_states')
-    .select('user_id, vocabulary_item_id, memory_state, review_count, lapse_count, last_reviewed_at, next_review_at, ease_factor, graduated_at')
+    .select('user_id, vocabulary_item_id, memory_state, review_count, lapse_count, last_reviewed_at, next_review_at, ease_factor, graduated_at, last_assessed_at')
     .eq('user_id', input.userId)
     .eq('vocabulary_item_id', input.vocabularyItemId)
-    .maybeSingle<ReviewStateRow>();
+    .maybeSingle<ReviewStateRow & { last_assessed_at: string | null }>();
 
   if (existingError) {
     throw new Error(`review_states lookup failed: ${existingError.message}`);
+  }
+
+  // Conflict handling: if DB has a newer record, skip this stale attempt.
+  if (existing?.last_assessed_at && new Date(existing.last_assessed_at) > now) {
+    console.warn(`[Conflict] Skipping stale attempt for word ${input.vocabularyItemId}. DB: ${existing.last_assessed_at}, Incoming: ${now.toISOString()}`);
+    const currentState = existing.memory_state;
+    return {
+      memoryState: currentState,
+      nextReviewAt: existing.next_review_at,
+      graduated: currentState === 'mastered',
+      transition: {
+        from: currentState,
+        to: currentState,
+        source: input.source,
+        result,
+        graduated: currentState === 'mastered',
+        nextReviewAt: existing.next_review_at,
+      },
+    };
   }
 
   const currentState = existing?.memory_state ?? 'new';
@@ -257,6 +295,7 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
       previous_state: existing?.memory_state ?? null,
       next_state: nextState,
       next_review_at: nextReviewAt,
+      created_at: now.toISOString(),
     });
 
   if (eventError) {
