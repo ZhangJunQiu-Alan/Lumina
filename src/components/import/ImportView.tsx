@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { AlertCircle, ArrowRight, BookOpen, CheckCircle2, Loader2, PlusCircle } from 'lucide-react';
+import { AlertCircle, ArrowRight, BookOpen, CheckCircle2, Check, Loader2, PlusCircle } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { invalidateLibraryCache } from '../../lib/libraryCache';
 import { fetchVocabularyEntriesByWords, saveToSupabase } from '../../lib/importFlow';
@@ -13,9 +13,25 @@ interface ImportViewProps {
 }
 
 type Stage = 'input' | 'loading' | 'preview' | 'saving' | 'audio' | 'error';
+type LoadingStep = 'fetching' | 'enriching' | 'merging';
 
 const MANUAL_BATCH_SIZE = 30;
 const MANUAL_DRAFT_KEY = 'manual_vocab_import_draft';
+
+const LOADING_STEP_COPY: Record<LoadingStep, { title: string; detail: string }> = {
+  fetching: {
+    title: '正在检索已有词库',
+    detail: '先把能直接复用的词挑出来，省下 AI 时间。',
+  },
+  enriching: {
+    title: '让 AI 补齐剩下的词',
+    detail: '释义、例句、构词和关系会一起补齐，通常 10~30 秒。',
+  },
+  merging: {
+    title: '整理成可学顺序',
+    detail: '即将进入预览。',
+  },
+};
 
 function splitWords(raw: string): string[] {
   return raw
@@ -67,10 +83,29 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
   const [stage, setStage] = useState<Stage>('input');
   const [enriched, setEnriched] = useState<EnrichedWord[]>([]);
   const [errorMsg, setErrorMsg] = useState('');
+  const [loadingStep, setLoadingStep] = useState<LoadingStep>('fetching');
+  const [loadingMissingCount, setLoadingMissingCount] = useState(0);
+  const [loadingElapsedSec, setLoadingElapsedSec] = useState(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     writeManualDraft(raw);
   }, [raw]);
+
+  useEffect(() => {
+    if (stage !== 'loading') return;
+    setLoadingElapsedSec(0);
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setLoadingElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [stage]);
+
+  useEffect(() => () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }, []);
 
   const parsedWords = splitWords(raw);
   const wordCount = parsedWords.length;
@@ -78,21 +113,31 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
   const startEnrichment = async (words: string[]) => {
     if (words.length === 0) return;
 
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setStage('loading');
+    setLoadingStep('fetching');
+    setLoadingMissingCount(0);
     setErrorMsg('');
     setEnriched([]);
 
     try {
       // 1. 先从本地词库查找已经整理好的词条
       const { existing, missing } = await fetchVocabularyEntriesByWords(words);
+      if (controller.signal.aborted) return;
       let newlyEnriched: EnrichedWord[] = [];
 
       // 2. 只有缺失或者数据不完整的词才发给 AI 整理
       if (missing.length > 0) {
+        setLoadingStep('enriching');
+        setLoadingMissingCount(missing.length);
         const res = await apiFetch('/api/vocab/enrich', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ words: missing }),
+          signal: controller.signal,
         });
 
         if (!res.ok) {
@@ -103,6 +148,9 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
         const { data } = await res.json();
         newlyEnriched = data;
       }
+
+      if (controller.signal.aborted) return;
+      setLoadingStep('merging');
 
       // 3. 合并两部分结果，并尽量保持用户的输入顺序
       const wordMap = new Map<string, EnrichedWord>();
@@ -121,12 +169,27 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
         }
       }
 
+      if (controller.signal.aborted) return;
       setEnriched(combined);
       setStage('preview');
     } catch (error) {
+      if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+        return;
+      }
       setErrorMsg(error instanceof Error ? error.message : String(error));
       setStage('error');
+    } finally {
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+      }
     }
+  };
+
+  const handleCancelLoading = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setStage('input');
+    setErrorMsg('');
   };
 
   const handleGenerate = async () => {
@@ -252,21 +315,76 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
           </motion.div>
         )}
 
-        {stage === 'loading' && (
-          <motion.div
-            key="loading"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="glass flex flex-col items-center gap-6 rounded-apple-lg p-16 jelly-shadow"
-          >
-            <Loader2 className="h-10 w-10 animate-spin text-apple-blue" />
-            <div className="text-center">
-              <p className="text-xl font-black">正在把这组词整理成可学状态…</p>
-              <p className="mt-1 text-sm text-text-secondary">释义、例句、构词和关系会一起补齐。</p>
-            </div>
-          </motion.div>
-        )}
+        {stage === 'loading' && (() => {
+          const stepOrder: LoadingStep[] = ['fetching', 'enriching', 'merging'];
+          const currentStepIndex = stepOrder.indexOf(loadingStep);
+          const activeCopy = LOADING_STEP_COPY[loadingStep];
+          const activeTitle = loadingStep === 'enriching' && loadingMissingCount > 0
+            ? `让 AI 补齐 ${loadingMissingCount} 个新词`
+            : activeCopy.title;
+
+          return (
+            <motion.div
+              key="loading"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="glass flex flex-col items-center gap-6 rounded-apple-lg p-12 jelly-shadow"
+            >
+              <Loader2 className="h-10 w-10 animate-spin text-apple-blue" />
+              <div className="text-center">
+                <p className="text-xl font-black">{activeTitle}</p>
+                <p className="mt-1 text-sm text-text-secondary">{activeCopy.detail}</p>
+                <p className="mt-2 text-xs text-text-secondary/70">
+                  已等待 {loadingElapsedSec} 秒 · 正常 10~30 秒
+                </p>
+              </div>
+
+              <ol className="w-full max-w-sm space-y-2 text-left">
+                {stepOrder.map((step, index) => {
+                  const copy = LOADING_STEP_COPY[step];
+                  const isDone = index < currentStepIndex;
+                  const isActive = index === currentStepIndex;
+                  return (
+                    <li
+                      key={step}
+                      className={`flex items-start gap-3 rounded-2xl border px-4 py-3 transition-colors ${
+                        isActive
+                          ? 'border-apple-blue/40 bg-apple-blue/5'
+                          : isDone
+                            ? 'border-transparent bg-apple-gray/60 text-text-secondary'
+                            : 'border-transparent bg-apple-gray/30 text-text-secondary/60'
+                      }`}
+                    >
+                      <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full">
+                        {isDone ? (
+                          <Check className="h-4 w-4 text-apple-blue" />
+                        ) : isActive ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-apple-blue" />
+                        ) : (
+                          <span className="h-2 w-2 rounded-full bg-current opacity-60" />
+                        )}
+                      </span>
+                      <span className="text-sm font-bold">
+                        {step === 'enriching' && loadingMissingCount > 0 && (isActive || isDone)
+                          ? `让 AI 补齐 ${loadingMissingCount} 个新词`
+                          : copy.title}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+
+              <button
+                type="button"
+                onClick={handleCancelLoading}
+                className="text-sm text-text-secondary underline-offset-4 transition-colors hover:text-text-primary hover:underline"
+              >
+                取消并返回
+              </button>
+            </motion.div>
+          );
+        })()}
 
         {stage === 'preview' && (
           <motion.div

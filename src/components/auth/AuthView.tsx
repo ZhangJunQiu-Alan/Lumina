@@ -14,6 +14,7 @@ import {
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { isGoogleAuthEnabled } from '../../lib/authFeatures';
+import { formatAuthErrorFeedback } from '../../lib/authErrors';
 
 type AuthMode = 'login' | 'register';
 
@@ -245,7 +246,7 @@ export const AuthView = () => {
     } catch (error) {
       setFeedback({
         type: 'error',
-        text: error instanceof Error ? error.message : '这次没有接上账号，再试一次看看。',
+        text: formatAuthErrorFeedback(error),
       });
     } finally {
       setIsFormSubmitting(false);

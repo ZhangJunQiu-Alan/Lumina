@@ -397,11 +397,11 @@ export default function App() {
     }
 
     if (stats.routineCard.ctaMode === 'start_learning') {
-      navigate('/app/import');
+      navigate('/app/library');
       return;
     }
 
-    navigate('/app/import');
+    navigate('/app/library');
   };
 
   const handleStartLearningGroup = useCallback(async (groupId: string, words?: Word[]) => {

@@ -280,7 +280,15 @@ export const LearningEngine = ({
       ? Math.min(Math.max(initialSession.currentIndex, 0), Math.max(queue.length - 1, 0))
       : 0;
 
-    return { queue, currentIndex };
+    // Words before currentIndex that are NOT re-queued later are truly completed.
+    // Wrong answers get re-inserted after currentIndex, so prefix ∩ suffix = still pending.
+    const pendingIds = new Set(queue.slice(currentIndex).map((word) => word.id));
+    const initialCompletedIds = new Set<string>();
+    for (const word of queue.slice(0, currentIndex)) {
+      if (!pendingIds.has(word.id)) initialCompletedIds.add(word.id);
+    }
+
+    return { queue, currentIndex, initialCompletedIds };
   }, [initialSession, type, words]);
 
   const [queue, setQueue] = useState<Word[]>(initialEngineState.queue);
@@ -291,7 +299,9 @@ export const LearningEngine = ({
   const [showAnswer, setShowAnswer] = useState(false);
   const [isSubmittingAttempt, setIsSubmittingAttempt] = useState(false);
   const [submitError, setSubmitError] = useState('');
-  const [completedWordIds, setCompletedWordIds] = useState<Set<string>>(new Set());
+  const [completedWordIds, setCompletedWordIds] = useState<Set<string>>(
+    () => new Set(initialEngineState.initialCompletedIds),
+  );
 
   // 计算进度：分母固定为初始单词数，分子为已正确完成的单词数 + 1（代表当前正在进行的第几个）
   const initialUniqueCount = words.length;
@@ -364,7 +374,7 @@ export const LearningEngine = ({
     setShowAnswer(false);
     setIsSubmittingAttempt(false);
     setSubmitError('');
-    setCompletedWordIds(new Set());
+    setCompletedWordIds(new Set(initialEngineState.initialCompletedIds));
     queueRef.current = initialEngineState.queue;
     currentIndexRef.current = initialEngineState.currentIndex;
   }, [clearAnswerRevealTimeout, initialEngineState, stopPlayback, type, words]);
