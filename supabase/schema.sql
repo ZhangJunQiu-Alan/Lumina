@@ -175,6 +175,8 @@ CREATE TABLE IF NOT EXISTS user_settings (
   auto_play_repeat_count         INTEGER NOT NULL DEFAULT 1,
   auto_play_repeat_gap_ms        INTEGER NOT NULL DEFAULT 800,
   wrong_answer_reveal_ms         INTEGER NOT NULL DEFAULT 5000,
+  reinforcement_round3_enabled   BOOLEAN NOT NULL DEFAULT true,
+  reinforcement_article_enabled  BOOLEAN NOT NULL DEFAULT true,
   updated_at                     TIMESTAMPTZ DEFAULT NOW(),
   CHECK (default_pronunciation_locale IN ('uk', 'us')),
   CHECK (auto_play_repeat_count IN (1, 2, 3)),

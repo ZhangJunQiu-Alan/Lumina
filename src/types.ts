@@ -130,6 +130,8 @@ export interface LearningPreferences {
   autoPlayRepeatCount: 1 | 2 | 3;
   autoPlayRepeatGapMs: number;
   wrongAnswerRevealMs: 3000 | 5000 | 8000;
+  reinforcementRound3Enabled: boolean;
+  reinforcementArticleEnabled: boolean;
 }
 
 // Convert EnrichedWord → Word for the learning engine

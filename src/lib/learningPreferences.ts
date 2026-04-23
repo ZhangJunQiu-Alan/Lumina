@@ -8,6 +8,8 @@ interface LearningPreferencesRow {
   auto_play_repeat_count: number;
   auto_play_repeat_gap_ms: number;
   wrong_answer_reveal_ms: number;
+  reinforcement_round3_enabled: boolean;
+  reinforcement_article_enabled: boolean;
   updated_at: string;
 }
 
@@ -17,6 +19,8 @@ export const LEARNING_PREFERENCES_DEFAULTS: LearningPreferences = {
   autoPlayRepeatCount: 1,
   autoPlayRepeatGapMs: 800,
   wrongAnswerRevealMs: 5000,
+  reinforcementRound3Enabled: true,
+  reinforcementArticleEnabled: true,
 };
 
 export const AUTO_PLAY_REPEAT_OPTIONS = [1, 2, 3] as const;
@@ -61,6 +65,12 @@ function normalizeLearningPreferences(
   const revealMsValue = hasCamelCaseShape
     ? (input as Partial<LearningPreferences>).wrongAnswerRevealMs
     : (input as LearningPreferencesRow | null | undefined)?.wrong_answer_reveal_ms;
+  const reinforcementRound3Value = hasCamelCaseShape
+    ? (input as Partial<LearningPreferences>).reinforcementRound3Enabled
+    : (input as LearningPreferencesRow | null | undefined)?.reinforcement_round3_enabled;
+  const reinforcementArticleValue = hasCamelCaseShape
+    ? (input as Partial<LearningPreferences>).reinforcementArticleEnabled
+    : (input as LearningPreferencesRow | null | undefined)?.reinforcement_article_enabled;
 
   return {
     defaultPronunciationLocale: isValidLocale(localeValue)
@@ -70,6 +80,14 @@ function normalizeLearningPreferences(
     autoPlayRepeatCount: normalizeRepeatCount(repeatCountValue),
     autoPlayRepeatGapMs: normalizeGapMs(gapMsValue),
     wrongAnswerRevealMs: normalizeRevealMs(revealMsValue),
+    reinforcementRound3Enabled:
+      typeof reinforcementRound3Value === 'boolean'
+        ? reinforcementRound3Value
+        : LEARNING_PREFERENCES_DEFAULTS.reinforcementRound3Enabled,
+    reinforcementArticleEnabled:
+      typeof reinforcementArticleValue === 'boolean'
+        ? reinforcementArticleValue
+        : LEARNING_PREFERENCES_DEFAULTS.reinforcementArticleEnabled,
   };
 }
 
@@ -81,6 +99,8 @@ function toDatabaseRow(userId: string, preferences: LearningPreferences): Omit<L
     auto_play_repeat_count: preferences.autoPlayRepeatCount,
     auto_play_repeat_gap_ms: preferences.autoPlayRepeatGapMs,
     wrong_answer_reveal_ms: preferences.wrongAnswerRevealMs,
+    reinforcement_round3_enabled: preferences.reinforcementRound3Enabled,
+    reinforcement_article_enabled: preferences.reinforcementArticleEnabled,
   };
 }
 
@@ -126,6 +146,8 @@ export async function getLearningPreferences(userId: string): Promise<LearningPr
       auto_play_repeat_count,
       auto_play_repeat_gap_ms,
       wrong_answer_reveal_ms,
+      reinforcement_round3_enabled,
+      reinforcement_article_enabled,
       updated_at
     `)
     .eq('user_id', userId)
@@ -169,6 +191,8 @@ export async function saveLearningPreferences(
       auto_play_repeat_count,
       auto_play_repeat_gap_ms,
       wrong_answer_reveal_ms,
+      reinforcement_round3_enabled,
+      reinforcement_article_enabled,
       updated_at
     `)
     .single();

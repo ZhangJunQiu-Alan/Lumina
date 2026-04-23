@@ -23,6 +23,7 @@ import {
 import { Sidebar } from './components/layout/Sidebar';
 import { fetchDueReviewWords, submitReviewAttempt } from './lib/reviewApi';
 import { useAuth } from './contexts/AuthContext';
+import { useLearningPreferences } from './contexts/LearningPreferencesContext';
 import { apiFetch } from './lib/api';
 import { invalidateLibraryCache } from './lib/libraryCache';
 import { createInitialLearningSession, isCoreLearningRound } from './lib/learningSession';
@@ -168,6 +169,7 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, signOut } = useAuth();
+  const { preferences: learningPreferences } = useLearningPreferences();
   const mainScrollRef = useRef<HTMLElement | null>(null);
   const activeLearningGroupIdRef = useRef<string | null>(null);
   const sessionAutoRestoreRef = useRef<string | null>(null);
@@ -500,12 +502,33 @@ export default function App() {
       return;
     }
 
-    if (round === 'round2') {
-      const completedAt = activeSessionSeed?.completedAt ?? new Date().toISOString();
-      const nextSession = createInitialLearningSession(activeLearningGroupId, activeWords, 'round3', {
-        groupCompleted: true,
+    const finishReinforcementSession = async () => {
+      await clearLearningGroupSession(user.id, activeLearningGroupId).catch((error) => {
+        console.error('Failed to close reinforcement session:', error);
+      });
+      invalidateLibraryCache(user.id);
+      resetActiveLearningState();
+      navigate('/app/home');
+      void fetchStats();
+    };
+
+    const advanceToArticle = (completedAt: string, groupCompleted: boolean) => {
+      const nextSession = createInitialLearningSession(activeLearningGroupId, activeWords, 'article', {
+        groupCompleted,
         completedAt,
       });
+      setActiveSessionSeed(nextSession);
+      setRound('article');
+      setEssay(null);
+      invalidateLibraryCache(user.id);
+      void persistLearningGroupSession(user.id, nextSession).catch((error) => {
+        console.error('Failed to persist article transition:', error);
+      });
+      void ensureArticleForGroup(activeLearningGroupId, activeWords);
+    };
+
+    if (round === 'round2') {
+      const completedAt = activeSessionSeed?.completedAt ?? new Date().toISOString();
 
       void markRoutineStepCompleted(user.id, {
         step: 'round2',
@@ -515,39 +538,44 @@ export default function App() {
         console.error('Failed to mark round2 as completed:', error);
       });
 
-      setActiveSessionSeed(nextSession);
-      setRound('round3');
-      invalidateLibraryCache(user.id);
-      void persistLearningGroupSession(user.id, nextSession).catch((error) => {
-        console.error('Failed to persist reinforcement transition:', error);
-      });
+      if (learningPreferences.reinforcementRound3Enabled) {
+        const nextSession = createInitialLearningSession(activeLearningGroupId, activeWords, 'round3', {
+          groupCompleted: true,
+          completedAt,
+        });
+
+        setActiveSessionSeed(nextSession);
+        setRound('round3');
+        invalidateLibraryCache(user.id);
+        void persistLearningGroupSession(user.id, nextSession).catch((error) => {
+          console.error('Failed to persist reinforcement transition:', error);
+        });
+        return;
+      }
+
+      if (learningPreferences.reinforcementArticleEnabled) {
+        advanceToArticle(completedAt, true);
+        return;
+      }
+
+      await finishReinforcementSession();
       return;
     }
 
     if (round === 'round3') {
-      const nextSession = createInitialLearningSession(activeLearningGroupId, activeWords, 'article', {
-        groupCompleted: activeSessionSeed?.groupCompleted ?? true,
-        completedAt: activeSessionSeed?.completedAt ?? new Date().toISOString(),
-      });
+      if (learningPreferences.reinforcementArticleEnabled) {
+        advanceToArticle(
+          activeSessionSeed?.completedAt ?? new Date().toISOString(),
+          activeSessionSeed?.groupCompleted ?? true,
+        );
+        return;
+      }
 
-      setActiveSessionSeed(nextSession);
-      setRound('article');
-      setEssay(null);
-      invalidateLibraryCache(user.id);
-      void persistLearningGroupSession(user.id, nextSession).catch((error) => {
-        console.error('Failed to persist article transition:', error);
-      });
-      void ensureArticleForGroup(activeLearningGroupId, activeWords);
+      await finishReinforcementSession();
       return;
     }
 
-    await clearLearningGroupSession(user.id, activeLearningGroupId).catch((error) => {
-      console.error('Failed to close reinforcement session:', error);
-    });
-    invalidateLibraryCache(user.id);
-    resetActiveLearningState();
-    navigate('/app/home');
-    void fetchStats();
+    await finishReinforcementSession();
   }, [
     activeLearningGroupId,
     activeSessionSeed?.completedAt,
@@ -555,6 +583,8 @@ export default function App() {
     activeWords,
     ensureArticleForGroup,
     fetchStats,
+    learningPreferences.reinforcementArticleEnabled,
+    learningPreferences.reinforcementRound3Enabled,
     navigate,
     resetActiveLearningState,
     round,

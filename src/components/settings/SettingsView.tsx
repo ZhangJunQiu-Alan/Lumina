@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import {
   AlertCircle,
+  BookOpen,
   CheckCircle2,
   ChevronRight,
   Clock3,
@@ -389,6 +390,37 @@ export const SettingsView = () => {
               }))}
               value={preferences.wrongAnswerRevealMs}
               onChange={(next) => { void handleSave('wrongAnswerRevealMs', { wrongAnswerRevealMs: next as 3000 | 5000 | 8000 }); }}
+            />
+          )}
+        />
+      </SettingsCard>
+
+      <SettingsCard
+        icon={BookOpen}
+        eyebrow="强化轮次"
+        title="完成主线后要不要继续加固"
+        description="核心轮次（第一、二轮）永远会做完。这里决定完成第二轮后，系统是否再带你走第三轮和文章巩固。"
+      >
+        <SettingRow
+          title="第三轮：先判断，再确认"
+          description="以中文+音标的形式再过一遍，检查记忆是否稳固。关闭后，做完第二轮会直接跳到文章巩固或结束。"
+          feedback={feedbackByKey.reinforcementRound3Enabled}
+          control={(
+            <ToggleControl
+              checked={preferences.reinforcementRound3Enabled}
+              onChange={(checked) => { void handleSave('reinforcementRound3Enabled', { reinforcementRound3Enabled: checked }); }}
+            />
+          )}
+        />
+
+        <SettingRow
+          title="文章巩固：把词放进语境"
+          description="读一段用本组词写的文章，帮你在句子里再认一遍。关闭后，做完前面的轮次就结束这组学习。"
+          feedback={feedbackByKey.reinforcementArticleEnabled}
+          control={(
+            <ToggleControl
+              checked={preferences.reinforcementArticleEnabled}
+              onChange={(checked) => { void handleSave('reinforcementArticleEnabled', { reinforcementArticleEnabled: checked }); }}
             />
           )}
         />
