@@ -84,9 +84,9 @@ export function OfficialLibraryPanel({
     setErrorMsg('');
 
     try {
-      if (startMode === 'resume' && summary.resumeCandidate) {
+      if (startMode === 'resume' && summary.activeResumeCandidate) {
         setStage('resuming');
-        await onStartLearning(summary.resumeCandidate.groupId);
+        await onStartLearning(summary.activeResumeCandidate.groupId);
         return;
       }
 
@@ -95,7 +95,13 @@ export function OfficialLibraryPanel({
       setStage('preparing');
 
       const learnedSet = await resolveLearnedWords(user.id);
-      const nextBatch = getOfficialNextBatch(definition.id, learnedSet, mode, existingGroupCount);
+      const nextBatch = getOfficialNextBatch(
+        definition.id,
+        learnedSet,
+        mode,
+        existingGroupCount,
+        summary.progress,
+      );
       if (!nextBatch) {
         setStage('idle');
         return;
@@ -153,6 +159,19 @@ export function OfficialLibraryPanel({
       }
 
       await onStartLearning(result.groupId, result.words);
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : String(error));
+      setStage('error');
+    }
+  };
+
+  const handleStartReinforcement = async () => {
+    if (!summary.reinforcementCandidate) return;
+
+    setErrorMsg('');
+    setStage('resuming');
+    try {
+      await onStartLearning(summary.reinforcementCandidate.groupId);
     } catch (error) {
       setErrorMsg(error instanceof Error ? error.message : String(error));
       setStage('error');
@@ -229,7 +248,7 @@ export function OfficialLibraryPanel({
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <div className={infoCardClassName}>
-                <p className="text-[11px] font-bold tracking-[0.2em] text-text-secondary">已走到</p>
+                <p className="text-[11px] font-bold tracking-[0.2em] text-text-secondary">已完成</p>
                 <p className="text-right text-xl font-black text-text-primary">
                   {summary.progress} / {definition.words.length}
                 </p>
@@ -252,6 +271,28 @@ export function OfficialLibraryPanel({
                 {!actionDisabled && <ArrowRight className="h-5 w-5" />}
               </button>
             </div>
+
+            {summary.reinforcementCandidate && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-white/70 bg-white/72 px-4 py-3 shadow-[0_10px_24px_rgba(0,0,0,0.05)]">
+                <div>
+                  <p className="text-sm font-black text-text-primary">上一组主线已完成，还可以继续做加固</p>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    会直接回到 {summary.reinforcementCandidate.groupTitle} 的
+                    {summary.reinforcementCandidate.round === 'round3' ? ' Round 3' : ' 文章巩固'}。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleStartReinforcement();
+                  }}
+                  className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-black text-apple-blue shadow-[0_10px_24px_rgba(0,0,0,0.05)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
+                >
+                  继续加固上一组
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
 
             {stage === 'error' && (
               <div className="max-w-3xl rounded-2xl bg-apple-red/10 p-3 text-sm font-medium text-apple-red">

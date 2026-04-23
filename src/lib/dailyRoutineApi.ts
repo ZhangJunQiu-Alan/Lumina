@@ -38,7 +38,7 @@ const DAILY_ROUTINE_SELECT = `
 `;
 
 const REVIEW_DAY_THRESHOLD = 50;
-const ROUTINE_STEPS: RoutineStepKey[] = ['review', 'round1', 'round2', 'round3', 'article'];
+const ROUTINE_STEPS: RoutineStepKey[] = ['review', 'round1', 'round2'];
 
 function isRoutineStepKey(value: unknown): value is RoutineStepKey {
   return typeof value === 'string' && ROUTINE_STEPS.includes(value as RoutineStepKey);
@@ -63,10 +63,10 @@ function buildStepOrder(startingDueCount: number): RoutineStepKey[] {
   }
 
   if (startingDueCount > 0) {
-    return ['review', 'round1', 'round2', 'round3', 'article'];
+    return ['review', 'round1', 'round2'];
   }
 
-  return ['round1', 'round2', 'round3', 'article'];
+  return ['round1', 'round2'];
 }
 
 function resolveDayKind(startingDueCount: number): RoutineDayKind {
@@ -80,9 +80,8 @@ function inferCompletedLearningSteps(round: LearningRoundType): RoutineStepKey[]
     case 'round2':
       return ['round1'];
     case 'round3':
-      return ['round1', 'round2'];
     case 'article':
-      return ['round1', 'round2', 'round3'];
+      return ['round1', 'round2'];
     default:
       return [];
   }

@@ -3,9 +3,10 @@ import { IELTS_CHAPTERS, IELTS_WORDS_FLAT } from '../data/ielts-vocab';
 import type {
   LibraryGroupSummary,
   OfficialLibraryId,
+  OfficialResumeTargets,
   OfficialLibrarySummary,
-  ResumeCandidate,
 } from '../types';
+import { isCoreLearningComplete } from './learningSession';
 
 export type OfficialStudyMode = 'sequential' | 'shuffle';
 
@@ -194,10 +195,18 @@ export function formatOfficialCounterGroupName(
 
 export function deriveOfficialProgress(
   libraryId: OfficialLibraryId,
-  groups: Pick<LibraryGroupSummary, 'sourceType' | 'title' | 'libraryId'>[],
+  groups: Pick<LibraryGroupSummary, 'sourceType' | 'title' | 'libraryId' | 'status' | 'completedAt' | 'sessionRound'>[],
 ) {
   return groups.reduce((maxProgress, group) => {
-    if (group.sourceType !== 'system' || group.libraryId !== libraryId) {
+    if (
+      group.sourceType !== 'system'
+      || group.libraryId !== libraryId
+      || !isCoreLearningComplete({
+        status: group.status,
+        completedAt: group.completedAt,
+        sessionRound: group.sessionRound,
+      })
+    ) {
       return maxProgress;
     }
 
@@ -210,13 +219,25 @@ export function deriveOfficialProgress(
 
 export function countUnlockedOfficialWords(
   libraryId: OfficialLibraryId,
-  groups: Pick<LibraryGroupSummary, 'sourceType' | 'wordCount' | 'libraryId'>[],
+  groups: Pick<LibraryGroupSummary, 'sourceType' | 'wordCount' | 'libraryId' | 'status' | 'completedAt' | 'sessionRound'>[],
 ) {
   return clampProgress(
     libraryId,
-    groups.reduce((count, group) => (
-      group.sourceType === 'system' && group.libraryId === libraryId ? count + group.wordCount : count
-    ), 0),
+    groups.reduce((count, group) => {
+      if (
+        group.sourceType !== 'system'
+        || group.libraryId !== libraryId
+        || !isCoreLearningComplete({
+          status: group.status,
+          completedAt: group.completedAt,
+          sessionRound: group.sessionRound,
+        })
+      ) {
+        return count;
+      }
+
+      return count + group.wordCount;
+    }, 0),
   );
 }
 
@@ -242,7 +263,18 @@ export function getOfficialNextBatch(
   learnedLowercase: ReadonlySet<string>,
   mode: OfficialStudyMode,
   existingGroupCount: number,
+  progress: number,
 ): { words: string[]; groupName: string } | null {
+  if (mode === 'sequential') {
+    const plan = getOfficialBatchPlan(libraryId, progress);
+    return plan
+      ? {
+          words: plan.words,
+          groupName: plan.groupName,
+        }
+      : null;
+  }
+
   const definition = getOfficialLibraryDefinition(libraryId);
   const remaining = definition.words.filter(
     (word) => !learnedLowercase.has(word.trim().toLowerCase()),
@@ -250,17 +282,12 @@ export function getOfficialNextBatch(
 
   if (remaining.length === 0) return null;
 
-  let picked: string[];
-  if (mode === 'shuffle') {
-    const pool = [...remaining];
-    for (let i = pool.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    picked = pool.slice(0, definition.batchSize);
-  } else {
-    picked = remaining.slice(0, definition.batchSize);
+  const pool = [...remaining];
+  for (let i = pool.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
   }
+  const picked = pool.slice(0, definition.batchSize);
 
   const groupIndex = existingGroupCount + 1;
   return {
@@ -280,8 +307,8 @@ export function countExistingOfficialGroups(
 
 export function buildOfficialLibrarySummary(
   libraryId: OfficialLibraryId,
-  groups: Pick<LibraryGroupSummary, 'sourceType' | 'title' | 'wordCount' | 'libraryId'>[],
-  resumeCandidate: ResumeCandidate | null,
+  groups: Pick<LibraryGroupSummary, 'sourceType' | 'title' | 'wordCount' | 'libraryId' | 'status' | 'completedAt' | 'sessionRound'>[],
+  resumeTargets: OfficialResumeTargets | null,
 ): OfficialLibrarySummary {
   const definition = getOfficialLibraryDefinition(libraryId);
   const unlockedWordCount = countUnlockedOfficialWords(libraryId, groups);
@@ -292,15 +319,16 @@ export function buildOfficialLibrarySummary(
     progress: unlockedWordCount,
     nextBatchSize,
     unlockedWordCount,
-    resumeCandidate,
+    activeResumeCandidate: resumeTargets?.active ?? null,
+    reinforcementCandidate: resumeTargets?.reinforcement ?? null,
     completed: remaining === 0,
   };
 }
 
 export function resolveOfficialLibraryStartMode(
-  summary: Pick<OfficialLibrarySummary, 'resumeCandidate' | 'completed'>,
+  summary: Pick<OfficialLibrarySummary, 'activeResumeCandidate' | 'completed'>,
 ) {
-  if (summary.resumeCandidate) {
+  if (summary.activeResumeCandidate) {
     return 'resume' as const;
   }
 

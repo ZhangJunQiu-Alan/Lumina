@@ -3,10 +3,16 @@ import {
   clampSessionIndex,
   createInitialLearningSession,
   createResumeCandidate,
+  isCoreLearningComplete,
   normalizePersistedLearningSession,
   normalizeSessionQueueWordIds,
   rebuildSessionQueue,
 } from '../src/lib/learningSession.js';
+import {
+  buildOfficialLibrarySummary,
+  getOfficialNextBatch,
+  resolveOfficialLibraryStartMode,
+} from '../src/lib/officialLibrary.js';
 import type { Word } from '../src/types.js';
 
 const emptyWordExtras = {
@@ -77,6 +83,8 @@ const normalized = normalizePersistedLearningSession({
   currentIndex: 8,
   queueWordIds: ['w2', 'missing', 'w2'],
   lastActiveAt: '2026-04-18T00:00:00.000Z',
+  groupCompleted: false,
+  completedAt: null,
 }, words);
 assert.equal(normalized.currentIndex, 1);
 assert.deepEqual(normalized.queueWordIds, ['w2', 'w2']);
@@ -87,6 +95,8 @@ const fallback = normalizePersistedLearningSession({
   currentIndex: 99,
   queueWordIds: ['missing-only'],
   lastActiveAt: '2026-04-18T00:00:00.000Z',
+  groupCompleted: true,
+  completedAt: '2026-04-18T00:10:00.000Z',
 }, words);
 assert.equal(fallback.currentIndex, 2);
 assert.deepEqual(fallback.queueWordIds, ['w1', 'w2', 'w3']);
@@ -96,6 +106,15 @@ assert.equal(initial.groupId, 'g2');
 assert.equal(initial.round, 'round1');
 assert.equal(initial.currentIndex, 0);
 assert.deepEqual(initial.queueWordIds, ['w1', 'w2', 'w3']);
+assert.equal(initial.groupCompleted, false);
+assert.equal(initial.completedAt, null);
+
+const completedSeed = createInitialLearningSession('g2', words, 'round3', {
+  groupCompleted: true,
+  completedAt: '2026-04-18T00:10:00.000Z',
+});
+assert.equal(completedSeed.groupCompleted, true);
+assert.equal(completedSeed.completedAt, '2026-04-18T00:10:00.000Z');
 
 const candidate = createResumeCandidate({
   groupId: 'g3',
@@ -105,9 +124,92 @@ const candidate = createResumeCandidate({
   currentIndex: -2,
   queueWordIds: ['w1', 'w2'],
   lastActiveAt: '2026-04-18T00:00:00.000Z',
+  groupCompleted: false,
+  completedAt: null,
   article: null,
 });
 assert.equal(candidate.currentIndex, 0);
 assert.equal(candidate.queueLength, 2);
+
+assert.equal(isCoreLearningComplete({
+  status: 'active',
+  completedAt: null,
+  sessionRound: 'round2',
+}), false);
+assert.equal(isCoreLearningComplete({
+  status: 'completed',
+  completedAt: null,
+  sessionRound: 'round2',
+}), true);
+assert.equal(isCoreLearningComplete({
+  status: 'active',
+  completedAt: null,
+  sessionRound: 'round3',
+}), true);
+
+const officialGroups = [
+  {
+    id: 'g-active',
+    title: '雅思词汇真经 · 0061-0090',
+    createdAt: '2026-04-18T00:00:00.000Z',
+    wordCount: 30,
+    sourceType: 'system' as const,
+    libraryId: 'ielts-vocab' as const,
+    status: 'active' as const,
+    sessionRound: 'round2' as const,
+    completedAt: null,
+  },
+  {
+    id: 'g-completed',
+    title: '雅思词汇真经 · 0001-0030',
+    createdAt: '2026-04-19T00:00:00.000Z',
+    wordCount: 30,
+    sourceType: 'system' as const,
+    libraryId: 'ielts-vocab' as const,
+    status: 'completed' as const,
+    sessionRound: 'round3' as const,
+    completedAt: '2026-04-19T00:20:00.000Z',
+  },
+  {
+    id: 'g-legacy',
+    title: '雅思词汇真经 · 0031-0060',
+    createdAt: '2026-04-20T00:00:00.000Z',
+    wordCount: 30,
+    sourceType: 'system' as const,
+    libraryId: 'ielts-vocab' as const,
+    status: 'active' as const,
+    sessionRound: 'article' as const,
+    completedAt: null,
+  },
+];
+
+const officialSummary = buildOfficialLibrarySummary('ielts-vocab', officialGroups, {
+  active: candidate,
+  reinforcement: createResumeCandidate({
+    groupId: 'g4',
+    groupTitle: '雅思词汇真经 · 0061-0090',
+    createdAt: '2026-04-19T00:00:00.000Z',
+    round: 'article',
+    currentIndex: 3,
+    queueWordIds: ['w1', 'w2'],
+    lastActiveAt: '2026-04-19T00:30:00.000Z',
+    groupCompleted: true,
+    completedAt: '2026-04-19T00:20:00.000Z',
+    article: null,
+  }),
+});
+assert.equal(officialSummary.progress, 60);
+assert.equal(officialSummary.activeResumeCandidate?.groupId, 'g3');
+assert.equal(officialSummary.reinforcementCandidate?.groupId, 'g4');
+assert.equal(resolveOfficialLibraryStartMode(officialSummary), 'resume');
+
+const nextSequentialBatch = getOfficialNextBatch(
+  'ielts-vocab',
+  new Set(['allocate']),
+  'sequential',
+  3,
+  officialSummary.progress,
+);
+assert.equal(nextSequentialBatch?.groupName, '雅思词汇真经 · 0061-0090');
 
 console.log('learning session checks passed');

@@ -25,7 +25,7 @@ import { fetchDueReviewWords, submitReviewAttempt } from './lib/reviewApi';
 import { useAuth } from './contexts/AuthContext';
 import { apiFetch } from './lib/api';
 import { invalidateLibraryCache } from './lib/libraryCache';
-import { createInitialLearningSession } from './lib/learningSession';
+import { createInitialLearningSession, isCoreLearningRound } from './lib/learningSession';
 import {
   clearLearningGroupSession,
   fetchGeneratedArticle,
@@ -247,17 +247,6 @@ export default function App() {
     setRound('round1');
   }, []);
 
-  const completeLearningGroup = useCallback(async () => {
-    if (!activeLearningGroupId || !user) return;
-
-    try {
-      await clearLearningGroupSession(user.id, activeLearningGroupId, { markCompleted: true });
-      invalidateLibraryCache(user.id);
-    } catch (error) {
-      console.error('Failed to complete learning group:', error);
-    }
-  }, [activeLearningGroupId, user]);
-
   const ensureArticleForGroup = useCallback(async (groupId: string, words: Word[]) => {
     if (!user) return null;
 
@@ -337,13 +326,15 @@ export default function App() {
 
       await persistLearningGroupSession(user.id, nextSession);
       invalidateLibraryCache(user.id);
-      void bindRoutineMainLearningGroup(user.id, {
-        groupId,
-        round: nextSession.round,
-        timeZone: resolveBrowserTimeZone(),
-      }).catch((error) => {
-        console.error('Failed to bind daily routine main learning group:', error);
-      });
+      if (isCoreLearningRound(nextSession.round)) {
+        void bindRoutineMainLearningGroup(user.id, {
+          groupId,
+          round: nextSession.round,
+          timeZone: resolveBrowserTimeZone(),
+        }).catch((error) => {
+          console.error('Failed to bind daily routine main learning group:', error);
+        });
+      }
 
       if (nextSession.round === 'article' && !nextSession.article) {
         void ensureArticleForGroup(groupId, words);
@@ -465,12 +456,14 @@ export default function App() {
       currentIndex: session.currentIndex,
       queueWordIds: session.queueWordIds,
       lastActiveAt: new Date().toISOString(),
+      groupCompleted: activeSessionSeed?.groupCompleted ?? false,
+      completedAt: activeSessionSeed?.completedAt ?? null,
     }).catch((error) => {
       console.error('Failed to persist learning session snapshot:', error);
     });
-  }, [activeLearningGroupId, user]);
+  }, [activeLearningGroupId, activeSessionSeed?.completedAt, activeSessionSeed?.groupCompleted, user]);
 
-  const handleRoundComplete = async () => {
+  const handleRoundComplete = useCallback(async () => {
     if (round === 'review') {
       if (user) {
         await markRoutineStepCompleted(user.id, {
@@ -488,40 +481,59 @@ export default function App() {
       return;
     }
 
-    if (round === 'round1' || round === 'round2') {
-      const nextRound: LearningRoundType = round === 'round1' ? 'round2' : 'round3';
-      const nextSession = createInitialLearningSession(activeLearningGroupId, activeWords, nextRound);
+    if (round === 'round1') {
+      const nextSession = createInitialLearningSession(activeLearningGroupId, activeWords, 'round2');
 
       void markRoutineStepCompleted(user.id, {
-        step: round,
+        step: 'round1',
         groupId: activeLearningGroupId,
         timeZone: resolveBrowserTimeZone(),
       }).catch((error) => {
-        console.error(`Failed to mark ${round} as completed:`, error);
+        console.error('Failed to mark round1 as completed:', error);
       });
 
       setActiveSessionSeed(nextSession);
-      setRound(nextRound);
+      setRound('round2');
       void persistLearningGroupSession(user.id, nextSession).catch((error) => {
         console.error('Failed to persist round transition:', error);
       });
       return;
     }
 
-    if (round === 'round3') {
-      const nextSession = createInitialLearningSession(activeLearningGroupId, activeWords, 'article');
+    if (round === 'round2') {
+      const completedAt = activeSessionSeed?.completedAt ?? new Date().toISOString();
+      const nextSession = createInitialLearningSession(activeLearningGroupId, activeWords, 'round3', {
+        groupCompleted: true,
+        completedAt,
+      });
 
       void markRoutineStepCompleted(user.id, {
-        step: 'round3',
+        step: 'round2',
         groupId: activeLearningGroupId,
         timeZone: resolveBrowserTimeZone(),
       }).catch((error) => {
-        console.error('Failed to mark round3 as completed:', error);
+        console.error('Failed to mark round2 as completed:', error);
+      });
+
+      setActiveSessionSeed(nextSession);
+      setRound('round3');
+      invalidateLibraryCache(user.id);
+      void persistLearningGroupSession(user.id, nextSession).catch((error) => {
+        console.error('Failed to persist reinforcement transition:', error);
+      });
+      return;
+    }
+
+    if (round === 'round3') {
+      const nextSession = createInitialLearningSession(activeLearningGroupId, activeWords, 'article', {
+        groupCompleted: activeSessionSeed?.groupCompleted ?? true,
+        completedAt: activeSessionSeed?.completedAt ?? new Date().toISOString(),
       });
 
       setActiveSessionSeed(nextSession);
       setRound('article');
       setEssay(null);
+      invalidateLibraryCache(user.id);
       void persistLearningGroupSession(user.id, nextSession).catch((error) => {
         console.error('Failed to persist article transition:', error);
       });
@@ -529,18 +541,25 @@ export default function App() {
       return;
     }
 
-    await markRoutineStepCompleted(user.id, {
-      step: 'article',
-      groupId: activeLearningGroupId,
-      timeZone: resolveBrowserTimeZone(),
-    }).catch((error) => {
-      console.error('Failed to mark article as completed:', error);
+    await clearLearningGroupSession(user.id, activeLearningGroupId).catch((error) => {
+      console.error('Failed to close reinforcement session:', error);
     });
-    await completeLearningGroup();
+    invalidateLibraryCache(user.id);
     resetActiveLearningState();
     navigate('/app/home');
     void fetchStats();
-  };
+  }, [
+    activeLearningGroupId,
+    activeSessionSeed?.completedAt,
+    activeSessionSeed?.groupCompleted,
+    activeWords,
+    ensureArticleForGroup,
+    fetchStats,
+    navigate,
+    resetActiveLearningState,
+    round,
+    user,
+  ]);
 
   const handleReviewResultsBackHome = () => {
     navigate('/app/home');

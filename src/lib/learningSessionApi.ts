@@ -2,6 +2,7 @@ import type {
   ConfusingPair,
   EnrichedWordRelation,
   OfficialLibraryId,
+  OfficialResumeTargets,
   WordMorphology,
   LearningRoundType,
   PersistedLearningSession,
@@ -18,7 +19,10 @@ import {
 import {
   clampSessionIndex,
   createResumeCandidate,
+  isCoreLearningComplete,
+  isCoreLearningRound,
   isLearningRoundType,
+  isReinforcementRound,
   normalizePersistedLearningSession,
   normalizeSessionQueueWordIds,
 } from './learningSession';
@@ -30,6 +34,7 @@ interface LearningGroupSessionRow {
   library_id: string | null;
   created_at: string;
   status: 'active' | 'completed' | null;
+  completed_at: string | null;
   session_round: LearningRoundType | null;
   session_current_index: number | null;
   session_queue_word_ids: unknown;
@@ -43,6 +48,7 @@ interface LearningGroupBaseRow {
   library_id: string | null;
   created_at: string;
   status: 'active' | 'completed' | null;
+  completed_at: string | null;
 }
 
 interface VocabularySenseRow {
@@ -231,6 +237,12 @@ function toPersistedLearningSession(
     currentIndex: row.session_current_index ?? 0,
     queueWordIds: normalizeSessionQueueWordIds(row.session_queue_word_ids),
     lastActiveAt: row.session_last_active_at ?? row.created_at,
+    groupCompleted: isCoreLearningComplete({
+      status: row.status,
+      completedAt: row.completed_at,
+      sessionRound: row.session_round,
+    }),
+    completedAt: row.completed_at,
     libraryId: resolveOfficialLibraryId(row.library_id, row.group_name, row.source_type),
     article,
   }, words);
@@ -255,6 +267,12 @@ function toResumeCandidate(row: LearningGroupLookupRow): ResumeCandidate | null 
     currentIndex: row.session_current_index ?? 0,
     queueWordIds: normalizeSessionQueueWordIds(row.session_queue_word_ids),
     lastActiveAt: row.session_last_active_at ?? row.created_at,
+    groupCompleted: isCoreLearningComplete({
+      status: row.status,
+      completedAt: row.completed_at,
+      sessionRound: row.session_round,
+    }),
+    completedAt: row.completed_at,
     libraryId: resolveOfficialLibraryId(row.library_id, row.group_name, row.source_type),
     article: null,
   });
@@ -266,6 +284,45 @@ function isResumeCandidateForLibrary(
 ) {
   if (!libraryId) return true;
   return resolveOfficialLibraryId(row.library_id, row.group_name, row.source_type) === libraryId;
+}
+
+function isActiveResumeCandidate(candidate: ResumeCandidate | null | undefined): candidate is ResumeCandidate {
+  return Boolean(candidate && isCoreLearningRound(candidate.round) && !candidate.groupCompleted);
+}
+
+function isReinforcementResumeCandidate(candidate: ResumeCandidate | null | undefined): candidate is ResumeCandidate {
+  return Boolean(candidate && isReinforcementRound(candidate.round) && candidate.groupCompleted);
+}
+
+function buildOfficialResumeTargets(rows: LearningGroupSessionRow[], libraryId: OfficialLibraryId): OfficialResumeTargets {
+  let active: ResumeCandidate | null = null;
+  let reinforcement: ResumeCandidate | null = null;
+
+  for (const row of rows) {
+    if (!isResumeCandidateForLibrary(row, libraryId)) {
+      continue;
+    }
+
+    const candidate = toResumeCandidate(row);
+    if (!candidate) {
+      continue;
+    }
+
+    if (!active && isActiveResumeCandidate(candidate)) {
+      active = candidate;
+      continue;
+    }
+
+    if (!reinforcement && isReinforcementResumeCandidate(candidate)) {
+      reinforcement = candidate;
+    }
+
+    if (active && reinforcement) {
+      break;
+    }
+  }
+
+  return { active, reinforcement };
 }
 
 async function fetchLearningGroupRow(
@@ -281,6 +338,7 @@ async function fetchLearningGroupRow(
       library_id,
       created_at,
       status,
+      completed_at,
       session_round,
       session_current_index,
       session_queue_word_ids,
@@ -306,7 +364,8 @@ async function fetchLearningGroupRow(
       source_type,
       library_id,
       created_at,
-      status
+      status,
+      completed_at
     `)
     .eq('id', groupId)
     .eq('user_id', userId)
@@ -332,13 +391,13 @@ async function fetchResumeCandidateBySource(
       library_id,
       created_at,
       status,
+      completed_at,
       session_round,
       session_current_index,
       session_queue_word_ids,
       session_last_active_at
     `)
     .eq('user_id', userId)
-    .neq('status', 'completed')
     .not('session_round', 'is', null)
     .order('session_last_active_at', { ascending: false })
     .order('created_at', { ascending: false });
@@ -351,19 +410,50 @@ async function fetchResumeCandidateBySource(
   }
 
   const rows = ((data ?? []) as LearningGroupSessionRow[]);
-  const match = rows.find((row) => isResumeCandidateForLibrary(row, libraryId));
-  return match ? toResumeCandidate(match) : null;
+  const match = rows
+    .filter((row) => isResumeCandidateForLibrary(row, libraryId))
+    .map(toResumeCandidate)
+    .find((candidate): candidate is ResumeCandidate => isActiveResumeCandidate(candidate));
+  return match ?? null;
 }
 
 export async function fetchResumeCandidate(userId: string): Promise<ResumeCandidate | null> {
   return fetchResumeCandidateBySource(userId);
 }
 
-export async function fetchOfficialResumeCandidate(
+export async function fetchOfficialResumeTargets(
   userId: string,
   libraryId: OfficialLibraryId,
-): Promise<ResumeCandidate | null> {
-  return fetchResumeCandidateBySource(userId, libraryId);
+): Promise<OfficialResumeTargets> {
+  const rows = await supabase
+    .from('learning_groups')
+    .select(`
+      id,
+      group_name,
+      source_type,
+      library_id,
+      created_at,
+      status,
+      completed_at,
+      session_round,
+      session_current_index,
+      session_queue_word_ids,
+      session_last_active_at
+    `)
+    .eq('user_id', userId)
+    .not('session_round', 'is', null)
+    .order('session_last_active_at', { ascending: false })
+    .order('created_at', { ascending: false });
+
+  if (rows.error) {
+    if (isMissingLearningSessionColumnError(rows.error)) {
+      return { active: null, reinforcement: null };
+    }
+
+    throw new Error(`resume candidate lookup failed: ${rows.error.message}`);
+  }
+
+  return buildOfficialResumeTargets((rows.data ?? []) as LearningGroupSessionRow[], libraryId);
 }
 
 export async function fetchOfficialResumeCandidates(userId: string) {
@@ -376,13 +466,13 @@ export async function fetchOfficialResumeCandidates(userId: string) {
       library_id,
       created_at,
       status,
+      completed_at,
       session_round,
       session_current_index,
       session_queue_word_ids,
       session_last_active_at
     `)
     .eq('user_id', userId)
-    .neq('status', 'completed')
     .not('session_round', 'is', null)
     .order('session_last_active_at', { ascending: false })
     .order('created_at', { ascending: false });
@@ -390,8 +480,11 @@ export async function fetchOfficialResumeCandidates(userId: string) {
   if (rows.error) {
     if (isMissingLearningSessionColumnError(rows.error)) {
       return Object.fromEntries(
-        OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [definition.id, null]),
-      ) as Record<OfficialLibraryId, ResumeCandidate | null>;
+        OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [
+          definition.id,
+          { active: null, reinforcement: null },
+        ]),
+      ) as Record<OfficialLibraryId, OfficialResumeTargets>;
     }
 
     throw new Error(`resume candidate lookup failed: ${rows.error.message}`);
@@ -401,10 +494,9 @@ export async function fetchOfficialResumeCandidates(userId: string) {
 
   return Object.fromEntries(
     OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => {
-      const match = learningGroups.find((row) => isResumeCandidateForLibrary(row, definition.id));
-      return [definition.id, match ? toResumeCandidate(match) : null];
+      return [definition.id, buildOfficialResumeTargets(learningGroups, definition.id)];
     }),
-  ) as Record<OfficialLibraryId, ResumeCandidate | null>;
+  ) as Record<OfficialLibraryId, OfficialResumeTargets>;
 }
 
 export async function fetchLearningGroupSession(
@@ -526,11 +618,14 @@ export async function fetchLearningGroupSession(
 }
 
 export async function persistLearningGroupSession(userId: string, session: PersistedLearningSession) {
+  const completedAt = session.groupCompleted
+    ? session.completedAt ?? new Date().toISOString()
+    : null;
   const { error } = await supabase
     .from('learning_groups')
     .update({
-      status: 'active',
-      completed_at: null,
+      status: session.groupCompleted ? 'completed' : 'active',
+      completed_at: completedAt,
       session_round: session.round,
       session_current_index: clampSessionIndex(session.currentIndex, session.queueWordIds.length),
       session_queue_word_ids: session.queueWordIds,
@@ -547,8 +642,8 @@ export async function persistLearningGroupSession(userId: string, session: Persi
     const fallbackResult = await supabase
       .from('learning_groups')
       .update({
-        status: 'active',
-        completed_at: null,
+        status: session.groupCompleted ? 'completed' : 'active',
+        completed_at: completedAt,
       })
       .eq('id', session.groupId)
       .eq('user_id', userId);

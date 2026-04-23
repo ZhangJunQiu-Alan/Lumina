@@ -21,9 +21,9 @@ import {
   LibraryGroupWord,
   MemoryState,
   OfficialLibraryId,
+  OfficialResumeTargets,
   OfficialLibrarySummary,
   ReviewResultType,
-  ResumeCandidate,
 } from '../../types';
 import { toConfusingPairs, toWordMorphology, toWordRelations } from '../../types';
 import { ExampleSentenceList } from '../shared/ExampleSentenceList';
@@ -57,7 +57,8 @@ import {
   resolveOfficialLibraryId,
   sortWordsByOfficialOrder,
 } from '../../lib/officialLibrary';
-import { fetchOfficialResumeCandidate, fetchOfficialResumeCandidates } from '../../lib/learningSessionApi';
+import { fetchOfficialResumeCandidates, fetchOfficialResumeTargets } from '../../lib/learningSessionApi';
+import { isCoreLearningComplete, isCoreLearningRound, isReinforcementRound } from '../../lib/learningSession';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
@@ -69,6 +70,8 @@ interface LearningGroupRow {
   library_id: string | null;
   status: 'active' | 'completed' | null;
   created_at: string;
+  completed_at: string | null;
+  session_round: 'round1' | 'round2' | 'round3' | 'article' | null;
   learning_group_words: { id: string }[] | null;
 }
 
@@ -157,6 +160,22 @@ const groupStatusStyle: Record<'active' | 'completed', string> = {
   completed: 'bg-apple-green/10 text-apple-green',
 };
 
+function resolveGroupActionLabel(group: LibraryGroupSummary) {
+  if (isReinforcementRound(group.sessionRound) && isCoreLearningComplete({
+    status: group.status,
+    completedAt: group.completedAt,
+    sessionRound: group.sessionRound,
+  })) {
+    return '继续加固';
+  }
+
+  if (isCoreLearningRound(group.sessionRound)) {
+    return '接上这一组';
+  }
+
+  return '回看这组';
+}
+
 function asArray<T>(value: T | T[] | null | undefined): T[] {
   if (!value) return [];
   return Array.isArray(value) ? value : [value];
@@ -208,6 +227,11 @@ function formatMonthDay(createdAt: string): string {
 function mapGroupSummary(row: LearningGroupRow): LibraryGroupSummary {
   const libraryId = resolveOfficialLibraryId(row.library_id, row.group_name, row.source_type);
   const sourceType = resolveLibraryGroupSourceType(row.source_type, row.library_id, row.group_name);
+  const completed = isCoreLearningComplete({
+    status: row.status,
+    completedAt: row.completed_at,
+    sessionRound: row.session_round,
+  });
 
   return {
     id: row.id,
@@ -216,7 +240,9 @@ function mapGroupSummary(row: LearningGroupRow): LibraryGroupSummary {
     wordCount: row.learning_group_words?.length ?? 0,
     sourceType,
     libraryId,
-    status: row.status === 'completed' ? 'completed' : 'active',
+    status: completed ? 'completed' : 'active',
+    sessionRound: row.session_round,
+    completedAt: row.completed_at,
   };
 }
 
@@ -295,6 +321,8 @@ async function fetchLibraryGroupSummaries(userId: string): Promise<LibraryGroupS
       library_id,
       status,
       created_at,
+      completed_at,
+      session_round,
       learning_group_words ( id )
     `)
     .eq('user_id', userId)
@@ -308,14 +336,14 @@ async function fetchOfficialLibraryDetail(
   userId: string,
   libraryId: OfficialLibraryId,
 ): Promise<OfficialLibraryDetailData> {
-  const [groups, officialResumeCandidate] = await Promise.all([
+  const [groups, officialResumeTargets] = await Promise.all([
     fetchLibraryGroupSummaries(userId),
-    fetchOfficialResumeCandidate(userId, libraryId),
+    fetchOfficialResumeTargets(userId, libraryId),
   ]);
 
   const definition = getOfficialLibraryDefinition(libraryId);
   const systemGroups = groups.filter((group) => group.sourceType === 'system' && group.libraryId === libraryId);
-  const summary = buildOfficialLibrarySummary(libraryId, groups, officialResumeCandidate);
+  const summary = buildOfficialLibrarySummary(libraryId, groups, officialResumeTargets);
 
   if (systemGroups.length === 0) {
     return {
@@ -504,8 +532,11 @@ async function fetchLibraryGroupDetail(
       id,
       group_name,
       source_type,
+      library_id,
       status,
       created_at,
+      completed_at,
+      session_round,
       learning_group_words ( id )
     `)
     .eq('id', groupId)
@@ -999,7 +1030,7 @@ export const LibraryView = ({
   const { user } = useAuth();
   const [groups, setGroups] = useState<LibraryGroupSummary[]>([]);
   const [officialResumeCandidates, setOfficialResumeCandidates] = useState<
-    Record<OfficialLibraryId, ResumeCandidate | null> | undefined
+    Record<OfficialLibraryId, OfficialResumeTargets> | undefined
   >(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -1014,8 +1045,11 @@ export const LibraryView = ({
       setGroups([]);
       setOfficialResumeCandidates(
         Object.fromEntries(
-          OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [definition.id, null]),
-        ) as Record<OfficialLibraryId, ResumeCandidate | null>,
+          OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [
+            definition.id,
+            { active: null, reinforcement: null },
+          ]),
+        ) as Record<OfficialLibraryId, OfficialResumeTargets>,
       );
       setIsLoading(false);
       setErrorMsg('');
@@ -1083,8 +1117,11 @@ export const LibraryView = ({
           setErrorMsg((current) => current || msg);
           setOfficialResumeCandidates(
             Object.fromEntries(
-              OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [definition.id, null]),
-            ) as Record<OfficialLibraryId, ResumeCandidate | null>,
+              OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [
+                definition.id,
+                { active: null, reinforcement: null },
+              ]),
+            ) as Record<OfficialLibraryId, OfficialResumeTargets>,
           );
         }
       }
@@ -1617,11 +1654,11 @@ export const LibraryGroupDetailView = ({
               {isStartingLearningGroup ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  正在接回这一组
+                  正在准备这组
                 </>
               ) : (
                 <>
-                  接上这一组
+                  {resolveGroupActionLabel(group)}
                   <ChevronRight className="h-4 w-4" />
                 </>
               )}

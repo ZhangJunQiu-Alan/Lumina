@@ -1,6 +1,8 @@
 import type { LearningRoundType, PersistedLearningSession, ResumeCandidate, Word } from '../types';
 
 const LEARNING_ROUNDS: LearningRoundType[] = ['round1', 'round2', 'round3', 'article'];
+const CORE_LEARNING_ROUNDS: LearningRoundType[] = ['round1', 'round2'];
+const REINFORCEMENT_ROUNDS: LearningRoundType[] = ['round3', 'article'];
 
 export const LEARNING_ROUND_LABELS: Record<LearningRoundType, string> = {
   round1: '第一轮',
@@ -11,6 +13,31 @@ export const LEARNING_ROUND_LABELS: Record<LearningRoundType, string> = {
 
 export function isLearningRoundType(value: unknown): value is LearningRoundType {
   return typeof value === 'string' && LEARNING_ROUNDS.includes(value as LearningRoundType);
+}
+
+export function isCoreLearningRound(value: unknown): value is Extract<LearningRoundType, 'round1' | 'round2'> {
+  return typeof value === 'string' && CORE_LEARNING_ROUNDS.includes(value as Extract<LearningRoundType, 'round1' | 'round2'>);
+}
+
+export function isReinforcementRound(value: unknown): value is Extract<LearningRoundType, 'round3' | 'article'> {
+  return typeof value === 'string' && REINFORCEMENT_ROUNDS.includes(value as Extract<LearningRoundType, 'round3' | 'article'>);
+}
+
+export function isCoreLearningComplete(input: {
+  status?: 'active' | 'completed' | null;
+  completedAt?: string | null;
+  round?: LearningRoundType | null;
+  sessionRound?: LearningRoundType | null;
+  groupCompleted?: boolean;
+}) {
+  const round = input.round ?? input.sessionRound ?? null;
+
+  return (
+    input.groupCompleted === true
+    || input.status === 'completed'
+    || Boolean(input.completedAt)
+    || isReinforcementRound(round)
+  );
 }
 
 export function normalizeSessionQueueWordIds(value: unknown): string[] {
@@ -49,6 +76,10 @@ export function createInitialLearningSession(
   groupId: string,
   words: Word[],
   round: LearningRoundType = 'round1',
+  options: {
+    groupCompleted?: boolean;
+    completedAt?: string | null;
+  } = {},
 ): PersistedLearningSession {
   return {
     groupId,
@@ -56,6 +87,8 @@ export function createInitialLearningSession(
     currentIndex: 0,
     queueWordIds: words.map((word) => word.id),
     lastActiveAt: new Date().toISOString(),
+    groupCompleted: options.groupCompleted ?? false,
+    completedAt: options.completedAt ?? null,
   };
 }
 

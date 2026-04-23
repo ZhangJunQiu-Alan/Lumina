@@ -201,6 +201,8 @@ export interface LibraryGroupSummary {
   sourceType: 'custom' | 'system';
   libraryId: OfficialLibraryId | null;
   status: 'active' | 'completed';
+  sessionRound: LearningRoundType | null;
+  completedAt: string | null;
 }
 
 export interface LibraryGroupWord {
@@ -232,6 +234,8 @@ export interface PersistedLearningSession {
   currentIndex: number;
   queueWordIds: string[];
   lastActiveAt: string;
+  groupCompleted: boolean;
+  completedAt: string | null;
   libraryId?: OfficialLibraryId | null;
   article?: string | null;
 }
@@ -242,11 +246,17 @@ export interface ResumeCandidate extends PersistedLearningSession {
   queueLength: number;
 }
 
+export interface OfficialResumeTargets {
+  active: ResumeCandidate | null;
+  reinforcement: ResumeCandidate | null;
+}
+
 export interface OfficialLibrarySummary {
   progress: number;
   nextBatchSize: number;
   unlockedWordCount: number;
-  resumeCandidate: ResumeCandidate | null;
+  activeResumeCandidate: ResumeCandidate | null;
+  reinforcementCandidate: ResumeCandidate | null;
   completed: boolean;
 }
 
@@ -258,7 +268,7 @@ export interface LearningSession {
 }
 
 export type OrbitDayStatus = 'gap' | 'ordinary' | 'perfect' | 'shielded';
-export type RoutineStepKey = 'review' | 'round1' | 'round2' | 'round3' | 'article';
+export type RoutineStepKey = 'review' | 'round1' | 'round2';
 export type RoutineCardState = 'not_started' | 'in_progress' | 'completed';
 export type RoutineVisibleStepStatus = 'completed' | 'current' | 'upcoming';
 export type RoutineCardCtaMode =

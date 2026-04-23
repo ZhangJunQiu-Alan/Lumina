@@ -2,7 +2,7 @@ import { supabaseAdmin } from './supabase.js';
 
 type OrbitDayStatus = 'gap' | 'ordinary' | 'perfect' | 'shielded';
 type LearningRoundType = 'round1' | 'round2' | 'round3' | 'article';
-type RoutineStepKey = 'review' | 'round1' | 'round2' | 'round3' | 'article';
+type RoutineStepKey = 'review' | 'round1' | 'round2';
 type RoutineCardState = 'not_started' | 'in_progress' | 'completed';
 type RoutineVisibleStepStatus = 'completed' | 'current' | 'upcoming';
 type RoutineCardCtaMode =
@@ -18,6 +18,8 @@ interface ResumeCandidatePayload {
   currentIndex: number;
   queueWordIds: string[];
   lastActiveAt: string;
+  groupCompleted: boolean;
+  completedAt: string | null;
   libraryId: null;
   article: null;
   groupTitle: string;
@@ -120,13 +122,11 @@ interface DailySummary {
 const PAGE_SIZE = 1000;
 const GROUP_ID_CHUNK_SIZE = 200;
 const LEARNING_ROUNDS = new Set<LearningRoundType>(['round1', 'round2', 'round3', 'article']);
-const ROUTINE_STEPS: RoutineStepKey[] = ['review', 'round1', 'round2', 'round3', 'article'];
+const ROUTINE_STEPS: RoutineStepKey[] = ['review', 'round1', 'round2'];
 const ROUTINE_STEP_LABELS: Record<RoutineStepKey, string> = {
   review: 'Round 0 · 到期复习',
   round1: 'Round 1 · 明示关联',
   round2: 'Round 2 · 语境复现',
-  round3: 'Round 3 · 先判断，再确认',
-  article: '阅读 · 文章巩固',
 };
 const formatterCache = new Map<string, Intl.DateTimeFormat>();
 
@@ -223,6 +223,31 @@ function isLearningRoundType(value: unknown): value is LearningRoundType {
   return typeof value === 'string' && LEARNING_ROUNDS.has(value as LearningRoundType);
 }
 
+function isCoreLearningRound(value: unknown): value is Extract<LearningRoundType, 'round1' | 'round2'> {
+  return value === 'round1' || value === 'round2';
+}
+
+function isReinforcementRound(value: unknown): value is Extract<LearningRoundType, 'round3' | 'article'> {
+  return value === 'round3' || value === 'article';
+}
+
+function isCoreLearningComplete(input: {
+  status?: 'active' | 'completed' | null;
+  completedAt?: string | null;
+  round?: LearningRoundType | string | null;
+  sessionRound?: LearningRoundType | string | null;
+  groupCompleted?: boolean;
+}) {
+  const round = input.round ?? input.sessionRound ?? null;
+
+  return (
+    input.groupCompleted === true
+    || input.status === 'completed'
+    || Boolean(input.completedAt)
+    || isReinforcementRound(round)
+  );
+}
+
 function resolveGroupTitle(groupName: string | null | undefined) {
   return groupName?.trim() || '这组词';
 }
@@ -243,6 +268,12 @@ function buildResumeCandidate(row: LearningGroupRow): ResumeCandidatePayload | n
     currentIndex,
     queueWordIds,
     lastActiveAt: row.session_last_active_at ?? row.created_at,
+    groupCompleted: isCoreLearningComplete({
+      status: row.status,
+      completedAt: row.completed_at,
+      sessionRound: row.session_round,
+    }),
+    completedAt: row.completed_at,
     libraryId: null,
     article: null,
     groupTitle: resolveGroupTitle(row.group_name),
@@ -356,10 +387,10 @@ function buildRoutineStepOrder(startingDueCount: number) {
   }
 
   if (startingDueCount > 0) {
-    return ['review', 'round1', 'round2', 'round3', 'article'] as RoutineStepKey[];
+    return ['review', 'round1', 'round2'] as RoutineStepKey[];
   }
 
-  return ['round1', 'round2', 'round3', 'article'] as RoutineStepKey[];
+  return ['round1', 'round2'] as RoutineStepKey[];
 }
 
 function inferCompletedLearningSteps(
@@ -367,8 +398,16 @@ function inferCompletedLearningSteps(
 ) {
   if (!source) return [];
 
-  if ('completed_at' in source && (source.completed_at || source.status === 'completed')) {
-    return ['round1', 'round2', 'round3', 'article'] as RoutineStepKey[];
+  if ('completed_at' in source && isCoreLearningComplete({
+    status: source.status,
+    completedAt: source.completed_at,
+    sessionRound: source.session_round,
+  })) {
+    return ['round1', 'round2'] as RoutineStepKey[];
+  }
+
+  if ('groupCompleted' in source && source.groupCompleted) {
+    return ['round1', 'round2'] as RoutineStepKey[];
   }
 
   const currentRound = 'round' in source ? source.round : source.session_round;
@@ -377,9 +416,8 @@ function inferCompletedLearningSteps(
     case 'round2':
       return ['round1'] as RoutineStepKey[];
     case 'round3':
-      return ['round1', 'round2'] as RoutineStepKey[];
     case 'article':
-      return ['round1', 'round2', 'round3'] as RoutineStepKey[];
+      return ['round1', 'round2'] as RoutineStepKey[];
     default:
       return [];
   }
@@ -830,7 +868,7 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
   }
 
   const resumeCandidate = [...learningGroups]
-    .filter((group) => group.status !== 'completed' && isLearningRoundType(group.session_round))
+    .filter((group) => isLearningRoundType(group.session_round))
     .sort((left, right) => {
       const leftActive = Date.parse(left.session_last_active_at ?? left.created_at);
       const rightActive = Date.parse(right.session_last_active_at ?? right.created_at);
@@ -840,7 +878,9 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
       return Date.parse(right.created_at) - Date.parse(left.created_at);
     })
     .map(buildResumeCandidate)
-    .find((candidate): candidate is ResumeCandidatePayload => Boolean(candidate)) ?? null;
+    .find((candidate): candidate is ResumeCandidatePayload => (
+      Boolean(candidate && isCoreLearningRound(candidate.round) && !candidate.groupCompleted)
+    )) ?? null;
 
   const routineCard = buildRoutineCard({
     todayReviewCount: dueCountResult.count ?? 0,

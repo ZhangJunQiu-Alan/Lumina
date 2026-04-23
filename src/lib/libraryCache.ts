@@ -2,8 +2,8 @@ import type {
   LibraryGroupSummary,
   LibraryGroupWord,
   OfficialLibraryId,
+  OfficialResumeTargets,
   OfficialLibrarySummary,
-  ResumeCandidate,
 } from '../types';
 
 interface CacheEntry<T> {
@@ -23,7 +23,7 @@ export interface OfficialLibraryDetailCacheData {
   words: LibraryGroupWord[];
 }
 
-export type OfficialResumeMap = Record<OfficialLibraryId, ResumeCandidate | null>;
+export type OfficialResumeMap = Record<OfficialLibraryId, OfficialResumeTargets>;
 
 const LIBRARY_CACHE_TTL_MS = 5 * 60 * 1000;
 
