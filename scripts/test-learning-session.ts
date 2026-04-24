@@ -13,6 +13,8 @@ import {
   getOfficialNextBatch,
   resolveOfficialLibraryStartMode,
 } from '../src/lib/officialLibrary.js';
+import { IELTS_WORDS_FLAT } from '../src/data/ielts-vocab.js';
+import { resolveActuallyLearnedWordIds } from '../shared/officialDiscard.js';
 import type { Word } from '../src/types.js';
 
 const emptyWordExtras = {
@@ -131,6 +133,38 @@ const candidate = createResumeCandidate({
 assert.equal(candidate.currentIndex, 0);
 assert.equal(candidate.queueLength, 2);
 
+assert.deepEqual(
+  resolveActuallyLearnedWordIds({
+    round: 'round1',
+    currentIndex: 2,
+    queueWordIds: ['w1', 'w2', 'w3'],
+    fallbackWordIds: ['w1', 'w2', 'w3'],
+  }),
+  ['w1', 'w2'],
+);
+
+assert.deepEqual(
+  resolveActuallyLearnedWordIds({
+    round: 'round2',
+    currentIndex: 1,
+    queueWordIds: ['w2', 'w3', 'w2'],
+    fallbackWordIds: ['w1', 'w2', 'w3'],
+    round2AttemptWordIds: ['w1', 'w3'],
+  }),
+  ['w1', 'w2', 'w3'],
+);
+
+assert.deepEqual(
+  resolveActuallyLearnedWordIds({
+    round: 'article',
+    currentIndex: 3,
+    queueWordIds: ['w1', 'w2', 'w3'],
+    fallbackWordIds: ['w1', 'w2', 'w3'],
+    round2AttemptWordIds: ['w1'],
+  }),
+  [],
+);
+
 assert.equal(isCoreLearningComplete({
   status: 'active',
   completedAt: null,
@@ -205,7 +239,7 @@ assert.equal(resolveOfficialLibraryStartMode(officialSummary), 'resume');
 
 const nextSequentialBatch = getOfficialNextBatch(
   'ielts-vocab',
-  new Set(['allocate']),
+  new Set(IELTS_WORDS_FLAT.slice(0, officialSummary.progress).map((word) => word.trim().toLowerCase())),
   'sequential',
   3,
   officialSummary.progress,

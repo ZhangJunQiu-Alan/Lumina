@@ -9,9 +9,10 @@ import {
 } from './gemini.js';
 import { fetchDueReviewWords, recordReviewAttempt, recordBatchReviewAttempts } from './review.js';
 import { getOrCreateAudio, batchGenerateAudio } from './audio.js';
-import { deleteLearningGroup } from './library.js';
+import { deleteLearningGroup, discardActiveOfficialLearningGroup } from './library.js';
 import { requireAuth, type AuthenticatedRequest } from './auth.js';
 import { getHomeOverview } from './home.js';
+import { isOfficialLibraryId } from '../src/lib/officialLibrary.js';
 import { analyzeWordBatch, formatDuplicateWordsMessage } from '../shared/wordBatch.js';
 
 const app = express();
@@ -190,6 +191,38 @@ app.get('/api/home/overview', requireAuth, async (req: AuthenticatedRequest, res
       endpoint: '/api/home/overview',
       user_id: userId,
       timezone: timeZone,
+    });
+    res.status(500).json({ error: message });
+  }
+});
+
+// POST /api/library/official/:libraryId/discard-active
+app.post('/api/library/official/:libraryId/discard-active', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { libraryId } = req.params;
+  const { groupId, timeZone } = req.body ?? {};
+
+  if (!isOfficialLibraryId(libraryId)) {
+    return res.status(400).json({ error: 'Unknown official library' });
+  }
+
+  if (typeof groupId !== 'string' || groupId.trim().length === 0) {
+    return res.status(400).json({ error: 'Missing group ID' });
+  }
+
+  const userId = req.authUserId!;
+  try {
+    const result = await discardActiveOfficialLearningGroup(userId, {
+      libraryId,
+      groupId,
+      timeZone: typeof timeZone === 'string' ? timeZone : null,
+    });
+    res.json({ data: result });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error(`API Error: /api/library/official/${libraryId}/discard-active`, e, {
+      endpoint: `/api/library/official/${libraryId}/discard-active`,
+      user_id: userId,
+      group_id: groupId,
     });
     res.status(500).json({ error: message });
   }

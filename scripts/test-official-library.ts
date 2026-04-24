@@ -8,6 +8,7 @@ import {
   getOfficialNextBatch,
   getOfficialWordPosition,
   isOfficialGroupName,
+  resolveOfficialStudyModeFromGroupName,
   resolveOfficialLibraryStartMode,
   sortWordsByOfficialOrder,
   resolveOfficialLibraryId,
@@ -138,6 +139,15 @@ assert.equal(
   resolveOfficialLibraryId(null, formatOfficialCounterGroupName('gre-zhenkao-v7', 'shuffle', 1, 30), 'system'),
   'gre-zhenkao-v7',
 );
+assert.equal(
+  resolveOfficialLibraryId(null, formatOfficialCounterGroupName('gre-zhenkao-v7', 'sequential', 2, 30), 'system'),
+  'gre-zhenkao-v7',
+);
+assert.equal(
+  resolveOfficialStudyModeFromGroupName('ielts-vocab', formatOfficialCounterGroupName('ielts-vocab', 'shuffle', 2, 30)),
+  'shuffle',
+);
+assert.equal(resolveOfficialStudyModeFromGroupName('ielts-vocab', '雅思词汇真经 · 0001-0030'), 'sequential');
 // Legacy range-format groups still recognized.
 assert.equal(isOfficialGroupName('雅思词汇真经 · 0001-0030'), true);
 
@@ -153,12 +163,19 @@ assert.equal(
   formatOfficialGroupName('ielts-vocab', 5, 30),
 );
 
-// Sequential follows completed progress instead of sparse learned-word holes.
+// Sequential skips sparse learned-word holes and falls back to counter naming
+// when the picked words are not a contiguous official range.
 const learnedWithHole = new Set(['', IELTS_WORDS_FLAT[10]].map((w) => w.trim().toLowerCase()).filter(Boolean));
 const seqHoleBatch = getOfficialNextBatch('ielts-vocab', learnedWithHole, 'sequential', 0, 0);
 assert.ok(seqHoleBatch);
 assert.equal(seqHoleBatch.words[0], IELTS_WORDS_FLAT[0]);
-assert.equal(seqHoleBatch.words[10], IELTS_WORDS_FLAT[10]);
+assert.equal(seqHoleBatch.words[9], IELTS_WORDS_FLAT[9]);
+assert.equal(seqHoleBatch.words[10], IELTS_WORDS_FLAT[11]);
+assert.equal(seqHoleBatch.words.includes(IELTS_WORDS_FLAT[10]), false);
+assert.equal(
+  seqHoleBatch.groupName,
+  formatOfficialCounterGroupName('ielts-vocab', 'sequential', 1, 30),
+);
 
 // Shuffle picks only from unlearned and never repeats learned words.
 const learnedHalf = new Set(IELTS_WORDS_FLAT.slice(0, Math.floor(IELTS_WORDS_FLAT.length / 2)).map((w) => w.trim().toLowerCase()));

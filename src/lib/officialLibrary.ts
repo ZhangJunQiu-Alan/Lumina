@@ -193,6 +193,19 @@ export function formatOfficialCounterGroupName(
   return `${definition.groupPrefix}${modeLabel} · 第${groupIndex}组 · ${batchLength}词`;
 }
 
+export function resolveOfficialStudyModeFromGroupName(
+  libraryId: OfficialLibraryId,
+  groupName: string | null | undefined,
+): OfficialStudyMode {
+  const definition = getOfficialLibraryDefinition(libraryId);
+  const counterMatch = definition.counterPattern.exec(groupName ?? '');
+  if (counterMatch) {
+    return counterMatch[1] === '乱序' ? 'shuffle' : 'sequential';
+  }
+
+  return 'sequential';
+}
+
 export function deriveOfficialProgress(
   libraryId: OfficialLibraryId,
   groups: Pick<LibraryGroupSummary, 'sourceType' | 'title' | 'libraryId' | 'status' | 'completedAt' | 'sessionRound'>[],
@@ -265,16 +278,6 @@ export function getOfficialNextBatch(
   existingGroupCount: number,
   progress: number,
 ): { words: string[]; groupName: string } | null {
-  if (mode === 'sequential') {
-    const plan = getOfficialBatchPlan(libraryId, progress);
-    return plan
-      ? {
-          words: plan.words,
-          groupName: plan.groupName,
-        }
-      : null;
-  }
-
   const definition = getOfficialLibraryDefinition(libraryId);
   const remaining = definition.words.filter(
     (word) => !learnedLowercase.has(word.trim().toLowerCase()),
@@ -282,14 +285,34 @@ export function getOfficialNextBatch(
 
   if (remaining.length === 0) return null;
 
-  const pool = [...remaining];
-  for (let i = pool.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
+  const picked = mode === 'sequential'
+    ? remaining.slice(0, definition.batchSize)
+    : (() => {
+        const pool = [...remaining];
+        for (let i = pool.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [pool[i], pool[j]] = [pool[j], pool[i]];
+        }
+        return pool.slice(0, definition.batchSize);
+      })();
+
+  if (mode === 'sequential') {
+    const positions = picked.map((word) => getOfficialWordPosition(libraryId, word));
+    const isContiguous = positions.every((position, index) => (
+      position !== Number.MAX_SAFE_INTEGER
+      && position === positions[0] + index
+    ));
+
+    if (isContiguous) {
+      return {
+        words: picked,
+        groupName: formatOfficialGroupName(libraryId, positions[0], picked.length),
+      };
+    }
   }
-  const picked = pool.slice(0, definition.batchSize);
 
   const groupIndex = existingGroupCount + 1;
+  void progress;
   return {
     words: picked,
     groupName: formatOfficialCounterGroupName(libraryId, mode, groupIndex, picked.length),

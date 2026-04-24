@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { AlertCircle, ArrowRight, BookOpen, ListOrdered, Loader2, Shuffle } from 'lucide-react';
+import { AlertCircle, AlertTriangle, ArrowRight, BookOpen, ListOrdered, Loader2, Shuffle } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
+import { attemptBuffer } from '../../lib/attemptBuffer';
+import { resolveBrowserTimeZone } from '../../lib/homeApi';
 import {
   createLearningGroupFromVocabularyEntries,
   fetchVocabularyEntriesByWords,
@@ -20,6 +23,7 @@ import {
   type OfficialLibraryDefinition,
   type OfficialStudyMode,
   resolveOfficialLibraryStartMode,
+  resolveOfficialStudyModeFromGroupName,
 } from '../../lib/officialLibrary';
 import { useAuth } from '../../contexts/AuthContext';
 import type { EnrichedWord, OfficialLibrarySummary, Word } from '../../types';
@@ -40,6 +44,83 @@ interface OfficialLibraryPanelProps {
 const infoCardClassName =
   'flex h-[76px] min-w-0 items-center justify-between rounded-[22px] bg-white/84 px-4 shadow-[0_12px_28px_rgba(0,0,0,0.05)]';
 
+const officialStudyModeLabel: Record<OfficialStudyMode, string> = {
+  sequential: '顺序',
+  shuffle: '随机',
+};
+
+function SwitchOfficialModeDialog({
+  currentMode,
+  nextMode,
+  groupTitle,
+  isConfirming,
+  onCancel,
+  onConfirm,
+}: {
+  currentMode: OfficialStudyMode;
+  nextMode: OfficialStudyMode;
+  groupTitle: string;
+  isConfirming: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <>
+      <motion.button
+        type="button"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={isConfirming ? undefined : onCancel}
+        className="fixed inset-0 z-[60] bg-black/25 backdrop-blur-sm"
+      />
+      <motion.div
+        initial={{ opacity: 0, y: 18, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 12, scale: 0.98 }}
+        className="fixed inset-x-6 top-1/2 z-[70] mx-auto w-full max-w-xl -translate-y-1/2 rounded-[32px] border border-white/70 bg-white/90 p-7 shadow-[0_30px_80px_rgba(0,0,0,0.16)] backdrop-blur-2xl"
+      >
+        <div className="flex items-start gap-4">
+          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-apple-red/10 text-apple-red">
+            <AlertTriangle className="h-6 w-6" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">切换官方路径模式</p>
+            <h3 className="mt-3 text-2xl font-black text-text-primary">要放弃上一组并切换吗？</h3>
+            <p className="mt-3 text-sm leading-7 text-text-secondary">
+              当前是{officialStudyModeLabel[currentMode]}学习，切到{officialStudyModeLabel[nextMode]}后，
+              上一组未完成进度会被丢掉。已经实际学过的词会保留为模糊状态进入复习计划，没学过的词会回到官方词池。
+            </p>
+            <p className="mt-4 rounded-2xl bg-black/5 px-4 py-3 text-sm font-bold text-text-primary">
+              {groupTitle}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-7 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isConfirming}
+            className="rounded-[22px] bg-black/5 px-5 py-3 text-sm font-bold text-text-secondary transition-colors hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            继续上一组
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isConfirming}
+            className="inline-flex items-center gap-2 rounded-[22px] bg-apple-red px-5 py-3 text-sm font-black text-white shadow-[0_18px_34px_rgba(255,59,48,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:scale-100"
+          >
+            {isConfirming && <Loader2 className="h-4 w-4 animate-spin" />}
+            确认切换到{officialStudyModeLabel[nextMode]}
+          </button>
+        </div>
+      </motion.div>
+    </>
+  );
+}
+
 export function OfficialLibraryPanel({
   definition,
   summary,
@@ -53,10 +134,20 @@ export function OfficialLibraryPanel({
   const [stage, setStage] = useState<Stage>('idle');
   const [errorMsg, setErrorMsg] = useState('');
   const [mode, setMode] = useState<OfficialStudyMode>('sequential');
+  const [pendingSwitchMode, setPendingSwitchMode] = useState<OfficialStudyMode | null>(null);
+  const [isSwitchingMode, setIsSwitchingMode] = useState(false);
 
   const startMode = resolveOfficialLibraryStartMode(summary);
   const actionDisabled = startMode === 'completed';
   const resumeActive = startMode === 'resume';
+  const activeResumeMode = summary.activeResumeCandidate
+    ? resolveOfficialStudyModeFromGroupName(definition.id, summary.activeResumeCandidate.groupTitle)
+    : null;
+
+  useEffect(() => {
+    if (!summary.activeResumeCandidate || !activeResumeMode) return;
+    setMode(activeResumeMode);
+  }, [activeResumeMode, summary.activeResumeCandidate?.groupId]);
 
   const ctaLabel = actionDisabled
     ? '这条路径已走完'
@@ -74,7 +165,10 @@ export function OfficialLibraryPanel({
     );
   };
 
-  const handleStartOfficial = async () => {
+  const startNextOfficialBatch = async (
+    selectedMode: OfficialStudyMode,
+    groupCountForNaming = existingGroupCount,
+  ) => {
     if (!user) {
       setErrorMsg('先登录，再把官方词库接进系统。');
       setStage('error');
@@ -82,24 +176,15 @@ export function OfficialLibraryPanel({
     }
 
     setErrorMsg('');
-
     try {
-      if (startMode === 'resume' && summary.activeResumeCandidate) {
-        setStage('resuming');
-        await onStartLearning(summary.activeResumeCandidate.groupId);
-        return;
-      }
-
-      if (startMode === 'completed') return;
-
       setStage('preparing');
 
       const learnedSet = await resolveLearnedWords(user.id);
       const nextBatch = getOfficialNextBatch(
         definition.id,
         learnedSet,
-        mode,
-        existingGroupCount,
+        selectedMode,
+        groupCountForNaming,
         summary.progress,
       );
       if (!nextBatch) {
@@ -162,6 +247,81 @@ export function OfficialLibraryPanel({
     } catch (error) {
       setErrorMsg(error instanceof Error ? error.message : String(error));
       setStage('error');
+    }
+  };
+
+  const handleStartOfficial = async () => {
+    if (startMode === 'resume' && summary.activeResumeCandidate) {
+      setErrorMsg('');
+      setStage('resuming');
+      try {
+        await onStartLearning(summary.activeResumeCandidate.groupId);
+      } catch (error) {
+        setErrorMsg(error instanceof Error ? error.message : String(error));
+        setStage('error');
+      }
+      return;
+    }
+
+    if (startMode === 'completed') return;
+    await startNextOfficialBatch(mode);
+  };
+
+  const handleModeOptionClick = (option: OfficialStudyMode) => {
+    if (actionDisabled || option === mode) return;
+
+    if (resumeActive && summary.activeResumeCandidate) {
+      setErrorMsg('');
+      setPendingSwitchMode(option);
+      return;
+    }
+
+    setMode(option);
+  };
+
+  const parseApiError = async (response: Response) => {
+    const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    return (payload as { error?: string }).error ?? `HTTP ${response.status}`;
+  };
+
+  const handleConfirmSwitchMode = async () => {
+    if (!user || !summary.activeResumeCandidate || !pendingSwitchMode) return;
+
+    const selectedMode = pendingSwitchMode;
+    setIsSwitchingMode(true);
+    setErrorMsg('');
+
+    try {
+      await attemptBuffer.flush();
+      const response = await apiFetch(`/api/library/official/${definition.id}/discard-active`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          groupId: summary.activeResumeCandidate.groupId,
+          timeZone: resolveBrowserTimeZone(),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseApiError(response));
+      }
+
+      invalidateLibraryCache(user.id);
+
+      try {
+        await onLibraryMutated?.();
+      } catch {
+        // Stats refresh should never block the learning flow.
+      }
+
+      setPendingSwitchMode(null);
+      setMode(selectedMode);
+      await startNextOfficialBatch(selectedMode, Math.max(existingGroupCount - 1, 0));
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : String(error));
+      setStage('error');
+    } finally {
+      setIsSwitchingMode(false);
     }
   };
 
@@ -231,13 +391,13 @@ export function OfficialLibraryPanel({
                     role="tab"
                     aria-selected={active}
                     title={hint}
-                    onClick={() => setMode(option)}
-                    disabled={resumeActive || actionDisabled}
+                    onClick={() => handleModeOptionClick(option)}
+                    disabled={actionDisabled}
                     className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold transition-colors ${
                       active
                         ? 'bg-apple-blue text-white shadow-[0_8px_18px_rgba(0,122,255,0.22)]'
                         : 'text-text-secondary hover:text-text-primary'
-                    } ${(resumeActive || actionDisabled) ? 'cursor-not-allowed opacity-60' : ''}`}
+                    } ${actionDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
                   >
                     <Icon className="h-3.5 w-3.5" />
                     {label}
@@ -303,6 +463,21 @@ export function OfficialLibraryPanel({
               </div>
             )}
           </div>
+
+          {pendingSwitchMode && summary.activeResumeCandidate && typeof document !== 'undefined' && createPortal(
+            <SwitchOfficialModeDialog
+              currentMode={activeResumeMode ?? mode}
+              nextMode={pendingSwitchMode}
+              groupTitle={summary.activeResumeCandidate.groupTitle}
+              isConfirming={isSwitchingMode}
+              onCancel={() => {
+                if (isSwitchingMode) return;
+                setPendingSwitchMode(null);
+              }}
+              onConfirm={() => { void handleConfirmSwitchMode(); }}
+            />,
+            document.body,
+          )}
         </motion.div>
       )}
 

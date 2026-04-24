@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { resolveLibraryGroupSourceType } from './officialLibrary';
+import { getOfficialLibraryDefinition, resolveLibraryGroupSourceType } from './officialLibrary';
 import type { OfficialLibraryId } from '../types';
 
 interface GroupWordRow {
@@ -117,26 +117,50 @@ interface LearnedWordRow {
   vocabulary_items: { word: string | null } | { word: string | null }[] | null;
 }
 
+interface LearnedReviewStateRow {
+  vocabulary_items: { word: string | null } | { word: string | null }[] | null;
+}
+
 export async function fetchOfficialLearnedWords(
   userId: string,
   libraryId: OfficialLibraryId,
 ): Promise<Set<string>> {
-  const { data, error } = await supabase
-    .from('learning_group_words')
-    .select('vocabulary_items!inner(word), learning_groups!inner(user_id, source_type, library_id)')
-    .eq('learning_groups.user_id', userId)
-    .eq('learning_groups.source_type', 'system')
-    .eq('learning_groups.library_id', libraryId);
+  const officialWordSet = new Set(
+    getOfficialLibraryDefinition(libraryId).words.map((word) => word.trim().toLowerCase()),
+  );
+  const [groupResult, reviewStateResult] = await Promise.all([
+    supabase
+      .from('learning_group_words')
+      .select('vocabulary_items!inner(word), learning_groups!inner(user_id, source_type, library_id)')
+      .eq('learning_groups.user_id', userId)
+      .eq('learning_groups.source_type', 'system')
+      .eq('learning_groups.library_id', libraryId),
+    supabase
+      .from('review_states')
+      .select('vocabulary_items!inner(word)')
+      .eq('user_id', userId)
+      .neq('memory_state', 'new'),
+  ]);
 
-  if (error) {
-    throw new Error(error.message);
+  if (groupResult.error) {
+    throw new Error(groupResult.error.message);
+  }
+
+  if (reviewStateResult.error) {
+    throw new Error(reviewStateResult.error.message);
   }
 
   const result = new Set<string>();
-  for (const row of (data ?? []) as LearnedWordRow[]) {
+  for (const row of (groupResult.data ?? []) as LearnedWordRow[]) {
     const vocab = Array.isArray(row.vocabulary_items) ? row.vocabulary_items[0] : row.vocabulary_items;
     const word = vocab?.word?.trim().toLowerCase();
     if (word) result.add(word);
+  }
+
+  for (const row of (reviewStateResult.data ?? []) as LearnedReviewStateRow[]) {
+    const vocab = Array.isArray(row.vocabulary_items) ? row.vocabulary_items[0] : row.vocabulary_items;
+    const word = vocab?.word?.trim().toLowerCase();
+    if (word && officialWordSet.has(word)) result.add(word);
   }
 
   return result;
