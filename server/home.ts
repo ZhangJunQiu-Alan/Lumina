@@ -56,7 +56,7 @@ export interface HomeOverviewPayload {
   todayReviewCount: number;
   streak: number;
   perfectCheckinDays: number;
-  totalLearned: number;
+  stableRecallCount: number;
   orbitDays: OrbitDayPayload[];
   selectedDate: string;
   selectedDayReviewWordCount: number;
@@ -760,7 +760,7 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     learningGroups,
     protectionEvents,
     routineProgress,
-    masteredCountResult,
+    stableRecallCountResult,
     dueCountResult,
   ] = await Promise.all([
     fetchReviewEvents(userId),
@@ -771,7 +771,7 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
       .from('review_states')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
-      .eq('memory_state', 'mastered'),
+      .eq('memory_state', 'stable_recall'),
     supabaseAdmin
       .from('review_states')
       .select('id', { count: 'exact', head: true })
@@ -781,8 +781,8 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
       .lte('next_review_at', nowIso),
   ]);
 
-  if (masteredCountResult.error) {
-    throw new Error(`review_states mastered count failed: ${masteredCountResult.error.message}`);
+  if (stableRecallCountResult.error) {
+    throw new Error(`review_states stable_recall count failed: ${stableRecallCountResult.error.message}`);
   }
   if (dueCountResult.error) {
     throw new Error(`review_states due count failed: ${dueCountResult.error.message}`);
@@ -944,7 +944,7 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     todayReviewCount: dueCountResult.count ?? 0,
     streak,
     perfectCheckinDays,
-    totalLearned: masteredCountResult.count ?? 0,
+    stableRecallCount: stableRecallCountResult.count ?? 0,
     orbitDays,
     selectedDate: selectedOrbitDay.date,
     selectedDayReviewWordCount: selectedOrbitDay.reviewWordCount,

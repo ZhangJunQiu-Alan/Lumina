@@ -251,7 +251,7 @@ export const HomeView = ({ stats, onSelectOrbitDate, onStart, isLoading = false 
               accent="gold"
             />
             <OrbitMetric
-              value={String(stats.totalLearned)}
+              value={String(stats.stableRecallCount)}
               label="已掌握单词数"
               icon={BookOpen}
               accent="blue"

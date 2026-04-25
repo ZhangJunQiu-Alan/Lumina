@@ -307,6 +307,9 @@ export const LearningEngine = ({
   const initialUniqueCount = words.length;
   const completedCount = completedWordIds.size;
   const displayNumerator = Math.min(completedCount + 1, initialUniqueCount);
+  const displayProgressIndex = type === 'round3'
+    ? Math.min(currentIndex, Math.max(initialUniqueCount - 1, 0))
+    : displayNumerator - 1;
 
   const [audioLocale, setAudioLocale] = useState<PronunciationLocale>(preferences.defaultPronunciationLocale);
   const [playbackTarget, setPlaybackTarget] = useState<PlaybackTarget | null>(null);
@@ -1002,7 +1005,7 @@ export const LearningEngine = ({
           )}
         </motion.div>
 
-        {renderProgressBar(displayNumerator - 1, initialUniqueCount)}
+        {renderProgressBar(displayProgressIndex, initialUniqueCount)}
 
         <div className="w-full max-w-3xl px-4 pb-8">
           <button
@@ -1021,7 +1024,7 @@ export const LearningEngine = ({
   return (
     <InputSessionShell
       type={type}
-      currentIndex={displayNumerator - 1}
+      currentIndex={displayProgressIndex}
       queueLength={initialUniqueCount}
       main={(
         <motion.div

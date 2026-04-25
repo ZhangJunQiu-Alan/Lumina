@@ -7,6 +7,7 @@ import {
   sanitizeWordInput,
 } from '../shared/wordBatch.js';
 import type {
+  ArticleSentence,
   EnrichedMorphology,
   EnrichedMorphologyPart,
   EnrichedWordConfusion,
@@ -370,22 +371,71 @@ Rules:
 - derived_words/synonyms/antonyms: max 3 each.
 - All Chinese text must be Simplified Chinese.`;
 
-const ARTICLE_PROMPT = `You are an IELTS reading passage expert. Write a short IELTS-style academic reading passage (250–350 words) that naturally incorporates every vocabulary word provided.
+const ARTICLE_PROMPT = `You are an IELTS reading passage expert. Write a short IELTS-style academic reading passage (250–350 words) that naturally incorporates every vocabulary word provided, and provide a Simplified Chinese translation for each sentence.
 
 Rules:
 - Every word from the list must appear at least once, used correctly in context.
 - The passage must be coherent, academic in tone, and read like an authentic IELTS passage.
-- Return ONLY the passage text — no title, no headings, no markdown, no explanation.`;
+- Split the passage into complete English sentences.
+- Each Chinese translation must correspond to exactly one English sentence.
+- All Chinese text must be Simplified Chinese.
+- Return ONLY valid JSON — no markdown fences, no title, no headings, no explanation.
 
-export async function generateArticle(words: string[]): Promise<string> {
+Schema:
+{
+  "sentences": [
+    { "en": "English sentence.", "zh": "对应的中文翻译。" }
+  ]
+}`;
+
+export interface GeneratedArticle {
+  sentences: ArticleSentence[];
+}
+
+function normalizeGeneratedArticle(value: unknown): GeneratedArticle {
+  const payload = value as { sentences?: unknown };
+  const sentences = Array.isArray(payload?.sentences)
+    ? payload.sentences
+        .map((entry) => {
+          const sentence = entry as Partial<ArticleSentence>;
+          return {
+            en: typeof sentence.en === 'string' ? sentence.en.trim() : '',
+            zh: typeof sentence.zh === 'string' ? sentence.zh.trim() : '',
+          };
+        })
+        .filter((sentence) => sentence.en && sentence.zh)
+    : [];
+
+  if (sentences.length === 0) {
+    throw new EnrichmentResponseValidationError('文章生成结果无效：缺少英文句子和中文翻译。');
+  }
+
+  return { sentences };
+}
+
+export async function generateArticle(words: string[]): Promise<GeneratedArticle> {
   const prompt = `${ARTICLE_PROMPT}\n\nVocabulary words to incorporate: ${words.join(', ')}`;
 
   const result = await ai.models.generateContent({
     model: ARTICLE_MODEL,
     contents: prompt,
+    config: {
+      responseMimeType: 'application/json',
+      temperature: 0.35,
+      maxOutputTokens: ENRICH_MAX_OUTPUT_TOKENS,
+    },
   });
 
-  return result.text?.trim() ?? '';
+  const raw = result.text?.trim() ?? '';
+  const jsonText = raw.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText) as unknown;
+  } catch {
+    throw new EnrichmentResponseValidationError('文章生成结果无效：模型没有返回合法 JSON。');
+  }
+
+  return normalizeGeneratedArticle(parsed);
 }
 
 async function enrichWordsChunk(words: string[]): Promise<GeminiWordResult[]> {

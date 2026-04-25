@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
+  ArticleSentence,
   LearningRoundType,
   PersistedLearningSession,
   ReviewAttemptSource,
@@ -29,11 +30,10 @@ import { invalidateLibraryCache } from './lib/libraryCache';
 import { createInitialLearningSession, isCoreLearningRound } from './lib/learningSession';
 import {
   clearLearningGroupSession,
-  fetchGeneratedArticle,
   fetchLearningGroupSession,
   persistLearningGroupSession,
-  upsertGeneratedArticle,
 } from './lib/learningSessionApi';
+import { clearArticleCache, getCachedArticle, setCachedArticle } from './lib/articleCache';
 import {
   bindRoutineMainLearningGroup,
   markRoutineReviewStarted,
@@ -127,6 +127,37 @@ function buildFallbackOrbitDays(timeZone: string) {
   });
 }
 
+function isArticleSentence(value: unknown): value is ArticleSentence {
+  return (
+    typeof value === 'object'
+    && value !== null
+    && typeof (value as ArticleSentence).en === 'string'
+    && typeof (value as ArticleSentence).zh === 'string'
+    && (value as ArticleSentence).en.trim().length > 0
+    && (value as ArticleSentence).zh.trim().length > 0
+  );
+}
+
+function normalizeArticleResponse(data: unknown): ArticleSentence[] {
+  const sentences = (data as { sentences?: unknown })?.sentences;
+  if (!Array.isArray(sentences)) {
+    throw new Error('Article response missing sentences');
+  }
+
+  const normalized = sentences
+    .filter(isArticleSentence)
+    .map((sentence) => ({
+      en: sentence.en.trim(),
+      zh: sentence.zh.trim(),
+    }));
+
+  if (normalized.length === 0) {
+    throw new Error('Article response has no valid sentences');
+  }
+
+  return normalized;
+}
+
 function buildEmptyStats(): UserStats {
   const timeZone = resolveBrowserTimeZone();
   const todayParts = new Intl.DateTimeFormat('en-CA', {
@@ -144,7 +175,7 @@ function buildEmptyStats(): UserStats {
     todayReviewCount: 0,
     streak: 0,
     perfectCheckinDays: 0,
-    totalLearned: 0,
+    stableRecallCount: 0,
     orbitDays: buildFallbackOrbitDays(timeZone),
     selectedDate: todayKey,
     selectedDayReviewWordCount: 0,
@@ -177,7 +208,7 @@ export default function App() {
   const [activeWords, setActiveWords] = useState<Word[]>([]);
   const [activeLearningGroupId, setActiveLearningGroupId] = useState<string | null>(null);
   const [activeSessionSeed, setActiveSessionSeed] = useState<PersistedLearningSession | null>(null);
-  const [essay, setEssay] = useState<string | null>(null);
+  const [articleSentences, setArticleSentences] = useState<ArticleSentence[] | null>(null);
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [reviewSummary, setReviewSummary] = useState<ReviewSummaryItem[]>([]);
   const [sessionStartError, setSessionStartError] = useState('');
@@ -236,7 +267,7 @@ export default function App() {
       setActiveLearningGroupId(null);
       setActiveSessionSeed(null);
       setReviewSummary([]);
-      setEssay(null);
+      setArticleSentences(null);
       setRound('round1');
     }
   }, [user]);
@@ -245,26 +276,23 @@ export default function App() {
     setActiveWords([]);
     setActiveLearningGroupId(null);
     setActiveSessionSeed(null);
-    setEssay(null);
+    setArticleSentences(null);
     setRound('round1');
   }, []);
 
   const ensureArticleForGroup = useCallback(async (groupId: string, words: Word[]) => {
     if (!user) return null;
 
-    try {
-      const existingArticle = await fetchGeneratedArticle(user.id, groupId);
-      if (existingArticle !== null) {
-        if (activeLearningGroupIdRef.current === groupId) {
-          setEssay(existingArticle);
-        }
-        return existingArticle;
+    const cachedArticle = getCachedArticle(groupId, words);
+    if (cachedArticle) {
+      if (activeLearningGroupIdRef.current === groupId) {
+        setArticleSentences(cachedArticle);
       }
-    } catch (error) {
-      console.error('Article lookup failed:', error);
+      return cachedArticle;
     }
 
     try {
+      clearArticleCache();
       const res = await apiFetch('/api/vocab/article', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -272,21 +300,21 @@ export default function App() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const { data } = await res.json();
-      const article = data as string;
+      const sentences = normalizeArticleResponse(data);
 
-      await upsertGeneratedArticle(user.id, groupId, article, words.map((word) => word.word));
+      setCachedArticle(groupId, words, sentences);
 
       if (activeLearningGroupIdRef.current === groupId) {
-        setEssay(article);
+        setArticleSentences(sentences);
       }
 
-      return article;
+      return sentences;
     } catch (error) {
       console.error('Article generation failed:', error);
       if (activeLearningGroupIdRef.current === groupId) {
-        setEssay('');
+        setArticleSentences([]);
       }
-      return '';
+      return [];
     }
   }, [user]);
 
@@ -322,7 +350,8 @@ export default function App() {
       setActiveWords(words);
       setActiveLearningGroupId(groupId);
       setActiveSessionSeed(nextSession);
-      setEssay(nextSession.round === 'article' ? nextSession.article ?? null : null);
+      const cachedArticle = nextSession.round === 'article' ? getCachedArticle(groupId, words) : null;
+      setArticleSentences(nextSession.round === 'article' ? cachedArticle : null);
       setRound(nextSession.round);
       navigate('/app/session');
 
@@ -338,7 +367,7 @@ export default function App() {
         });
       }
 
-      if (nextSession.round === 'article' && !nextSession.article) {
+      if (nextSession.round === 'article' && !cachedArticle) {
         void ensureArticleForGroup(groupId, words);
       }
     } catch (error) {
@@ -378,7 +407,7 @@ export default function App() {
         setActiveLearningGroupId(null);
         setActiveSessionSeed(null);
         setActiveWords(dueWords);
-        setEssay(null);
+        setArticleSentences(null);
         setRound('review');
         navigate('/app/session');
       } catch (error) {
@@ -519,7 +548,7 @@ export default function App() {
       });
       setActiveSessionSeed(nextSession);
       setRound('article');
-      setEssay(null);
+      setArticleSentences(null);
       invalidateLibraryCache(user.id);
       void persistLearningGroupSession(user.id, nextSession).catch((error) => {
         console.error('Failed to persist article transition:', error);
@@ -767,7 +796,7 @@ export default function App() {
                     path="session"
                     element={activeWords.length === 0 ? sessionEmptyState : (
                       round === 'article' ? (
-                        essay === null ? (
+                        articleSentences === null ? (
                           <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
@@ -777,7 +806,7 @@ export default function App() {
                             <p className="font-black text-xl">正在生成收尾文章</p>
                           </motion.div>
                         ) : (
-                          <ArticleView essay={essay} words={activeWords} onFinish={handleRoundComplete} />
+                          <ArticleView sentences={articleSentences} words={activeWords} onFinish={handleRoundComplete} />
                         )
                       ) : (
                         <React.Fragment

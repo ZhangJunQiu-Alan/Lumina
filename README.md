@@ -1,213 +1,332 @@
 # Lumina
 
-AI-powered English vocabulary learning app. Study from official libraries or your own word lists, get instant AI enrichment (IPA, definitions, examples, memory tips), then learn through a 3-round memorization system with spaced repetition review.
+Lumina 是一套状态驱动的英语词汇学习系统。它不是只记录“答对 / 答错”，而是持续判断每个词目前处在什么记忆状态，并据此安排学习、复习、会话恢复和长期回顾。
 
----
+当前产品已经支持官方词库、自定义导入、AI 词条增强、四段式学习、文章巩固、状态驱动复习、Daily Routine 首页、学习偏好设置和账号级进度同步。
 
-## Features
+## 当前使用路径
 
-- **AI Word Enrichment** — Gemini 2.0 Flash generates IPA (UK/US), Chinese definitions, usage examples, confused-word comparisons, and memory tips for any word list
-- **3-Round Learning Engine**
-  - Round 1: Guided spelling (input stays active while all word details are shown in plain text)
-  - Round 2: Recall (see Chinese → type English, then validate with Enter or Next Word, with immediate state writeback)
-  - Round 3: Flip-card (Reveal Meaning / Next Word, with Enter shortcut)
-- **State-Driven Review** — words move through `new / fuzzy / slow_recall / stable_recall / mastered`, with review scheduling handled by the server
-- **Import Flow** — paste up to 30 words, preview AI output, save to personal library
-- **Word Detail & Review Summary** — inspect each word's current memory state in the library and review transitions after each daily session
+用户真实路径：
 
----
+```text
+登录 -> 首页 -> 今日到期复习 -> 继续未完成学习或开始新一组
+     -> Round 1 -> Round 2 -> Round 3 -> 文章巩固 -> 长期复习
+```
 
-## Prerequisites
+当前路由：
+
+| 路由 | 用途 |
+| --- | --- |
+| `/` | Landing Page，产品介绍与进入入口 |
+| `/auth` | 登录 / 注册 |
+| `/privacy` | 隐私政策 |
+| `/terms` | 服务条款 |
+| `/app/*` | 登录后的正式学习区 |
+
+账号体系基于 Supabase Auth。邮箱登录 / 注册始终可用；Google 登录由 `VITE_GOOGLE_AUTH_ENABLED` 控制，只有完成 Supabase Google Provider 配置后才建议开启。
+
+## 核心能力
+
+- **官方词库学习**：内置“雅思词汇真经”和“GRE镇考机经词 7.0”，支持顺序 / 乱序，每组默认 30 词，已学过词会自动跳过。
+- **自定义导入**：支持粘贴单词，按换行或逗号切分，最多取前 30 个词，AI 生成预览后保存为个人词组。
+- **AI 词条增强**：为单词生成英美音标、中文释义、义项、例句、构词拆解、派生词、近义词、反义词、易混词和记忆提示。
+- **四段式学习**：Round 1 明示关联，Round 2 语境填空主动回忆，Round 3 快速识别确认，最后用文章巩固整组词。
+- **状态驱动复习**：系统使用 5 个记忆状态安排复习，而不是二元正确率。
+- **会话恢复**：学习中途离开后，下次可以从上次的轮次、位置和队列继续。
+- **Daily Routine 首页**：展示连续学习、完美打卡、今日复习、新学数量和继续学习 CTA。
+- **设置同步**：默认发音、自动播放、重复次数、播放间隔、错题停留时长、Round 3 / 文章巩固开关会跟随账号保存。
+- **音频能力**：单词和例句音频优先复用缓存，缺失时按需生成，远端不可用时回退到浏览器发音。
+
+## 官方词库
+
+| ID | 名称 | 词数 | 每组 |
+| --- | --- | ---: | ---: |
+| `ielts-vocab` | 雅思词汇真经 | 3631 | 30 |
+| `gre-zhenkao-v7` | GRE镇考机经词 7.0 | 1351 | 30 |
+
+官方词库支持：
+
+- 顺序学习
+- 乱序学习
+- 从未完成进度继续
+- 自动跳过已经实际学过的词
+- 主线学习组丢弃后，已学词保留进入复习计划，未学词回到官方词池
+
+## 学习流程
+
+### Round 1：明示关联
+
+Round 1 展示完整词条信息，帮助用户先把词形、发音和含义对上。页面会展示：
+
+- 单词与音标
+- 中文释义
+- 词性与例句
+- 构词拆解
+- 派生词、近义词、反义词
+- 易混词与记忆提示
+
+### Round 2：语境复现
+
+Round 2 是当前长期记忆状态的首次正式判定入口。它优先使用例句填空：
+
+- 页面展示挖空例句
+- 用户输入正确词形
+- 系统提供词形提示，例如原型、过去式、过去分词、复数等
+- 如果没有合适例句，则回退到原本的拼写输入
+
+### Round 3：快速确认
+
+Round 3 关注“看到英文时能否快速对应含义”：
+
+- 先展示英文单词与发音
+- 中文释义默认收起
+- 用户先做快速判断
+- 再显示释义确认
+
+### 文章巩固
+
+学习阶段结束后，系统会生成一段 IELTS 风格短文，把本组词自然放回上下文。文章会直接出现在学习流里，并同时生成逐句中文翻译；英文与翻译只保存在浏览器本地单篇缓存中，不写入数据库。
+
+## 记忆状态与复习规则
+
+Lumina 的 SRS 逻辑以状态为核心：
+
+| 状态 | 中文含义 | 当前间隔 |
+| --- | --- | --- |
+| `new` | 新词 | 暂不排入长期复习 |
+| `fuzzy` | 模糊 | 约 1 天后再见 |
+| `slow_recall` | 慢回忆 | 约 3 天后再见 |
+| `stable_recall` | 稳回忆 | 约 7 天后再见 |
+| `mastered` | 已掌握 / 毕业 | 不再进入日常到期队列 |
+
+关键规则：
+
+- 回忆耗时超过 `6000ms` 的正确答案会被视为 `slow_correct`。
+- Round 2 会把 `new` 词首次落入 `fuzzy`、`slow_recall` 或 `stable_recall`。
+- 日常复习会沿 `new -> fuzzy -> slow_recall -> stable_recall -> mastered` 推进。
+- `stable_recall` 需要累计成功次数达到 3 才会进入 `mastered`。
+- 日常复习答错时，该词不会立刻从当天队列消失。
+- 首页的“已掌握单词数”当前按 `stable_recall` 数量统计，这是当前产品展示口径；`mastered` 仍表示真正毕业状态。
+
+规则实现集中在：
+
+- `server/review-domain.ts`
+- `server/review.ts`
+- `scripts/test-review-rules.ts`
+
+## 技术栈
+
+| 层级 | 技术 |
+| --- | --- |
+| Frontend | React 19, TypeScript, Vite 6 |
+| UI | Tailwind CSS v4, lucide-react, motion/react |
+| Backend | Express, tsx |
+| Auth / DB | Supabase Auth, Supabase Postgres |
+| AI | Google Gemini via `@google/genai` |
+| Audio | Google TTS + Supabase Storage + browser speech fallback |
+
+## 前置条件
 
 - Node.js 18+
-- A Supabase project
-- A Google Gemini API key
+- Supabase 项目，包含 Auth、Postgres 和 Storage
+- Google Gemini API Key
+- Google TTS API Key，音频接口需要
 
----
+## 项目结构
 
-## Setup
+| 路径 | 说明 |
+| --- | --- |
+| `src/RootApp.tsx` | 顶层路由、鉴权保护、公开页面 |
+| `src/App.tsx` | 登录后 App 状态、首页 / 词库 / 导入 / 学习流切换 |
+| `src/components/home/HomeView.tsx` | Daily Routine 首页与记忆疆域概览 |
+| `src/components/import/ImportView.tsx` | 自定义单词导入与 AI 预览 |
+| `src/components/library/LibraryView.tsx` | 词库、词组详情、记忆状态查看 |
+| `src/components/library/OfficialLibraryPanel.tsx` | 官方词库入口、顺序 / 乱序发放 |
+| `src/components/learning/LearningEngine.tsx` | Round 1 / 2 / 3 / 复习共用学习引擎 |
+| `src/components/learning/Round2ClozePrompt.tsx` | Round 2 例句填空与词形提示 |
+| `src/components/learning/ArticleView.tsx` | 文章巩固展示 |
+| `src/components/review/ReviewResultsView.tsx` | 复习结果与状态变化总结 |
+| `src/components/settings/SettingsView.tsx` | 学习偏好设置 |
+| `src/lib/officialLibrary.ts` | 官方词库定义、批次计划、顺序 / 乱序逻辑 |
+| `src/lib/learningSessionApi.ts` | 学习会话持久化、恢复 |
+| `src/lib/articleCache.ts` | Round 4 英文与中文翻译的单篇本地缓存 |
+| `src/lib/learningPreferences.ts` | 用户学习偏好读写与本地兜底 |
+| `src/lib/cloze.ts` | Round 2 词形与挖空逻辑 |
+| `server/index.ts` | Express API 入口 |
+| `server/gemini.ts` | AI 词条增强与文章生成 |
+| `server/review-domain.ts` | 纯复习状态规则 |
+| `server/review.ts` | 复习状态写入、到期队列、事件记录 |
+| `server/home.ts` | 首页概览、连续学习、Daily Routine 汇总 |
+| `server/library.ts` | 学习组删除、官方主线丢弃 |
+| `server/audio.ts` | 单词音频生成与缓存 |
+| `server/exampleAudio.ts` | 例句音频生成与缓存 |
+| `supabase/schema.sql` | 当前完整数据库结构 |
 
-### 1. Install dependencies
+## API 概览
+
+| Method | Path | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/vocab/enrich` | AI 生成词条结构化数据 |
+| `POST` | `/api/vocab/article` | 为一组词生成文章句子和逐句中文翻译 |
+| `POST` | `/api/review/attempt` | 写入单次复习 / Round 2 判定 |
+| `POST` | `/api/review/batch-attempt` | 批量写入判定 |
+| `GET` | `/api/review/due` | 获取当前用户到期复习队列 |
+| `GET` | `/api/home/overview` | 获取首页统计、星轨、Routine 卡片 |
+| `POST` | `/api/library/official/:libraryId/discard-active` | 丢弃官方词库当前未完成主线组 |
+| `DELETE` | `/api/library/groups/:groupId` | 删除用户词组 |
+| `GET` | `/api/audio/:word` | 获取或生成单词音频 |
+| `POST` | `/api/audio/batch` | 批量预热单词音频 |
+| `POST` | `/api/example-audio` | 获取或生成例句音频 |
+| `GET` | `/api/health` | 健康检查 |
+
+需要用户身份的接口通过 Supabase access token 鉴权，前端统一由 `src/lib/api.ts` 附带 `Authorization: Bearer <token>`。
+
+## 数据库
+
+运行 `supabase/schema.sql` 会创建当前完整结构。主要表包括：
+
+- `vocabulary_items`
+- `vocabulary_senses`
+- `vocabulary_morphology_parts`
+- `vocabulary_relations`
+- `confused_words`
+- `learning_groups`
+- `learning_group_words`
+- `review_states`
+- `review_events`
+- `generated_articles`（保留表；当前 Round 4 不再写入）
+- `example_audio_cache`
+- `streak_protection_events`
+- `daily_routine_progress`
+- `user_settings`
+
+当前 schema 已包含 RLS。词条基础数据仍开放读写策略，用户进度、复习、文章、设置等表按 `auth.uid()` 绑定用户。
+
+## 环境变量
+
+在项目根目录创建 `.env`：
+
+```env
+# Frontend
+VITE_SUPABASE_URL=https://<your-project>.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_<your-key>
+VITE_API_BASE_URL=
+VITE_GOOGLE_AUTH_ENABLED=false
+
+# Backend
+SUPABASE_URL=https://<your-project>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
+GEMINI_API_KEY=<your-gemini-api-key>
+GOOGLE_TTS_API_KEY=<your-google-tts-api-key>
+APP_ORIGIN=http://localhost:3000
+PORT=4000
+
+# Optional Gemini tuning
+GEMINI_ENRICH_MODEL=gemini-2.5-flash
+GEMINI_ARTICLE_MODEL=gemini-2.5-flash
+GEMINI_ENRICH_BATCH_SIZE=10
+GEMINI_ENRICH_MAX_CONCURRENCY=5
+GEMINI_ENRICH_MAX_OUTPUT_TOKENS=8192
+
+# Optional scripts
+SUPABASE_ACCESS_TOKEN=<supabase-management-token>
+SUPABASE_DB_PASSWORD=<database-password>
+LOG_LEVEL=info
+```
+
+本地开发时，Vite 会把 `/api/*` 代理到 `http://localhost:4000`，因此 `VITE_API_BASE_URL` 可以留空。前后端分离部署时，需要把它设置为后端 API 域名。
+
+## 本地启动
+
+安装依赖：
 
 ```bash
 npm install
-npm run test:review
 ```
 
-### 2. Configure environment variables
+初始化数据库：
 
-Create `.env` in the project root:
-
-```env
-VITE_SUPABASE_URL=https://<your-project>.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_<your-key>
-VITE_API_BASE_URL=https://<your-api-domain>   # Optional in local dev; required for split frontend/backend deploys
-VITE_GOOGLE_AUTH_ENABLED=false                 # Set to true only after the Supabase Google provider is configured
-SUPABASE_URL=https://<your-project>.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=<your-service-role-jwt>
-GEMINI_API_KEY=<your-gemini-api-key>
-GOOGLE_TTS_API_KEY=<your-google-tts-api-key>
-```
-
-### 3. Deploy the database schema
-
-Open your [Supabase Dashboard](https://supabase.com/dashboard) → SQL Editor, paste the contents of `supabase/schema.sql`, and click **Run**.
-
-This creates 8 tables: `vocabulary_items`, `vocabulary_senses`, `confused_words`, `learning_groups`, `learning_group_words`, `review_states`, `review_events`, `generated_articles`.
-
-### 4. Run the app
-
-Two processes must run simultaneously:
+- 方式 1：打开 Supabase Dashboard -> SQL Editor，运行 `supabase/schema.sql` 的全部内容。
+- 方式 2：使用项目脚本，需配置 `SUPABASE_DB_PASSWORD`。
 
 ```bash
-# Terminal 1 — Express API server (port 4000)
-npm run server
+node scripts/run-migration.mjs
+```
 
-# Terminal 2 — Vite dev server (port 3000)
+`scripts/run-migration.mjs` 会读取 `supabase/schema.sql` 并连接脚本内配置的 Supabase Postgres host。换项目或换 Supabase 实例时，需要先检查脚本里的数据库 host。
+
+启动后端 API：
+
+```bash
+npm run server
+```
+
+启动前端：
+
+```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+访问：
 
----
+- Frontend: `http://localhost:3000`
+- Backend: `http://localhost:4000`
+- Health check: `http://localhost:4000/api/health`
 
-## Architecture
+## 常用脚本
 
-```
-Browser (React 19 + Vite)
-    │
-    ├── /api/*  ──proxy──►  Express :4000
-    │                           ├── POST /api/vocab/enrich → Gemini 2.0 Flash
-    │                           ├── POST /api/review/attempt → state transition + persistence
-    │                           └── GET /api/review/due → ordered review queue
-    │
-    ├── Supabase JS client  ──►  Supabase (UI reads, import writes)
-    │
-    └── Supabase service client ──► Supabase (review domain writes)
-```
+| 命令 | 说明 |
+| --- | --- |
+| `npm run dev` | 启动 Vite 前端，端口 3000 |
+| `npm run server` | 使用 `.env` 启动 Express API，端口默认 4000 |
+| `npm run start` | 生产环境启动 API，不自动加载 `.env` |
+| `npm run build` | 生产构建前端 |
+| `npm run preview` | 预览构建结果 |
+| `npm run lint` | TypeScript 类型检查 |
+| `npm run test:review` | 复习状态规则测试 |
+| `npm run test:cloze` | Round 2 挖空与词形逻辑测试 |
+| `npm run test:enrichment` | AI 词条归一化测试 |
+| `npm run test:session` | 学习会话测试 |
+| `npm run test:word-batch` | 单词批次校验测试 |
+| `npm run fetch:ielts-vocab` | 更新 IELTS 词库数据 |
+| `npm run seed:official-vocab` | 预加载官方词库 AI 词条 |
+| `npm run seed:official-audio` | 预热官方词库音频 |
 
-### Key files
+## 验证
 
-| Path | Purpose |
-|---|---|
-| `src/App.tsx` | Routing shell, LearningEngine, ArticleView, real review flow |
-| `src/components/home/HomeView.tsx` | Homepage — stats, today's plan, CTA |
-| `src/components/import/ImportView.tsx` | 4-stage word import flow |
-| `src/components/library/LibraryView.tsx` | Word detail drawer with memory state visibility |
-| `src/components/review/ReviewResultsView.tsx` | Post-review transition summary |
-| `src/components/layout/Sidebar.tsx` | Fixed navigation sidebar |
-| `src/lib/supabase.ts` | Supabase client (frontend) |
-| `src/lib/reviewApi.ts` | Frontend review API calls |
-| `src/types.ts` | Shared types: Word, MemoryState, ReviewTransition, etc. |
-| `server/index.ts` | Express server — vocab/article/review endpoints |
-| `server/review-domain.ts` | Pure review rules: state transitions, timing thresholds, due queue sorting |
-| `server/gemini.ts` | Gemini enrichment logic |
-| `server/review.ts` | Review state machine, due queue hydration, event persistence |
-| `server/supabase.ts` | Supabase service-role client |
-| `supabase/schema.sql` | Full database schema |
-| `scripts/test-review-rules.ts` | Pure rule checks for state transitions and due ordering |
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | React 19, TypeScript ~5.8, Vite ^6.2 |
-| Styling | TailwindCSS v4 (Vite plugin), glass morphism design system |
-| Animation | motion/react ^12 |
-| Backend | Express ^4.21 |
-| AI | Google Gemini 2.0 Flash (`@google/genai`) |
-| Database | Supabase (PostgreSQL) |
-
----
-
-## Development Notes
-
-See `ai-learnings.md` for full architecture decisions, CSS design tokens, round behavior rules, remaining tech debt, and session logs.
-
-Available local verification:
+提交前建议至少运行：
 
 ```bash
 npm run lint
 npm run build
 npm run test:review
+npm run test:cloze
+npm run test:word-batch
 ```
 
-## Deployment
+如果修改了 AI 词条、学习会话或官方词库相关逻辑，再补充：
 
-For a split deployment with Cloudflare Pages + Railway:
+```bash
+npm run test:enrichment
+npm run test:session
+npx tsx scripts/test-official-library.ts
+```
 
-- Cloudflare Pages
-  - This repo keeps the existing `primoria-english.pages.dev` Direct Upload project and updates it via GitHub Actions. Cloudflare's current docs say a Direct Upload Pages project cannot be switched to native Git integration later.
-  - Workflow files:
-    - `.github/workflows/ci.yml`
-    - `.github/workflows/pages-deploy.yml`
-  - Required GitHub Actions secrets:
-    - `CLOUDFLARE_ACCOUNT_ID=1186c12d969b2f2b637acba7d26ad486`
-    - `CLOUDFLARE_API_TOKEN=<Cloudflare Pages Edit token>`
-    - `VITE_SUPABASE_URL`
-    - `VITE_SUPABASE_PUBLISHABLE_KEY`
-    - `VITE_API_BASE_URL=https://api-production-0052.up.railway.app`
-  - Optional GitHub Actions variable:
-    - `VITE_GOOGLE_AUTH_ENABLED=true` only after Google OAuth is configured in Supabase
-- Railway
-  - Keep the existing `api` service and connect it to `main` from `ZhangJunQiu-Alan/Primoria_English`.
-  - Turn on GitHub autodeploys for that service.
-  - Turn on `Wait for CI` so Railway deploys only after `.github/workflows/ci.yml` passes.
-  - Start command: `npm run start`
-  - Environment variables:
-    - `SUPABASE_URL`
-    - `SUPABASE_SERVICE_ROLE_KEY`
-    - `GEMINI_API_KEY`
-    - `GOOGLE_TTS_API_KEY`
-    - `APP_ORIGIN=https://primoria-english.pages.dev`
+## 部署说明
 
-Cloudflare Pages SPA routing is handled by [`public/_redirects`](/Users/zhangjunqiu/Desktop/Primoria_English/public/_redirects:1), and Supabase Auth should include your Pages domain plus `/auth` as an allowed redirect URL.
+项目适合前后端分离部署：
 
-### Google Login Go-Live Checklist
+- 前端：构建后产物在 `dist/`，可部署到 Cloudflare Pages、Vercel、Netlify 等静态站点平台。
+- 后端：Express API 可部署到 Railway、Render、Fly.io 或其他 Node 服务。
+- 数据库与鉴权：Supabase 项目需要配置 schema、Auth redirect URL、Storage bucket 和必要环境变量。
 
-If you want any Google user to sign in on the production site, the app needs all of the following aligned at the same time:
+部署时需要注意：
 
-1. Configure Google as a Supabase provider
-   - In Supabase Dashboard → `Authentication` → `Providers` → `Google`, turn Google on.
-   - Copy the callback URL shown there. For hosted Supabase projects it will be your project callback under `/auth/v1/callback`.
-   - Paste your Google OAuth `Client ID` and `Client Secret` into the same Supabase provider form.
+- 前端平台设置 `VITE_API_BASE_URL` 指向后端 API。
+- 后端设置 `APP_ORIGIN` 为前端正式域名，否则 CORS 会拒绝浏览器请求。
+- Supabase Auth 的 Site URL 和 Redirect URLs 需要包含生产域名及 `/auth`。
+- 如果开启 Google 登录，需要在 Supabase 和 Google Cloud 同时配置 OAuth client、callback URL 和发布状态。
 
-2. Create the correct Google OAuth client
-   - In Google Cloud, create an OAuth client of type `Web application`.
-   - Under `Authorized JavaScript origins`, add:
-     - `https://primoria-english.pages.dev`
-     - `http://localhost:3000`
-     - your custom production domain if you use one
-   - Under `Authorized redirect URIs`, add the exact Supabase callback URL copied from the Supabase Google provider page.
-   - The redirect URI must match exactly, including scheme, host, path, and trailing slash behavior.
+## 当前项目定位
 
-3. Configure Supabase Auth URL settings
-   - In Supabase Dashboard → `Authentication` → `URL Configuration`, set `Site URL` to your production frontend origin.
-   - Add these redirect URLs at minimum:
-     - `https://primoria-english.pages.dev/auth`
-     - `http://localhost:3000/auth`
-     - any preview or custom domain auth callback you actually use
-   - This repo sends Google users back to `/auth`, so `/auth` must be present in Supabase redirect allow lists.
-
-4. Turn the frontend switch on
-   - This codebase hides the Google button unless `VITE_GOOGLE_AUTH_ENABLED=true`.
-   - For the Cloudflare Pages GitHub Actions deploy, set the repository variable `VITE_GOOGLE_AUTH_ENABLED=true` in GitHub → `Settings` → `Secrets and variables` → `Actions` → `Variables`.
-   - The CI workflow intentionally builds with `VITE_GOOGLE_AUTH_ENABLED=false`, but the production Pages workflow reads the repository variable above.
-
-5. Keep backend origin aligned
-   - Railway must expose `APP_ORIGIN` with the exact frontend origin, for example `https://primoria-english.pages.dev`.
-   - If `APP_ORIGIN` does not match the browser origin, authenticated API calls will fail CORS even if Google login itself succeeds.
-
-6. Publish the Google app for public users
-   - If the Google OAuth app is only for your own Workspace, mark it internal-only.
-   - If anyone with a Google account should be able to log in, configure the app for external users and move the publishing status to `In production`.
-   - If you later request sensitive or restricted Google scopes, verification and user-cap rules will apply before broad public rollout.
-
-7. Add public policy pages on the site
-   - This repo now exposes:
-     - `/privacy`
-     - `/terms`
-   - Link these pages from your production homepage and auth flow, and keep their contents aligned with your actual data handling.
-   - If you plan to submit for Google verification or brand review, a custom domain is strongly recommended over relying only on a temporary deployment hostname.
+Lumina 当前是一套“先登录、再学习、能从上次继续、会按真实记忆状态安排复习”的英语词汇系统。它已经支持官方词库与自定义导入、四段式学习、文章巩固、状态驱动复习、会话恢复、学习偏好同步和音频增强，适合围绕考试词汇做持续记忆、复习和回顾。

@@ -164,6 +164,11 @@ export type ReviewResultType = 'wrong' | 'slow_correct' | 'fast_correct';
 export type LearningRoundType = 'round1' | 'round2' | 'round3' | 'article';
 export type RoundType = 'review' | LearningRoundType;
 
+export interface ArticleSentence {
+  en: string;
+  zh: string;
+}
+
 export interface ReviewTransition {
   from: MemoryState | null;
   to: MemoryState;
@@ -309,7 +314,7 @@ export interface UserStats {
   todayReviewCount: number;
   streak: number;
   perfectCheckinDays: number;
-  totalLearned: number;
+  stableRecallCount: number;
   orbitDays: OrbitDay[];
   selectedDate: string;
   selectedDayReviewWordCount: number;
