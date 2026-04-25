@@ -6,7 +6,20 @@ const LOCALE_VOICE: Record<'uk' | 'us', { languageCode: string; name: string }> 
   us: { languageCode: 'en-US', name: 'en-US-Neural2-D' }, // Male American
 };
 
-export async function generateWordAudio(word: string, locale: 'uk' | 'us'): Promise<Buffer> {
+interface SpeechAudioOptions {
+  speakingRate?: number;
+  pitch?: number;
+}
+
+export function getSpeechVoiceName(locale: 'uk' | 'us'): string {
+  return LOCALE_VOICE[locale].name;
+}
+
+export async function generateSpeechAudio(
+  text: string,
+  locale: 'uk' | 'us',
+  options: SpeechAudioOptions = {},
+): Promise<Buffer> {
   const voice = LOCALE_VOICE[locale];
 
   const res = await fetch(
@@ -15,12 +28,12 @@ export async function generateWordAudio(word: string, locale: 'uk' | 'us'): Prom
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        input: { text: word },
+        input: { text },
         voice,
         audioConfig: {
           audioEncoding: 'MP3',
-          speakingRate: 0.85,
-          pitch: 0,
+          speakingRate: options.speakingRate ?? 0.85,
+          pitch: options.pitch ?? 0,
         },
       }),
     },
@@ -32,4 +45,8 @@ export async function generateWordAudio(word: string, locale: 'uk' | 'us'): Prom
   }
 
   return Buffer.from(json.audioContent, 'base64');
+}
+
+export async function generateWordAudio(word: string, locale: 'uk' | 'us'): Promise<Buffer> {
+  return generateSpeechAudio(word, locale, { speakingRate: 0.85, pitch: 0 });
 }

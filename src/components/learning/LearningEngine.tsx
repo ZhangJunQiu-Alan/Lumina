@@ -316,7 +316,7 @@ export const LearningEngine = ({
   const answerRevealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioGapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playbackRunIdRef = useRef(0);
-  const canPlayExampleAudio = useMemo(() => isBrowserSpeechSupported(), []);
+  const canPlayExampleAudio = useMemo(() => typeof Audio !== 'undefined' || isBrowserSpeechSupported(), []);
 
   const queueRef = useRef<Word[]>(initialEngineState.queue);
   const currentIndexRef = useRef(initialEngineState.currentIndex);
@@ -418,6 +418,23 @@ export const LearningEngine = ({
       .catch(() => null);
   }, []);
 
+  const resolveExampleAudioUrl = useCallback(async (sentence: string, locale: PronunciationLocale) => (
+    apiFetch('/api/example-audio', {
+      method: 'POST',
+      requiresAuth: false,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: sentence, locale }),
+    })
+      .then((response) => (
+        response.ok
+          ? response.json().then((payload: { data?: unknown }) => (
+            typeof payload.data === 'string' ? payload.data : null
+          ))
+          : null
+      ))
+      .catch(() => null)
+  ), []);
+
   const waitForGap = useCallback((gapMs: number, runId: number) => (
     new Promise<void>((resolve) => {
       if (gapMs <= 0 || runId !== playbackRunIdRef.current) {
@@ -510,8 +527,55 @@ export const LearningEngine = ({
 
     stopPlayback();
     const runId = playbackRunIdRef.current;
-    await speakViaBrowser(sentence, audioLocale, runId, { kind: 'example', key });
-  }, [audioLocale, canPlayExampleAudio, playbackTarget, speakViaBrowser, stopPlayback]);
+    const exampleTarget: PlaybackTarget = { kind: 'example', key };
+    setPlaybackTarget(exampleTarget);
+
+    const resolvedUrl = await resolveExampleAudioUrl(sentence, audioLocale);
+    if (runId !== playbackRunIdRef.current) return;
+
+    if (!resolvedUrl || typeof Audio === 'undefined') {
+      await speakViaBrowser(sentence, audioLocale, runId, exampleTarget);
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      const audio = new Audio(resolvedUrl);
+      let settled = false;
+
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (audioRef.current === audio) {
+          audioRef.current = null;
+        }
+        if (runId === playbackRunIdRef.current) {
+          setPlaybackTarget(null);
+        }
+        resolve();
+      };
+
+      const fallbackToSpeech = () => {
+        if (settled) return;
+        settled = true;
+        if (audioRef.current === audio) {
+          audioRef.current = null;
+        }
+        void speakViaBrowser(sentence, audioLocale, runId, exampleTarget).then(() => resolve());
+      };
+
+      audioRef.current = audio;
+      audio.onended = finish;
+      audio.onerror = fallbackToSpeech;
+      audio.play().catch(fallbackToSpeech);
+    });
+  }, [
+    audioLocale,
+    canPlayExampleAudio,
+    playbackTarget,
+    resolveExampleAudioUrl,
+    speakViaBrowser,
+    stopPlayback,
+  ]);
 
   useEffect(() => {
     if (!currentWord) return;

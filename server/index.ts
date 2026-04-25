@@ -9,6 +9,7 @@ import {
 } from './gemini.js';
 import { fetchDueReviewWords, recordReviewAttempt, recordBatchReviewAttempts } from './review.js';
 import { getOrCreateAudio, batchGenerateAudio } from './audio.js';
+import { ExampleAudioValidationError, getOrCreateExampleAudio } from './exampleAudio.js';
 import { deleteLearningGroup, discardActiveOfficialLearningGroup } from './library.js';
 import { requireAuth, type AuthenticatedRequest } from './auth.js';
 import { getHomeOverview } from './home.js';
@@ -277,6 +278,32 @@ app.post('/api/audio/batch', async (req, res) => {
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     logger.error('API Error: /api/audio/batch', e, { endpoint: '/api/audio/batch' });
+    res.status(500).json({ error: message });
+  }
+});
+
+// POST /api/example-audio
+app.post('/api/example-audio', async (req, res) => {
+  const { text, locale } = req.body ?? {};
+
+  if (typeof text !== 'string') {
+    return res.status(400).json({ error: 'Missing example text' });
+  }
+
+  if (locale !== 'uk' && locale !== 'us') {
+    return res.status(400).json({ error: 'Invalid locale' });
+  }
+
+  try {
+    const url = await getOrCreateExampleAudio(text, locale);
+    res.json({ data: url });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    if (e instanceof ExampleAudioValidationError) {
+      return res.status(e.statusCode).json({ error: message });
+    }
+
+    logger.error('API Error: /api/example-audio', e, { endpoint: '/api/example-audio', locale });
     res.status(500).json({ error: message });
   }
 });
