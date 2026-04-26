@@ -27,51 +27,51 @@ import { attemptBuffer } from '../../lib/attemptBuffer';
 // --- Sub-components for Round 1 ---
 
 const Round1MorphologyCard = ({ word }: { word: Word }) => (
-  <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
-    <p className="text-[14px] font-bold uppercase tracking-[0.24em] text-text-secondary">构词拆解 / 派生词</p>
-    <div className="mt-4 space-y-3">
+  <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-4 sm:p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
+    <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.24em] text-text-secondary">构词拆解 / 派生词</p>
+    <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-3">
       {word.morphology.parts.length > 0 ? word.morphology.parts.map((part, index) => (
         <div
           key={`${word.id}-morphology-${index}`}
-          className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
+          className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[18px] font-black text-text-primary">{part.text}</p>
-            <span className="rounded-full bg-black/5 px-2 py-0.5 text-[13px] font-bold uppercase tracking-[0.18em] text-text-secondary">
+            <p className="text-base sm:text-[18px] font-black text-text-primary">{part.text}</p>
+            <span className="rounded-full bg-black/5 px-2 py-0.5 text-[11px] sm:text-[13px] font-bold uppercase tracking-[0.18em] text-text-secondary">
               {part.kind}
             </span>
           </div>
           {(part.meaningZh || part.noteZh) && (
-            <p className="mt-2 text-[16px] leading-[1.65] text-text-secondary">
+            <p className="mt-1.5 text-sm sm:text-[16px] leading-relaxed text-text-secondary">
               {[part.meaningZh, part.noteZh].filter(Boolean).join(' · ')}
             </p>
           )}
         </div>
       )) : (
-        <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-[18px] leading-[1.75] text-text-secondary">
-          这个词目前还没有可展示的构词拆解。
+        <div className="rounded-[16px] border border-dashed border-black/8 bg-white/45 px-3 py-3 text-sm sm:text-[18px] text-text-secondary">
+          无展示的构词拆解。
         </div>
       )}
     </div>
 
     <div className="mt-4">
-      <p className="text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">派生词</p>
-      <div className="mt-3 space-y-3">
+      <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">派生词</p>
+      <div className="mt-2 sm:mt-3 space-y-2">
         {word.derivedWords.length > 0 ? word.derivedWords.map((item) => (
           <div
             key={`${word.id}-derived-${item.word}`}
-            className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
+            className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
           >
-            <p className="text-[18px] font-black text-text-primary">{item.word}</p>
+            <p className="text-base sm:text-[18px] font-black text-text-primary">{item.word}</p>
             {(item.meaningZh || item.noteZh) && (
-              <p className="mt-2 text-[16px] leading-[1.65] text-text-secondary">
+              <p className="mt-1.5 text-sm sm:text-[16px] leading-relaxed text-text-secondary">
                 {[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
               </p>
             )}
           </div>
         )) : (
-          <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-[18px] leading-[1.75] text-text-secondary">
-            这个词目前还没有派生词线索。
+          <div className="rounded-[16px] border border-dashed border-black/8 bg-white/45 px-3 py-3 text-sm sm:text-[18px] text-text-secondary">
+            无派生词线索。
           </div>
         )}
       </div>
@@ -80,49 +80,49 @@ const Round1MorphologyCard = ({ word }: { word: Word }) => (
 );
 
 const Round1RelationsCard = ({ word }: { word: Word }) => (
-  <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
+  <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-4 sm:p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
     <div className="grid gap-4 sm:grid-cols-2">
       <div>
-        <p className="text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">近义词</p>
-        <div className="mt-3 space-y-3">
+        <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">近义词</p>
+        <div className="mt-2 sm:mt-3 space-y-2">
           {word.synonyms.length > 0 ? word.synonyms.map((item) => (
             <div
               key={`${word.id}-synonym-${item.word}`}
-              className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
+              className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
             >
-              <p className="text-[18px] font-black text-text-primary">{item.word}</p>
+              <p className="text-base sm:text-[18px] font-black text-text-primary">{item.word}</p>
               {(item.meaningZh || item.noteZh) && (
-                <p className="mt-2 text-[16px] leading-[1.65] text-text-secondary">
+                <p className="mt-1.5 text-sm sm:text-[16px] leading-relaxed text-text-secondary">
                   {[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
                 </p>
               )}
             </div>
           )) : (
-            <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-[18px] leading-[1.75] text-text-secondary">
-              这个词目前还没有近义词线索。
+            <div className="rounded-[16px] border border-dashed border-black/8 bg-white/45 px-3 py-3 text-sm sm:text-[18px] text-text-secondary">
+              无近义词。
             </div>
           )}
         </div>
       </div>
 
       <div>
-        <p className="text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">反义词</p>
-        <div className="mt-3 space-y-3">
+        <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">反义词</p>
+        <div className="mt-2 sm:mt-3 space-y-2">
           {word.antonyms.length > 0 ? word.antonyms.map((item) => (
             <div
               key={`${word.id}-antonym-${item.word}`}
-              className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
+              className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
             >
-              <p className="text-[18px] font-black text-text-primary">{item.word}</p>
+              <p className="text-base sm:text-[18px] font-black text-text-primary">{item.word}</p>
               {(item.meaningZh || item.noteZh) && (
-                <p className="mt-2 text-[16px] leading-[1.65] text-text-secondary">
+                <p className="mt-1.5 text-sm sm:text-[16px] leading-relaxed text-text-secondary">
                   {[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
                 </p>
               )}
             </div>
           )) : (
-            <div className="rounded-[18px] border border-dashed border-black/8 bg-white/45 px-4 py-4 text-[18px] leading-[1.75] text-text-secondary">
-              这个词目前还没有反义词线索。
+            <div className="rounded-[16px] border border-dashed border-black/8 bg-white/45 px-3 py-3 text-sm sm:text-[18px] text-text-secondary">
+              无反义词。
             </div>
           )}
         </div>
@@ -144,19 +144,19 @@ const Round1ConfusingCard = ({
   exampleLocale: PronunciationLocale;
   onPlayExample: (sentence: string, key: string) => void;
 }) => (
-  <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
-    <p className="text-[14px] font-bold uppercase tracking-[0.24em] text-text-secondary">易混词义对比</p>
-    <div className="mt-4 space-y-5">
+  <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-4 sm:p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
+    <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.24em] text-text-secondary">易混词义对比</p>
+    <div className="mt-3 sm:mt-4 space-y-4 sm:space-y-5">
       {word.confusingPairs.length > 0 ? (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {word.confusingPairs.map((pair, index) => (
             <div
               key={`${word.id}-confusion-${pair.word}-${index}`}
-              className="rounded-[18px] border border-white/85 bg-white/75 px-4 py-3"
+              className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
             >
-              <p className="text-[24px] font-black tracking-tight text-text-primary">{pair.word}</p>
+              <p className="text-lg sm:text-[24px] font-black tracking-tight text-text-primary">{pair.word}</p>
               {pair.difference && (
-                <p className="mt-2 text-[18px] leading-[1.75] text-text-secondary">
+                <p className="mt-1.5 text-sm sm:text-[18px] leading-relaxed text-text-secondary">
                   {pair.difference}
                 </p>
               )}
@@ -164,14 +164,14 @@ const Round1ConfusingCard = ({
           ))}
         </div>
       ) : (
-        <p className="text-[18px] leading-[1.75] text-text-secondary">
-          这个词目前没有需要特别提醒的易混点。
+        <p className="text-sm sm:text-[18px] text-text-secondary">
+          没有需要提醒的易混点。
         </p>
       )}
 
-      <div className="border-t border-black/6 pt-5">
-        <p className="text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">例句</p>
-        <div className="mt-3">
+      <div className="border-t border-black/6 pt-4 sm:pt-5">
+        <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">例句</p>
+        <div className="mt-2">
           <ExampleSentenceList
             items={word.example_sentences.map((sentence, index) => ({
               key: `${word.id}-example-${index}`,
@@ -181,7 +181,7 @@ const Round1ConfusingCard = ({
             activeExampleKey={activeExampleKey}
             canPlayAudio={canPlayExampleAudio}
             onPlayExample={({ sentence, key }) => { onPlayExample(sentence, key); }}
-            emptyMessage="这个词目前还没有例句。"
+            emptyMessage="无例句。"
           />
         </div>
       </div>
@@ -200,8 +200,8 @@ const InputSessionShell = ({
   queueLength: number;
   main: React.ReactNode;
 }) => (
-  <div className="input-session-shell mx-auto flex h-full min-h-0 w-full max-w-[1400px] flex-col gap-4">
-    <header className="shrink-0 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+  <div className="input-session-shell mx-auto flex h-full min-h-0 w-full max-w-[1400px] flex-col gap-3 sm:gap-4">
+    <header className="shrink-0 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
       <RoundIndicator type={type} className="min-w-0 flex-1" />
       <SessionProgress currentIndex={currentIndex} queueLength={queueLength} />
     </header>
@@ -791,13 +791,13 @@ export const LearningEngine = ({
       ? '确认这一词'
       : '提交这次判断';
   const allowLiveCorrectTint = type === 'round1';
-  const contentAreaClassName = 'flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-6 md:px-7 md:py-7 lg:px-8 lg:py-7';
-  const inputDockClassName = 'shrink-0 border-t border-black/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(247,249,253,0.92))] px-5 py-4 shadow-[0_-18px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl md:px-7 md:py-5 lg:px-8';
-  const round1InputDockClassName = 'shrink-0 border-t border-black/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.76),rgba(247,249,253,0.94))] px-5 pt-2.5 pb-3.5 shadow-[0_-18px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl md:px-7 md:pt-3 md:pb-4 lg:px-8';
+  const contentAreaClassName = 'flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7 sm:py-7 lg:px-8 lg:py-7';
+  const inputDockClassName = 'shrink-0 border-t border-black/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(247,249,253,0.92))] px-4 py-4 shadow-[0_-18px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl sm:px-7 sm:py-5 lg:px-8';
+  const round1InputDockClassName = 'shrink-0 border-t border-black/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.76),rgba(247,249,253,0.94))] px-4 pt-2 pb-3 shadow-[0_-18px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl sm:px-7 sm:pt-3 sm:pb-4 lg:px-8';
 
   const inputField = (
     <form onSubmit={handleSubmit} className="w-full">
-      <div className="rounded-[24px] border border-white/80 bg-white/60 px-4 py-4 shadow-[0_14px_40px_rgba(14,26,56,0.06)] backdrop-blur-xl md:px-5 md:py-5">
+      <div className="rounded-[22px] border border-white/80 bg-white/60 px-4 py-3.5 shadow-[0_12px_32px_rgba(14,26,56,0.06)] backdrop-blur-xl sm:px-5 sm:py-5">
         <input
           ref={inputRef}
           type="text"
@@ -806,7 +806,7 @@ export const LearningEngine = ({
           disabled={isSubmittingAttempt}
           className={cx(
             'w-full bg-transparent text-center font-black outline-none transition-colors caret-gray-800 placeholder:text-text-secondary/35',
-            type === 'round1' ? 'text-3xl md:text-4xl' : 'text-4xl md:text-5xl',
+            type === 'round1' ? 'text-2xl sm:text-4xl' : 'text-3xl sm:text-5xl',
             isWrong ? 'text-apple-red' : allowLiveCorrectTint && isCorrect ? 'text-[#10B981]' : 'text-text-primary',
           )}
           autoFocus
@@ -1031,13 +1031,13 @@ export const LearningEngine = ({
           key={currentWord.id + currentIndex}
           initial={{ opacity: 0, scale: 0.97, y: 14 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          className="glass flex h-full min-h-0 flex-col overflow-hidden rounded-[30px] shadow-[0_24px_64px_rgba(14,26,56,0.08)]"
+          className="glass flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] sm:rounded-[30px] shadow-[0_24px_64px_rgba(14,26,56,0.08)]"
         >
           {type === 'round1' ? (
             <div className="flex h-full min-h-0 flex-col">
-              <div className={cx(contentAreaClassName, 'pb-5')}>
-                <div className="space-y-7">
-                  <div className="space-y-5">
+              <div className={cx(contentAreaClassName, 'pb-4 sm:pb-5')}>
+                <div className="space-y-5 sm:space-y-7">
+                  <div className="space-y-4 sm:space-y-5">
                     <PronunciationControls
                       phonetic={currentWord.phonetic}
                       audioLocale={audioLocale}
@@ -1048,8 +1048,8 @@ export const LearningEngine = ({
                       }}
                     />
 
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
-                      <p className="text-[clamp(2.4rem,4.1vw,4.2rem)] font-black leading-[0.94] tracking-[-0.055em] text-text-primary lg:flex-shrink-0">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
+                      <p className="text-[clamp(1.8rem,10vw,4.2rem)] font-black leading-tight tracking-tight text-text-primary lg:flex-shrink-0">
                         {currentWord.word}
                       </p>
                       <div className="min-w-0 lg:max-w-[960px] lg:flex-1 lg:pt-1">
@@ -1058,7 +1058,7 @@ export const LearningEngine = ({
                     </div>
                   </div>
 
-                  <div className="grid gap-4 lg:grid-cols-3">
+                  <div className="grid gap-3 sm:gap-4 lg:grid-cols-3">
                     <Round1MorphologyCard word={currentWord} />
                     <Round1RelationsCard word={currentWord} />
                     <Round1ConfusingCard
@@ -1073,16 +1073,23 @@ export const LearningEngine = ({
               </div>
 
               <div className={round1InputDockClassName}>
-                <div className="rounded-[24px] border border-white/80 bg-white/45 p-3.5 shadow-[0_12px_30px_rgba(14,26,56,0.04)] md:p-4">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
-                    <div className="min-w-0 flex-1">
+                <div className="mx-auto w-full max-w-[1200px]">
+                  <div className="flex flex-row items-stretch gap-3">
+                    <div className="flex-[3.2] min-w-0">
                       {inputField}
                     </div>
-                    <div className="flex justify-end lg:shrink-0">
-                      {actionButton}
+                    <div className="flex-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => { void validateCurrentInput(); }}
+                        disabled={actionDisabled}
+                        className="flex h-full min-h-[62px] w-full items-center justify-center rounded-[22px] bg-apple-blue text-white shadow-[0_14px_32px_rgba(0,122,255,0.25)] transition-all active:scale-[0.96] disabled:opacity-50"
+                      >
+                        <ChevronRight className="h-6 w-6" strokeWidth={3} />
+                      </button>
                     </div>
                   </div>
-                  {submitErrorBanner && <div className="mt-3">{submitErrorBanner}</div>}
+                  {submitErrorBanner && <div className="mt-2">{submitErrorBanner}</div>}
                 </div>
               </div>
             </div>
@@ -1112,12 +1119,25 @@ export const LearningEngine = ({
               </div>
 
               <div className={inputDockClassName}>
-                <div className="mx-auto w-full max-w-3xl space-y-5">
-                  {inputField}
-                  {feedbackReveal}
-                  {submitErrorBanner}
-                  <div className="flex justify-center sm:justify-end">
-                    {actionButton}
+                <div className="mx-auto w-full max-w-3xl">
+                  <div className="flex flex-row items-stretch gap-3">
+                    <div className="flex-[3.2] min-w-0">
+                      {inputField}
+                    </div>
+                    <div className="flex-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => { void validateCurrentInput(); }}
+                        disabled={actionDisabled}
+                        className="flex h-full min-h-[62px] w-full items-center justify-center rounded-[22px] bg-apple-blue text-white shadow-[0_14px_32px_rgba(0,122,255,0.25)] transition-all active:scale-[0.96] disabled:opacity-50"
+                      >
+                        <ChevronRight className="h-6 w-6" strokeWidth={3} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-4 space-y-4">
+                    {feedbackReveal}
+                    {submitErrorBanner}
                   </div>
                 </div>
               </div>
