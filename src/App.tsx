@@ -9,6 +9,7 @@ import {
   AlertCircle,
   Loader2,
   ChevronRight,
+  LogOut,
 } from 'lucide-react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
