@@ -70,7 +70,7 @@ export const Sidebar = ({
       <div ref={menuRef} className="relative lg:mt-auto">
         <button
           type="button"
-          onClick={() => setIsAccountMenuOpen((prev) => !prev)}
+          onClick={() => onNavigate('/app/settings')}
           className={`flex h-12 w-12 items-center justify-center rounded-[16px] transition-colors lg:h-11 lg:w-11 lg:rounded-[14px] ${
             activePath === '/app/settings'
               ? 'bg-white text-apple-blue shadow-lg shadow-black/5'
@@ -115,18 +115,6 @@ export const Sidebar = ({
                   学习节奏
                 </span>
                 <ChevronRight className="h-4 w-4 text-text-secondary" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIsAccountMenuOpen(false);
-                  onSignOut();
-                }}
-                className="mt-2 flex w-full items-center justify-between rounded-[22px] px-4 py-4 text-left text-sm font-black text-apple-red transition-colors hover:bg-apple-red/8"
-              >
-                退出登录
-                <LogOut className="h-4 w-4" />
               </button>
             </motion.div>
           )}

@@ -425,17 +425,6 @@ export const SettingsView = () => {
           )}
         />
       </SettingsCard>
-
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => navigate('/app/profile')}
-          className="inline-flex items-center gap-2 rounded-full bg-[#12192b] px-5 py-3 text-sm font-black text-white shadow-[0_18px_34px_rgba(18,25,43,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
-        >
-          回到账户入口
-          <ChevronRight className="h-4 w-4" />
-        </button>
-      </div>
     </div>
   );
 };

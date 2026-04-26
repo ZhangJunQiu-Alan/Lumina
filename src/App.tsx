@@ -850,6 +850,15 @@ export default function App() {
                               </h2>
                               <p className="mt-3 text-base text-text-secondary">{user?.email ?? '还没拿到邮箱'}</p>
                             </div>
+
+                            <button
+                              type="button"
+                              onClick={() => { void handleSignOut(); }}
+                              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-apple-red/8 px-6 py-4 text-base font-black text-apple-red transition-all hover:bg-apple-red/12 active:scale-95"
+                            >
+                              退出当前账号
+                              <LogOut className="h-5 w-5" />
+                            </button>
                           </div>
                         </div>
                       </div>

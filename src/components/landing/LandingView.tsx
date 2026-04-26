@@ -45,7 +45,7 @@ export const LandingView = () => {
         className="w-full max-w-5xl text-center mb-20"
       >
         <LuminaLogo size={50} className="mx-auto mb-10" />
-        <h1 className="text-5xl md:text-7xl font-black leading-[1.05] tracking-tight text-text-primary">
+        <h1 className="text-4xl sm:text-5xl md:text-7xl font-black leading-[1.1] sm:leading-[1.05] tracking-tight text-text-primary">
           建立你的个人词汇护城河。<br/>从机械记忆，进化为深度吸收。
         </h1>
         <p className="mt-8 text-lg md:text-xl text-text-secondary max-w-3xl mx-auto leading-relaxed font-medium">
