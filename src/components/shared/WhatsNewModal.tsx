@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, X } from 'lucide-react';
 
-const VERSION_KEY = 'lumina_whatsnew_v1_1'; // Bump this key to show the modal again in future updates
+const VERSION_KEY = 'lumina_whatsnew_v1_2'; // Bump this key to show the modal again in future updates
 
 export function WhatsNewModal() {
   const [isOpen, setIsOpen] = useState(false);
@@ -60,9 +60,9 @@ export function WhatsNewModal() {
                   📚
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text-primary">四级大纲词汇</h3>
+                  <h3 className="text-sm font-bold text-text-primary">核心大纲词库全上线</h3>
                   <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                    新增 4500+ 核心四级词汇，地图页直接开启学习。
+                    现已集成：四六级、考研、专四及专八核心词库，全方位助力考试通关。
                   </p>
                 </div>
               </div>

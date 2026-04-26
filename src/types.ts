@@ -198,7 +198,7 @@ export interface ReviewSummaryItem {
   transition: ReviewTransition;
 }
 
-export type OfficialLibraryId = 'ielts-vocab' | 'gre-zhenkao-v7' | 'cet4-vocab';
+export type OfficialLibraryId = 'ielts-vocab' | 'gre-zhenkao-v7' | 'cet4-vocab' | 'cet6-vocab' | 'tem4-vocab' | 'tem8-vocab' | 'npee-vocab';
 
 export interface LibraryGroupSummary {
   id: string;

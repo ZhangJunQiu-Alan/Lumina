@@ -1,6 +1,10 @@
 import { GRE_ZHENKAO_V7_TITLE, GRE_ZHENKAO_V7_WORDS } from '../data/gre-zhenkao-v7';
 import { IELTS_CHAPTERS, IELTS_WORDS_FLAT } from '../data/ielts-vocab';
 import { CET4_TITLE, CET4_WORDS } from '../data/cet4-vocab';
+import { CET6_TITLE, CET6_WORDS } from '../data/cet6-vocab';
+import { TEM4_TITLE, TEM4_WORDS } from '../data/tem4-vocab';
+import { TEM8_TITLE, TEM8_WORDS } from '../data/tem8-vocab';
+import { NPEE_TITLE, NPEE_WORDS } from '../data/npee-vocab';
 import type {
   LibraryGroupSummary,
   OfficialLibraryId,
@@ -53,6 +57,46 @@ export const OFFICIAL_LIBRARY_DEFINITIONS: OfficialLibraryDefinition[] = [
     description: `核心词汇 · ${CET4_WORDS.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过。`,
     groupPattern: buildOfficialGroupPattern(`${CET4_TITLE} · `),
     counterPattern: buildOfficialCounterPattern(`${CET4_TITLE} · `),
+  },
+  {
+    id: 'cet6-vocab',
+    title: CET6_TITLE,
+    groupPrefix: `${CET6_TITLE} · `,
+    batchSize: DEFAULT_BATCH_SIZE,
+    words: CET6_WORDS,
+    description: `核心词汇 · ${CET6_WORDS.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过。`,
+    groupPattern: buildOfficialGroupPattern(`${CET6_TITLE} · `),
+    counterPattern: buildOfficialCounterPattern(`${CET6_TITLE} · `),
+  },
+  {
+    id: 'npee-vocab',
+    title: NPEE_TITLE,
+    groupPrefix: `${NPEE_TITLE} · `,
+    batchSize: DEFAULT_BATCH_SIZE,
+    words: NPEE_WORDS,
+    description: `大纲词汇 · ${NPEE_WORDS.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过。`,
+    groupPattern: buildOfficialGroupPattern(`${NPEE_TITLE} · `),
+    counterPattern: buildOfficialCounterPattern(`${NPEE_TITLE} · `),
+  },
+  {
+    id: 'tem4-vocab',
+    title: TEM4_TITLE,
+    groupPrefix: `${TEM4_TITLE} · `,
+    batchSize: DEFAULT_BATCH_SIZE,
+    words: TEM4_WORDS,
+    description: `专业四级 · ${TEM4_WORDS.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过。`,
+    groupPattern: buildOfficialGroupPattern(`${TEM4_TITLE} · `),
+    counterPattern: buildOfficialCounterPattern(`${TEM4_TITLE} · `),
+  },
+  {
+    id: 'tem8-vocab',
+    title: TEM8_TITLE,
+    groupPrefix: `${TEM8_TITLE} · `,
+    batchSize: DEFAULT_BATCH_SIZE,
+    words: TEM8_WORDS,
+    description: `专业八级 · ${TEM8_WORDS.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过。`,
+    groupPattern: buildOfficialGroupPattern(`${TEM8_TITLE} · `),
+    counterPattern: buildOfficialCounterPattern(`${TEM8_TITLE} · `),
   },
   {
     id: 'ielts-vocab',
