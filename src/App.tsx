@@ -22,6 +22,7 @@ import {
   Word,
 } from './types';
 import { Sidebar } from './components/layout/Sidebar';
+import { WhatsNewModal } from './components/shared/WhatsNewModal';
 import { fetchDueReviewWords, submitReviewAttempt } from './lib/reviewApi';
 import { useAuth } from './contexts/AuthContext';
 import { useLearningPreferences } from './contexts/LearningPreferencesContext';
@@ -704,6 +705,7 @@ export default function App() {
         userEmail={user?.email ?? null}
         userName={(user?.user_metadata.full_name as string | undefined) ?? null}
       />
+      <WhatsNewModal />
 
       <div className="flex-1 relative h-screen overflow-hidden">
         <main
