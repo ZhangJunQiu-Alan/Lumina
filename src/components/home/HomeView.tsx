@@ -96,16 +96,16 @@ function OrbitMetric({
   }[accent];
 
   return (
-    <div className={cx('home-metric glass flex-1 min-w-[110px] rounded-[22px] border p-3.5 transition-all hover:bg-white/60 sm:rounded-[26px] sm:p-4 xl:p-5', tones.card, tones.shadow)}>
+    <div className={cx('home-metric glass flex-1 min-w-[100px] sm:min-w-[110px] rounded-[22px] border p-3 sm:p-4 transition-all hover:bg-white/60 sm:rounded-[26px] xl:p-5', tones.card, tones.shadow)}>
       <div className="flex flex-col sm:flex-row items-start justify-between gap-2 sm:gap-3">
         <div className="order-2 sm:order-1">
-          <div className="home-metric-value text-[28px] leading-none font-bold tracking-tight text-[#2f261d] sm:text-[38px] lg:text-[42px] xl:text-[48px] prose-serif">
+          <div className="home-metric-value text-[24px] sm:text-[38px] lg:text-[42px] xl:text-[48px] leading-none font-bold tracking-tight text-[#2f261d] prose-serif">
             {value}
           </div>
           <div className="home-metric-label mt-1.5 text-[10px] leading-tight text-[#7a6c5a] font-medium sm:mt-2.5 sm:text-[12px] xl:mt-3 xl:text-[13px]">{label}</div>
         </div>
         <div className={cx('order-1 sm:order-2 shrink-0 sm:pt-1', tones.icon)}>
-          <Icon className="home-metric-icon h-5 w-5 opacity-80 sm:h-6 sm:w-6 xl:h-7 xl:w-7" strokeWidth={2.2} />
+          <Icon className="home-metric-icon h-4.5 w-4.5 sm:h-6 sm:w-6 xl:h-7 xl:w-7 opacity-80" strokeWidth={2.2} />
         </div>
       </div>
     </div>
@@ -140,22 +140,22 @@ function OrbitBadge({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.1 + index * 0.05 }}
-      className="home-orbit-badge flex flex-col items-center gap-2.5 text-center xl:gap-3"
+      className="home-orbit-badge flex flex-col items-center gap-2 text-center sm:gap-2.5 xl:gap-3"
     >
       <div className="relative">
         <div className={cx(
-          'home-orbit-ring relative flex h-[58px] w-[58px] items-center justify-center rounded-full border transition-all duration-500 xl:h-[68px] xl:w-[68px]',
+          'home-orbit-ring relative flex h-[42px] w-[42px] sm:h-[58px] sm:w-[58px] items-center justify-center rounded-full border transition-all duration-500 xl:h-[68px] xl:w-[68px]',
           meta.ringClass,
           active
             ? 'ring-4 ring-[#efc16d]/30 scale-110 shadow-lg shadow-[#efc16d]/20'
             : 'hover:scale-105 hover:shadow-[0_12px_24px_-18px_rgba(76,57,24,0.35)]'
         )}>
-          {Icon && <Icon className={cx('home-orbit-icon h-5 w-5 xl:h-6 xl:w-6', meta.iconClass)} strokeWidth={2.15} />}
+          {Icon && <Icon className={cx('home-orbit-icon h-4 w-4 sm:h-5 sm:w-5 xl:h-6 xl:w-6', meta.iconClass)} strokeWidth={2.15} />}
         </div>
       </div>
       <div className="space-y-0.5">
-        <div className="text-[10px] font-bold text-[#948572] uppercase tracking-wider xl:text-[11px]">{node.weekdayLabel}</div>
-        <div className="text-[10px] tabular-nums text-[#8d7f6b] opacity-60 xl:text-[11px]">{node.shortDateLabel}</div>
+        <div className="text-[9px] sm:text-[10px] font-bold text-[#948572] uppercase tracking-wider xl:text-[11px]">{node.weekdayLabel}</div>
+        <div className="text-[9px] sm:text-[10px] tabular-nums text-[#8d7f6b] opacity-60 xl:text-[11px]">{node.shortDateLabel}</div>
       </div>
     </motion.button>
   );
@@ -212,14 +212,14 @@ export const HomeView = ({ stats, onSelectOrbitDate, onStart, isLoading = false 
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="home-dashboard mx-auto w-full max-w-[1320px]"
+      className="home-dashboard mx-auto w-full max-w-[1320px] overflow-x-hidden"
     >
-      <header className="home-header mb-6 xl:mb-10">
+      <header className="home-header mb-4 sm:mb-6 xl:mb-10">
         <LuminaLogo
-          size={56}
-          className="gap-5"
+          size={48}
+          className="gap-4 sm:gap-5"
           markClassName="drop-shadow-none"
-          wordmarkClassName="h-10 md:h-11"
+          wordmarkClassName="h-8 sm:h-10 md:h-11"
         />
       </header>
 
