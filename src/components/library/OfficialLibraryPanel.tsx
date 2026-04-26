@@ -39,6 +39,7 @@ import {
   resolveOfficialLibraryStartMode,
   resolveOfficialStudyModeFromGroupName,
 } from '../../lib/officialLibrary';
+import { cx } from '../shared/LearningUI';
 import { useAuth } from '../../contexts/AuthContext';
 import type { EnrichedWord, OfficialLibrarySummary, Word } from '../../types';
 import { normalizeWordKey } from '../../../shared/wordBatch';
