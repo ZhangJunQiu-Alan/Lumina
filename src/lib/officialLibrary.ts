@@ -45,7 +45,7 @@ function buildOfficialGroupPattern(prefix: string) {
 }
 
 function buildOfficialCounterPattern(prefix: string) {
-  return new RegExp(`^${escapeRegExp(prefix)}(顺序|乱序) · 第(\\d+) 组 · (\\d+)词$`);
+  return new RegExp(`^${escapeRegExp(prefix)}(顺序|乱序) · 第(\\d+)组 · (\\d+)词$`);
 }
 
 export const OFFICIAL_LIBRARY_DEFINITIONS: OfficialLibraryDefinition[] = [
