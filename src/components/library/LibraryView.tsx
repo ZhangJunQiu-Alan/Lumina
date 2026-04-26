@@ -1195,7 +1195,7 @@ export const LibraryView = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3">
             {officialLibraries.map(({ definition, summary, existingGroupCount }) => (
               <Fragment key={definition.id}>
                 <OfficialLibraryPanel
@@ -1247,7 +1247,7 @@ export const LibraryView = ({
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3">
               {customGroups.map((group, index) => (
                 <Fragment key={group.id}>
                   {LibraryGroupCard({
