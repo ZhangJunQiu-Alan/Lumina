@@ -96,16 +96,16 @@ function OrbitMetric({
   }[accent];
 
   return (
-    <div className={cx('home-metric glass rounded-[26px] border p-4 transition-all hover:bg-white/60 xl:p-5', tones.card, tones.shadow)}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="home-metric-value text-[38px] leading-none font-bold tracking-tight text-[#2f261d] sm:text-[42px] xl:text-[48px] prose-serif">
+    <div className={cx('home-metric glass flex-1 min-w-[110px] rounded-[22px] border p-3.5 transition-all hover:bg-white/60 sm:rounded-[26px] sm:p-4 xl:p-5', tones.card, tones.shadow)}>
+      <div className="flex flex-col sm:flex-row items-start justify-between gap-2 sm:gap-3">
+        <div className="order-2 sm:order-1">
+          <div className="home-metric-value text-[28px] leading-none font-bold tracking-tight text-[#2f261d] sm:text-[38px] lg:text-[42px] xl:text-[48px] prose-serif">
             {value}
           </div>
-          <div className="home-metric-label mt-2.5 text-[12px] text-[#7a6c5a] font-medium xl:mt-3 xl:text-[13px]">{label}</div>
+          <div className="home-metric-label mt-1.5 text-[10px] leading-tight text-[#7a6c5a] font-medium sm:mt-2.5 sm:text-[12px] xl:mt-3 xl:text-[13px]">{label}</div>
         </div>
-        <div className={cx('shrink-0 pt-1', tones.icon)}>
-          <Icon className="home-metric-icon h-6 w-6 opacity-80 xl:h-7 xl:w-7" strokeWidth={2.2} />
+        <div className={cx('order-1 sm:order-2 shrink-0 sm:pt-1', tones.icon)}>
+          <Icon className="home-metric-icon h-5 w-5 opacity-80 sm:h-6 sm:w-6 xl:h-7 xl:w-7" strokeWidth={2.2} />
         </div>
       </div>
     </div>
@@ -229,15 +229,15 @@ export const HomeView = ({ stats, onSelectOrbitDate, onStart, isLoading = false 
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6 }}
-          className="home-panel glass-elevated flex h-full flex-col rounded-[32px] p-6 md:p-8 xl:rounded-[40px] xl:p-10"
+          className="home-panel glass-elevated flex h-full flex-col rounded-[32px] p-5 sm:p-8 xl:rounded-[40px] xl:p-10"
         >
-          <div className="mb-8 xl:mb-10">
-            <h2 className="text-3xl font-black tracking-tight text-[#2f261d] prose-serif">
+          <div className="mb-6 sm:mb-8 xl:mb-10">
+            <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-[#2f261d] prose-serif">
               记忆疆域概览
             </h2>
           </div>
 
-          <div className="home-metrics grid gap-4 sm:grid-cols-3 xl:gap-5">
+          <div className="home-metrics flex flex-row gap-3 overflow-x-auto pb-2 sm:grid sm:grid-cols-3 sm:gap-4 sm:overflow-visible sm:pb-0 xl:gap-5">
             <OrbitMetric
               value={String(stats.streak)}
               label="连续学习天数"
@@ -258,13 +258,13 @@ export const HomeView = ({ stats, onSelectOrbitDate, onStart, isLoading = false 
             />
           </div>
 
-          <div className="home-orbit-heading mt-10 xl:mt-14">
-            <h2 className="text-[20px] font-bold tracking-widest text-[#2f261d] uppercase opacity-40">
+          <div className="home-orbit-heading mt-8 sm:mt-10 xl:mt-14">
+            <h2 className="text-[16px] sm:text-[20px] font-bold tracking-widest text-[#2f261d] uppercase opacity-40">
               星轨轨迹
             </h2>
           </div>
 
-          <div className="home-orbit-grid mt-6 grid grid-cols-7 gap-3 xl:mt-8 xl:gap-5">
+          <div className="home-orbit-grid mt-4 sm:mt-6 grid grid-cols-7 gap-2 sm:gap-3 xl:mt-8 xl:gap-5">
             {stats.orbitDays.map((node, index) => (
               <OrbitBadge
                 key={node.date}
@@ -276,20 +276,20 @@ export const HomeView = ({ stats, onSelectOrbitDate, onStart, isLoading = false 
             ))}
           </div>
 
-          <div className="home-summary mt-10 xl:mt-12">
-            <div className="home-summary-card rounded-[28px] border border-black/[0.03] bg-black/[0.03] p-6 xl:rounded-[32px] xl:p-8">
+          <div className="home-summary mt-8 sm:mt-10 xl:mt-12">
+            <div className="home-summary-card rounded-[22px] sm:rounded-[28px] border border-black/[0.03] bg-black/[0.03] p-4 sm:p-6 xl:rounded-[32px] xl:p-8">
               <div className="grid grid-cols-2 divide-x divide-black/[0.06]">
-                <div className="px-4 text-center">
-                  <div className="home-summary-value text-4xl font-black tracking-tighter text-[#2f261d] prose-serif xl:text-5xl">
+                <div className="px-2 sm:px-4 text-center">
+                  <div className="home-summary-value text-2xl sm:text-4xl font-black tracking-tighter text-[#2f261d] prose-serif xl:text-5xl">
                     {stats.selectedDayReviewWordCount}
                   </div>
-                  <div className="mt-2 text-[13px] text-[#847563] font-bold uppercase tracking-widest opacity-60">复习单词数</div>
+                  <div className="mt-1.5 text-[11px] sm:text-[13px] text-[#847563] font-bold uppercase tracking-widest opacity-60">复习单词数</div>
                 </div>
-                <div className="px-4 text-center">
-                  <div className="home-summary-value text-4xl font-black tracking-tighter text-[#2f261d] prose-serif xl:text-5xl">
+                <div className="px-2 sm:px-4 text-center">
+                  <div className="home-summary-value text-2xl sm:text-4xl font-black tracking-tighter text-[#2f261d] prose-serif xl:text-5xl">
                     {stats.selectedDayLearnedWordCount}
                   </div>
-                  <div className="mt-2 text-[13px] text-[#847563] font-bold uppercase tracking-widest opacity-60">新学习单词数</div>
+                  <div className="mt-1.5 text-[11px] sm:text-[13px] text-[#847563] font-bold uppercase tracking-widest opacity-60">新学习单词数</div>
                 </div>
               </div>
             </div>
@@ -307,38 +307,38 @@ export const HomeView = ({ stats, onSelectOrbitDate, onStart, isLoading = false 
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6 }}
-              className="home-panel home-routine glass-elevated relative z-10 flex h-full flex-col items-center rounded-[32px] p-6 text-center md:p-8 xl:rounded-[40px] xl:p-12"
+              className="home-panel home-routine glass-elevated relative z-10 flex h-full flex-col items-center rounded-[32px] p-5 text-center sm:p-8 xl:rounded-[40px] xl:p-12"
             >
               <div className="w-full text-left">
-                <h3 className="text-[13px] font-black tracking-[0.2em] text-[#847562] uppercase opacity-50 xl:text-[14px]">
+                <h3 className="text-[11px] sm:text-[13px] font-black tracking-[0.2em] text-[#847562] uppercase opacity-50 xl:text-[14px]">
                   Daily Routine
                 </h3>
               </div>
 
               <div className="home-routine-content flex w-full flex-1 flex-col items-center justify-center py-4 xl:py-8">
-                <div className="home-routine-visual relative flex h-48 w-full items-center justify-center xl:h-56">
-                  <div className="absolute h-32 w-56 rounded-full bg-apple-orange/15 blur-[80px] xl:h-40 xl:w-64" />
+                <div className="home-routine-visual relative flex h-36 w-full items-center justify-center sm:h-48 xl:h-56">
+                  <div className="absolute h-24 w-40 rounded-full bg-apple-orange/15 blur-[60px] sm:h-32 sm:w-56 xl:h-40 xl:w-64" />
                   <motion.img
                     src="/daily routine logo.webp"
                     alt="Lumina Learning Hero"
                     initial={{ scale: 0.85, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ type: "spring", stiffness: 100, damping: 20 }}
-                    className="home-routine-image relative z-10 w-full max-w-[300px] object-contain drop-shadow-[0_30px_60px_rgba(110,78,32,0.25)] xl:max-w-[360px]"
+                    className="home-routine-image relative z-10 w-full max-w-[200px] sm:max-w-[300px] object-contain drop-shadow-[0_30px_60px_rgba(110,78,32,0.25)] xl:max-w-[360px]"
                   />
                 </div>
                 
-                <div className="home-routine-copy mt-6 xl:mt-8">
-                  <h2 className="home-routine-title text-[34px] font-black leading-[1.1] tracking-tight text-[#2f261d] prose-serif md:text-[38px] xl:text-[40px]">
+                <div className="home-routine-copy mt-4 sm:mt-6 xl:mt-8">
+                  <h2 className="home-routine-title text-[28px] font-black leading-[1.1] tracking-tight text-[#2f261d] prose-serif sm:text-[34px] md:text-[38px] xl:text-[40px]">
                     {routineCard.title}
                   </h2>
-                  <div className="home-routine-subtitle mt-3 text-[13px] font-bold text-[#cf8922] xl:mt-4 xl:text-[14px]">
+                  <div className="home-routine-subtitle mt-2 text-[12px] font-bold text-[#cf8922] sm:mt-3 xl:mt-4 xl:text-[14px]">
                     {routineCard.subtitle}
                   </div>
                 </div>
               </div>
 
-              <div className="home-routine-steps mt-auto w-full space-y-4 rounded-[28px] border border-black/[0.02] bg-black/[0.04] p-5 text-left xl:space-y-5 xl:rounded-[32px] xl:p-7">
+              <div className="home-routine-steps mt-auto w-full space-y-3 rounded-[22px] sm:rounded-[28px] border border-black/[0.02] bg-black/[0.04] p-4 text-left sm:p-5 xl:space-y-5 xl:rounded-[32px] xl:p-7">
                 {routineCard.visibleSteps.map((step) => (
                   <RoutineStepRow
                     key={`${step.key}-${step.status}`}
@@ -351,7 +351,7 @@ export const HomeView = ({ stats, onSelectOrbitDate, onStart, isLoading = false 
               <MagneticButton
                 onClick={onStart}
                 disabled={isLoading}
-                className="home-cta mt-6 flex w-full items-center justify-center rounded-[26px] bg-[linear-gradient(180deg,#ffd17f_0%,#ffbf5e_100%)] py-4 text-[18px] font-black text-[#3d2f1c] shadow-[0_25px_50px_-15px_rgba(214,155,49,0.5)] transition-all active:brightness-95 disabled:opacity-50 xl:mt-10 xl:rounded-[30px] xl:py-6 xl:text-[22px]"
+                className="home-cta mt-5 flex w-full items-center justify-center rounded-[22px] sm:rounded-[26px] bg-[linear-gradient(180deg,#ffd17f_0%,#ffbf5e_100%)] py-3.5 text-[16px] sm:py-4 sm:text-[18px] font-black text-[#3d2f1c] shadow-[0_20px_40px_-15px_rgba(214,155,49,0.5)] transition-all active:brightness-95 disabled:opacity-50 xl:mt-10 xl:rounded-[30px] xl:py-6 xl:text-[22px]"
               >
                 {isLoading ? '准备中...' : routineCard.ctaLabel}
               </MagneticButton>

@@ -372,18 +372,18 @@ export function OfficialLibraryPanel({
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -12 }}
-          className="relative w-full overflow-hidden rounded-[34px] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.84),rgba(240,246,255,0.72))] p-6 md:p-7 jelly-shadow"
+          className="relative w-full overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.84),rgba(240,246,255,0.72))] p-5 sm:p-7 jelly-shadow"
         >
           <div className="pointer-events-none absolute -right-12 top-0 h-44 w-44 rounded-full bg-apple-blue/10 blur-3xl" />
           <div className="pointer-events-none absolute bottom-0 left-0 h-36 w-36 rounded-full bg-apple-teal/10 blur-3xl" />
-          <div className="relative space-y-5">
+          <div className="relative space-y-4 sm:space-y-5">
             <div>
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-white text-apple-blue shadow-[0_14px_34px_rgba(0,0,0,0.06)]">
-                    <LibraryIcon className="h-7 w-7" />
+              <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+                <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                  <div className="flex h-11 w-11 sm:h-14 sm:w-14 shrink-0 items-center justify-center rounded-full bg-white text-apple-blue shadow-[0_10px_24px_rgba(0,0,0,0.06)]">
+                    <LibraryIcon className="h-5.5 w-5.5 sm:h-7 sm:w-7" />
                   </div>
-                  <h3 className="text-3xl font-black leading-tight text-text-primary">
+                  <h3 className="text-xl sm:text-3xl font-black leading-tight text-text-primary truncate">
                     {definition.title}
                   </h3>
                 </div>
@@ -391,10 +391,10 @@ export function OfficialLibraryPanel({
                   <button
                     type="button"
                     onClick={() => { void onOpenDetail(); }}
-                    className="inline-flex items-center gap-2 rounded-full bg-white/82 px-4 py-2 text-sm font-bold text-text-secondary shadow-[0_10px_24px_rgba(0,0,0,0.05)] transition-colors hover:text-text-primary"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-white/82 px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-sm font-bold text-text-secondary shadow-[0_8px_20px_rgba(0,0,0,0.05)] transition-colors hover:text-text-primary"
                   >
                     看这条路径
-                    <ArrowRight className="h-4 w-4" />
+                    <ArrowRight className="h-3 w-3 sm:h-4 sm:w-4" />
                   </button>
                 )}
               </div>
@@ -403,7 +403,7 @@ export function OfficialLibraryPanel({
             <div
               role="tablist"
               aria-label="选择发放顺序"
-              className="inline-flex items-center gap-1 rounded-full bg-white/72 p-1 shadow-[0_10px_24px_rgba(0,0,0,0.05)]"
+              className="inline-flex items-center gap-0.5 rounded-full bg-white/72 p-0.5 sm:p-1 shadow-[0_8px_18px_rgba(0,0,0,0.05)]"
             >
               {(['sequential', 'shuffle'] as OfficialStudyMode[]).map((option) => {
                 const active = mode === option;
@@ -419,29 +419,29 @@ export function OfficialLibraryPanel({
                     title={hint}
                     onClick={() => handleModeOptionClick(option)}
                     disabled={actionDisabled}
-                    className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold transition-colors ${
+                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 sm:px-4 sm:py-1.5 text-[11px] sm:text-sm font-bold transition-colors ${
                       active
-                        ? 'bg-apple-blue text-white shadow-[0_8px_18px_rgba(0,122,255,0.22)]'
+                        ? 'bg-apple-blue text-white shadow-[0_6px_14px_rgba(0,122,255,0.22)]'
                         : 'text-text-secondary hover:text-text-primary'
                     } ${actionDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
                   >
-                    <Icon className="h-3.5 w-3.5" />
+                    <Icon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                     {label}
                   </button>
                 );
               })}
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              <div className={infoCardClassName}>
-                <p className="text-[11px] font-bold tracking-[0.2em] text-text-secondary">已完成</p>
-                <p className="text-right text-xl font-black text-text-primary">
+            <div className="grid gap-2.5 sm:gap-3 grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+              <div className={cx(infoCardClassName, 'h-[58px] sm:h-[76px]')}>
+                <p className="text-[10px] sm:text-[11px] font-bold tracking-tight sm:tracking-[0.2em] text-text-secondary">已完成</p>
+                <p className="text-right text-base sm:text-xl font-black text-text-primary">
                   {summary.progress} / {definition.words.length}
                 </p>
               </div>
-              <div className={infoCardClassName}>
-                <p className="text-[11px] font-bold tracking-[0.2em] text-text-secondary">下一批</p>
-                <p className="text-right text-xl font-black text-text-primary">
+              <div className={cx(infoCardClassName, 'h-[58px] sm:h-[76px]')}>
+                <p className="text-[10px] sm:text-[11px] font-bold tracking-tight sm:tracking-[0.2em] text-text-secondary">下一批</p>
+                <p className="text-right text-base sm:text-xl font-black text-text-primary">
                   {summary.nextBatchSize} 词
                 </p>
               </div>
@@ -451,10 +451,10 @@ export function OfficialLibraryPanel({
                   void handleStartOfficial();
                 }}
                 disabled={actionDisabled}
-                className="inline-flex h-[76px] w-full items-center justify-center gap-2 rounded-[22px] bg-apple-blue px-5 text-base font-black text-white shadow-[0_18px_34px_rgba(0,122,255,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+                className="col-span-2 xl:col-span-1 inline-flex h-12 sm:h-[76px] w-full items-center justify-center gap-2 rounded-[18px] sm:rounded-[22px] bg-apple-blue px-5 text-sm sm:text-base font-black text-white shadow-[0_12px_28px_rgba(0,122,255,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
               >
                 {ctaLabel}
-                {!actionDisabled && <ArrowRight className="h-5 w-5" />}
+                {!actionDisabled && <ArrowRight className="h-4 w-4" />}
               </button>
             </div>
 
