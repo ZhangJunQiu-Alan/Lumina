@@ -1,7 +1,21 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { AlertCircle, AlertTriangle, ArrowRight, BookOpen, ListOrdered, Loader2, Shuffle } from 'lucide-react';
+import {
+  AlertCircle,
+  AlertTriangle,
+  ArrowRight,
+  BookOpen,
+  ListOrdered,
+  Loader2,
+  Shuffle,
+  GraduationCap,
+  Award,
+  Library,
+  BookMarked,
+  Medal,
+  Sparkles,
+} from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { attemptBuffer } from '../../lib/attemptBuffer';
 import { resolveBrowserTimeZone } from '../../lib/homeApi';
@@ -47,6 +61,16 @@ const infoCardClassName =
 const officialStudyModeLabel: Record<OfficialStudyMode, string> = {
   sequential: '顺序',
   shuffle: '随机',
+};
+
+const ICON_MAP: Record<string, any> = {
+  BookOpen,
+  Sparkles,
+  GraduationCap,
+  Award,
+  Library,
+  BookMarked,
+  Medal,
 };
 
 function SwitchOfficialModeDialog({
@@ -136,6 +160,8 @@ export function OfficialLibraryPanel({
   const [mode, setMode] = useState<OfficialStudyMode>('sequential');
   const [pendingSwitchMode, setPendingSwitchMode] = useState<OfficialStudyMode | null>(null);
   const [isSwitchingMode, setIsSwitchingMode] = useState(false);
+
+  const LibraryIcon = ICON_MAP[definition.icon || 'BookOpen'] || BookOpen;
 
   const startMode = resolveOfficialLibraryStartMode(summary);
   const actionDisabled = startMode === 'completed';
@@ -355,7 +381,7 @@ export function OfficialLibraryPanel({
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="flex items-center gap-4">
                   <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-white text-apple-blue shadow-[0_14px_34px_rgba(0,0,0,0.06)]">
-                    <BookOpen className="h-7 w-7" />
+                    <LibraryIcon className="h-7 w-7" />
                   </div>
                   <h3 className="text-3xl font-black leading-tight text-text-primary">
                     {definition.title}

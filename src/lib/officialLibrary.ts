@@ -25,6 +25,7 @@ export interface OfficialLibraryDefinition {
   groupPattern: RegExp;
   counterPattern: RegExp;
   legacyGroupPatterns?: RegExp[];
+  icon?: string;
 }
 
 export interface OfficialBatchPlan {
@@ -49,6 +50,29 @@ function buildOfficialCounterPattern(prefix: string) {
 
 export const OFFICIAL_LIBRARY_DEFINITIONS: OfficialLibraryDefinition[] = [
   {
+    id: 'ielts-vocab',
+    title: '雅思词汇真经',
+    groupPrefix: '雅思词汇真经 · ',
+    batchSize: DEFAULT_BATCH_SIZE,
+    words: IELTS_WORDS_FLAT,
+    description: `${IELTS_CHAPTERS.length} 章 · ${IELTS_WORDS_FLAT.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过。`,
+    groupPattern: buildOfficialGroupPattern('雅思词汇真经 · '),
+    counterPattern: buildOfficialCounterPattern('雅思词汇真经 · '),
+    legacyGroupPatterns: [/^雅思词汇真经 · (\d{4})-(\d{4})$/],
+    icon: 'BookOpen',
+  },
+  {
+    id: 'gre-zhenkao-v7',
+    title: GRE_ZHENKAO_V7_TITLE,
+    groupPrefix: `${GRE_ZHENKAO_V7_TITLE} · `,
+    batchSize: DEFAULT_BATCH_SIZE,
+    words: GRE_ZHENKAO_V7_WORDS,
+    description: `机经词表 · ${GRE_ZHENKAO_V7_WORDS.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过。`,
+    groupPattern: buildOfficialGroupPattern(`${GRE_ZHENKAO_V7_TITLE} · `),
+    counterPattern: buildOfficialCounterPattern(`${GRE_ZHENKAO_V7_TITLE} · `),
+    icon: 'Sparkles',
+  },
+  {
     id: 'cet4-vocab',
     title: CET4_TITLE,
     groupPrefix: `${CET4_TITLE} · `,
@@ -57,6 +81,7 @@ export const OFFICIAL_LIBRARY_DEFINITIONS: OfficialLibraryDefinition[] = [
     description: `核心词汇 · ${CET4_WORDS.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过。`,
     groupPattern: buildOfficialGroupPattern(`${CET4_TITLE} · `),
     counterPattern: buildOfficialCounterPattern(`${CET4_TITLE} · `),
+    icon: 'GraduationCap',
   },
   {
     id: 'cet6-vocab',
@@ -67,6 +92,7 @@ export const OFFICIAL_LIBRARY_DEFINITIONS: OfficialLibraryDefinition[] = [
     description: `核心词汇 · ${CET6_WORDS.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过。`,
     groupPattern: buildOfficialGroupPattern(`${CET6_TITLE} · `),
     counterPattern: buildOfficialCounterPattern(`${CET6_TITLE} · `),
+    icon: 'Award',
   },
   {
     id: 'npee-vocab',
@@ -77,6 +103,7 @@ export const OFFICIAL_LIBRARY_DEFINITIONS: OfficialLibraryDefinition[] = [
     description: `大纲词汇 · ${NPEE_WORDS.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过。`,
     groupPattern: buildOfficialGroupPattern(`${NPEE_TITLE} · `),
     counterPattern: buildOfficialCounterPattern(`${NPEE_TITLE} · `),
+    icon: 'Library',
   },
   {
     id: 'tem4-vocab',
@@ -87,6 +114,7 @@ export const OFFICIAL_LIBRARY_DEFINITIONS: OfficialLibraryDefinition[] = [
     description: `专业四级 · ${TEM4_WORDS.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过。`,
     groupPattern: buildOfficialGroupPattern(`${TEM4_TITLE} · `),
     counterPattern: buildOfficialCounterPattern(`${TEM4_TITLE} · `),
+    icon: 'BookMarked',
   },
   {
     id: 'tem8-vocab',
@@ -97,27 +125,7 @@ export const OFFICIAL_LIBRARY_DEFINITIONS: OfficialLibraryDefinition[] = [
     description: `专业八级 · ${TEM8_WORDS.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过。`,
     groupPattern: buildOfficialGroupPattern(`${TEM8_TITLE} · `),
     counterPattern: buildOfficialCounterPattern(`${TEM8_TITLE} · `),
-  },
-  {
-    id: 'ielts-vocab',
-    title: '雅思词汇真经',
-    groupPrefix: '雅思词汇真经 · ',
-    batchSize: DEFAULT_BATCH_SIZE,
-    words: IELTS_WORDS_FLAT,
-    description: `${IELTS_CHAPTERS.length} 章 · ${IELTS_WORDS_FLAT.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已 学过的自动跳过。`,
-    groupPattern: buildOfficialGroupPattern('雅思词汇真经 · '),
-    counterPattern: buildOfficialCounterPattern('雅思词汇真经 · '),
-    legacyGroupPatterns: [/^雅思词汇真经 · (\d{4})-(\d{4})$/],
-  },
-  {
-    id: 'gre-zhenkao-v7',
-    title: GRE_ZHENKAO_V7_TITLE,
-    groupPrefix: `${GRE_ZHENKAO_V7_TITLE} · `,
-    batchSize: DEFAULT_BATCH_SIZE,
-    words: GRE_ZHENKAO_V7_WORDS,
-    description: `机经词表 · ${GRE_ZHENKAO_V7_WORDS.length} 词 · 顺 序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过 。`,
-    groupPattern: buildOfficialGroupPattern(`${GRE_ZHENKAO_V7_TITLE} · `),
-    counterPattern: buildOfficialCounterPattern(`${GRE_ZHENKAO_V7_TITLE} · `),
+    icon: 'Medal',
   },
 ];
 
