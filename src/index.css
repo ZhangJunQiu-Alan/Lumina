@@ -60,6 +60,10 @@
   .jelly-shadow:active {
     transform: scale(0.97);
   }
+  
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
 
 body {

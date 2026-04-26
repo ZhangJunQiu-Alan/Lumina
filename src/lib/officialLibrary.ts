@@ -1,5 +1,6 @@
 import { GRE_ZHENKAO_V7_TITLE, GRE_ZHENKAO_V7_WORDS } from '../data/gre-zhenkao-v7';
 import { IELTS_CHAPTERS, IELTS_WORDS_FLAT } from '../data/ielts-vocab';
+import { CET4_TITLE, CET4_WORDS } from '../data/cet4-vocab';
 import type {
   LibraryGroupSummary,
   OfficialLibraryId,
@@ -39,17 +40,27 @@ function buildOfficialGroupPattern(prefix: string) {
 }
 
 function buildOfficialCounterPattern(prefix: string) {
-  return new RegExp(`^${escapeRegExp(prefix)}(顺序|乱序) · 第(\\d+)组 · (\\d+)词$`);
+  return new RegExp(`^${escapeRegExp(prefix)}(顺序|乱序) · 第(\\d+) 组 · (\\d+)词$`);
 }
 
 export const OFFICIAL_LIBRARY_DEFINITIONS: OfficialLibraryDefinition[] = [
+  {
+    id: 'cet4-vocab',
+    title: CET4_TITLE,
+    groupPrefix: `${CET4_TITLE} · `,
+    batchSize: DEFAULT_BATCH_SIZE,
+    words: CET4_WORDS,
+    description: `核心词汇 · ${CET4_WORDS.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过。`,
+    groupPattern: buildOfficialGroupPattern(`${CET4_TITLE} · `),
+    counterPattern: buildOfficialCounterPattern(`${CET4_TITLE} · `),
+  },
   {
     id: 'ielts-vocab',
     title: '雅思词汇真经',
     groupPrefix: '雅思词汇真经 · ',
     batchSize: DEFAULT_BATCH_SIZE,
     words: IELTS_WORDS_FLAT,
-    description: `${IELTS_CHAPTERS.length} 章 · ${IELTS_WORDS_FLAT.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过。`,
+    description: `${IELTS_CHAPTERS.length} 章 · ${IELTS_WORDS_FLAT.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已 学过的自动跳过。`,
     groupPattern: buildOfficialGroupPattern('雅思词汇真经 · '),
     counterPattern: buildOfficialCounterPattern('雅思词汇真经 · '),
     legacyGroupPatterns: [/^雅思词汇真经 · (\d{4})-(\d{4})$/],
@@ -60,7 +71,7 @@ export const OFFICIAL_LIBRARY_DEFINITIONS: OfficialLibraryDefinition[] = [
     groupPrefix: `${GRE_ZHENKAO_V7_TITLE} · `,
     batchSize: DEFAULT_BATCH_SIZE,
     words: GRE_ZHENKAO_V7_WORDS,
-    description: `机经词表 · ${GRE_ZHENKAO_V7_WORDS.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过。`,
+    description: `机经词表 · ${GRE_ZHENKAO_V7_WORDS.length} 词 · 顺 序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过 。`,
     groupPattern: buildOfficialGroupPattern(`${GRE_ZHENKAO_V7_TITLE} · `),
     counterPattern: buildOfficialCounterPattern(`${GRE_ZHENKAO_V7_TITLE} · `),
   },

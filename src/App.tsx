@@ -711,8 +711,8 @@ export default function App() {
           className={cx(
             'h-full overflow-y-auto relative z-10',
             isSessionRoute
-              ? 'session-main px-4 py-6 md:px-6 md:py-7 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10'
-              : 'px-6 pt-24 pb-32 lg:px-6 lg:py-7 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10',
+              ? 'session-main px-4 py-6 pb-32 md:px-6 md:py-7 lg:pb-7 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10'
+              : 'px-6 pt-16 pb-32 lg:pt-24 lg:px-6 lg:py-7 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10',
           )}
         >
           <div

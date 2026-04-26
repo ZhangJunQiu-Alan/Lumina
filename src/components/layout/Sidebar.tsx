@@ -48,51 +48,51 @@ export const Sidebar = ({
     <motion.aside
       initial={{ x: -100, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
-      className="fixed left-6 top-6 bottom-6 z-50 flex w-20 flex-col items-center gap-8 rounded-apple-lg glass py-8 jelly-shadow"
+      className="fixed bottom-0 left-0 right-0 z-50 flex h-20 w-full flex-row items-center justify-around rounded-t-[32px] border-t border-white/20 glass px-6 pb-safe jelly-shadow lg:bottom-6 lg:left-6 lg:top-6 lg:h-auto lg:w-20 lg:flex-col lg:justify-start lg:gap-8 lg:rounded-apple-lg lg:border-t-0 lg:px-0 lg:py-8 lg:pb-8"
     >
       {NAV_ITEMS.map((item) => (
         <button
           key={item.to}
           onClick={() => onNavigate(item.to)}
-          className={`group relative flex h-11 w-11 items-center justify-center rounded-[14px] transition-all duration-300 ${
+          className={`group relative flex h-12 w-12 items-center justify-center rounded-[16px] transition-all duration-300 lg:h-11 lg:w-11 lg:rounded-[14px] ${
             activePath === item.to
               ? 'bg-white text-apple-blue shadow-lg shadow-black/5'
               : 'text-gray-400 hover:bg-white/50 hover:text-gray-600'
           }`}
         >
-          <item.icon className="h-6 w-6" />
-          <span className="pointer-events-none absolute left-full ml-4 whitespace-nowrap rounded bg-gray-800 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100">
+          <item.icon className="h-6 w-6 lg:h-6 lg:w-6" />
+          <span className="pointer-events-none absolute left-full ml-4 hidden whitespace-nowrap rounded bg-gray-800 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 lg:block">
             {item.label}
           </span>
         </button>
       ))}
 
-      <div ref={menuRef} className="relative mt-auto">
+      <div ref={menuRef} className="relative lg:mt-auto">
         <button
           type="button"
           onClick={() => setIsAccountMenuOpen((prev) => !prev)}
-          className={`flex h-11 w-11 items-center justify-center rounded-[14px] transition-colors ${
+          className={`flex h-12 w-12 items-center justify-center rounded-[16px] transition-colors lg:h-11 lg:w-11 lg:rounded-[14px] ${
             activePath === '/app/settings'
               ? 'bg-white text-apple-blue shadow-lg shadow-black/5'
               : 'text-gray-400 hover:bg-white/50 hover:text-gray-700'
           }`}
         >
-          <Settings className="h-6 w-6" />
+          <Settings className="h-6 w-6 lg:h-6 lg:w-6" />
         </button>
 
         <AnimatePresence>
           {isAccountMenuOpen && (
             <motion.div
-              initial={{ opacity: 0, x: -12, y: 8 }}
-              animate={{ opacity: 1, x: 0, y: 0 }}
-              exit={{ opacity: 0, x: -12, y: 8 }}
-              className="absolute bottom-0 left-full ml-4 w-72 rounded-[28px] border border-white/70 bg-white/88 p-4 shadow-[0_24px_60px_rgba(0,0,0,0.12)] backdrop-blur-2xl"
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="absolute bottom-full right-0 mb-4 w-[calc(100vw-48px)] max-w-[320px] origin-bottom-right rounded-[28px] border border-white/70 bg-white/88 p-4 shadow-[0_24px_60px_rgba(0,0,0,0.12)] backdrop-blur-2xl lg:bottom-0 lg:left-full lg:right-auto lg:mb-0 lg:ml-4 lg:w-72 lg:origin-bottom-left"
             >
               <div className="flex items-center gap-3 rounded-[22px] bg-apple-gray px-3 py-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-apple-blue text-base font-black text-white">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-apple-blue text-base font-black text-white">
                   {userInitial}
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-black text-text-primary">
                     {userName ?? '当前在用账号'}
                   </p>
