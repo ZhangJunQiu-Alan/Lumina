@@ -761,7 +761,12 @@ export const LearningEngine = ({
 
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    setInputValue(val);
+    if (type === 'round2' || type === 'review') {
+      const filtered = val.toLowerCase().replace(/[^a-z'-]/g, '').slice(0, expectedInput.length);
+      setInputValue(filtered);
+    } else {
+      setInputValue(val);
+    }
     setIsWrong(false);
   };
 
@@ -1094,12 +1099,15 @@ export const LearningEngine = ({
               </div>
             </div>
           ) : (
-            <div className="flex h-full min-h-0 flex-col">
+            <div
+              className="relative flex h-full min-h-0 flex-col"
+              onClick={() => inputRef.current?.focus()}
+            >
               <div className={cx(contentAreaClassName, 'py-8')}>
                 <div className="flex min-h-full flex-col justify-center text-center">
                   {round2ReplayControls}
                   {clozePrompt ? (
-                    <Round2ClozePrompt prompt={clozePrompt} />
+                    <Round2ClozePrompt prompt={clozePrompt} inputValue={inputValue} />
                   ) : (
                     <div className="mx-auto max-w-3xl">
                       <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary">
@@ -1113,34 +1121,40 @@ export const LearningEngine = ({
                           {primaryPos}
                         </span>
                       </div>
+                      <div className="mt-7 inline-flex items-baseline gap-1.5 rounded-md bg-apple-blue/10 px-4 py-2 text-2xl text-apple-blue/80 md:text-3xl">
+                        {Array.from({ length: expectedInput.length }, (_, i) => (
+                          <span key={i} className="inline-block min-w-[0.9ch] text-center font-mono">
+                            {inputValue[i] ?? '_'}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   )}
-                </div>
-              </div>
 
-              <div className={inputDockClassName}>
-                <div className="mx-auto w-full max-w-3xl">
-                  <div className="flex flex-row items-stretch gap-3">
-                    <div className="flex-[3.2] min-w-0">
-                      {inputField}
-                    </div>
-                    <div className="flex-1 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => { void validateCurrentInput(); }}
-                        disabled={actionDisabled}
-                        className="flex h-full min-h-[62px] w-full items-center justify-center rounded-[22px] bg-apple-blue text-white shadow-[0_14px_32px_rgba(0,122,255,0.25)] transition-all active:scale-[0.96] disabled:opacity-50"
-                      >
-                        <ChevronRight className="h-6 w-6" strokeWidth={3} />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="mt-4 space-y-4">
+                  <div className="mt-6 space-y-3">
                     {feedbackReveal}
                     {submitErrorBanner}
                   </div>
                 </div>
               </div>
+
+              <form onSubmit={handleSubmit}>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={inputValue}
+                  onChange={handleInput}
+                  disabled={isSubmittingAttempt || showAnswer}
+                  maxLength={expectedInput.length}
+                  autoFocus
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  className="absolute left-1/2 top-1/2 h-px w-px -translate-x-1/2 -translate-y-1/2 opacity-0"
+                  aria-label="拼写输入"
+                />
+              </form>
             </div>
           )}
         </motion.div>
