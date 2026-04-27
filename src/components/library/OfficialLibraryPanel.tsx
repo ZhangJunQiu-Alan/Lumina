@@ -437,7 +437,7 @@ export function OfficialLibraryPanel({
               <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[24px] bg-white text-apple-blue shadow-[0_14px_30px_rgba(0,122,255,0.10)] sm:h-16 sm:w-16">
                 <LibraryIcon className="h-6 w-6 sm:h-8 sm:w-8" />
               </div>
-              <h3 className="min-w-0 truncate text-2xl font-black leading-tight text-text-primary sm:text-3xl">
+              <h3 className="min-w-0 truncate text-[1.2rem] font-black leading-tight text-text-primary sm:text-2xl">
                 {definition.title}
               </h3>
             </div>

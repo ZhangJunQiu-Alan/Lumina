@@ -193,17 +193,22 @@ const InputSessionShell = ({
   type,
   currentIndex,
   queueLength,
+  sessionActions,
   main,
 }: {
   type: RoundType;
   currentIndex: number;
   queueLength: number;
+  sessionActions?: React.ReactNode;
   main: React.ReactNode;
 }) => (
   <div className="input-session-shell mx-auto flex h-full min-h-0 w-full max-w-[1400px] flex-col gap-3 sm:gap-4">
     <header className="shrink-0 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
       <RoundIndicator type={type} className="min-w-0 flex-1" />
-      <SessionProgress currentIndex={currentIndex} queueLength={queueLength} />
+      <div className="flex shrink-0 items-center justify-end gap-2">
+        {sessionActions}
+        <SessionProgress currentIndex={currentIndex} queueLength={queueLength} />
+      </div>
     </header>
 
     <div className="input-session-shell__body min-w-0 flex-1 min-h-0">
@@ -249,6 +254,7 @@ export const LearningEngine = ({
   onComplete,
   onAttempt,
   onSessionChange,
+  sessionActions,
 }: {
   type: RoundType;
   words: Word[];
@@ -265,6 +271,7 @@ export const LearningEngine = ({
     currentIndex: number;
     queueWordIds: string[];
   }) => void;
+  sessionActions?: React.ReactNode;
 }) => {
   const { preferences } = useLearningPreferences();
   const initialEngineState = useMemo(() => {
@@ -319,12 +326,14 @@ export const LearningEngine = ({
   const answerRevealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioGapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playbackRunIdRef = useRef(0);
+  const preferencesRef = useRef(preferences);
   const canPlayExampleAudio = useMemo(() => typeof Audio !== 'undefined' || isBrowserSpeechSupported(), []);
 
   const queueRef = useRef<Word[]>(initialEngineState.queue);
   const currentIndexRef = useRef(initialEngineState.currentIndex);
   useEffect(() => { queueRef.current = queue; }, [queue]);
   useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
+  useEffect(() => { preferencesRef.current = preferences; }, [preferences]);
 
   const currentWord = queue[currentIndex];
   const clozePrompt = useMemo(() => {
@@ -583,27 +592,24 @@ export const LearningEngine = ({
   useEffect(() => {
     if (!currentWord) return;
 
-    const locale = preferences.defaultPronunciationLocale;
+    const currentPreferences = preferencesRef.current;
+    const locale = currentPreferences.defaultPronunciationLocale;
     setAudioLocale(locale);
     stopPlayback();
 
-    if (!preferences.autoPlayEnabled) {
+    if (!currentPreferences.autoPlayEnabled) {
       return;
     }
 
     void playAudioSequence(
       currentWord,
       locale,
-      preferences.autoPlayRepeatCount,
-      preferences.autoPlayRepeatGapMs,
+      currentPreferences.autoPlayRepeatCount,
+      currentPreferences.autoPlayRepeatGapMs,
     );
   }, [
     currentWord,
     playAudioSequence,
-    preferences.autoPlayEnabled,
-    preferences.autoPlayRepeatCount,
-    preferences.autoPlayRepeatGapMs,
-    preferences.defaultPronunciationLocale,
     stopPlayback,
   ]);
 
@@ -869,23 +875,18 @@ export const LearningEngine = ({
     </AnimatePresence>
   );
 
-  const round2ReplayControls = type === 'round2' ? (
+  const replayControls = (type === 'round2' || type === 'review') ? (
     <div className="mx-auto mb-8 flex flex-wrap items-center justify-center gap-2.5">
       <span className="rounded-full bg-black/5 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-text-secondary">
         想再听就点这里
       </span>
       {(['uk', 'us'] as const).map((loc) => (
         <button
-          key={`round2-replay-${loc}`}
+          key={`${type}-replay-${loc}`}
           type="button"
           onClick={() => {
             setAudioLocale(loc);
-            void playAudioSequence(
-              currentWord,
-              loc,
-              preferences.autoPlayRepeatCount,
-              preferences.autoPlayRepeatGapMs,
-            );
+            void playAudioSequence(currentWord, loc, 1, 0);
           }}
           className={cx(
             'flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-black tracking-[0.14em] transition-all',
@@ -933,8 +934,9 @@ export const LearningEngine = ({
   if (type === 'round3') {
     return (
       <div className="w-full max-w-4xl mx-auto flex flex-col items-center">
-        <div className="w-full max-w-3xl">
-          <RoundIndicator type={type} />
+        <div className="flex w-full max-w-3xl items-center gap-2">
+          <RoundIndicator type={type} className="min-w-0 flex-1" />
+          {sessionActions}
         </div>
         <motion.div
           key={currentWord.id + currentIndex}
@@ -1031,6 +1033,7 @@ export const LearningEngine = ({
       type={type}
       currentIndex={displayProgressIndex}
       queueLength={initialUniqueCount}
+      sessionActions={sessionActions}
       main={(
         <motion.div
           key={currentWord.id + currentIndex}
@@ -1105,7 +1108,7 @@ export const LearningEngine = ({
             >
               <div className={cx(contentAreaClassName, 'py-8')}>
                 <div className="flex min-h-full flex-col justify-center text-center">
-                  {round2ReplayControls}
+                  {replayControls}
                   {clozePrompt ? (
                     <Round2ClozePrompt prompt={clozePrompt} inputValue={inputValue} />
                   ) : (

@@ -232,6 +232,8 @@ export interface LibraryGroupWord {
   nextReviewAt: string | null;
   lastResult: ReviewResultType | null;
   sequenceNo: number;
+  audioUkUrl?: string | null;
+  audioUsUrl?: string | null;
 }
 
 export type ViewState = 'home' | 'library' | 'import' | 'learning' | 'auth' | 'profile' | 'settings' | 'reviewResults';

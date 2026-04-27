@@ -247,3 +247,57 @@ export async function fetchOfficialCompletionCounts(userId: string): Promise<Off
     ]),
   ) as OfficialLibraryCompletionCounts;
 }
+
+export async function fetchDifficultWords(userId: string) {
+  const { data, error } = await supabase
+    .from('review_states')
+    .select(`
+      memory_state,
+      next_review_at,
+      last_result,
+      vocabulary_items!inner (
+        id,
+        word,
+        ipa_uk,
+        primary_meaning_zh,
+        morphology_summary_zh,
+        memory_tip,
+        created_at,
+        audio_uk_url,
+        audio_us_url,
+        vocabulary_senses (
+          pos,
+          example_sentence,
+          example_translation_zh
+        ),
+        vocabulary_morphology_parts (
+          part_text,
+          part_kind,
+          meaning_zh,
+          note_zh,
+          sort_order
+        ),
+        vocabulary_relations (
+          relation_type,
+          related_word,
+          meaning_zh,
+          note_zh,
+          sort_order
+        ),
+        confused_words (
+          confused_word,
+          difference_note_zh,
+          sort_order
+        )
+      )
+    `)
+    .eq('user_id', userId)
+    .in('memory_state', ['fuzzy', 'slow_recall'])
+    .order('next_review_at', { ascending: true });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}

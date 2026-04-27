@@ -4,12 +4,12 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback, Suspense, lazy } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import {
   AlertCircle,
   Loader2,
-  ChevronRight,
   LogOut,
+  Settings,
 } from 'lucide-react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -24,6 +24,7 @@ import {
 } from './types';
 import { Sidebar } from './components/layout/Sidebar';
 import { WhatsNewModal } from './components/shared/WhatsNewModal';
+import { SessionSettingsDrawer } from './components/settings/SessionSettingsDrawer';
 import { fetchDueReviewWords, submitReviewAttempt } from './lib/reviewApi';
 import { useAuth } from './contexts/AuthContext';
 import { useLearningPreferences } from './contexts/LearningPreferencesContext';
@@ -50,6 +51,7 @@ import { fetchHomeOverview, resolveBrowserTimeZone } from './lib/homeApi';
 const HomeView = lazy(() => import('./components/home/HomeView').then(m => ({ default: m.HomeView })));
 const ImportView = lazy(() => import('./components/import/ImportView').then(m => ({ default: m.ImportView })));
 const LibraryView = lazy(() => import('./components/library/LibraryView').then(m => ({ default: m.LibraryView })));
+const NotebookView = lazy(() => import('./components/notebook/NotebookView').then(m => ({ default: m.NotebookView })));
 const OfficialLibraryDetailView = lazy(() => import('./components/library/LibraryView').then(m => ({ default: m.OfficialLibraryDetailView })));
 const LibraryGroupDetailView = lazy(() => import('./components/library/LibraryView').then(m => ({ default: m.LibraryGroupDetailView })));
 const ReviewResultsView = lazy(() => import('./components/review/ReviewResultsView').then(m => ({ default: m.ReviewResultsView })));
@@ -214,6 +216,7 @@ export default function App() {
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [reviewSummary, setReviewSummary] = useState<ReviewSummaryItem[]>([]);
   const [sessionStartError, setSessionStartError] = useState('');
+  const [isSessionSettingsOpen, setIsSessionSettingsOpen] = useState(false);
   const [stats, setStats] = useState<UserStats>(buildEmptyStats);
 
   useEffect(() => {
@@ -645,11 +648,51 @@ export default function App() {
   const activeNavPath = (() => {
     if (location.pathname.startsWith('/app/library')) return '/app/library';
     if (location.pathname.startsWith('/app/import')) return '/app/import';
+    if (location.pathname.startsWith('/app/notebook')) return '/app/notebook';
     if (location.pathname.startsWith('/app/settings')) return '/app/settings';
     if (location.pathname.startsWith('/app/profile')) return '/app/profile';
     return '/app/home';
   })();
   const isSessionRoute = location.pathname.startsWith('/app/session');
+
+  useEffect(() => {
+    if (!isSessionRoute) {
+      setIsSessionSettingsOpen(false);
+    }
+  }, [isSessionRoute]);
+
+  useEffect(() => {
+    if (!isSessionSettingsOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsSessionSettingsOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSessionSettingsOpen]);
+
+  const sessionSettingsButton = isSessionRoute ? (
+    <button
+      type="button"
+      data-session-settings-toggle
+      aria-label={isSessionSettingsOpen ? '关闭学习节奏设置' : '打开学习节奏设置'}
+      aria-pressed={isSessionSettingsOpen}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+        setIsSessionSettingsOpen((prev) => !prev);
+      }}
+      className={cx(
+        'flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border border-white/80 bg-white/84 text-apple-blue shadow-[0_14px_34px_rgba(0,122,255,0.16)] backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:bg-white active:scale-95',
+        isSessionSettingsOpen && 'bg-apple-blue text-white shadow-[0_16px_34px_rgba(0,122,255,0.26)]',
+      )}
+    >
+      <Settings className="h-5 w-5" strokeWidth={2.6} />
+    </button>
+  ) : null;
 
   useEffect(() => {
     mainScrollRef.current?.scrollTo({ top: 0 });
@@ -706,15 +749,20 @@ export default function App() {
       <Sidebar
         activePath={activeNavPath}
         onNavigate={(to) => navigate(to)}
-        onSignOut={() => { void handleSignOut(); }}
-        userEmail={user?.email ?? null}
-        userName={(user?.user_metadata.full_name as string | undefined) ?? null}
       />
       <WhatsNewModal />
 
       <div className="flex-1 relative h-screen overflow-hidden">
         <main
           ref={mainScrollRef}
+          onPointerDownCapture={(event) => {
+            if (!isSessionRoute || !isSessionSettingsOpen) return;
+            const target = event.target as HTMLElement;
+            if (target.closest('[data-session-settings-toggle]')) return;
+            setIsSessionSettingsOpen(false);
+            event.preventDefault();
+            event.stopPropagation();
+          }}
           className={cx(
             'h-full overflow-y-auto relative z-10',
             isSessionRoute
@@ -799,6 +847,7 @@ export default function App() {
                     )}
                   />
                   <Route path="import" element={<ImportView onStartLearning={handleStartLearningGroup} />} />
+                  <Route path="notebook" element={<NotebookView />} />
                   <Route
                     path="session"
                     element={activeWords.length === 0 ? sessionEmptyState : (
@@ -826,6 +875,7 @@ export default function App() {
                             onComplete={handleRoundComplete}
                             onAttempt={handleAttempt}
                             onSessionChange={handleLearningSessionChange}
+                            sessionActions={sessionSettingsButton}
                           />
                         </React.Fragment>
                       )
@@ -876,6 +926,10 @@ export default function App() {
             </div>
           </div>
         </main>
+        <SessionSettingsDrawer
+          isOpen={isSessionRoute && isSessionSettingsOpen}
+          onClose={() => setIsSessionSettingsOpen(false)}
+        />
       </div>
     </div>
   );

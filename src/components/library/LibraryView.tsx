@@ -976,7 +976,7 @@ function LibraryGroupCard({
       <div className="relative">
         <div className="flex items-start justify-between gap-5">
           <div className="min-w-0">
-            <h4 className="mt-2 text-2xl font-black leading-tight text-text-primary">{group.title}</h4>
+            <h4 className="mt-2 text-[1.2rem] font-black leading-tight text-text-primary">{group.title}</h4>
           </div>
 
           <div className="flex flex-col items-end gap-3">
