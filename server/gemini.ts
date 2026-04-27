@@ -27,7 +27,7 @@ function readPositiveIntEnv(name: string, fallback: number) {
 const ENRICH_MODEL = process.env.GEMINI_ENRICH_MODEL?.trim() || 'gemini-2.5-flash';
 const ARTICLE_MODEL = process.env.GEMINI_ARTICLE_MODEL?.trim() || 'gemini-2.5-flash';
 const DEFAULT_ENRICH_CHUNK_SIZE = readPositiveIntEnv('GEMINI_ENRICH_BATCH_SIZE', 10);
-const DEFAULT_ENRICH_MAX_CONCURRENCY = readPositiveIntEnv('GEMINI_ENRICH_MAX_CONCURRENCY', 5);
+const DEFAULT_ENRICH_MAX_CONCURRENCY = readPositiveIntEnv('GEMINI_ENRICH_MAX_CONCURRENCY', 15);
 const ENRICH_MAX_OUTPUT_TOKENS = readPositiveIntEnv('GEMINI_ENRICH_MAX_OUTPUT_TOKENS', 8192);
 const MAX_ENRICH_RETRIES = 3;
 const BASE_RETRY_DELAY_MS = 2000;
