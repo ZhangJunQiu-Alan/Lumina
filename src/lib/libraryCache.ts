@@ -2,6 +2,7 @@ import type {
   LibraryGroupSummary,
   LibraryGroupWord,
   OfficialLibraryId,
+  OfficialLibraryCompletionCounts,
   OfficialResumeTargets,
   OfficialLibrarySummary,
 } from '../types';
@@ -41,6 +42,9 @@ const officialDetailRequests = new Map<string, Promise<OfficialLibraryDetailCach
 
 const officialLearnedCache = new Map<string, CacheEntry<Set<string>>>();
 const officialLearnedRequests = new Map<string, Promise<Set<string>>>();
+
+const officialCompletionCache = new Map<string, CacheEntry<OfficialLibraryCompletionCounts>>();
+const officialCompletionRequests = new Map<string, Promise<OfficialLibraryCompletionCounts>>();
 
 function buildGroupDetailKey(userId: string, groupId: string) {
   return `${userId}:${groupId}`;
@@ -171,6 +175,33 @@ export async function refreshOfficialLearnedWords(
   return request;
 }
 
+export function getCachedOfficialCompletionCounts(userId: string) {
+  return officialCompletionCache.get(userId) ?? null;
+}
+
+export async function refreshOfficialCompletionCounts(
+  userId: string,
+  loader: () => Promise<OfficialLibraryCompletionCounts>,
+) {
+  const existingRequest = officialCompletionRequests.get(userId);
+  if (existingRequest) return existingRequest;
+
+  const request = loader()
+    .then((data) => {
+      officialCompletionCache.set(userId, {
+        data,
+        cachedAt: Date.now(),
+      });
+      return data;
+    })
+    .finally(() => {
+      officialCompletionRequests.delete(userId);
+    });
+
+  officialCompletionRequests.set(userId, request);
+  return request;
+}
+
 export async function refreshOfficialLibraryDetail(
   userId: string,
   libraryId: OfficialLibraryId,
@@ -208,6 +239,8 @@ export function invalidateLibraryCache(userId?: string) {
     officialDetailRequests.clear();
     officialLearnedCache.clear();
     officialLearnedRequests.clear();
+    officialCompletionCache.clear();
+    officialCompletionRequests.clear();
     return;
   }
 
@@ -215,6 +248,8 @@ export function invalidateLibraryCache(userId?: string) {
   groupListRequests.delete(userId);
   officialResumeCache.delete(userId);
   officialResumeRequests.delete(userId);
+  officialCompletionCache.delete(userId);
+  officialCompletionRequests.delete(userId);
 
   for (const key of groupDetailCache.keys()) {
     if (key.startsWith(`${userId}:`)) {

@@ -462,6 +462,10 @@ export default function App() {
       elapsedMs,
     });
 
+    if (user) {
+      invalidateLibraryCache(user.id);
+    }
+
     if (source === 'review') {
       setReviewSummary((prev) => {
         const nextItem: ReviewSummaryItem = {
@@ -474,7 +478,7 @@ export default function App() {
         return [...prev.filter((item) => item.wordId !== word.id), nextItem];
       });
     }
-  }, [activeLearningGroupId]);
+  }, [activeLearningGroupId, user]);
 
   const handleLearningSessionChange = useCallback((session: {
     round: LearningRoundType;

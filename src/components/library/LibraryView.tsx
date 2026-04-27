@@ -21,6 +21,7 @@ import {
   LibraryGroupWord,
   MemoryState,
   OfficialLibraryId,
+  OfficialLibraryCompletionCounts,
   OfficialResumeTargets,
   OfficialLibrarySummary,
   ReviewResultType,
@@ -36,16 +37,22 @@ import {
   getCachedLibraryGroupDetail,
   getCachedLibraryGroups,
   getCachedOfficialLibraryDetail,
+  getCachedOfficialCompletionCounts,
   getCachedOfficialResumeCandidates,
   isLibraryCacheFresh,
   removeLibraryGroupFromCache,
   refreshLibraryGroupDetail,
   refreshLibraryGroups,
   refreshOfficialLibraryDetail,
+  refreshOfficialCompletionCounts,
   refreshOfficialResumeCandidates,
   type LibraryGroupDetailCacheData,
 } from '../../lib/libraryCache';
-import { deleteLibraryGroup } from '../../lib/libraryApi';
+import {
+  buildEmptyOfficialCompletionCounts,
+  deleteLibraryGroup,
+  fetchOfficialCompletionCounts,
+} from '../../lib/libraryApi';
 import { OfficialLibraryPanel } from './OfficialLibraryPanel';
 import {
   OFFICIAL_LIBRARY_DEFINITIONS,
@@ -336,14 +343,20 @@ async function fetchOfficialLibraryDetail(
   userId: string,
   libraryId: OfficialLibraryId,
 ): Promise<OfficialLibraryDetailData> {
-  const [groups, officialResumeTargets] = await Promise.all([
+  const [groups, officialResumeTargets, officialCompletionCounts] = await Promise.all([
     fetchLibraryGroupSummaries(userId),
     fetchOfficialResumeTargets(userId, libraryId),
+    fetchOfficialCompletionCounts(userId),
   ]);
 
   const definition = getOfficialLibraryDefinition(libraryId);
   const systemGroups = groups.filter((group) => group.sourceType === 'system' && group.libraryId === libraryId);
-  const summary = buildOfficialLibrarySummary(libraryId, groups, officialResumeTargets);
+  const summary = buildOfficialLibrarySummary(
+    libraryId,
+    groups,
+    officialResumeTargets,
+    officialCompletionCounts[libraryId],
+  );
 
   if (systemGroups.length === 0) {
     return {
@@ -1032,6 +1045,9 @@ export const LibraryView = ({
   const [officialResumeCandidates, setOfficialResumeCandidates] = useState<
     Record<OfficialLibraryId, OfficialResumeTargets> | undefined
   >(undefined);
+  const [officialCompletionCounts, setOfficialCompletionCounts] = useState<OfficialLibraryCompletionCounts | undefined>(
+    undefined,
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [groupPendingDelete, setGroupPendingDelete] = useState<LibraryGroupSummary | null>(null);
@@ -1051,6 +1067,7 @@ export const LibraryView = ({
           ]),
         ) as Record<OfficialLibraryId, OfficialResumeTargets>,
       );
+      setOfficialCompletionCounts(buildEmptyOfficialCompletionCounts());
       setIsLoading(false);
       setErrorMsg('');
       return () => { active = false; };
@@ -1058,6 +1075,7 @@ export const LibraryView = ({
 
     const cachedGroups = getCachedLibraryGroups(user.id);
     const cachedResume = getCachedOfficialResumeCandidates(user.id);
+    const cachedCompletionCounts = getCachedOfficialCompletionCounts(user.id);
 
     if (cachedGroups) {
       setGroups(cachedGroups.data);
@@ -1066,27 +1084,34 @@ export const LibraryView = ({
     if (cachedResume) {
       setOfficialResumeCandidates(cachedResume.data);
     }
+    if (cachedCompletionCounts) {
+      setOfficialCompletionCounts(cachedCompletionCounts.data);
+    }
 
     const groupsFresh = cachedGroups && isLibraryCacheFresh(cachedGroups);
     const resumeFresh = cachedResume && isLibraryCacheFresh(cachedResume);
+    const completionCountsFresh = cachedCompletionCounts && isLibraryCacheFresh(cachedCompletionCounts);
 
-    if (groupsFresh && resumeFresh) {
+    if (groupsFresh && resumeFresh && completionCountsFresh) {
       setIsLoading(false);
       return () => { active = false; };
     }
 
-    if (!cachedGroups || !cachedResume) {
+    if (!cachedGroups || !cachedResume || !cachedCompletionCounts) {
       setIsLoading(true);
     }
 
     const run = async () => {
-      const [groupsResult, resumeResult] = await Promise.allSettled([
+      const [groupsResult, resumeResult, completionCountsResult] = await Promise.allSettled([
         groupsFresh
           ? Promise.resolve(cachedGroups!.data)
           : refreshLibraryGroups(user.id, () => fetchLibraryGroupSummaries(user.id)),
         resumeFresh
           ? Promise.resolve(cachedResume!.data)
           : refreshOfficialResumeCandidates(user.id, () => fetchOfficialResumeCandidates(user.id)),
+        completionCountsFresh
+          ? Promise.resolve(cachedCompletionCounts!.data)
+          : refreshOfficialCompletionCounts(user.id, () => fetchOfficialCompletionCounts(user.id)),
       ]);
 
       if (!active) return;
@@ -1126,6 +1151,21 @@ export const LibraryView = ({
         }
       }
 
+      if (completionCountsResult.status === 'fulfilled') {
+        setOfficialCompletionCounts(completionCountsResult.value);
+      } else {
+        const msg =
+          completionCountsResult.reason instanceof Error
+            ? completionCountsResult.reason.message
+            : (completionCountsResult.reason as { message?: string })?.message
+              ?? JSON.stringify(completionCountsResult.reason);
+        console.error('official completion count lookup failed:', msg);
+        if (!cachedCompletionCounts) {
+          setErrorMsg((current) => current || msg);
+          setOfficialCompletionCounts(buildEmptyOfficialCompletionCounts());
+        }
+      }
+
       setIsLoading(false);
     };
 
@@ -1134,7 +1174,7 @@ export const LibraryView = ({
     return () => { active = false; };
   }, [user]);
 
-  if (isLoading || officialResumeCandidates === undefined) {
+  if (isLoading || officialResumeCandidates === undefined || officialCompletionCounts === undefined) {
     return <LibraryLoading message="正在把你的记忆地图展开" />;
   }
 
@@ -1149,6 +1189,7 @@ export const LibraryView = ({
       definition.id,
       groups,
       officialResumeCandidates[definition.id] ?? null,
+      officialCompletionCounts[definition.id] ?? 0,
     ),
     existingGroupCount: groups.filter(
       (group) => group.sourceType === 'system' && group.libraryId === definition.id,
@@ -1195,7 +1236,7 @@ export const LibraryView = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
             {officialLibraries.map(({ definition, summary, existingGroupCount }) => (
               <Fragment key={definition.id}>
                 <OfficialLibraryPanel

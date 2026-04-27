@@ -1,6 +1,10 @@
 import { supabase } from './supabase';
-import { getOfficialLibraryDefinition, resolveLibraryGroupSourceType } from './officialLibrary';
-import type { OfficialLibraryId } from '../types';
+import {
+  OFFICIAL_LIBRARY_DEFINITIONS,
+  getOfficialLibraryDefinition,
+  resolveLibraryGroupSourceType,
+} from './officialLibrary';
+import type { OfficialLibraryId, OfficialLibraryCompletionCounts } from '../types';
 
 interface GroupWordRow {
   vocabulary_item_id: string;
@@ -121,6 +125,37 @@ interface LearnedReviewStateRow {
   vocabulary_items: { word: string | null } | { word: string | null }[] | null;
 }
 
+interface CompletionReviewStateRow {
+  vocabulary_items: { word: string | null } | { word: string | null }[] | null;
+}
+
+const OFFICIAL_COMPLETION_PAGE_SIZE = 1000;
+
+const officialLibraryIdsByWord = (() => {
+  const result = new Map<string, OfficialLibraryId[]>();
+
+  for (const definition of OFFICIAL_LIBRARY_DEFINITIONS) {
+    for (const word of definition.words) {
+      const normalizedWord = word.trim().toLowerCase();
+      if (!normalizedWord) continue;
+
+      const libraryIds = result.get(normalizedWord) ?? [];
+      if (!libraryIds.includes(definition.id)) {
+        libraryIds.push(definition.id);
+      }
+      result.set(normalizedWord, libraryIds);
+    }
+  }
+
+  return result;
+})();
+
+export function buildEmptyOfficialCompletionCounts(): OfficialLibraryCompletionCounts {
+  return Object.fromEntries(
+    OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [definition.id, 0]),
+  ) as OfficialLibraryCompletionCounts;
+}
+
 export async function fetchOfficialLearnedWords(
   userId: string,
   libraryId: OfficialLibraryId,
@@ -164,4 +199,51 @@ export async function fetchOfficialLearnedWords(
   }
 
   return result;
+}
+
+export async function fetchOfficialCompletionCounts(userId: string): Promise<OfficialLibraryCompletionCounts> {
+  const completedWordsByLibrary = Object.fromEntries(
+    OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [definition.id, new Set<string>()]),
+  ) as Record<OfficialLibraryId, Set<string>>;
+
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from('review_states')
+      .select('vocabulary_item_id, vocabulary_items!inner(word)')
+      .eq('user_id', userId)
+      .in('memory_state', ['stable_recall', 'mastered'])
+      .order('vocabulary_item_id', { ascending: true })
+      .range(from, from + OFFICIAL_COMPLETION_PAGE_SIZE - 1);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const rows = (data ?? []) as CompletionReviewStateRow[];
+
+    for (const row of rows) {
+      const vocab = Array.isArray(row.vocabulary_items) ? row.vocabulary_items[0] : row.vocabulary_items;
+      const word = vocab?.word?.trim().toLowerCase();
+      if (!word) continue;
+
+      for (const libraryId of officialLibraryIdsByWord.get(word) ?? []) {
+        completedWordsByLibrary[libraryId].add(word);
+      }
+    }
+
+    if (rows.length < OFFICIAL_COMPLETION_PAGE_SIZE) {
+      break;
+    }
+
+    from += OFFICIAL_COMPLETION_PAGE_SIZE;
+  }
+
+  return Object.fromEntries(
+    OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [
+      definition.id,
+      completedWordsByLibrary[definition.id].size,
+    ]),
+  ) as OfficialLibraryCompletionCounts;
 }

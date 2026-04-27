@@ -395,16 +395,21 @@ export function buildOfficialLibrarySummary(
   libraryId: OfficialLibraryId,
   groups: Pick<LibraryGroupSummary, 'sourceType' | 'title' | 'wordCount' | 'libraryId' | 'status' | 'completedAt' | 'sessionRound'>[],
   resumeTargets: OfficialResumeTargets | null,
+  completedMemoryWordCount = 0,
 ): OfficialLibrarySummary {
   const definition = getOfficialLibraryDefinition(libraryId);
+  const totalWordCount = definition.words.length;
   const unlockedWordCount = countUnlockedOfficialWords(libraryId, groups);
-  const remaining = Math.max(0, definition.words.length - unlockedWordCount);
+  const safeCompletedMemoryWordCount = Math.min(Math.max(completedMemoryWordCount, 0), totalWordCount);
+  const remaining = Math.max(0, totalWordCount - unlockedWordCount);
   const nextBatchSize = Math.min(definition.batchSize, remaining);
 
   return {
     progress: unlockedWordCount,
     nextBatchSize,
     unlockedWordCount,
+    completedMemoryWordCount: safeCompletedMemoryWordCount,
+    totalWordCount,
     activeResumeCandidate: resumeTargets?.active ?? null,
     reinforcementCandidate: resumeTargets?.reinforcement ?? null,
     completed: remaining === 0,

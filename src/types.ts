@@ -199,6 +199,7 @@ export interface ReviewSummaryItem {
 }
 
 export type OfficialLibraryId = 'ielts-vocab' | 'gre-zhenkao-v7' | 'cet4-vocab' | 'cet6-vocab' | 'tem4-vocab' | 'tem8-vocab' | 'npee-vocab';
+export type OfficialLibraryCompletionCounts = Record<OfficialLibraryId, number>;
 
 export interface LibraryGroupSummary {
   id: string;
@@ -262,6 +263,8 @@ export interface OfficialLibrarySummary {
   progress: number;
   nextBatchSize: number;
   unlockedWordCount: number;
+  completedMemoryWordCount: number;
+  totalWordCount: number;
   activeResumeCandidate: ResumeCandidate | null;
   reinforcementCandidate: ResumeCandidate | null;
   completed: boolean;

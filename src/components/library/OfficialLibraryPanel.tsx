@@ -39,7 +39,6 @@ import {
   resolveOfficialLibraryStartMode,
   resolveOfficialStudyModeFromGroupName,
 } from '../../lib/officialLibrary';
-import { cx } from '../shared/LearningUI';
 import { useAuth } from '../../contexts/AuthContext';
 import type { EnrichedWord, OfficialLibrarySummary, Word } from '../../types';
 import { normalizeWordKey } from '../../../shared/wordBatch';
@@ -56,9 +55,6 @@ interface OfficialLibraryPanelProps {
   showOpenDetailAction?: boolean;
 }
 
-const infoCardClassName =
-  'flex h-[76px] min-w-0 items-center justify-between rounded-[22px] bg-white/84 px-4 shadow-[0_12px_28px_rgba(0,0,0,0.05)]';
-
 const officialStudyModeLabel: Record<OfficialStudyMode, string> = {
   sequential: '顺序',
   shuffle: '随机',
@@ -73,6 +69,65 @@ const ICON_MAP: Record<string, any> = {
   BookMarked,
   Medal,
 };
+
+function clampRatio(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(Math.max(value, 0), 1);
+}
+
+function CompletionProgressRing({
+  completedMemoryWordCount,
+  totalWordCount,
+}: {
+  completedMemoryWordCount: number;
+  totalWordCount: number;
+}) {
+  const radius = 53;
+  const circumference = 2 * Math.PI * radius;
+  const ratio = totalWordCount > 0 ? clampRatio(completedMemoryWordCount / totalWordCount) : 0;
+  const strokeDashoffset = circumference * (1 - ratio);
+  const percentage = Math.round(ratio * 100);
+
+  return (
+    <div
+      className="relative h-[132px] w-[132px] shrink-0"
+      aria-label={`完成度 ${percentage}%，${completedMemoryWordCount} / ${totalWordCount} 词`}
+    >
+      <svg viewBox="0 0 132 132" className="h-full w-full -rotate-90">
+        <circle
+          cx="66"
+          cy="66"
+          r={radius}
+          fill="none"
+          stroke="rgba(0,122,255,0.13)"
+          strokeWidth="12"
+        />
+        <motion.circle
+          cx="66"
+          cy="66"
+          r={radius}
+          fill="none"
+          stroke="#007AFF"
+          strokeWidth="12"
+          strokeLinecap="round"
+          initial={{ strokeDashoffset: circumference }}
+          animate={{ strokeDashoffset }}
+          transition={{ duration: 0.8, ease: 'easeOut' }}
+          style={{
+            strokeDasharray: circumference,
+          }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+        <p className="text-2xl font-black tracking-tight text-text-primary sm:text-3xl">{percentage}%</p>
+        <p className="mt-0.5 text-[11px] font-black text-text-secondary sm:text-xs">已完成</p>
+        <p className="mt-1 text-[11px] font-bold text-text-secondary sm:text-xs">
+          {completedMemoryWordCount} / {totalWordCount} 词
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function SwitchOfficialModeDialog({
   currentMode,
@@ -176,11 +231,11 @@ export function OfficialLibraryPanel({
     setMode(activeResumeMode);
   }, [activeResumeMode, summary.activeResumeCandidate?.groupId]);
 
-  const ctaLabel = actionDisabled
-    ? '这条路径已走完'
+  const ctaButtonLabel = actionDisabled
+    ? '已完结'
     : resumeActive
-      ? '接上上次那组'
-      : '开始下一批';
+      ? '继续学习'
+      : '开始学习';
 
   const resolveLearnedWords = async (userId: string): Promise<Set<string>> => {
     const cached = getCachedOfficialLearnedWords(userId, definition.id);
@@ -377,85 +432,76 @@ export function OfficialLibraryPanel({
         >
           <div className="pointer-events-none absolute -right-12 top-0 h-44 w-44 rounded-full bg-apple-blue/10 blur-3xl" />
           <div className="pointer-events-none absolute bottom-0 left-0 h-36 w-36 rounded-full bg-apple-teal/10 blur-3xl" />
-          <div className="relative space-y-4 sm:space-y-5">
-            <div>
-              <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-4">
-                <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-                  <div className="flex h-9 w-9 sm:h-14 sm:w-14 shrink-0 items-center justify-center rounded-full bg-white text-apple-blue shadow-[0_10px_24px_rgba(0,0,0,0.06)]">
-                    <LibraryIcon className="h-4.5 w-4.5 sm:h-7 sm:w-7" />
-                  </div>
-                  <h3 className="text-sm sm:text-3xl font-black leading-tight text-text-primary truncate">
-                    {definition.title}
-                  </h3>
-                </div>
-                {showOpenDetailAction && onOpenDetail && (
-                  <button
-                    type="button"
-                    onClick={() => { void onOpenDetail(); }}
-                    className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-white/82 px-3 py-1.5 sm:px-4 sm:py-2 text-[11px] sm:text-sm font-bold text-text-secondary shadow-[0_8px_20px_rgba(0,0,0,0.05)] transition-colors hover:text-text-primary"
-                  >
-                    看这条路径
-                    <ArrowRight className="h-3 w-3 sm:h-4 sm:w-4" />
-                  </button>
-                )}
+          <div className="relative space-y-5 sm:space-y-6">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[24px] bg-white text-apple-blue shadow-[0_14px_30px_rgba(0,122,255,0.10)] sm:h-16 sm:w-16">
+                <LibraryIcon className="h-6 w-6 sm:h-8 sm:w-8" />
+              </div>
+              <h3 className="min-w-0 truncate text-2xl font-black leading-tight text-text-primary sm:text-3xl">
+                {definition.title}
+              </h3>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {showOpenDetailAction && onOpenDetail && (
+                <button
+                  type="button"
+                  onClick={() => { void onOpenDetail(); }}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/88 px-3 py-1.5 text-[11px] font-bold text-text-secondary shadow-[0_8px_20px_rgba(0,0,0,0.05)] transition-colors hover:text-text-primary sm:px-4 sm:py-2 sm:text-sm"
+                >
+                  看这条路径
+                  <ArrowRight className="h-3 w-3 sm:h-4 sm:w-4" />
+                </button>
+              )}
+
+              <div
+                role="tablist"
+                aria-label="选择发放顺序"
+                className="inline-flex min-w-0 items-center gap-0.5 rounded-full bg-white/78 p-0.5 shadow-[0_8px_18px_rgba(0,0,0,0.05)] sm:p-1"
+              >
+                {(['sequential', 'shuffle'] as OfficialStudyMode[]).map((option) => {
+                  const active = mode === option;
+                  const label = option === 'shuffle' ? '随机' : '顺序';
+                  const Icon = option === 'shuffle' ? Shuffle : ListOrdered;
+                  const hint = option === 'shuffle' ? '从没学过的词里抽下一批' : '按官方顺序取下一批';
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      title={hint}
+                      onClick={() => handleModeOptionClick(option)}
+                      disabled={actionDisabled}
+                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-colors sm:px-4 sm:text-sm ${
+                        active
+                          ? 'bg-apple-blue text-white shadow-[0_8px_16px_rgba(0,122,255,0.24)]'
+                          : 'text-text-secondary hover:text-text-primary'
+                      } ${actionDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
+                    >
+                      <Icon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            <div
-              role="tablist"
-              aria-label="选择发放顺序"
-              className="inline-flex items-center gap-0.5 rounded-full bg-white/72 p-0.5 sm:p-1 shadow-[0_8px_18px_rgba(0,0,0,0.05)]"
-            >
-              {(['sequential', 'shuffle'] as OfficialStudyMode[]).map((option) => {
-                const active = mode === option;
-                const label = option === 'shuffle' ? '随机' : '顺序';
-                const Icon = option === 'shuffle' ? Shuffle : ListOrdered;
-                const hint = option === 'shuffle' ? '从没学过的词里抽下一批' : '按官方顺序取下一批';
-                return (
-                  <button
-                    key={option}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    title={hint}
-                    onClick={() => handleModeOptionClick(option)}
-                    disabled={actionDisabled}
-                    className={`inline-flex items-center gap-1 rounded-full px-2 py-1 sm:px-4 sm:py-1.5 text-[10px] sm:text-sm font-bold transition-colors ${
-                      active
-                        ? 'bg-apple-blue text-white shadow-[0_6px_14px_rgba(0,122,255,0.22)]'
-                        : 'text-text-secondary hover:text-text-primary'
-                    } ${actionDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
-                  >
-                    <Icon className="h-2.5 w-2.5 sm:h-3.5 sm:w-3.5" />
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="grid gap-1.5 sm:gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
-              <div className={cx(infoCardClassName, 'h-[48px] sm:h-[76px]')}>
-                <p className="text-[9px] sm:text-[11px] font-bold tracking-tight sm:tracking-[0.2em] text-text-secondary">已完成</p>
-                <p className="text-right text-sm sm:text-xl font-black text-text-primary">
-                  {summary.progress}
-                </p>
-              </div>
-              <div className={cx(infoCardClassName, 'h-[48px] sm:h-[76px] hidden sm:flex')}>
-                <p className="text-[9px] sm:text-[11px] font-bold tracking-tight sm:tracking-[0.2em] text-text-secondary">下一批</p>
-                <p className="text-right text-sm sm:text-xl font-black text-text-primary">
-                  {summary.nextBatchSize} 词
-                </p>
-              </div>
+            <div className="flex items-center justify-between gap-4 pt-1">
+              <CompletionProgressRing
+                completedMemoryWordCount={summary.completedMemoryWordCount}
+                totalWordCount={summary.totalWordCount}
+              />
               <button
                 type="button"
                 onClick={() => {
                   void handleStartOfficial();
                 }}
                 disabled={actionDisabled}
-                className="inline-flex h-10 sm:h-[76px] w-full items-center justify-center gap-2 rounded-[14px] sm:rounded-[22px] bg-apple-blue px-3 text-[11px] sm:text-base font-black text-white shadow-[0_12px_28px_rgba(0,122,255,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+                className="inline-flex h-14 min-w-[118px] flex-1 items-center justify-center gap-2 rounded-[18px] bg-apple-blue px-4 text-sm font-black text-white shadow-[0_16px_34px_rgba(0,122,255,0.25)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 sm:h-16 sm:min-w-[146px] sm:flex-none sm:rounded-[22px] sm:text-base"
               >
-                {ctaLabel === '接上上次那组' ? '继续' : ctaLabel === '这条路径已走完' ? '已完结' : '开始'}
-                {!actionDisabled && <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
+                {ctaButtonLabel}
+                {!actionDisabled && <ArrowRight className="h-4 w-4" />}
               </button>
             </div>
 
