@@ -240,7 +240,7 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
   }
 
   const currentState = existing?.memory_state ?? 'new';
-  const shouldIncrementReviewCounters = input.source === 'review';
+  const shouldIncrementReviewCounters = input.source === 'review' || input.source === 'round2';
 
   // Calculate new success count: previous successes + (1 if current is correct)
   // Successes = review_count - lapse_count

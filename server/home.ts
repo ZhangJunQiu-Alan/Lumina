@@ -352,10 +352,10 @@ function resolveDayStatus(input: {
       return 'ordinary';
     }
   } else {
-    // 兜底逻辑（针对没有 Routine 记录的情况，比如旧数据）
+    // 兜底逻辑（针对没有 Routine 记录的情况，比如旧数据或同步延迟）
     const reviewCleared = dueAtEndCount === 0;
-    // 旧数据下，学了 10 个词以上或者清空了 50 个复习才算完美
-    const significantLearning = learnedWordCount >= 10 || (reviewWordCount >= 50 && reviewCleared);
+    // 显著学习：学了 5 个以上或者清空了复习
+    const significantLearning = learnedWordCount >= 5 || (reviewWordCount > 0 && reviewCleared);
     
     if (significantLearning) {
       return 'perfect';
