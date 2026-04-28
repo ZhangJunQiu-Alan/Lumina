@@ -247,6 +247,8 @@ type PlaybackTarget =
 
 // --- Main LearningEngine ---
 
+const stripDiacritics = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '');
+
 export const LearningEngine = ({
   type,
   words,
@@ -702,7 +704,7 @@ export const LearningEngine = ({
     if (showAnswer || isSubmittingAttempt) return;
 
     const trimmedInput = inputValue.trim().toLowerCase();
-    const wasCorrect = trimmedInput === expectedInput;
+    const wasCorrect = stripDiacritics(trimmedInput) === stripDiacritics(expectedInput);
     
     // 后台静默保存，不再阻塞 UI 切换
     void persistAttempt(wasCorrect);
@@ -768,7 +770,7 @@ export const LearningEngine = ({
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     if (type === 'round2' || type === 'review') {
-      const filtered = val.toLowerCase().replace(/[^a-z'-]/g, '').slice(0, expectedInput.length);
+      const filtered = val.toLowerCase().replace(/[^\p{L}' -]/gu, '').slice(0, expectedInput.length);
       setInputValue(filtered);
     } else {
       setInputValue(val);
@@ -793,7 +795,7 @@ export const LearningEngine = ({
     );
   }
 
-  const isCorrect = inputValue.trim().toLowerCase() === expectedInput;
+  const isCorrect = stripDiacritics(inputValue.trim().toLowerCase()) === stripDiacritics(expectedInput);
   const primaryPos = currentWord.pos_tags[0] ?? '未标注';
   const actionDisabled = isSubmittingAttempt || ((type === 'round2' || type === 'review') && showAnswer);
   const actionLabel = (type === 'round2' || type === 'review') && showAnswer
