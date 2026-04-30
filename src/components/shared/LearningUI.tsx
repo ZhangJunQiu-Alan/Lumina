@@ -89,8 +89,8 @@ export const RoundIndicator = ({ type, className }: { type: RoundType; className
     article: 'bg-apple-green',
   };
   return (
-    <div className={cx('flex items-center gap-2 sm:gap-3', className)}>
-      <div className={`px-3 py-1 sm:px-4 sm:py-1.5 ${colors[type]} text-white text-[9px] sm:text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg`}>
+    <div className={cx('flex min-w-0 items-center gap-2 sm:gap-3', className)}>
+      <div className={`min-w-0 max-w-[36vw] truncate whitespace-nowrap px-3 py-1 sm:max-w-none sm:px-4 sm:py-1.5 ${colors[type]} text-white text-[9px] sm:text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg`}>
         {labels[type]}
       </div>
       <div className="h-px flex-1 bg-black/5" />
@@ -105,11 +105,11 @@ export const SessionProgress = ({
   currentIndex: number;
   queueLength: number;
 }) => (
-  <div className="flex items-baseline gap-2 sm:gap-3 rounded-full border border-white/70 bg-white/70 px-3 py-1.5 sm:px-4 sm:py-2 shadow-[0_14px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl">
-    <div className="text-xs sm:text-sm font-black tracking-[0.16em] text-text-primary">
+  <div className="flex shrink-0 items-baseline gap-2 whitespace-nowrap rounded-full border border-white/70 bg-white/70 px-3 py-1.5 shadow-[0_14px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl sm:gap-3 sm:px-4 sm:py-2">
+    <div className="text-xs font-black tracking-[0.16em] text-text-primary sm:text-sm">
       {String(currentIndex + 1).padStart(2, '0')} / {String(queueLength).padStart(2, '0')}
     </div>
-    <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.22em] text-text-secondary">
+    <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-text-secondary sm:text-[10px]">
       这一轮进度
     </span>
   </div>

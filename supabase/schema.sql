@@ -189,6 +189,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
   auto_play_enabled              BOOLEAN NOT NULL DEFAULT true,
   auto_play_repeat_count         INTEGER NOT NULL DEFAULT 1,
   auto_play_repeat_gap_ms        INTEGER NOT NULL DEFAULT 800,
+  correct_answer_reveal_ms       INTEGER NOT NULL DEFAULT 1000,
   wrong_answer_reveal_ms         INTEGER NOT NULL DEFAULT 5000,
   reinforcement_round3_enabled   BOOLEAN NOT NULL DEFAULT true,
   reinforcement_article_enabled  BOOLEAN NOT NULL DEFAULT true,
@@ -196,6 +197,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
   CHECK (default_pronunciation_locale IN ('uk', 'us')),
   CHECK (auto_play_repeat_count IN (1, 2, 3)),
   CHECK (auto_play_repeat_gap_ms IN (800, 1200, 1800)),
+  CHECK (correct_answer_reveal_ms IN (800, 1000, 1500, 2000)),
   CHECK (wrong_answer_reveal_ms IN (3000, 5000, 8000))
 );
 

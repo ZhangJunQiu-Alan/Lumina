@@ -203,7 +203,7 @@ const InputSessionShell = ({
   main: React.ReactNode;
 }) => (
   <div className="input-session-shell mx-auto flex h-full min-h-0 w-full max-w-[1400px] flex-col gap-3 sm:gap-4">
-    <header className="shrink-0 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+    <header className="flex shrink-0 items-center justify-between gap-2">
       <RoundIndicator type={type} className="min-w-0 flex-1" />
       <div className="flex shrink-0 items-center justify-end gap-2">
         {sessionActions}
@@ -720,11 +720,12 @@ export const LearningEngine = ({
         setShowAnswer(true);
         setIsWrong(false);
         clearAnswerRevealTimeout();
+        const correctAnswerRevealMs = type === 'round1' ? 800 : preferences.correctAnswerRevealMs;
         answerRevealTimeoutRef.current = setTimeout(() => {
           answerRevealTimeoutRef.current = null;
           setShowAnswer(false);
           nextWord();
-        }, 800); // 正确反馈展示 800ms
+        }, correctAnswerRevealMs);
         return;
       }
 
@@ -752,7 +753,7 @@ export const LearningEngine = ({
         nextWord();
       }, preferences.wrongAnswerRevealMs);
     }
-  }, [showAnswer, isSubmittingAttempt, inputValue, expectedInput, persistAttempt, currentWord.id, type, nextWord, clearAnswerRevealTimeout, queue, currentIndex, preferences.wrongAnswerRevealMs]);
+  }, [showAnswer, isSubmittingAttempt, inputValue, expectedInput, persistAttempt, currentWord.id, type, nextWord, clearAnswerRevealTimeout, queue, currentIndex, preferences.correctAnswerRevealMs, preferences.wrongAnswerRevealMs]);
 
   useEffect(() => {
     if (type !== 'round3') return;
@@ -879,9 +880,6 @@ export const LearningEngine = ({
 
   const replayControls = (type === 'round2' || type === 'review') ? (
     <div className="mx-auto mb-8 flex flex-wrap items-center justify-center gap-2.5">
-      <span className="rounded-full bg-black/5 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-text-secondary">
-        想再听就点这里
-      </span>
       {(['uk', 'us'] as const).map((loc) => (
         <button
           key={`${type}-replay-${loc}`}

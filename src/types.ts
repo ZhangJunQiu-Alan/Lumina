@@ -129,6 +129,7 @@ export interface LearningPreferences {
   autoPlayEnabled: boolean;
   autoPlayRepeatCount: 1 | 2 | 3;
   autoPlayRepeatGapMs: number;
+  correctAnswerRevealMs: 800 | 1000 | 1500 | 2000;
   wrongAnswerRevealMs: 3000 | 5000 | 8000;
   reinforcementRound3Enabled: boolean;
   reinforcementArticleEnabled: boolean;

@@ -14,6 +14,7 @@ import { useLearningPreferences } from '../../contexts/LearningPreferencesContex
 import {
   AUTO_PLAY_GAP_OPTIONS,
   AUTO_PLAY_REPEAT_OPTIONS,
+  CORRECT_ANSWER_REVEAL_OPTIONS,
   LEARNING_PREFERENCES_DEFAULTS,
   WRONG_ANSWER_REVEAL_OPTIONS,
 } from '../../lib/learningPreferences';
@@ -345,7 +346,24 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
 
       <SettingItem
         icon={Clock3}
-        title="答案停留时间"
+        title="答对反馈时间"
+        description="Round 2 和复习轮答对后反馈停留的时间"
+        feedback={feedbackByKey.correctAnswerRevealMs}
+        control={(
+          <SegmentedOptionGroup<number>
+            options={CORRECT_ANSWER_REVEAL_OPTIONS.map((duration) => ({
+              label: `${duration / 1000}秒`,
+              value: duration,
+            }))}
+            value={preferences.correctAnswerRevealMs}
+            onChange={(next) => { void handleSave('correctAnswerRevealMs', { correctAnswerRevealMs: next as 800 | 1000 | 1500 | 2000 }); }}
+          />
+        )}
+      />
+
+      <SettingItem
+        icon={Clock3}
+        title="答错答案停留"
         description="答错后正确答案停留的时间"
         feedback={feedbackByKey.wrongAnswerRevealMs}
         control={(

@@ -7,6 +7,7 @@ interface LearningPreferencesRow {
   auto_play_enabled: boolean;
   auto_play_repeat_count: number;
   auto_play_repeat_gap_ms: number;
+  correct_answer_reveal_ms: number;
   wrong_answer_reveal_ms: number;
   reinforcement_round3_enabled: boolean;
   reinforcement_article_enabled: boolean;
@@ -18,6 +19,7 @@ export const LEARNING_PREFERENCES_DEFAULTS: LearningPreferences = {
   autoPlayEnabled: true,
   autoPlayRepeatCount: 1,
   autoPlayRepeatGapMs: 800,
+  correctAnswerRevealMs: 1000,
   wrongAnswerRevealMs: 5000,
   reinforcementRound3Enabled: true,
   reinforcementArticleEnabled: true,
@@ -25,6 +27,7 @@ export const LEARNING_PREFERENCES_DEFAULTS: LearningPreferences = {
 
 export const AUTO_PLAY_REPEAT_OPTIONS = [1, 2, 3] as const;
 export const AUTO_PLAY_GAP_OPTIONS = [800, 1200, 1800] as const;
+export const CORRECT_ANSWER_REVEAL_OPTIONS = [800, 1000, 1500, 2000] as const;
 export const WRONG_ANSWER_REVEAL_OPTIONS = [3000, 5000, 8000] as const;
 
 const LOCAL_LEARNING_PREFERENCES_KEY = 'lumina.learning-preferences';
@@ -39,6 +42,11 @@ function normalizeRepeatCount(value: unknown): 1 | 2 | 3 {
 
 function normalizeGapMs(value: unknown): number {
   return AUTO_PLAY_GAP_OPTIONS.includes(value as (typeof AUTO_PLAY_GAP_OPTIONS)[number]) ? value as number : 800;
+}
+
+function normalizeCorrectRevealMs(value: unknown): 800 | 1000 | 1500 | 2000 {
+  if (value === 800 || value === 1000 || value === 1500 || value === 2000) return value;
+  return 1000;
 }
 
 function normalizeRevealMs(value: unknown): 3000 | 5000 | 8000 {
@@ -62,6 +70,9 @@ function normalizeLearningPreferences(
   const gapMsValue = hasCamelCaseShape
     ? (input as Partial<LearningPreferences>).autoPlayRepeatGapMs
     : (input as LearningPreferencesRow | null | undefined)?.auto_play_repeat_gap_ms;
+  const correctRevealMsValue = hasCamelCaseShape
+    ? (input as Partial<LearningPreferences>).correctAnswerRevealMs
+    : (input as LearningPreferencesRow | null | undefined)?.correct_answer_reveal_ms;
   const revealMsValue = hasCamelCaseShape
     ? (input as Partial<LearningPreferences>).wrongAnswerRevealMs
     : (input as LearningPreferencesRow | null | undefined)?.wrong_answer_reveal_ms;
@@ -79,6 +90,7 @@ function normalizeLearningPreferences(
     autoPlayEnabled: autoPlayEnabledValue ?? LEARNING_PREFERENCES_DEFAULTS.autoPlayEnabled,
     autoPlayRepeatCount: normalizeRepeatCount(repeatCountValue),
     autoPlayRepeatGapMs: normalizeGapMs(gapMsValue),
+    correctAnswerRevealMs: normalizeCorrectRevealMs(correctRevealMsValue),
     wrongAnswerRevealMs: normalizeRevealMs(revealMsValue),
     reinforcementRound3Enabled:
       typeof reinforcementRound3Value === 'boolean'
@@ -98,6 +110,7 @@ function toDatabaseRow(userId: string, preferences: LearningPreferences): Omit<L
     auto_play_enabled: preferences.autoPlayEnabled,
     auto_play_repeat_count: preferences.autoPlayRepeatCount,
     auto_play_repeat_gap_ms: preferences.autoPlayRepeatGapMs,
+    correct_answer_reveal_ms: preferences.correctAnswerRevealMs,
     wrong_answer_reveal_ms: preferences.wrongAnswerRevealMs,
     reinforcement_round3_enabled: preferences.reinforcementRound3Enabled,
     reinforcement_article_enabled: preferences.reinforcementArticleEnabled,
@@ -106,7 +119,7 @@ function toDatabaseRow(userId: string, preferences: LearningPreferences): Omit<L
 
 function isMissingUserSettingsTableError(error: { message?: string } | null | undefined) {
   const message = error?.message ?? '';
-  return message.includes('user_settings') || message.includes('schema cache');
+  return message.includes('user_settings') || message.includes('correct_answer_reveal_ms') || message.includes('schema cache');
 }
 
 function buildLocalPreferencesKey(userId: string) {
@@ -145,6 +158,7 @@ export async function getLearningPreferences(userId: string): Promise<LearningPr
       auto_play_enabled,
       auto_play_repeat_count,
       auto_play_repeat_gap_ms,
+      correct_answer_reveal_ms,
       wrong_answer_reveal_ms,
       reinforcement_round3_enabled,
       reinforcement_article_enabled,
@@ -190,6 +204,7 @@ export async function saveLearningPreferences(
       auto_play_enabled,
       auto_play_repeat_count,
       auto_play_repeat_gap_ms,
+      correct_answer_reveal_ms,
       wrong_answer_reveal_ms,
       reinforcement_round3_enabled,
       reinforcement_article_enabled,
