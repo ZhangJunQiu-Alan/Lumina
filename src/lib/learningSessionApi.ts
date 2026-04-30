@@ -87,6 +87,7 @@ interface VocabularyItemRow {
   primary_meaning_zh: string | null;
   ner_label: string | null;
   morphology_summary_zh: string | null;
+  memory_tip: string | null;
   audio_uk_url: string | null;
   audio_us_url: string | null;
   vocabulary_senses: VocabularySenseRow[];
@@ -213,6 +214,7 @@ function mapGroupWord(row: LearningGroupWordRow): Word | null {
     antonyms: toWordRelations(mapRelations(vocabularyItem.vocabulary_relations ?? [], 'antonym')),
     confusingPairs,
     confusing_pair: confusingPairs[0],
+    memory_tip: vocabularyItem.memory_tip ?? '',
     audio_uk_url: vocabularyItem.audio_uk_url,
     audio_us_url: vocabularyItem.audio_us_url,
   };
@@ -512,6 +514,7 @@ export async function fetchLearningGroupSession(
           primary_meaning_zh,
           ner_label,
           morphology_summary_zh,
+          memory_tip,
           audio_uk_url,
           audio_us_url,
           vocabulary_senses (
@@ -549,6 +552,7 @@ export async function fetchLearningGroupSession(
           ipa_uk,
           primary_meaning_zh,
           ner_label,
+          memory_tip,
           audio_uk_url,
           audio_us_url,
           vocabulary_senses (

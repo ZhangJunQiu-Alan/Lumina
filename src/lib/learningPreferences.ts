@@ -17,16 +17,16 @@ interface LearningPreferencesRow {
 export const LEARNING_PREFERENCES_DEFAULTS: LearningPreferences = {
   defaultPronunciationLocale: 'uk',
   autoPlayEnabled: true,
-  autoPlayRepeatCount: 1,
-  autoPlayRepeatGapMs: 800,
+  autoPlayRepeatCount: 3,
+  autoPlayRepeatGapMs: 1500,
   correctAnswerRevealMs: 1000,
-  wrongAnswerRevealMs: 5000,
+  wrongAnswerRevealMs: 8000,
   reinforcementRound3Enabled: true,
   reinforcementArticleEnabled: true,
 };
 
 export const AUTO_PLAY_REPEAT_OPTIONS = [1, 2, 3] as const;
-export const AUTO_PLAY_GAP_OPTIONS = [800, 1200, 1800] as const;
+export const AUTO_PLAY_GAP_OPTIONS = [1000, 1500, 2500] as const;
 export const CORRECT_ANSWER_REVEAL_OPTIONS = [800, 1000, 1500, 2000] as const;
 export const WRONG_ANSWER_REVEAL_OPTIONS = [3000, 5000, 8000] as const;
 
@@ -37,21 +37,24 @@ function isValidLocale(value: unknown): value is PronunciationLocale {
 }
 
 function normalizeRepeatCount(value: unknown): 1 | 2 | 3 {
-  return value === 2 || value === 3 ? value : 1;
+  if (value === 1 || value === 2 || value === 3) return value;
+  return LEARNING_PREFERENCES_DEFAULTS.autoPlayRepeatCount;
 }
 
 function normalizeGapMs(value: unknown): number {
-  return AUTO_PLAY_GAP_OPTIONS.includes(value as (typeof AUTO_PLAY_GAP_OPTIONS)[number]) ? value as number : 800;
+  return AUTO_PLAY_GAP_OPTIONS.includes(value as (typeof AUTO_PLAY_GAP_OPTIONS)[number])
+    ? value as number
+    : LEARNING_PREFERENCES_DEFAULTS.autoPlayRepeatGapMs;
 }
 
 function normalizeCorrectRevealMs(value: unknown): 800 | 1000 | 1500 | 2000 {
   if (value === 800 || value === 1000 || value === 1500 || value === 2000) return value;
-  return 1000;
+  return LEARNING_PREFERENCES_DEFAULTS.correctAnswerRevealMs;
 }
 
 function normalizeRevealMs(value: unknown): 3000 | 5000 | 8000 {
-  if (value === 3000 || value === 8000) return value;
-  return 5000;
+  if (value === 3000 || value === 5000 || value === 8000) return value;
+  return LEARNING_PREFERENCES_DEFAULTS.wrongAnswerRevealMs;
 }
 
 function normalizeLearningPreferences(

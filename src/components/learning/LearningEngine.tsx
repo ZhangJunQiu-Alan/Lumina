@@ -29,30 +29,13 @@ import { attemptBuffer } from '../../lib/attemptBuffer';
 const Round1MorphologyCard = ({ word }: { word: Word }) => (
   <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-4 sm:p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
     <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.24em] text-text-secondary">构词拆解 / 派生词</p>
-    <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-3">
-      {word.morphology.parts.length > 0 ? word.morphology.parts.map((part, index) => (
-        <div
-          key={`${word.id}-morphology-${index}`}
-          className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-base sm:text-[18px] font-black text-text-primary">{part.text}</p>
-            <span className="rounded-full bg-black/5 px-2 py-0.5 text-[11px] sm:text-[13px] font-bold uppercase tracking-[0.18em] text-text-secondary">
-              {part.kind}
-            </span>
-          </div>
-          {(part.meaningZh || part.noteZh) && (
-            <p className="mt-1.5 text-sm sm:text-[16px] leading-relaxed text-text-secondary">
-              {[part.meaningZh, part.noteZh].filter(Boolean).join(' · ')}
-            </p>
-          )}
-        </div>
-      )) : (
-        <div className="rounded-[16px] border border-dashed border-black/8 bg-white/45 px-3 py-3 text-sm sm:text-[18px] text-text-secondary">
-          无展示的构词拆解。
-        </div>
-      )}
-    </div>
+    {word.morphology.summaryZh ? (
+      <p className="mt-3 text-[15px] sm:text-base leading-7 text-text-primary">
+        {word.morphology.summaryZh}
+      </p>
+    ) : (
+      <p className="mt-3 text-sm leading-6 text-text-secondary">无展示的构词拆解。</p>
+    )}
 
     <div className="mt-4">
       <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">派生词</p>
@@ -85,7 +68,7 @@ const Round1RelationsCard = ({ word }: { word: Word }) => (
       <div>
         <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">近义词</p>
         <div className="mt-2 sm:mt-3 space-y-2">
-          {word.synonyms.length > 0 ? word.synonyms.map((item) => (
+          {word.synonyms.length > 0 ? word.synonyms.slice(0, 2).map((item) => (
             <div
               key={`${word.id}-synonym-${item.word}`}
               className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
@@ -108,7 +91,7 @@ const Round1RelationsCard = ({ word }: { word: Word }) => (
       <div>
         <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">反义词</p>
         <div className="mt-2 sm:mt-3 space-y-2">
-          {word.antonyms.length > 0 ? word.antonyms.map((item) => (
+          {word.antonyms.length > 0 ? word.antonyms.slice(0, 2).map((item) => (
             <div
               key={`${word.id}-antonym-${item.word}`}
               className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
@@ -173,10 +156,13 @@ const Round1ConfusingCard = ({
         <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">例句</p>
         <div className="mt-2">
           <ExampleSentenceList
-            items={word.example_sentences.map((sentence, index) => ({
-              key: `${word.id}-example-${index}`,
-              sentence,
-            }))}
+            items={word.senses
+              .filter((sense) => (sense.example_sentence ?? '').trim())
+              .map((sense, index) => ({
+                key: `${word.id}-example-${index}`,
+                sentence: sense.example_sentence,
+                translation: sense.example_translation_zh || undefined,
+              }))}
             locale={exampleLocale}
             activeExampleKey={activeExampleKey}
             canPlayAudio={canPlayExampleAudio}
@@ -326,6 +312,7 @@ export const LearningEngine = ({
   const promptStartedAtRef = useRef<number>(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const answerRevealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const correctReadbackTokenRef = useRef<symbol | null>(null);
   const audioGapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playbackRunIdRef = useRef(0);
   const preferencesRef = useRef(preferences);
@@ -354,6 +341,7 @@ export const LearningEngine = ({
     : null;
 
   const clearAnswerRevealTimeout = useCallback(() => {
+    correctReadbackTokenRef.current = null;
     if (answerRevealTimeoutRef.current === null) return;
     clearTimeout(answerRevealTimeoutRef.current);
     answerRevealTimeoutRef.current = null;
@@ -720,12 +708,32 @@ export const LearningEngine = ({
         setShowAnswer(true);
         setIsWrong(false);
         clearAnswerRevealTimeout();
-        const correctAnswerRevealMs = type === 'round1' ? 800 : preferences.correctAnswerRevealMs;
-        answerRevealTimeoutRef.current = setTimeout(() => {
+
+        const advance = () => {
           answerRevealTimeoutRef.current = null;
           setShowAnswer(false);
           nextWord();
-        }, correctAnswerRevealMs);
+        };
+
+        if ((type === 'round2' || type === 'review') && clozePrompt) {
+          const fullSentence = (currentWord.senses[clozePrompt.senseIndex]?.example_sentence ?? '')
+            .replace(/\*\*(.+?)\*\*/g, '$1')
+            .trim();
+          if (fullSentence) {
+            const token = Symbol('correct-readback');
+            correctReadbackTokenRef.current = token;
+            const playKey = `${currentWord.id}-correct-readback`;
+            void playExampleSentence(fullSentence, playKey).then(() => {
+              if (correctReadbackTokenRef.current !== token) return;
+              correctReadbackTokenRef.current = null;
+              advance();
+            });
+            return;
+          }
+        }
+
+        const correctAnswerRevealMs = type === 'round1' ? 800 : preferences.correctAnswerRevealMs;
+        answerRevealTimeoutRef.current = setTimeout(advance, correctAnswerRevealMs);
         return;
       }
 
@@ -753,7 +761,7 @@ export const LearningEngine = ({
         nextWord();
       }, preferences.wrongAnswerRevealMs);
     }
-  }, [showAnswer, isSubmittingAttempt, inputValue, expectedInput, persistAttempt, currentWord.id, type, nextWord, clearAnswerRevealTimeout, queue, currentIndex, preferences.correctAnswerRevealMs, preferences.wrongAnswerRevealMs]);
+  }, [showAnswer, isSubmittingAttempt, inputValue, expectedInput, persistAttempt, currentWord, type, nextWord, clearAnswerRevealTimeout, queue, currentIndex, preferences.correctAnswerRevealMs, preferences.wrongAnswerRevealMs, clozePrompt, playExampleSentence]);
 
   useEffect(() => {
     if (type !== 'round3') return;
@@ -1057,14 +1065,39 @@ export const LearningEngine = ({
                     />
 
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
-                      <p className="text-[clamp(1.8rem,10vw,4.2rem)] font-black leading-tight tracking-tight text-text-primary lg:flex-shrink-0">
-                        {currentWord.word}
-                      </p>
+                      <div className="lg:flex-shrink-0">
+                        <p className="text-[clamp(1.8rem,10vw,4.2rem)] font-black leading-tight tracking-tight text-text-primary">
+                          {currentWord.word}
+                        </p>
+                        {currentWord.ner_entities.length > 0 && (
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            {currentWord.ner_entities.map((entity, index) => (
+                              <span
+                                key={`${currentWord.id}-ner-${index}`}
+                                className="rounded-full bg-apple-indigo/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-apple-indigo"
+                              >
+                                专有名词 · {entity.label}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       <div className="min-w-0 lg:max-w-[960px] lg:flex-1 lg:pt-1">
                         <WordSenseList word={currentWord} />
                       </div>
                     </div>
                   </div>
+
+                  {currentWord.memory_tip && (
+                    <div className="rounded-[18px] border border-apple-blue/15 bg-apple-blue/5 px-4 py-3 sm:px-5 sm:py-3.5">
+                      <p className="text-[11px] sm:text-[12px] font-bold uppercase tracking-[0.22em] text-apple-blue">
+                        记忆锦囊
+                      </p>
+                      <p className="mt-1.5 text-[13px] sm:text-sm leading-6 text-text-primary">
+                        {currentWord.memory_tip}
+                      </p>
+                    </div>
+                  )}
 
                   <div className="grid gap-3 sm:gap-4 lg:grid-cols-3">
                     <Round1MorphologyCard word={currentWord} />

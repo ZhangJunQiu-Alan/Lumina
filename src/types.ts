@@ -89,6 +89,7 @@ export interface Word {
   antonyms: WordRelation[];
   confusingPairs: ConfusingPair[];
   confusing_pair?: ConfusingPair;
+  memory_tip?: string;
   audio_uk_url?: string | null;
   audio_us_url?: string | null;
 }
@@ -154,6 +155,7 @@ export function toWord(e: EnrichedWord): Word {
     antonyms: toWordRelations(e.antonyms),
     confusingPairs,
     confusing_pair: confusingPairs[0],
+    memory_tip: e.memory_tip,
     audio_uk_url: e.audio_uk_url,
     audio_us_url: e.audio_us_url,
   };
