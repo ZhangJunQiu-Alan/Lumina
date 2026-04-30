@@ -246,6 +246,7 @@ export interface PersistedLearningSession {
   round: LearningRoundType;
   currentIndex: number;
   queueWordIds: string[];
+  passedQueueIndices: number[];
   lastActiveAt: string;
   groupCompleted: boolean;
   completedAt: string | null;

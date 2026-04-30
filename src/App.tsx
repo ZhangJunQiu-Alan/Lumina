@@ -487,6 +487,7 @@ export default function App() {
     round: LearningRoundType;
     currentIndex: number;
     queueWordIds: string[];
+    passedQueueIndices: number[];
   }) => {
     if (!activeLearningGroupId || !user) return;
 
@@ -495,6 +496,7 @@ export default function App() {
       round: session.round,
       currentIndex: session.currentIndex,
       queueWordIds: session.queueWordIds,
+      passedQueueIndices: session.passedQueueIndices,
       lastActiveAt: new Date().toISOString(),
       groupCompleted: activeSessionSeed?.groupCompleted ?? false,
       completedAt: activeSessionSeed?.completedAt ?? null,

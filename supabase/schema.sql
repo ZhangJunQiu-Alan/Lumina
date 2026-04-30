@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS learning_groups (
   session_round TEXT,                    -- 'round1' | 'round2' | 'round3' | 'article'
   session_current_index INTEGER,
   session_queue_word_ids JSONB,
+  session_passed_queue_indices JSONB,
   session_last_active_at TIMESTAMPTZ,
   created_at    TIMESTAMPTZ DEFAULT NOW(),
   completed_at  TIMESTAMPTZ,

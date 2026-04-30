@@ -84,30 +84,35 @@ const normalized = normalizePersistedLearningSession({
   round: 'round2',
   currentIndex: 8,
   queueWordIds: ['w2', 'missing', 'w2'],
+  passedQueueIndices: [0, 99],
   lastActiveAt: '2026-04-18T00:00:00.000Z',
   groupCompleted: false,
   completedAt: null,
 }, words);
 assert.equal(normalized.currentIndex, 1);
 assert.deepEqual(normalized.queueWordIds, ['w2', 'w2']);
+assert.deepEqual(normalized.passedQueueIndices, [0]);
 
 const fallback = normalizePersistedLearningSession({
   groupId: 'g1',
   round: 'round3',
   currentIndex: 99,
   queueWordIds: ['missing-only'],
+  passedQueueIndices: [0, 1, 3],
   lastActiveAt: '2026-04-18T00:00:00.000Z',
   groupCompleted: true,
   completedAt: '2026-04-18T00:10:00.000Z',
 }, words);
 assert.equal(fallback.currentIndex, 2);
 assert.deepEqual(fallback.queueWordIds, ['w1', 'w2', 'w3']);
+assert.deepEqual(fallback.passedQueueIndices, [0, 1]);
 
 const initial = createInitialLearningSession('g2', words);
 assert.equal(initial.groupId, 'g2');
 assert.equal(initial.round, 'round1');
 assert.equal(initial.currentIndex, 0);
 assert.deepEqual(initial.queueWordIds, ['w1', 'w2', 'w3']);
+assert.deepEqual(initial.passedQueueIndices, []);
 assert.equal(initial.groupCompleted, false);
 assert.equal(initial.completedAt, null);
 
@@ -125,6 +130,7 @@ const candidate = createResumeCandidate({
   round: 'round2',
   currentIndex: -2,
   queueWordIds: ['w1', 'w2'],
+  passedQueueIndices: [],
   lastActiveAt: '2026-04-18T00:00:00.000Z',
   groupCompleted: false,
   completedAt: null,
@@ -226,6 +232,7 @@ const officialSummary = buildOfficialLibrarySummary('ielts-vocab', officialGroup
     round: 'article',
     currentIndex: 3,
     queueWordIds: ['w1', 'w2'],
+    passedQueueIndices: [0],
     lastActiveAt: '2026-04-19T00:30:00.000Z',
     groupCompleted: true,
     completedAt: '2026-04-19T00:20:00.000Z',

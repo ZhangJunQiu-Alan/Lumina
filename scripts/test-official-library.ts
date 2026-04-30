@@ -68,6 +68,7 @@ const resumeCandidate: ResumeCandidate = {
   round: 'round2',
   currentIndex: 6,
   queueWordIds: ['w1', 'w2', 'w3'],
+  passedQueueIndices: [0, 1],
   queueLength: 3,
   lastActiveAt: '2026-04-20T00:00:00.000Z',
   groupCompleted: false,

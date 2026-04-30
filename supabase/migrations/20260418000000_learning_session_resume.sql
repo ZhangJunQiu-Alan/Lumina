@@ -2,6 +2,7 @@ ALTER TABLE learning_groups
   ADD COLUMN IF NOT EXISTS session_round TEXT,
   ADD COLUMN IF NOT EXISTS session_current_index INTEGER,
   ADD COLUMN IF NOT EXISTS session_queue_word_ids JSONB,
+  ADD COLUMN IF NOT EXISTS session_passed_queue_indices JSONB,
   ADD COLUMN IF NOT EXISTS session_last_active_at TIMESTAMPTZ;
 
 DO $$

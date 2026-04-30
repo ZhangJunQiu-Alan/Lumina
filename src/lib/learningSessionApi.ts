@@ -24,6 +24,7 @@ import {
   isLearningRoundType,
   isReinforcementRound,
   normalizePersistedLearningSession,
+  normalizeSessionPassedQueueIndices,
   normalizeSessionQueueWordIds,
 } from './learningSession';
 
@@ -38,6 +39,7 @@ interface LearningGroupSessionRow {
   session_round: LearningRoundType | null;
   session_current_index: number | null;
   session_queue_word_ids: unknown;
+  session_passed_queue_indices?: unknown;
   session_last_active_at: string | null;
 }
 
@@ -109,8 +111,13 @@ function isMissingLearningSessionColumnError(error: { message?: string } | null 
     'session_round',
     'session_current_index',
     'session_queue_word_ids',
+    'session_passed_queue_indices',
     'session_last_active_at',
   ].some((column) => message.includes(column));
+}
+
+function isMissingPassedQueueIndicesColumnError(error: { message?: string } | null | undefined) {
+  return (error?.message ?? '').includes('session_passed_queue_indices');
 }
 
 function isMissingRichVocabularySchemaError(error: { message?: string } | null | undefined) {
@@ -238,6 +245,11 @@ function toPersistedLearningSession(
     round: row.session_round,
     currentIndex: row.session_current_index ?? 0,
     queueWordIds: normalizeSessionQueueWordIds(row.session_queue_word_ids),
+    passedQueueIndices: normalizeSessionPassedQueueIndices(
+      row.session_passed_queue_indices,
+      normalizeSessionQueueWordIds(row.session_queue_word_ids).length,
+      row.session_current_index ?? 0,
+    ),
     lastActiveAt: row.session_last_active_at ?? row.created_at,
     groupCompleted: isCoreLearningComplete({
       status: row.status,
@@ -268,6 +280,11 @@ function toResumeCandidate(row: LearningGroupLookupRow): ResumeCandidate | null 
     round: row.session_round,
     currentIndex: row.session_current_index ?? 0,
     queueWordIds: normalizeSessionQueueWordIds(row.session_queue_word_ids),
+    passedQueueIndices: normalizeSessionPassedQueueIndices(
+      row.session_passed_queue_indices,
+      normalizeSessionQueueWordIds(row.session_queue_word_ids).length,
+      row.session_current_index ?? 0,
+    ),
     lastActiveAt: row.session_last_active_at ?? row.created_at,
     groupCompleted: isCoreLearningComplete({
       status: row.status,
@@ -344,6 +361,7 @@ async function fetchLearningGroupRow(
       session_round,
       session_current_index,
       session_queue_word_ids,
+      session_passed_queue_indices,
       session_last_active_at
     `)
     .eq('id', groupId)
@@ -354,7 +372,34 @@ async function fetchLearningGroupRow(
     return (fullResult.data as LearningGroupSessionRow | null) ?? null;
   }
 
-  if (!isMissingLearningSessionColumnError(fullResult.error)) {
+  if (isMissingPassedQueueIndicesColumnError(fullResult.error)) {
+    const legacySessionResult = await supabase
+      .from('learning_groups')
+      .select(`
+        id,
+        group_name,
+        source_type,
+        library_id,
+        created_at,
+        status,
+        completed_at,
+        session_round,
+        session_current_index,
+        session_queue_word_ids,
+        session_last_active_at
+      `)
+      .eq('id', groupId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (!legacySessionResult.error) {
+      return (legacySessionResult.data as LearningGroupSessionRow | null) ?? null;
+    }
+
+    if (!isMissingLearningSessionColumnError(legacySessionResult.error)) {
+      throw new Error(`learning_groups lookup failed: ${legacySessionResult.error.message}`);
+    }
+  } else if (!isMissingLearningSessionColumnError(fullResult.error)) {
     throw new Error(`learning_groups lookup failed: ${fullResult.error.message}`);
   }
 
@@ -397,6 +442,7 @@ async function fetchResumeCandidateBySource(
       session_round,
       session_current_index,
       session_queue_word_ids,
+      session_passed_queue_indices,
       session_last_active_at
     `)
     .eq('user_id', userId)
@@ -404,14 +450,45 @@ async function fetchResumeCandidateBySource(
     .order('session_last_active_at', { ascending: false })
     .order('created_at', { ascending: false });
 
+  let rowsData: unknown[] | null = data;
   if (error) {
-    if (isMissingLearningSessionColumnError(error)) {
+    if (isMissingPassedQueueIndicesColumnError(error)) {
+      const legacyRows = await supabase
+        .from('learning_groups')
+        .select(`
+          id,
+          group_name,
+          source_type,
+          library_id,
+          created_at,
+          status,
+          completed_at,
+          session_round,
+          session_current_index,
+          session_queue_word_ids,
+          session_last_active_at
+        `)
+        .eq('user_id', userId)
+        .not('session_round', 'is', null)
+        .order('session_last_active_at', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (legacyRows.error) {
+        if (isMissingLearningSessionColumnError(legacyRows.error)) {
+          return null;
+        }
+        throw new Error(`resume candidate lookup failed: ${legacyRows.error.message}`);
+      }
+
+      rowsData = legacyRows.data;
+    } else if (isMissingLearningSessionColumnError(error)) {
       return null;
+    } else {
+      throw new Error(`resume candidate lookup failed: ${error.message}`);
     }
-    throw new Error(`resume candidate lookup failed: ${error.message}`);
   }
 
-  const rows = ((data ?? []) as LearningGroupSessionRow[]);
+  const rows = ((rowsData ?? []) as LearningGroupSessionRow[]);
   const match = rows
     .filter((row) => isResumeCandidateForLibrary(row, libraryId))
     .map(toResumeCandidate)
@@ -440,6 +517,7 @@ export async function fetchOfficialResumeTargets(
       session_round,
       session_current_index,
       session_queue_word_ids,
+      session_passed_queue_indices,
       session_last_active_at
     `)
     .eq('user_id', userId)
@@ -448,6 +526,37 @@ export async function fetchOfficialResumeTargets(
     .order('created_at', { ascending: false });
 
   if (rows.error) {
+    if (isMissingPassedQueueIndicesColumnError(rows.error)) {
+      const legacyRows = await supabase
+        .from('learning_groups')
+        .select(`
+          id,
+          group_name,
+          source_type,
+          library_id,
+          created_at,
+          status,
+          completed_at,
+          session_round,
+          session_current_index,
+          session_queue_word_ids,
+          session_last_active_at
+        `)
+        .eq('user_id', userId)
+        .not('session_round', 'is', null)
+        .order('session_last_active_at', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (legacyRows.error) {
+        if (isMissingLearningSessionColumnError(legacyRows.error)) {
+          return { active: null, reinforcement: null };
+        }
+        throw new Error(`resume candidate lookup failed: ${legacyRows.error.message}`);
+      }
+
+      return buildOfficialResumeTargets((legacyRows.data ?? []) as LearningGroupSessionRow[], libraryId);
+    }
+
     if (isMissingLearningSessionColumnError(rows.error)) {
       return { active: null, reinforcement: null };
     }
@@ -472,6 +581,7 @@ export async function fetchOfficialResumeCandidates(userId: string) {
       session_round,
       session_current_index,
       session_queue_word_ids,
+      session_passed_queue_indices,
       session_last_active_at
     `)
     .eq('user_id', userId)
@@ -480,6 +590,48 @@ export async function fetchOfficialResumeCandidates(userId: string) {
     .order('created_at', { ascending: false });
 
   if (rows.error) {
+    if (isMissingPassedQueueIndicesColumnError(rows.error)) {
+      const legacyRows = await supabase
+        .from('learning_groups')
+        .select(`
+          id,
+          group_name,
+          source_type,
+          library_id,
+          created_at,
+          status,
+          completed_at,
+          session_round,
+          session_current_index,
+          session_queue_word_ids,
+          session_last_active_at
+        `)
+        .eq('user_id', userId)
+        .not('session_round', 'is', null)
+        .order('session_last_active_at', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (!legacyRows.error) {
+        const legacyLearningGroups = (legacyRows.data ?? []) as LearningGroupSessionRow[];
+        return Object.fromEntries(
+          OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => {
+            return [definition.id, buildOfficialResumeTargets(legacyLearningGroups, definition.id)];
+          }),
+        ) as Record<OfficialLibraryId, OfficialResumeTargets>;
+      }
+
+      if (!isMissingLearningSessionColumnError(legacyRows.error)) {
+        throw new Error(`resume candidate lookup failed: ${legacyRows.error.message}`);
+      }
+
+      return Object.fromEntries(
+        OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [
+          definition.id,
+          { active: null, reinforcement: null },
+        ]),
+      ) as Record<OfficialLibraryId, OfficialResumeTargets>;
+    }
+
     if (isMissingLearningSessionColumnError(rows.error)) {
       return Object.fromEntries(
         OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [
@@ -633,6 +785,11 @@ export async function persistLearningGroupSession(userId: string, session: Persi
       session_round: session.round,
       session_current_index: clampSessionIndex(session.currentIndex, session.queueWordIds.length),
       session_queue_word_ids: session.queueWordIds,
+      session_passed_queue_indices: normalizeSessionPassedQueueIndices(
+        session.passedQueueIndices,
+        session.queueWordIds.length,
+        session.currentIndex,
+      ),
       session_last_active_at: session.lastActiveAt,
     })
     .eq('id', session.groupId)
@@ -640,6 +797,31 @@ export async function persistLearningGroupSession(userId: string, session: Persi
 
   if (!error) {
     return;
+  }
+
+  if (isMissingPassedQueueIndicesColumnError(error)) {
+    const legacySessionResult = await supabase
+      .from('learning_groups')
+      .update({
+        status: session.groupCompleted ? 'completed' : 'active',
+        completed_at: completedAt,
+        session_round: session.round,
+        session_current_index: clampSessionIndex(session.currentIndex, session.queueWordIds.length),
+        session_queue_word_ids: session.queueWordIds,
+        session_last_active_at: session.lastActiveAt,
+      })
+      .eq('id', session.groupId)
+      .eq('user_id', userId);
+
+    if (!legacySessionResult.error) {
+      return;
+    }
+
+    if (!isMissingLearningSessionColumnError(legacySessionResult.error)) {
+      throw new Error(`learning_groups session update failed: ${legacySessionResult.error.message}`);
+    }
+  } else if (!isMissingLearningSessionColumnError(error)) {
+    throw new Error(`learning_groups session update failed: ${error.message}`);
   }
 
   if (isMissingLearningSessionColumnError(error)) {
@@ -658,10 +840,6 @@ export async function persistLearningGroupSession(userId: string, session: Persi
 
     throw new Error(`learning_groups session update failed: ${fallbackResult.error.message}`);
   }
-
-  if (error) {
-    throw new Error(`learning_groups session update failed: ${error.message}`);
-  }
 }
 
 export async function clearLearningGroupSession(
@@ -673,6 +851,7 @@ export async function clearLearningGroupSession(
     session_round: null,
     session_current_index: null,
     session_queue_word_ids: null,
+    session_passed_queue_indices: null,
     session_last_active_at: null,
   };
 
@@ -689,6 +868,27 @@ export async function clearLearningGroupSession(
 
   if (!error) {
     return;
+  }
+
+  if (isMissingPassedQueueIndicesColumnError(error)) {
+    const legacyPayload = { ...updatePayload };
+    delete legacyPayload.session_passed_queue_indices;
+
+    const legacyResult = await supabase
+      .from('learning_groups')
+      .update(legacyPayload)
+      .eq('id', groupId)
+      .eq('user_id', userId);
+
+    if (!legacyResult.error) {
+      return;
+    }
+
+    if (!isMissingLearningSessionColumnError(legacyResult.error)) {
+      throw new Error(`learning_groups session clear failed: ${legacyResult.error.message}`);
+    }
+  } else if (!isMissingLearningSessionColumnError(error)) {
+    throw new Error(`learning_groups session clear failed: ${error.message}`);
   }
 
   if (isMissingLearningSessionColumnError(error)) {
@@ -710,10 +910,6 @@ export async function clearLearningGroupSession(
     }
 
     throw new Error(`learning_groups session clear failed: ${fallbackResult.error.message}`);
-  }
-
-  if (error) {
-    throw new Error(`learning_groups session clear failed: ${error.message}`);
   }
 }
 

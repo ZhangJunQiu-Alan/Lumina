@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, ChevronRight, Loader2, Volume2, XCircle } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, ChevronRight, Loader2, Volume2, XCircle } from 'lucide-react';
 import { 
   LearningRoundType, 
   PersistedLearningSession, 
@@ -235,6 +235,15 @@ type PlaybackTarget =
 
 const stripDiacritics = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '');
 
+function isTextEditingTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || target.isContentEditable
+  );
+}
+
 export const LearningEngine = ({
   type,
   words,
@@ -258,6 +267,7 @@ export const LearningEngine = ({
     round: LearningRoundType;
     currentIndex: number;
     queueWordIds: string[];
+    passedQueueIndices: number[];
   }) => void;
   sessionActions?: React.ReactNode;
 }) => {
@@ -274,6 +284,11 @@ export const LearningEngine = ({
     const currentIndex = hasMatchingSession
       ? Math.min(Math.max(initialSession.currentIndex, 0), Math.max(queue.length - 1, 0))
       : 0;
+    const initialPassedQueueIndices = hasMatchingSession
+      ? Array.from(new Set(initialSession.passedQueueIndices ?? []))
+          .filter((index) => Number.isInteger(index) && index >= 0 && index < currentIndex && index < queue.length)
+          .sort((left, right) => left - right)
+      : [];
 
     // Words before currentIndex that are NOT re-queued later are truly completed.
     // Wrong answers get re-inserted after currentIndex, so prefix ∩ suffix = still pending.
@@ -283,11 +298,12 @@ export const LearningEngine = ({
       if (!pendingIds.has(word.id)) initialCompletedIds.add(word.id);
     }
 
-    return { queue, currentIndex, initialCompletedIds };
+    return { queue, currentIndex, initialCompletedIds, initialPassedQueueIndices };
   }, [initialSession, type, words]);
 
   const [queue, setQueue] = useState<Word[]>(initialEngineState.queue);
   const [currentIndex, setCurrentIndex] = useState(initialEngineState.currentIndex);
+  const [viewIndex, setViewIndex] = useState(initialEngineState.currentIndex);
   const [inputValue, setInputValue] = useState('');
   const [isWrong, setIsWrong] = useState(false);
   const [lastWrongInput, setLastWrongInput] = useState<string | null>(null);
@@ -297,6 +313,9 @@ export const LearningEngine = ({
   const [completedWordIds, setCompletedWordIds] = useState<Set<string>>(
     () => new Set(initialEngineState.initialCompletedIds),
   );
+  const [passedQueueIndices, setPassedQueueIndices] = useState<Set<number>>(
+    () => new Set(initialEngineState.initialPassedQueueIndices),
+  );
 
   // 计算进度：分母固定为初始单词数，分子为已正确完成的单词数 + 1（代表当前正在进行的第几个）
   const initialUniqueCount = words.length;
@@ -305,6 +324,10 @@ export const LearningEngine = ({
   const displayProgressIndex = type === 'round3'
     ? Math.min(currentIndex, Math.max(initialUniqueCount - 1, 0))
     : displayNumerator - 1;
+  const passedQueueIndicesArray = useMemo(
+    () => [...passedQueueIndices].sort((left, right) => left - right),
+    [passedQueueIndices],
+  );
 
   const [audioLocale, setAudioLocale] = useState<PronunciationLocale>(preferences.defaultPronunciationLocale);
   const [playbackTarget, setPlaybackTarget] = useState<PlaybackTarget | null>(null);
@@ -325,13 +348,23 @@ export const LearningEngine = ({
   useEffect(() => { preferencesRef.current = preferences; }, [preferences]);
 
   const currentWord = queue[currentIndex];
+  const viewedWord = queue[viewIndex] ?? currentWord;
+  const isViewingHistory = viewIndex !== currentIndex;
   const clozePrompt = useMemo(() => {
     if ((type !== 'round2' && type !== 'review') || !currentWord) return null;
     return buildClozePrompt({ word: currentWord.word, senses: currentWord.senses });
   }, [currentWord, type]);
+  const viewedClozePrompt = useMemo(() => {
+    if ((type !== 'round2' && type !== 'review') || !viewedWord) return null;
+    return buildClozePrompt({ word: viewedWord.word, senses: viewedWord.senses });
+  }, [viewedWord, type]);
   const expectedInput = clozePrompt
     ? clozePrompt.expectedForm
     : currentWord?.word.toLowerCase() ?? '';
+  const viewedExpectedInput = viewedClozePrompt
+    ? viewedClozePrompt.expectedForm
+    : viewedWord?.word.toLowerCase() ?? '';
+  const displayedInputValue = isViewingHistory ? viewedExpectedInput : inputValue;
   const roundSource = type === 'review' ? 'review' : type === 'round2' ? 'round2' : null;
   const activePronunciationLocale = playbackTarget?.kind === 'pronunciation'
     ? playbackTarget.locale
@@ -371,12 +404,14 @@ export const LearningEngine = ({
     stopPlayback();
     setQueue(initialEngineState.queue);
     setCurrentIndex(initialEngineState.currentIndex);
+    setViewIndex(initialEngineState.currentIndex);
     setInputValue('');
     setIsWrong(false);
     setShowAnswer(false);
     setIsSubmittingAttempt(false);
     setSubmitError('');
     setCompletedWordIds(new Set(initialEngineState.initialCompletedIds));
+    setPassedQueueIndices(new Set(initialEngineState.initialPassedQueueIndices));
     queueRef.current = initialEngineState.queue;
     currentIndexRef.current = initialEngineState.currentIndex;
   }, [clearAnswerRevealTimeout, initialEngineState, stopPlayback, type, words]);
@@ -387,8 +422,10 @@ export const LearningEngine = ({
   }, [clearAnswerRevealTimeout, stopPlayback]);
 
   useEffect(() => {
-    inputRef.current?.focus();
-  }, [currentIndex]);
+    if (viewIndex === currentIndex) {
+      inputRef.current?.focus();
+    }
+  }, [currentIndex, viewIndex]);
 
   const speakViaBrowser = useCallback((
     text: string,
@@ -610,19 +647,41 @@ export const LearningEngine = ({
   }, [currentIndex, roundSource]);
 
   useEffect(() => {
+    if (type === 'round3') return;
+    const canViewIndex = viewIndex === currentIndex || passedQueueIndices.has(viewIndex);
+    if (!canViewIndex || viewIndex >= queue.length) {
+      setViewIndex(currentIndex);
+    }
+  }, [currentIndex, passedQueueIndices, queue.length, type, viewIndex]);
+
+  useEffect(() => {
     if (!onSessionChange || type === 'review') return;
     onSessionChange({
       round: type,
       currentIndex,
       queueWordIds: queue.map((word) => word.id),
+      passedQueueIndices: passedQueueIndicesArray,
     });
-  }, [currentIndex, onSessionChange, queue, type]);
+  }, [currentIndex, onSessionChange, passedQueueIndicesArray, queue, type]);
+
+  const markCurrentQueueIndexPassed = useCallback(() => {
+    const passedIndex = currentIndexRef.current;
+    setPassedQueueIndices((prev) => {
+      if (prev.has(passedIndex)) return prev;
+      const next = new Set(prev);
+      next.add(passedIndex);
+      return next;
+    });
+  }, []);
 
   const nextWord = useCallback(() => {
     clearAnswerRevealTimeout();
     stopPlayback();
     if (currentIndexRef.current < queueRef.current.length - 1) {
-      setCurrentIndex(prev => prev + 1);
+      const nextIndex = currentIndexRef.current + 1;
+      currentIndexRef.current = nextIndex;
+      setCurrentIndex(nextIndex);
+      setViewIndex(nextIndex);
       setInputValue('');
       setIsWrong(false);
       setLastWrongInput(null);
@@ -633,6 +692,39 @@ export const LearningEngine = ({
       void onComplete();
     }
   }, [clearAnswerRevealTimeout, onComplete, stopPlayback]);
+
+  const navigableQueueIndices = useMemo(() => {
+    if (type === 'round3' || !currentWord) return [];
+
+    const indices = new Set<number>();
+    for (const index of passedQueueIndicesArray) {
+      if (index >= 0 && index < currentIndex && queue[index]) {
+        indices.add(index);
+      }
+    }
+    indices.add(currentIndex);
+
+    return [...indices].sort((left, right) => left - right);
+  }, [currentIndex, currentWord, passedQueueIndicesArray, queue, type]);
+  const currentNavigationSlot = navigableQueueIndices.indexOf(viewIndex);
+  const isCardNavigationLocked = showAnswer || isSubmittingAttempt || type === 'round3';
+  const canNavigateLeft = !isCardNavigationLocked && currentNavigationSlot > 0;
+  const canNavigateRight = !isCardNavigationLocked
+    && currentNavigationSlot >= 0
+    && currentNavigationSlot < navigableQueueIndices.length - 1;
+
+  const navigateCard = useCallback((direction: 'previous' | 'next') => {
+    if (isCardNavigationLocked) return;
+
+    const slot = navigableQueueIndices.indexOf(viewIndex);
+    const nextSlot = direction === 'previous' ? slot - 1 : slot + 1;
+    const nextViewIndex = navigableQueueIndices[nextSlot];
+    if (typeof nextViewIndex !== 'number') return;
+
+    stopPlayback();
+    setSubmitError('');
+    setViewIndex(nextViewIndex);
+  }, [isCardNavigationLocked, navigableQueueIndices, stopPlayback, viewIndex]);
 
   // 页面隐藏 / 关闭时走 keepalive 通道确保送达；
   // 组件正常卸载（SPA 内路由切换）时走普通 async flush。
@@ -689,7 +781,7 @@ export const LearningEngine = ({
 
   const validateCurrentInput = useCallback(async () => {
     // 防止重复提交
-    if (showAnswer || isSubmittingAttempt) return;
+    if (showAnswer || isSubmittingAttempt || isViewingHistory) return;
 
     const trimmedInput = inputValue.trim().toLowerCase();
     const wasCorrect = stripDiacritics(trimmedInput) === stripDiacritics(expectedInput);
@@ -712,6 +804,7 @@ export const LearningEngine = ({
         const advance = () => {
           answerRevealTimeoutRef.current = null;
           setShowAnswer(false);
+          markCurrentQueueIndexPassed();
           nextWord();
         };
 
@@ -761,7 +854,7 @@ export const LearningEngine = ({
         nextWord();
       }, preferences.wrongAnswerRevealMs);
     }
-  }, [showAnswer, isSubmittingAttempt, inputValue, expectedInput, persistAttempt, currentWord, type, nextWord, clearAnswerRevealTimeout, queue, currentIndex, preferences.correctAnswerRevealMs, preferences.wrongAnswerRevealMs, clozePrompt, playExampleSentence]);
+  }, [showAnswer, isSubmittingAttempt, isViewingHistory, inputValue, expectedInput, persistAttempt, currentWord, type, nextWord, clearAnswerRevealTimeout, queue, currentIndex, preferences.correctAnswerRevealMs, preferences.wrongAnswerRevealMs, clozePrompt, playExampleSentence, markCurrentQueueIndexPassed]);
 
   useEffect(() => {
     if (type !== 'round3') return;
@@ -775,6 +868,29 @@ export const LearningEngine = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleRound3PrimaryAction, type]);
+
+  useEffect(() => {
+    if (type === 'round3' || type === 'article') return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+      if (type === 'round1' && isTextEditingTarget(event.target)) return;
+
+      if (event.key === 'ArrowLeft' && canNavigateLeft) {
+        event.preventDefault();
+        navigateCard('previous');
+        return;
+      }
+
+      if (event.key === 'ArrowRight' && canNavigateRight) {
+        event.preventDefault();
+        navigateCard('next');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [canNavigateLeft, canNavigateRight, navigateCard, type]);
 
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -793,6 +909,7 @@ export const LearningEngine = ({
       handleRound3PrimaryAction();
       return;
     }
+    if (isViewingHistory) return;
     void validateCurrentInput();
   };
 
@@ -805,8 +922,8 @@ export const LearningEngine = ({
   }
 
   const isCorrect = stripDiacritics(inputValue.trim().toLowerCase()) === stripDiacritics(expectedInput);
-  const primaryPos = currentWord.pos_tags[0] ?? '未标注';
-  const actionDisabled = isSubmittingAttempt || ((type === 'round2' || type === 'review') && showAnswer);
+  const primaryPos = viewedWord.pos_tags[0] ?? '未标注';
+  const actionDisabled = isViewingHistory || isSubmittingAttempt || ((type === 'round2' || type === 'review') && showAnswer);
   const actionLabel = (type === 'round2' || type === 'review') && showAnswer
     ? (isWrong ? '答案展示中…' : '判断正确！')
     : type === 'round1'
@@ -825,7 +942,7 @@ export const LearningEngine = ({
           type="text"
           value={inputValue}
           onChange={handleInput}
-          disabled={isSubmittingAttempt}
+          disabled={isSubmittingAttempt || isViewingHistory}
           className={cx(
             'w-full bg-transparent text-center font-black outline-none transition-colors caret-gray-800 placeholder:text-text-secondary/35',
             type === 'round1' ? 'text-2xl sm:text-4xl' : 'text-3xl sm:text-5xl',
@@ -894,7 +1011,7 @@ export const LearningEngine = ({
           type="button"
           onClick={() => {
             setAudioLocale(loc);
-            void playAudioSequence(currentWord, loc, 1, 0);
+            void playAudioSequence(viewedWord, loc, 1, 0);
           }}
           className={cx(
             'flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-black tracking-[0.14em] transition-all',
@@ -936,6 +1053,32 @@ export const LearningEngine = ({
           <ChevronRight className="h-5 w-5" />
         </>
       )}
+    </button>
+  );
+
+  const navigationButtonClassName = 'flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/80 bg-white/78 text-text-primary shadow-[0_14px_34px_rgba(14,26,56,0.08)] backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:bg-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:translate-y-0 disabled:hover:bg-white/78';
+  const leftNavigationButton = (
+    <button
+      type="button"
+      aria-label="切到上一张词卡"
+      title="上一张词卡"
+      onClick={() => navigateCard('previous')}
+      disabled={!canNavigateLeft}
+      className={navigationButtonClassName}
+    >
+      <ChevronLeft className="h-5 w-5" strokeWidth={2.8} />
+    </button>
+  );
+  const rightNavigationButton = (
+    <button
+      type="button"
+      aria-label="切到下一张词卡"
+      title="下一张词卡"
+      onClick={() => navigateCard('next')}
+      disabled={!canNavigateRight}
+      className={navigationButtonClassName}
+    >
+      <ChevronRight className="h-5 w-5" strokeWidth={2.8} />
     </button>
   );
 
@@ -1043,8 +1186,12 @@ export const LearningEngine = ({
       queueLength={initialUniqueCount}
       sessionActions={sessionActions}
       main={(
+        <div className="grid h-full min-h-0 grid-cols-[auto_minmax(0,1fr)_auto] items-stretch gap-2 sm:gap-3">
+          <div className="flex items-center">
+            {leftNavigationButton}
+          </div>
         <motion.div
-          key={currentWord.id + currentIndex}
+          key={`${viewedWord.id}:${viewIndex}`}
           initial={{ opacity: 0, scale: 0.97, y: 14 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           className="glass flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] sm:rounded-[30px] shadow-[0_24px_64px_rgba(14,26,56,0.08)]"
@@ -1055,25 +1202,25 @@ export const LearningEngine = ({
                 <div className="space-y-5 sm:space-y-7">
                   <div className="space-y-4 sm:space-y-5">
                     <PronunciationControls
-                      phonetic={currentWord.phonetic}
+                      phonetic={viewedWord.phonetic}
                       audioLocale={audioLocale}
                       activePronunciationLocale={activePronunciationLocale}
                       onPlay={(locale) => {
                         setAudioLocale(locale);
-                        void playAudioSequence(currentWord, locale, 1, 0);
+                        void playAudioSequence(viewedWord, locale, 1, 0);
                       }}
                     />
 
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
                       <div className="lg:flex-shrink-0">
                         <p className="text-[clamp(1.8rem,10vw,4.2rem)] font-black leading-tight tracking-tight text-text-primary">
-                          {currentWord.word}
+                          {viewedWord.word}
                         </p>
-                        {currentWord.ner_entities.length > 0 && (
+                        {viewedWord.ner_entities.length > 0 && (
                           <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                            {currentWord.ner_entities.map((entity, index) => (
+                            {viewedWord.ner_entities.map((entity, index) => (
                               <span
-                                key={`${currentWord.id}-ner-${index}`}
+                                key={`${viewedWord.id}-ner-${index}`}
                                 className="rounded-full bg-apple-indigo/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-apple-indigo"
                               >
                                 专有名词 · {entity.label}
@@ -1083,27 +1230,27 @@ export const LearningEngine = ({
                         )}
                       </div>
                       <div className="min-w-0 lg:max-w-[960px] lg:flex-1 lg:pt-1">
-                        <WordSenseList word={currentWord} />
+                        <WordSenseList word={viewedWord} />
                       </div>
                     </div>
                   </div>
 
-                  {currentWord.memory_tip && (
+                  {viewedWord.memory_tip && (
                     <div className="rounded-[18px] border border-apple-blue/15 bg-apple-blue/5 px-4 py-3 sm:px-5 sm:py-3.5">
                       <p className="text-[11px] sm:text-[12px] font-bold uppercase tracking-[0.22em] text-apple-blue">
                         记忆锦囊
                       </p>
                       <p className="mt-1.5 text-[13px] sm:text-sm leading-6 text-text-primary">
-                        {currentWord.memory_tip}
+                        {viewedWord.memory_tip}
                       </p>
                     </div>
                   )}
 
                   <div className="grid gap-3 sm:gap-4 lg:grid-cols-3">
-                    <Round1MorphologyCard word={currentWord} />
-                    <Round1RelationsCard word={currentWord} />
+                    <Round1MorphologyCard word={viewedWord} />
+                    <Round1RelationsCard word={viewedWord} />
                     <Round1ConfusingCard
-                      word={currentWord}
+                      word={viewedWord}
                       activeExampleKey={activeExampleKey}
                       canPlayExampleAudio={canPlayExampleAudio}
                       exampleLocale={audioLocale}
@@ -1115,42 +1262,58 @@ export const LearningEngine = ({
 
               <div className={round1InputDockClassName}>
                 <div className="mx-auto w-full max-w-[1200px]">
-                  <div className="flex flex-row items-stretch gap-3">
-                    <div className="flex-[3.2] min-w-0">
-                      {inputField}
+                  {isViewingHistory ? (
+                    <div className="flex min-h-[62px] items-center justify-between gap-3 rounded-[22px] border border-[#10B981]/15 bg-[#10B981]/10 px-5 text-[#10B981] shadow-[0_12px_32px_rgba(16,185,129,0.08)]">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <CheckCircle2 className="h-5 w-5 shrink-0" />
+                        <span className="truncate text-sm font-black sm:text-base">已通过</span>
+                      </div>
+                      <span className="truncate text-xl font-black sm:text-2xl">{viewedWord.word}</span>
                     </div>
-                    <div className="flex-1 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => { void validateCurrentInput(); }}
-                        disabled={actionDisabled}
-                        className="flex h-full min-h-[62px] w-full items-center justify-center rounded-[22px] bg-apple-blue text-white shadow-[0_14px_32px_rgba(0,122,255,0.25)] transition-all active:scale-[0.96] disabled:opacity-50"
-                      >
-                        <ChevronRight className="h-6 w-6" strokeWidth={3} />
-                      </button>
-                    </div>
-                  </div>
-                  {submitErrorBanner && <div className="mt-2">{submitErrorBanner}</div>}
+                  ) : (
+                    <>
+                      <div className="flex flex-row items-stretch gap-3">
+                        <div className="flex-[3.2] min-w-0">
+                          {inputField}
+                        </div>
+                        <div className="flex-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => { void validateCurrentInput(); }}
+                            disabled={actionDisabled}
+                            className="flex h-full min-h-[62px] w-full items-center justify-center rounded-[22px] bg-apple-blue text-white shadow-[0_14px_32px_rgba(0,122,255,0.25)] transition-all active:scale-[0.96] disabled:opacity-50"
+                          >
+                            <ChevronRight className="h-6 w-6" strokeWidth={3} />
+                          </button>
+                        </div>
+                      </div>
+                      {submitErrorBanner && <div className="mt-2">{submitErrorBanner}</div>}
+                    </>
+                  )}
                 </div>
               </div>
             </div>
           ) : (
             <div
               className="relative flex h-full min-h-0 flex-col"
-              onClick={() => inputRef.current?.focus()}
+              onClick={() => {
+                if (!isViewingHistory) {
+                  inputRef.current?.focus();
+                }
+              }}
             >
               <div className={cx(contentAreaClassName, 'py-8')}>
                 <div className="flex min-h-full flex-col justify-center text-center">
                   {replayControls}
-                  {clozePrompt ? (
-                    <Round2ClozePrompt prompt={clozePrompt} inputValue={inputValue} />
+                  {viewedClozePrompt ? (
+                    <Round2ClozePrompt prompt={viewedClozePrompt} inputValue={displayedInputValue} />
                   ) : (
                     <div className="mx-auto max-w-3xl">
                       <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary">
                         {type === 'review' ? '先写出这个到期词' : '先把这个词从记忆里提出来'}
                       </p>
                       <p className="mt-5 text-4xl font-black leading-tight text-text-primary md:text-5xl">
-                        {currentWord.chinese_definition}
+                        {viewedWord.chinese_definition}
                       </p>
                       <div className="mt-4 flex items-center justify-center gap-3">
                         <span className="rounded-full bg-black/5 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">
@@ -1158,9 +1321,9 @@ export const LearningEngine = ({
                         </span>
                       </div>
                       <div className="mt-7 inline-flex items-baseline gap-1.5 rounded-md bg-apple-blue/10 px-4 py-2 text-2xl text-apple-blue/80 md:text-3xl">
-                        {Array.from({ length: expectedInput.length }, (_, i) => (
+                        {Array.from({ length: viewedExpectedInput.length }, (_, i) => (
                           <span key={i} className="inline-block min-w-[0.9ch] text-center font-mono">
-                            {inputValue[i] ?? '_'}
+                            {displayedInputValue[i] ?? '_'}
                           </span>
                         ))}
                       </div>
@@ -1168,32 +1331,47 @@ export const LearningEngine = ({
                   )}
 
                   <div className="mt-6 space-y-3">
-                    {feedbackReveal}
-                    {submitErrorBanner}
+                    {isViewingHistory ? (
+                      <div className="mx-auto flex w-fit max-w-full items-center gap-3 rounded-[22px] bg-[#10B981] px-5 py-4 text-left font-bold text-white shadow-xl shadow-[#10B981]/20">
+                        <CheckCircle2 className="h-5 w-5 shrink-0" />
+                        <span>已通过</span>
+                      </div>
+                    ) : (
+                      <>
+                        {feedbackReveal}
+                        {submitErrorBanner}
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
 
-              <form onSubmit={handleSubmit}>
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={inputValue}
-                  onChange={handleInput}
-                  disabled={isSubmittingAttempt || showAnswer}
-                  maxLength={expectedInput.length}
-                  autoFocus
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                  className="absolute left-1/2 top-1/2 h-px w-px -translate-x-1/2 -translate-y-1/2 opacity-0"
-                  aria-label="拼写输入"
-                />
-              </form>
+              {!isViewingHistory && (
+                <form onSubmit={handleSubmit}>
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={inputValue}
+                    onChange={handleInput}
+                    disabled={isSubmittingAttempt || showAnswer}
+                    maxLength={expectedInput.length}
+                    autoFocus
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    className="absolute left-1/2 top-1/2 h-px w-px -translate-x-1/2 -translate-y-1/2 opacity-0"
+                    aria-label="拼写输入"
+                  />
+                </form>
+              )}
             </div>
           )}
         </motion.div>
+          <div className="flex items-center">
+            {rightNavigationButton}
+          </div>
+        </div>
       )}
     />
   );

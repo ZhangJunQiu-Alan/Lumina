@@ -45,6 +45,23 @@ export function normalizeSessionQueueWordIds(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0);
 }
 
+export function normalizeSessionPassedQueueIndices(value: unknown, queueLength: number, currentIndex?: number): number[] {
+  if (!Array.isArray(value) || queueLength <= 0) return [];
+
+  const upperBound = typeof currentIndex === 'number'
+    ? Math.min(Math.max(Math.round(currentIndex), 0), queueLength)
+    : queueLength;
+  const indices = new Set<number>();
+
+  for (const entry of value) {
+    if (typeof entry !== 'number' || !Number.isInteger(entry)) continue;
+    if (entry < 0 || entry >= upperBound) continue;
+    indices.add(entry);
+  }
+
+  return [...indices].sort((left, right) => left - right);
+}
+
 export function clampSessionIndex(currentIndex: number, queueLength: number) {
   if (queueLength <= 0) return 0;
   if (!Number.isFinite(currentIndex)) return 0;
@@ -64,11 +81,17 @@ export function normalizePersistedLearningSession(
 ): PersistedLearningSession {
   const hydratedQueue = rebuildSessionQueue(words, session.queueWordIds);
   const effectiveQueue = hydratedQueue.length > 0 ? hydratedQueue : words;
+  const currentIndex = clampSessionIndex(session.currentIndex, effectiveQueue.length);
 
   return {
     ...session,
-    currentIndex: clampSessionIndex(session.currentIndex, effectiveQueue.length),
+    currentIndex,
     queueWordIds: effectiveQueue.map((word) => word.id),
+    passedQueueIndices: normalizeSessionPassedQueueIndices(
+      session.passedQueueIndices,
+      effectiveQueue.length,
+      currentIndex,
+    ),
   };
 }
 
@@ -86,6 +109,7 @@ export function createInitialLearningSession(
     round,
     currentIndex: 0,
     queueWordIds: words.map((word) => word.id),
+    passedQueueIndices: [],
     lastActiveAt: new Date().toISOString(),
     groupCompleted: options.groupCompleted ?? false,
     completedAt: options.completedAt ?? null,

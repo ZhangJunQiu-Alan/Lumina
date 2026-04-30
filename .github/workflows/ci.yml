@@ -37,6 +37,7 @@ jobs:
         run: |
           npx tsx scripts/test-review-rules.ts
           npx tsx scripts/test-enrichment-normalization.ts
+          npx tsx scripts/test-learning-session.ts
           npx tsx scripts/test-official-library.ts
           npx tsx scripts/test-word-batch.ts
         env:
