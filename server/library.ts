@@ -68,7 +68,9 @@ export type SavedWordSource = 'reading_popup' | 'manual';
 export interface SaveWordToLibraryResult {
   vocabularyItemId: string;
   inserted: boolean;
+  saved: boolean;
   fullEnrichmentQueued: boolean;
+  skippedReason?: 'non_new_state';
 }
 
 export interface RemoveWordFromLibraryResult {
@@ -261,6 +263,27 @@ export async function saveWordToLibrary(
   vocabularyItemId: string,
   source: SavedWordSource = 'reading_popup',
 ): Promise<SaveWordToLibraryResult> {
+  const savedWordState = await ensureWordIsNewForSavedLibrary(userId, vocabularyItemId);
+  if (!savedWordState.allowed) {
+    const { error: cleanupError } = await supabaseAdmin
+      .from('user_saved_words')
+      .delete()
+      .eq('user_id', userId)
+      .eq('vocabulary_item_id', vocabularyItemId);
+
+    if (cleanupError) {
+      throw new Error(`user_saved_words non-new cleanup failed: ${cleanupError.message}`);
+    }
+
+    return {
+      vocabularyItemId,
+      inserted: false,
+      saved: false,
+      fullEnrichmentQueued: false,
+      skippedReason: 'non_new_state',
+    };
+  }
+
   const queueResult = await queueFullEnrichmentForVocabularyItemId(vocabularyItemId, source);
   if (queueResult.reason === 'not_found') {
     throw new Error('这个词条不存在，无法加入词库。');
@@ -285,6 +308,7 @@ export async function saveWordToLibrary(
   return {
     vocabularyItemId,
     inserted: (data?.length ?? 0) > 0,
+    saved: true,
     fullEnrichmentQueued: queueResult.queued,
   };
 }
@@ -349,6 +373,64 @@ async function fetchGroupWordIds(groupId: string) {
   return ((data ?? []) as GroupWordRow[])
     .map((row) => row.vocabulary_item_id)
     .filter(Boolean);
+}
+
+async function ensureWordIsNewForSavedLibrary(userId: string, vocabularyItemId: string) {
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from('review_states')
+    .select('memory_state')
+    .eq('user_id', userId)
+    .eq('vocabulary_item_id', vocabularyItemId)
+    .maybeSingle<{ memory_state: MemoryState }>();
+
+  if (existingError) {
+    throw new Error(`review_states lookup failed: ${existingError.message}`);
+  }
+
+  if (existing?.memory_state && existing.memory_state !== 'new') {
+    return { allowed: false, created: false };
+  }
+
+  if (existing?.memory_state === 'new') {
+    return { allowed: true, created: false };
+  }
+
+  const { error: upsertError } = await supabaseAdmin
+    .from('review_states')
+    .upsert(
+      {
+        user_id: userId,
+        vocabulary_item_id: vocabularyItemId,
+        memory_state: 'new',
+        interval_days: null,
+        next_review_at: null,
+        graduated_at: null,
+      },
+      {
+        onConflict: 'user_id,vocabulary_item_id',
+        ignoreDuplicates: true,
+      },
+    );
+
+  if (upsertError) {
+    throw new Error(`review_states saved-word upsert failed: ${upsertError.message}`);
+  }
+
+  const { data: current, error: currentError } = await supabaseAdmin
+    .from('review_states')
+    .select('memory_state')
+    .eq('user_id', userId)
+    .eq('vocabulary_item_id', vocabularyItemId)
+    .maybeSingle<{ memory_state: MemoryState }>();
+
+  if (currentError) {
+    throw new Error(`review_states lookup failed: ${currentError.message}`);
+  }
+
+  return {
+    allowed: (current?.memory_state ?? 'new') === 'new',
+    created: true,
+  };
 }
 
 async function fetchRound2AttemptWordIds(userId: string, groupId: string) {

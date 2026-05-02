@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { apiFetch } from './api';
+import { prepareVocabularyItemsForSavedWords } from './savedWordsReviewState';
 import {
   OFFICIAL_LIBRARY_DEFINITIONS,
   getOfficialLibraryDefinition,
@@ -29,6 +30,7 @@ interface SavedWordRow {
         ipa_uk: string | null;
         primary_meaning_zh: string | null;
         enrichment_level: 'lite' | 'full' | null;
+        vocabulary_senses?: { example_sentence: string | null }[] | null;
       }
     | Array<{
         id: string;
@@ -36,13 +38,14 @@ interface SavedWordRow {
         ipa_uk: string | null;
         primary_meaning_zh: string | null;
         enrichment_level: 'lite' | 'full' | null;
+        vocabulary_senses?: { example_sentence: string | null }[] | null;
       }>
     | null;
 }
 
 interface SavedWordReviewStateRow {
   vocabulary_item_id: string;
-  memory_state: MemoryState | null;
+  memory_state: MemoryState;
   next_review_at: string | null;
   last_result: ReviewResultType | null;
 }
@@ -53,13 +56,20 @@ export interface SavedWordEntry {
   word: string;
   phonetic: string;
   meaning: string;
+  exampleSentence: string;
   enrichmentLevel: 'lite' | 'full';
   source: SavedWordSource;
   savedAt: string;
-  memoryState: MemoryState | null;
+  memoryState: MemoryState;
   nextReviewAt: string | null;
   lastResult: ReviewResultType | null;
   isInActiveLearningGroup: boolean;
+}
+
+export interface SavedWordsCleanupResult {
+  removedSavedWords: number;
+  createdReviewStates: number;
+  deletedCustomGroups: number;
 }
 
 export interface DeleteLibraryGroupResponse {
@@ -213,7 +223,10 @@ export async function fetchSavedWords(userId: string): Promise<SavedWordEntry[]>
           word,
           ipa_uk,
           primary_meaning_zh,
-          enrichment_level
+          enrichment_level,
+          vocabulary_senses (
+            example_sentence
+          )
         )
       `)
       .eq('user_id', userId)
@@ -259,16 +272,90 @@ export async function fetchSavedWords(userId: string): Promise<SavedWordEntry[]>
         word: vocabularyItem.word,
         phonetic: vocabularyItem.ipa_uk ?? '',
         meaning: vocabularyItem.primary_meaning_zh ?? '',
+        exampleSentence: (vocabularyItem.vocabulary_senses ?? [])
+          .map((sense) => sense.example_sentence?.trim() ?? '')
+          .find(Boolean) ?? '',
         enrichmentLevel: vocabularyItem.enrichment_level ?? 'full',
         source: row.source ?? 'manual',
         savedAt: row.saved_at ?? new Date(0).toISOString(),
-        memoryState: reviewState?.memory_state ?? null,
+        memoryState: reviewState?.memory_state ?? 'new',
         nextReviewAt: reviewState?.next_review_at ?? null,
         lastResult: reviewState?.last_result ?? null,
         isInActiveLearningGroup: activeWordIds.has(vocabularyItem.id),
       } satisfies SavedWordEntry;
     })
     .filter((entry): entry is SavedWordEntry => Boolean(entry));
+}
+
+export async function migrateCustomGroupWordsIntoSavedWords(
+  userId: string,
+): Promise<{ inserted: number }> {
+  const { data: customGroups, error: groupsError } = await supabase
+    .from('learning_groups')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('source_type', 'custom');
+
+  if (groupsError) throw new Error(groupsError.message);
+
+  const groupIds = ((customGroups ?? []) as Array<{ id: string }>).map((g) => g.id).filter(Boolean);
+  if (groupIds.length === 0) return { inserted: 0 };
+
+  const { data: groupWords, error: wordsError } = await supabase
+    .from('learning_group_words')
+    .select('vocabulary_item_id')
+    .in('learning_group_id', groupIds);
+
+  if (wordsError) throw new Error(wordsError.message);
+
+  const vocabularyItemIds = Array.from(
+    new Set(((groupWords ?? []) as GroupWordRow[]).map((row) => row.vocabulary_item_id).filter(Boolean)),
+  );
+  if (vocabularyItemIds.length === 0) return { inserted: 0 };
+
+  const preparation = await prepareVocabularyItemsForSavedWords(userId, vocabularyItemIds);
+  if (preparation.skippedNonNewVocabularyItemIds.length > 0) {
+    const { error } = await supabase
+      .from('user_saved_words')
+      .delete()
+      .eq('user_id', userId)
+      .in('vocabulary_item_id', preparation.skippedNonNewVocabularyItemIds);
+
+    if (error) throw new Error(`user_saved_words migration cleanup: ${error.message}`);
+  }
+
+  if (preparation.eligibleVocabularyItemIds.length === 0) return { inserted: 0 };
+
+  const rows = preparation.eligibleVocabularyItemIds.map((vocabularyItemId) => ({
+    user_id: userId,
+    vocabulary_item_id: vocabularyItemId,
+    source: 'migration' as SavedWordSource,
+  }));
+
+  const { data, error } = await supabase
+    .from('user_saved_words')
+    .upsert(rows, {
+      onConflict: 'user_id,vocabulary_item_id',
+      ignoreDuplicates: true,
+    })
+    .select('id');
+
+  if (error) throw new Error(`user_saved_words migration: ${error.message}`);
+
+  return { inserted: data?.length ?? 0 };
+}
+
+export async function cleanupSavedWords(): Promise<SavedWordsCleanupResult> {
+  const response = await apiFetch('/api/library/saved-words/cleanup', {
+    method: 'POST',
+  });
+
+  const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+  if (!response.ok) {
+    throw new Error((payload as { error?: string }).error ?? `HTTP ${response.status}`);
+  }
+
+  return (payload as { data: SavedWordsCleanupResult }).data;
 }
 
 export async function deleteSavedWord(vocabularyItemId: string): Promise<void> {

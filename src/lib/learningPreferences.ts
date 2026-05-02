@@ -11,6 +11,7 @@ interface LearningPreferencesRow {
   wrong_answer_reveal_ms: number;
   reinforcement_round3_enabled: boolean;
   reinforcement_article_enabled: boolean;
+  popover_auto_play_enabled: boolean;
   updated_at: string;
 }
 
@@ -23,6 +24,7 @@ export const LEARNING_PREFERENCES_DEFAULTS: LearningPreferences = {
   wrongAnswerRevealMs: 8000,
   reinforcementRound3Enabled: true,
   reinforcementArticleEnabled: true,
+  popoverAutoPlayEnabled: false,
 };
 
 export const AUTO_PLAY_REPEAT_OPTIONS = [1, 2, 3] as const;
@@ -85,6 +87,9 @@ function normalizeLearningPreferences(
   const reinforcementArticleValue = hasCamelCaseShape
     ? (input as Partial<LearningPreferences>).reinforcementArticleEnabled
     : (input as LearningPreferencesRow | null | undefined)?.reinforcement_article_enabled;
+  const popoverAutoPlayValue = hasCamelCaseShape
+    ? (input as Partial<LearningPreferences>).popoverAutoPlayEnabled
+    : (input as LearningPreferencesRow | null | undefined)?.popover_auto_play_enabled;
 
   return {
     defaultPronunciationLocale: isValidLocale(localeValue)
@@ -103,6 +108,10 @@ function normalizeLearningPreferences(
       typeof reinforcementArticleValue === 'boolean'
         ? reinforcementArticleValue
         : LEARNING_PREFERENCES_DEFAULTS.reinforcementArticleEnabled,
+    popoverAutoPlayEnabled:
+      typeof popoverAutoPlayValue === 'boolean'
+        ? popoverAutoPlayValue
+        : LEARNING_PREFERENCES_DEFAULTS.popoverAutoPlayEnabled,
   };
 }
 
@@ -117,12 +126,16 @@ function toDatabaseRow(userId: string, preferences: LearningPreferences): Omit<L
     wrong_answer_reveal_ms: preferences.wrongAnswerRevealMs,
     reinforcement_round3_enabled: preferences.reinforcementRound3Enabled,
     reinforcement_article_enabled: preferences.reinforcementArticleEnabled,
+    popover_auto_play_enabled: preferences.popoverAutoPlayEnabled,
   };
 }
 
 function isMissingUserSettingsTableError(error: { message?: string } | null | undefined) {
   const message = error?.message ?? '';
-  return message.includes('user_settings') || message.includes('correct_answer_reveal_ms') || message.includes('schema cache');
+  return message.includes('user_settings')
+    || message.includes('correct_answer_reveal_ms')
+    || message.includes('popover_auto_play_enabled')
+    || message.includes('schema cache');
 }
 
 function buildLocalPreferencesKey(userId: string) {
@@ -165,6 +178,7 @@ export async function getLearningPreferences(userId: string): Promise<LearningPr
       wrong_answer_reveal_ms,
       reinforcement_round3_enabled,
       reinforcement_article_enabled,
+      popover_auto_play_enabled,
       updated_at
     `)
     .eq('user_id', userId)
@@ -211,6 +225,7 @@ export async function saveLearningPreferences(
       wrong_answer_reveal_ms,
       reinforcement_round3_enabled,
       reinforcement_article_enabled,
+      popover_auto_play_enabled,
       updated_at
     `)
     .single();

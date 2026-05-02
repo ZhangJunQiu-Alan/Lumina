@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { Loader2, Plus, Trash2, X } from 'lucide-react';
+import { Loader2, Plus, Trash2, Volume2, X } from 'lucide-react';
 import { useSavedWords } from '../../contexts/SavedWordsContext';
+import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
+import { cancelBrowserSpeech, isBrowserSpeechSupported, speakTextViaBrowser } from '../../lib/browserSpeech';
+import { fetchWordAudioUrl, getCachedWordAudioUrl, primeWordAudioUrl } from '../../lib/wordAudio';
 import { type MemoryState, useWordLookup, type WordLookupResult } from '../../lib/wordLookup';
 import { cx } from './LearningUI';
 
@@ -98,14 +101,124 @@ function WordPopoverSkeleton() {
 export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const initialAnchorTopRef = useRef(anchor.getBoundingClientRect().top);
-  const [position, setPosition] = useState<PopoverPosition | null>(() => calculatePosition(anchor, null));
-  const [actionError, setActionError] = useState('');
-  const [isMutating, setIsMutating] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const autoPlayedRef = useRef(false);
   const { saveWord, removeWord } = useSavedWords();
+  const { preferences } = useLearningPreferences();
+  const accent = preferences.defaultPronunciationLocale;
   const { data, loading } = useWordLookup(word);
   const senses = groupSenses(data);
   const srsBadge = data?.srs_state ? SRS_BADGE_CONFIG[data.srs_state] : null;
   const canMutateLibrary = Boolean(data && !data.srs_state);
+  const lookupAudioUrl = accent === 'uk'
+    ? data?.vocabulary_item.audio_uk_url ?? null
+    : data?.vocabulary_item.audio_us_url ?? null;
+  const playableWord = data?.vocabulary_item.word ?? word;
+
+  const [position, setPosition] = useState<PopoverPosition | null>(() => calculatePosition(anchor, null));
+  const [actionError, setActionError] = useState('');
+  const [isMutating, setIsMutating] = useState(false);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [resolvedAudioUrl, setResolvedAudioUrl] = useState<string | null>(
+    () => lookupAudioUrl ?? getCachedWordAudioUrl(word, accent),
+  );
+
+  // Eagerly fetch the Google TTS URL the moment the popover opens — keep it
+  // in flight in parallel with the lookup so the speaker button is responsive.
+  useEffect(() => {
+    if (lookupAudioUrl) {
+      primeWordAudioUrl(word, accent, lookupAudioUrl);
+      setResolvedAudioUrl(lookupAudioUrl);
+      return;
+    }
+
+    let cancelled = false;
+    void fetchWordAudioUrl(word, accent).then((url) => {
+      if (cancelled || !url) return;
+      setResolvedAudioUrl((current) => current ?? url);
+    });
+
+    return () => { cancelled = true; };
+  }, [accent, lookupAudioUrl, word]);
+
+  // Once the lookup resolves to a canonical word that differs from the click
+  // target, prefetch its audio too (e.g. clicked "running" → canonical "run").
+  useEffect(() => {
+    const canonicalWord = data?.vocabulary_item.word;
+    if (!canonicalWord || canonicalWord.toLowerCase() === word.toLowerCase()) return;
+
+    if (lookupAudioUrl) {
+      primeWordAudioUrl(canonicalWord, accent, lookupAudioUrl);
+      setResolvedAudioUrl((current) => current ?? lookupAudioUrl);
+      return;
+    }
+
+    let cancelled = false;
+    void fetchWordAudioUrl(canonicalWord, accent).then((url) => {
+      if (cancelled || !url) return;
+      setResolvedAudioUrl((current) => current ?? url);
+    });
+
+    return () => { cancelled = true; };
+  }, [accent, data?.vocabulary_item.word, lookupAudioUrl, word]);
+
+  const stopAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+      audioRef.current = null;
+    }
+    cancelBrowserSpeech();
+    setIsPlayingAudio(false);
+  }, []);
+
+  const playAudio = useCallback(async () => {
+    if (!playableWord) return;
+
+    stopAudio();
+    setIsPlayingAudio(true);
+
+    const playUrl = async (url: string) => new Promise<boolean>((resolve) => {
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      const settle = (ok: boolean) => {
+        if (audioRef.current === audio) {
+          audioRef.current = null;
+        }
+        resolve(ok);
+      };
+      audio.addEventListener('ended', () => settle(true));
+      audio.addEventListener('error', () => settle(false));
+      audio.play().catch(() => settle(false));
+    });
+
+    const url = resolvedAudioUrl ?? await fetchWordAudioUrl(playableWord, accent);
+    if (url) {
+      if (!resolvedAudioUrl) setResolvedAudioUrl(url);
+      const ok = await playUrl(url);
+      if (ok) {
+        setIsPlayingAudio(false);
+        return;
+      }
+    }
+
+    if (isBrowserSpeechSupported()) {
+      await speakTextViaBrowser(playableWord, accent);
+    }
+    setIsPlayingAudio(false);
+  }, [accent, playableWord, resolvedAudioUrl, stopAudio]);
+
+  const canPlayAudio = Boolean(playableWord);
+
+  useEffect(() => {
+    if (loading || !data) return;
+    if (autoPlayedRef.current) return;
+    if (!preferences.popoverAutoPlayEnabled) return;
+    autoPlayedRef.current = true;
+    void playAudio();
+  }, [data, loading, playAudio, preferences.popoverAutoPlayEnabled]);
+
+  useEffect(() => () => stopAudio(), [stopAudio]);
 
   const refreshPosition = useCallback(() => {
     const nextPosition = calculatePosition(anchor, popoverRef.current);
@@ -196,6 +309,20 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
             <p className="truncate text-base font-black text-text-primary">
               {data?.vocabulary_item.word ?? word}
             </p>
+            {canPlayAudio && (
+              <button
+                type="button"
+                onClick={() => { void playAudio(); }}
+                className={cx(
+                  'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-apple-blue transition-colors hover:bg-apple-blue/10',
+                  isPlayingAudio && 'bg-apple-blue/10',
+                )}
+                aria-label={`朗读 ${playableWord}`}
+                title={`朗读（${accent === 'uk' ? '英音' : '美音'}）`}
+              >
+                <Volume2 className={cx('h-4 w-4', isPlayingAudio && 'animate-pulse')} />
+              </button>
+            )}
             {srsBadge && (
               <span className={cx('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black', srsBadge.className)}>
                 {srsBadge.text}

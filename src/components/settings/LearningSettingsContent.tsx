@@ -310,6 +310,19 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
 
       <SettingItem
         icon={Volume2}
+        title="查词浮窗自动朗读"
+        description="点开查词浮窗时自动朗读这个词"
+        feedback={feedbackByKey.popoverAutoPlayEnabled}
+        control={(
+          <ToggleControl
+            checked={preferences.popoverAutoPlayEnabled}
+            onChange={(checked) => { void handleSave('popoverAutoPlayEnabled', { popoverAutoPlayEnabled: checked }); }}
+          />
+        )}
+      />
+
+      <SettingItem
+        icon={Volume2}
         title="朗读次数"
         description="每个单词自动朗读的次数"
         feedback={feedbackByKey.autoPlayRepeatCount}

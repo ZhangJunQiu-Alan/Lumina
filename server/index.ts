@@ -17,6 +17,7 @@ import {
   saveWordToLibrary,
   type SavedWordSource,
 } from './library.js';
+import { cleanupSavedLibrary } from './savedLibraryCleanup.js';
 import { requireAuth, type AuthenticatedRequest } from './auth.js';
 import { getHomeOverview } from './home.js';
 import {
@@ -354,6 +355,28 @@ app.post('/api/library/saved-words', requireAuth, async (req: AuthenticatedReque
       user_id: userId,
       vocabulary_item_id: vocabularyItemId,
       source,
+    });
+    res.status(500).json({ error: message });
+  }
+});
+
+// POST /api/library/saved-words/cleanup
+app.post('/api/library/saved-words/cleanup', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.authUserId!;
+  try {
+    const result = await cleanupSavedLibrary({ apply: true, userId, sampleLimit: 0 });
+    res.json({
+      data: {
+        removedSavedWords: result.removedSavedWords,
+        createdReviewStates: result.createdReviewStates,
+        deletedCustomGroups: result.deletedCustomGroups,
+      },
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/library/saved-words/cleanup', e, {
+      endpoint: '/api/library/saved-words/cleanup',
+      user_id: userId,
     });
     res.status(500).json({ error: message });
   }

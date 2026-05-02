@@ -16,6 +16,8 @@ export interface WordLookupVocabularyItem {
   source_type: string | null;
   enrichment_level: EnrichmentLevel;
   created_at: string | null;
+  audio_uk_url: string | null;
+  audio_us_url: string | null;
 }
 
 export interface WordLookupSense {

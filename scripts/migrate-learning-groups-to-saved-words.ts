@@ -6,6 +6,7 @@ const UPSERT_BATCH_SIZE = 500;
 
 interface LearningGroupJoinRow {
   user_id: string | null;
+  source_type: string | null;
   created_at: string | null;
 }
 
@@ -19,6 +20,12 @@ interface SavedWordCandidate {
   vocabulary_item_id: string;
   source: 'migration';
   saved_at: string;
+}
+
+interface ReviewStateRow {
+  user_id: string;
+  vocabulary_item_id: string;
+  memory_state: string;
 }
 
 function asSingleGroup(value: LearningGroupWordJoinRow['learning_groups']) {
@@ -49,6 +56,7 @@ async function collectSavedWordCandidates() {
   let sourceRows = 0;
   let validSourceRows = 0;
   let skippedMissingUser = 0;
+  let skippedNonCustomGroup = 0;
   let skippedMissingVocabularyItem = 0;
   let duplicateSourceRows = 0;
 
@@ -60,6 +68,7 @@ async function collectSavedWordCandidates() {
         vocabulary_item_id,
         learning_groups!inner (
           user_id,
+          source_type,
           created_at
         )
       `)
@@ -80,10 +89,16 @@ async function collectSavedWordCandidates() {
     for (const row of rows) {
       const group = asSingleGroup(row.learning_groups);
       const userId = group?.user_id?.trim() ?? '';
+      const sourceType = group?.source_type?.trim() ?? '';
       const vocabularyItemId = row.vocabulary_item_id?.trim() ?? '';
 
       if (!userId) {
         skippedMissingUser += 1;
+        continue;
+      }
+
+      if (sourceType !== 'custom') {
+        skippedNonCustomGroup += 1;
         continue;
       }
 
@@ -130,6 +145,7 @@ async function collectSavedWordCandidates() {
       sourceRows,
       validSourceRows,
       skippedMissingUser,
+      skippedNonCustomGroup,
       skippedMissingVocabularyItem,
       duplicateSourceRows,
     },
@@ -161,6 +177,91 @@ async function upsertSavedWords(candidates: SavedWordCandidate[]) {
   return insertedRows;
 }
 
+async function prepareSavedWordCandidates(candidates: SavedWordCandidate[]) {
+  const stateByKey = new Map<string, ReviewStateRow>();
+  const candidatesByUser = new Map<string, SavedWordCandidate[]>();
+
+  for (const candidate of candidates) {
+    const rows = candidatesByUser.get(candidate.user_id) ?? [];
+    rows.push(candidate);
+    candidatesByUser.set(candidate.user_id, rows);
+  }
+
+  for (const [userId, rows] of candidatesByUser) {
+    const vocabularyItemIds = Array.from(new Set(rows.map((row) => row.vocabulary_item_id)));
+    for (const chunk of chunkRows(vocabularyItemIds, 100)) {
+      const { data, error } = await supabaseAdmin
+        .from('review_states')
+        .select('user_id, vocabulary_item_id, memory_state')
+        .eq('user_id', userId)
+        .in('vocabulary_item_id', chunk);
+
+      if (error) {
+        throw new Error(`review_states lookup failed: ${error.message}`);
+      }
+
+      for (const row of (data ?? []) as ReviewStateRow[]) {
+        stateByKey.set(`${row.user_id}\u0000${row.vocabulary_item_id}`, row);
+      }
+    }
+  }
+
+  const missingCandidates: SavedWordCandidate[] = [];
+  const eligibleCandidates: SavedWordCandidate[] = [];
+  let skippedNonNewState = 0;
+
+  for (const candidate of candidates) {
+    const state = stateByKey.get(`${candidate.user_id}\u0000${candidate.vocabulary_item_id}`);
+    if (!state) {
+      missingCandidates.push(candidate);
+      eligibleCandidates.push(candidate);
+      continue;
+    }
+
+    if (state.memory_state === 'new') {
+      eligibleCandidates.push(candidate);
+      continue;
+    }
+
+    skippedNonNewState += 1;
+  }
+
+  let createdReviewStates = 0;
+  for (const [index, batch] of chunkRows(missingCandidates, UPSERT_BATCH_SIZE).entries()) {
+    const { data, error } = await supabaseAdmin
+      .from('review_states')
+      .upsert(
+        batch.map((candidate) => ({
+          user_id: candidate.user_id,
+          vocabulary_item_id: candidate.vocabulary_item_id,
+          memory_state: 'new',
+          interval_days: null,
+          next_review_at: null,
+          graduated_at: null,
+        })),
+        {
+          onConflict: 'user_id,vocabulary_item_id',
+          ignoreDuplicates: true,
+        },
+      )
+      .select('id');
+
+    if (error) {
+      throw new Error(`review_states upsert failed [batch ${index + 1}]: ${error.message}`);
+    }
+
+    createdReviewStates += data?.length ?? 0;
+  }
+
+  return {
+    candidates: eligibleCandidates,
+    stats: {
+      createdReviewStates,
+      skippedNonNewState,
+    },
+  };
+}
+
 async function main() {
   console.log('Collecting historical learning group words...');
   const { candidates, stats } = await collectSavedWordCandidates();
@@ -172,6 +273,7 @@ async function main() {
       `uniqueCandidates=${candidates.length}`,
       `duplicateSourceRows=${stats.duplicateSourceRows}`,
       `skippedMissingUser=${stats.skippedMissingUser}`,
+      `skippedNonCustomGroup=${stats.skippedNonCustomGroup}`,
       `skippedMissingVocabularyItem=${stats.skippedMissingVocabularyItem}`,
     ].join(' '),
   );
@@ -181,15 +283,19 @@ async function main() {
     return;
   }
 
-  const insertedRows = await upsertSavedWords(candidates);
-  const alreadyExistingRows = candidates.length - insertedRows;
+  const prepared = await prepareSavedWordCandidates(candidates);
+  const insertedRows = await upsertSavedWords(prepared.candidates);
+  const alreadyExistingRows = prepared.candidates.length - insertedRows;
 
   console.log(
     [
       'Migration complete.',
       `inserted=${insertedRows}`,
       `alreadyExisting=${alreadyExistingRows}`,
+      `createdReviewStates=${prepared.stats.createdReviewStates}`,
+      `skippedNonNewState=${prepared.stats.skippedNonNewState}`,
       `uniqueCandidates=${candidates.length}`,
+      `eligibleCandidates=${prepared.candidates.length}`,
     ].join(' '),
   );
 }

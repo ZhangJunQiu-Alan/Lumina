@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { prepareVocabularyItemsForSavedWords } from './savedWordsReviewState';
 import { EnrichedWord, toWord, type OfficialLibraryId, Word } from '../types';
 import { analyzeWordBatch, formatDuplicateWordsMessage, normalizeWordKey, sanitizeWordInput } from '../../shared/wordBatch';
 
@@ -593,9 +594,12 @@ export async function createLearningGroupFromVocabularyEntries(
     graduated_at: null,
   }));
 
+  // Insert a fresh review_state only for words that don't have one yet.
+  // Existing rows must be left alone — overwriting them would wipe SR
+  // progress when a learned word is reused in a new learning group.
   const { error: reviewError } = await supabase
     .from('review_states')
-    .upsert(reviewRows, { onConflict: 'user_id,vocabulary_item_id' });
+    .upsert(reviewRows, { onConflict: 'user_id,vocabulary_item_id', ignoreDuplicates: true });
 
   if (reviewError) {
     throw new Error(`review_states: ${reviewError.message}`);
@@ -632,7 +636,24 @@ export async function saveToUserSavedWords(
     return { saved: 0, skipped: 0, total: 0 };
   }
 
-  const rows = vocabularyItemIds.map((vocabularyItemId) => ({
+  const preparation = await prepareVocabularyItemsForSavedWords(userId, vocabularyItemIds);
+  if (preparation.skippedNonNewVocabularyItemIds.length > 0) {
+    const { error } = await supabase
+      .from('user_saved_words')
+      .delete()
+      .eq('user_id', userId)
+      .in('vocabulary_item_id', preparation.skippedNonNewVocabularyItemIds);
+
+    if (error) {
+      throw new Error(`user_saved_words cleanup: ${error.message}`);
+    }
+  }
+
+  if (preparation.eligibleVocabularyItemIds.length === 0) {
+    return { saved: 0, skipped: vocabularyItemIds.length, total: vocabularyItemIds.length };
+  }
+
+  const rows = preparation.eligibleVocabularyItemIds.map((vocabularyItemId) => ({
     user_id: userId,
     vocabulary_item_id: vocabularyItemId,
     source,
@@ -653,7 +674,7 @@ export async function saveToUserSavedWords(
   const saved = data?.length ?? 0;
   return {
     saved,
-    skipped: Math.max(rows.length - saved, 0),
-    total: rows.length,
+    skipped: Math.max(vocabularyItemIds.length - saved, 0),
+    total: vocabularyItemIds.length,
   };
 }

@@ -9,6 +9,7 @@ import {
   Clock3,
   Loader2,
   Search,
+  Sparkles,
   Trash2,
 } from 'lucide-react';
 import type { MemoryState, Word } from '../../types';
@@ -17,6 +18,7 @@ import {
   fetchPersistedVocabularyEntriesByIds,
 } from '../../lib/importFlow';
 import {
+  cleanupSavedWords,
   deleteSavedWord,
   fetchActiveLearningGroupWordIds,
   fetchSavedWords,
@@ -37,6 +39,7 @@ interface SavedWordsPanelProps {
   nextGroupNumber: number;
   onStartLearningGroup: (groupId: string, words?: Word[]) => Promise<void> | void;
   onLibraryMutated?: () => void | Promise<void>;
+  showHeader?: boolean;
 }
 
 const GROUP_SIZE = 30;
@@ -73,13 +76,6 @@ function formatSavedDate(value: string) {
 }
 
 function getSavedWordBadge(entry: SavedWordEntry) {
-  if (!entry.memoryState) {
-    return {
-      label: '未学习',
-      className: 'bg-sky-50 text-sky-700',
-    };
-  }
-
   return {
     label: memoryStateLabel[entry.memoryState],
     className: memoryStateStyle[entry.memoryState],
@@ -95,6 +91,7 @@ export function SavedWordsPanel({
   nextGroupNumber,
   onStartLearningGroup,
   onLibraryMutated,
+  showHeader = true,
 }: SavedWordsPanelProps) {
   const [savedWords, setSavedWords] = useState<SavedWordEntry[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -105,6 +102,8 @@ export function SavedWordsPanel({
   const [errorMsg, setErrorMsg] = useState('');
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [deletingWordId, setDeletingWordId] = useState<string | null>(null);
+  const [isClearingMastered, setIsClearingMastered] = useState(false);
+  const [confirmingClearMastered, setConfirmingClearMastered] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -119,11 +118,39 @@ export function SavedWordsPanel({
       setErrorMsg('');
     }
 
-    if (cached && isLibraryCacheFresh(cached)) {
-      return () => { active = false; };
-    }
-
     const loadSavedWords = async () => {
+      let cleanupChanged = false;
+      let cleanupErrorMsg = '';
+
+      try {
+        const cleanupResult = await cleanupSavedWords();
+        if (!active) return;
+
+        cleanupChanged = cleanupResult.removedSavedWords > 0
+          || cleanupResult.createdReviewStates > 0
+          || cleanupResult.deletedCustomGroups > 0;
+
+        if (cleanupChanged) {
+          invalidateLibraryCache(userId);
+          try {
+            await onLibraryMutated?.();
+          } catch {
+            // Stats refresh should not block saved-word cleanup.
+          }
+        }
+      } catch (error) {
+        cleanupErrorMsg = error instanceof Error ? error.message : String(error);
+        if (cached) {
+          console.error('saved words cleanup failed:', cleanupErrorMsg);
+        }
+      }
+
+      if (cached && isLibraryCacheFresh(cached) && !cleanupChanged) {
+        if (!active) return;
+        if (!cleanupErrorMsg) setErrorMsg('');
+        return;
+      }
+
       try {
         const data = await refreshSavedWords(userId, () => fetchSavedWords(userId));
         if (!active) return;
@@ -133,7 +160,7 @@ export function SavedWordsPanel({
         if (!active) return;
         const msg = error instanceof Error ? error.message : String(error);
         if (!cached) {
-          setErrorMsg(msg);
+          setErrorMsg(cleanupErrorMsg || msg);
         } else {
           console.error('saved words refresh failed:', msg);
         }
@@ -163,11 +190,11 @@ export function SavedWordsPanel({
     });
   }, [availableWordIds]);
 
-  const completedCount = useMemo(
-    () => savedWords.filter((entry) => entry.memoryState === 'stable_recall' || entry.memoryState === 'mastered').length,
+  const masteredWords = useMemo(
+    () => savedWords.filter((entry) => entry.memoryState === 'mastered'),
     [savedWords],
   );
-  const pendingCount = Math.max(savedWords.length - completedCount, 0);
+  const masteredCount = masteredWords.length;
 
   const filteredWords = useMemo(() => {
     const query = normalizeSearch(searchTerm);
@@ -277,6 +304,47 @@ export function SavedWordsPanel({
     });
   };
 
+  const handleClearMastered = async () => {
+    if (masteredCount === 0) {
+      setConfirmingClearMastered(false);
+      return;
+    }
+
+    setIsClearingMastered(true);
+    setErrorMsg('');
+
+    const targets = masteredWords.map((entry) => entry.vocabularyItemId);
+    const results = await Promise.allSettled(targets.map((id) => deleteSavedWord(id)));
+
+    const removedIds: string[] = [];
+    const failures: string[] = [];
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        removedIds.push(targets[index]);
+      } else {
+        const reason = result.reason;
+        failures.push(reason instanceof Error ? reason.message : String(reason));
+      }
+    });
+
+    if (removedIds.length > 0) {
+      const removedSet = new Set(removedIds);
+      removedIds.forEach((id) => removeSavedWordFromCache(userId, id));
+      setSavedWords((current) => current.filter((item) => !removedSet.has(item.vocabularyItemId)));
+      setSelectedIds((current) => {
+        if (![...current].some((id) => removedSet.has(id))) return current;
+        return new Set([...current].filter((id) => !removedSet.has(id)));
+      });
+    }
+
+    if (failures.length > 0) {
+      setErrorMsg(`有 ${failures.length} 个词没能删掉：${failures[0]}`);
+    }
+
+    setConfirmingClearMastered(false);
+    setIsClearingMastered(false);
+  };
+
   const handleDeleteWord = async (entry: SavedWordEntry) => {
     setDeletingWordId(entry.vocabularyItemId);
     setErrorMsg('');
@@ -321,34 +389,28 @@ export function SavedWordsPanel({
 
   return (
     <section className="space-y-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-apple-green/10 text-apple-green">
-            <BookOpen className="h-5 w-5" />
+      {showHeader && (
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-apple-green/10 text-apple-green">
+              <BookOpen className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-2xl font-black text-text-primary">我的词库</h3>
+              <p className="mt-2 text-sm leading-7 text-text-secondary">
+                官方词库和个人收藏的词会先放在这里，按 30 个一组开始学习吧~
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-2xl font-black text-text-primary">我的词库</h3>
-            <p className="mt-2 text-sm leading-7 text-text-secondary">
-              导入和阅读收藏的词都会先放在这里，再按 30 个一组进入学习。
-            </p>
-          </div>
-        </div>
 
-        <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[360px]">
-          <div className="glass rounded-2xl px-4 py-3">
-            <p className="text-2xl font-black text-text-primary">{savedWords.length}</p>
-            <p className="mt-1 text-[11px] font-bold text-text-secondary">总词数</p>
-          </div>
-          <div className="glass rounded-2xl px-4 py-3">
-            <p className="text-2xl font-black text-apple-green">{completedCount}</p>
-            <p className="mt-1 text-[11px] font-bold text-text-secondary">已学完</p>
-          </div>
-          <div className="glass rounded-2xl px-4 py-3">
-            <p className="text-2xl font-black text-apple-blue">{pendingCount}</p>
-            <p className="mt-1 text-[11px] font-bold text-text-secondary">待完成</p>
+          <div className="text-center sm:min-w-32">
+            <div className="glass rounded-2xl px-4 py-3">
+              <p className="text-2xl font-black text-text-primary">{savedWords.length}</p>
+              <p className="mt-1 text-[11px] font-bold text-text-secondary">总词数</p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {errorMsg && (
         <div className="flex items-start gap-2 rounded-2xl bg-apple-red/10 px-4 py-3 text-sm font-medium text-apple-red">
@@ -366,31 +428,36 @@ export function SavedWordsPanel({
           </p>
         </div>
       ) : (
-        <div className="glass rounded-[32px] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.06)] sm:p-5">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div className="inline-flex rounded-[22px] bg-black/5 p-1">
-              <button
-                type="button"
-                onClick={() => setStudyMode('sequential')}
-                className={`rounded-[18px] px-4 py-2 text-sm font-black transition-colors ${
-                  studyMode === 'sequential' ? 'bg-white text-text-primary shadow-sm' : 'text-text-secondary'
-                }`}
-              >
-                顺序
-              </button>
-              <button
-                type="button"
-                onClick={() => setStudyMode('manual')}
-                className={`rounded-[18px] px-4 py-2 text-sm font-black transition-colors ${
-                  studyMode === 'manual' ? 'bg-white text-text-primary shadow-sm' : 'text-text-secondary'
-                }`}
-              >
-                手动
-              </button>
+        <div className="space-y-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <div className="inline-flex h-12 w-fit shrink-0 items-center rounded-[18px] bg-white px-4 text-text-primary shadow-[0_12px_28px_rgba(0,0,0,0.06)]">
+              <span className="text-2xl font-black tracking-tight">{savedWords.length}</span>
+              <span className="ml-2 text-xs font-bold text-text-secondary">个词</span>
             </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <label className="flex min-w-0 items-center gap-2 rounded-[22px] bg-white/80 px-4 py-3 text-sm text-text-secondary shadow-sm sm:w-72">
+            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="inline-flex h-12 w-full rounded-[18px] bg-white p-1 shadow-[0_12px_28px_rgba(0,0,0,0.05)] sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setStudyMode('sequential')}
+                  className={`flex-1 rounded-[14px] px-5 text-sm font-black transition-colors sm:flex-none ${
+                    studyMode === 'sequential' ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  顺序
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStudyMode('manual')}
+                  className={`flex-1 rounded-[14px] px-5 text-sm font-black transition-colors sm:flex-none ${
+                    studyMode === 'manual' ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  手动
+                </button>
+              </div>
+
+              <label className="flex h-12 min-w-0 flex-1 items-center gap-2 rounded-[18px] bg-white px-4 text-sm text-text-secondary shadow-[0_12px_28px_rgba(0,0,0,0.05)]">
                 <Search className="h-4 w-4 flex-shrink-0" />
                 <input
                   value={searchTerm}
@@ -404,7 +471,7 @@ export function SavedWordsPanel({
                 type="button"
                 onClick={() => { void primaryAction.onClick(); }}
                 disabled={primaryAction.disabled || isCreatingGroup}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-[22px] bg-apple-blue px-5 py-3 text-sm font-black text-white shadow-[0_18px_34px_rgba(0,122,255,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:scale-100"
+                className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-[18px] bg-apple-blue px-5 text-sm font-black text-white shadow-[0_18px_34px_rgba(0,122,255,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:scale-100 sm:min-w-[176px]"
               >
                 {isCreatingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                 {primaryAction.label}
@@ -412,7 +479,47 @@ export function SavedWordsPanel({
             </div>
           </div>
 
-          <div className="mt-5 space-y-2">
+          {masteredCount > 0 && (
+            <div className="mt-4 flex flex-col gap-3 rounded-[24px] bg-apple-green/8 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 font-bold text-apple-green">
+                <Sparkles className="h-4 w-4" />
+                已掌握 {masteredCount} 个词，可以一键从词库中清掉
+              </div>
+              {confirmingClearMastered ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-text-secondary">确认删除？</span>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingClearMastered(false)}
+                    disabled={isClearingMastered}
+                    className="inline-flex items-center justify-center rounded-full bg-white/82 px-3 py-1.5 text-xs font-black text-text-secondary shadow-sm transition-colors hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-55"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { void handleClearMastered(); }}
+                    disabled={isClearingMastered}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-full bg-apple-red px-3 py-1.5 text-xs font-black text-white shadow-sm transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
+                  >
+                    {isClearingMastered ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                    确认删除 {masteredCount} 个
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmingClearMastered(true)}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-full bg-white/82 px-3 py-1.5 text-xs font-black text-apple-green shadow-sm transition-colors hover:text-apple-green/80"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  一键清理已掌握
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             {pageWords.map((entry, index) => {
               const badge = getSavedWordBadge(entry);
               const selected = selectedIds.has(entry.vocabularyItemId);
@@ -424,9 +531,11 @@ export function SavedWordsPanel({
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.015 }}
-                  className="rounded-[24px] border border-white/70 bg-white/76 px-4 py-3 shadow-[0_10px_28px_rgba(0,0,0,0.04)]"
+                  className={`rounded-[24px] border bg-white px-5 py-4 shadow-[0_14px_34px_rgba(0,0,0,0.05)] transition-all ${
+                    selected ? 'border-apple-blue/45 ring-2 ring-apple-blue/15' : 'border-white/80 hover:-translate-y-0.5 hover:shadow-[0_20px_42px_rgba(0,0,0,0.07)]'
+                  }`}
                 >
-                  <div className="flex items-start gap-3">
+                  <div className="flex min-h-[126px] items-start gap-3">
                     {studyMode === 'manual' && (
                       <input
                         type="checkbox"
@@ -438,54 +547,72 @@ export function SavedWordsPanel({
                       />
                     )}
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                        <h4 className="text-lg font-black text-text-primary">{entry.word}</h4>
-                        <span className="text-xs font-mono text-apple-blue">{entry.phonetic || '暂无音标'}</span>
-                        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${badge.className}`}>
-                          {badge.label}
-                        </span>
-                        {entry.enrichmentLevel === 'lite' && (
-                          <span className="rounded-full bg-apple-orange/10 px-2.5 py-0.5 text-[11px] font-bold text-apple-orange">
-                            生成中
+                    <div className="min-w-0 flex-1 self-stretch">
+                      <div className="flex min-h-full flex-col">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                              <h4 className="truncate text-[1.35rem] font-black leading-tight tracking-tight text-text-primary">
+                                {entry.word}
+                              </h4>
+                              <span className="text-xs font-mono font-bold text-apple-blue">{entry.phonetic || '暂无音标'}</span>
+                            </div>
+                            <p className="mt-1 text-sm font-black leading-6 text-text-primary">{entry.meaning || '暂无释义'}</p>
+                          </div>
+
+                          <span className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold ${badge.className}`}>
+                            {badge.label}
                           </span>
-                        )}
-                        {entry.isInActiveLearningGroup && (
-                          <span className="rounded-full bg-black/5 px-2.5 py-0.5 text-[11px] font-bold text-text-secondary">
-                            已在学习组
+
+                          <button
+                            type="button"
+                            onClick={() => { void handleDeleteWord(entry); }}
+                            disabled={deletingWordId === entry.vocabularyItemId}
+                            className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[12px] border border-black/5 bg-white text-text-secondary shadow-[0_8px_18px_rgba(0,0,0,0.04)] transition-colors hover:text-apple-red disabled:cursor-not-allowed disabled:opacity-60"
+                            aria-label={`从词库移除 ${entry.word}`}
+                          >
+                            {deletingWordId === entry.vocabularyItemId ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
+
+                        <div className="mt-4 flex flex-1 gap-3">
+                          <div className="w-0.5 shrink-0 rounded-full bg-text-secondary/45" />
+                          <p className="line-clamp-2 text-sm leading-6 text-text-secondary">
+                            {entry.exampleSentence || '这个词暂时还没有可展示的例句。'}
+                          </p>
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap items-center gap-3 text-xs font-bold text-text-secondary">
+                          <span>{sourceLabel[entry.source]}</span>
+                          <span className="inline-flex items-center gap-1">
+                            <Clock3 className="h-3.5 w-3.5" />
+                            {formatSavedDate(entry.savedAt)}
                           </span>
-                        )}
-                      </div>
-                      <p className="mt-1 truncate text-sm text-text-secondary">{entry.meaning || '暂无释义'}</p>
-                      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs font-bold text-text-secondary">
-                        <span>{sourceLabel[entry.source]}</span>
-                        <span className="inline-flex items-center gap-1">
-                          <Clock3 className="h-3.5 w-3.5" />
-                          {formatSavedDate(entry.savedAt)}
-                        </span>
+                          {entry.enrichmentLevel === 'lite' && (
+                            <span className="rounded-full bg-apple-orange/10 px-2.5 py-0.5 text-[11px] font-bold text-apple-orange">
+                              生成中
+                            </span>
+                          )}
+                          {entry.isInActiveLearningGroup && (
+                            <span className="rounded-full bg-black/5 px-2.5 py-0.5 text-[11px] font-bold text-text-secondary">
+                              已在学习组
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => { void handleDeleteWord(entry); }}
-                      disabled={deletingWordId === entry.vocabularyItemId}
-                      className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-black/5 text-text-secondary transition-colors hover:text-apple-red disabled:cursor-not-allowed disabled:opacity-60"
-                      aria-label={`从词库移除 ${entry.word}`}
-                    >
-                      {deletingWordId === entry.vocabularyItemId ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                    </button>
                   </div>
                 </motion.div>
               );
             })}
 
             {pageWords.length === 0 && (
-              <div className="rounded-[24px] bg-white/70 px-6 py-10 text-center text-sm font-bold text-text-secondary">
+              <div className="rounded-[24px] bg-white px-6 py-10 text-center text-sm font-bold text-text-secondary shadow-[0_14px_34px_rgba(0,0,0,0.04)] xl:col-span-2">
                 没有匹配的词。
               </div>
             )}

@@ -1,20 +1,18 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   AlertCircle,
   AlertTriangle,
   ArrowLeft,
   BookOpen,
-  CalendarDays,
   ChevronRight,
   Clock3,
   Loader2,
-  PlusCircle,
   Sparkles,
   Trash2,
   X,
 } from 'lucide-react';
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   EnrichedWordRelation,
   LibraryGroupSummary,
@@ -40,6 +38,7 @@ import {
   getCachedOfficialLibraryDetail,
   getCachedOfficialCompletionCounts,
   getCachedOfficialResumeCandidates,
+  invalidateLibraryCache,
   isLibraryCacheFresh,
   removeLibraryGroupFromCache,
   refreshLibraryGroupDetail,
@@ -53,6 +52,7 @@ import {
   buildEmptyOfficialCompletionCounts,
   deleteLibraryGroup,
   fetchOfficialCompletionCounts,
+  migrateCustomGroupWordsIntoSavedWords,
 } from '../../lib/libraryApi';
 import { OfficialLibraryPanel } from './OfficialLibraryPanel';
 import { SavedWordsPanel } from './SavedWordsPanel';
@@ -945,99 +945,6 @@ function DeleteGroupDialog({
   );
 }
 
-function LibraryGroupCard({
-  group,
-  kind,
-  index,
-  onOpen,
-  onDelete,
-}: {
-  group: LibraryGroupSummary;
-  kind: 'system' | 'custom';
-  index: number;
-  onOpen: () => void | Promise<void>;
-  onDelete?: () => void | Promise<void>;
-}): JSX.Element {
-  const kindLabel = kind === 'system' ? '系统路径' : '外部接入';
-  const kindTone = kind === 'system' ? 'bg-[#12192b]/8 text-[#12192b]' : 'bg-apple-blue/10 text-apple-blue';
-  const helperText = kind === 'system' ? '系统会沿着这条路径继续往下发词。' : '这组词已经接进同一套状态判断里。';
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.05 }}
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          onOpen();
-        }
-      }}
-      className="group relative overflow-hidden rounded-[32px] border border-white/70 bg-white/78 p-7 text-left shadow-[0_18px_50px_rgba(0,0,0,0.06)] transition-all hover:-translate-y-1 hover:shadow-[0_28px_60px_rgba(0,0,0,0.08)] focus:outline-none focus:ring-2 focus:ring-apple-blue/30"
-    >
-      <div className="pointer-events-none absolute -right-10 top-0 h-36 w-36 rounded-full bg-apple-blue/10 blur-3xl transition-transform duration-500 group-hover:scale-110" />
-      <div className="relative">
-        <div className="flex items-start justify-between gap-5">
-          <div className="min-w-0">
-            <h4 className="mt-2 text-[1.2rem] font-black leading-tight text-text-primary">{group.title}</h4>
-          </div>
-
-          <div className="flex flex-col items-end gap-3">
-            {onDelete ? (
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onDelete();
-                }}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/88 text-text-secondary shadow-[0_10px_24px_rgba(0,0,0,0.08)] transition-colors hover:text-apple-red"
-                aria-label={`删除 ${group.title}`}
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            ) : (
-              <div className="inline-flex h-10 items-center rounded-full bg-white/82 px-4 text-xs font-bold uppercase tracking-[0.24em] text-text-secondary shadow-[0_10px_24px_rgba(0,0,0,0.08)]">
-                只读
-              </div>
-            )}
-
-            <div className="rounded-[28px] bg-[#12192b] px-4 py-3 text-white shadow-[0_18px_40px_rgba(18,25,43,0.22)]">
-              <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/60">日期</p>
-              <p className="mt-1 text-2xl font-black">{formatMonthDay(group.createdAt)}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-8 flex flex-wrap gap-2">
-          <span className="rounded-full bg-black/5 px-3 py-1 text-xs font-bold uppercase tracking-widest text-text-secondary">
-            {group.wordCount} 个词
-          </span>
-          <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest ${kindTone}`}>
-            {kindLabel}
-          </span>
-          <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest ${groupStatusStyle[group.status]}`}>
-            {groupStatusLabel[group.status]}
-          </span>
-        </div>
-
-        <p className="mt-5 text-sm leading-6 text-text-secondary">
-          {helperText}
-        </p>
-
-        <div className="mt-8 flex items-center justify-end gap-4 text-sm">
-          <div className="inline-flex items-center gap-1 font-bold text-text-primary">
-            打开看看
-            <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-          </div>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
 export const LibraryView = ({
   onStartLearningGroup,
   onLibraryMutated,
@@ -1046,6 +953,7 @@ export const LibraryView = ({
   onLibraryMutated?: () => void | Promise<void>;
 }) => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const [groups, setGroups] = useState<LibraryGroupSummary[]>([]);
   const [officialResumeCandidates, setOfficialResumeCandidates] = useState<
@@ -1056,9 +964,35 @@ export const LibraryView = ({
   );
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
-  const [groupPendingDelete, setGroupPendingDelete] = useState<LibraryGroupSummary | null>(null);
-  const [isDeletingGroup, setIsDeletingGroup] = useState(false);
-  const [deleteErrorMsg, setDeleteErrorMsg] = useState('');
+  const activeTab = searchParams.get('tab') === 'system' ? 'system' : 'personal';
+
+  const handleSelectTab = (tab: 'personal' | 'system') => {
+    if (tab === activeTab) return;
+    setSearchParams(tab === 'system' ? { tab: 'system' } : {}, { replace: false });
+  };
+
+  useEffect(() => {
+    if (!user) return;
+
+    const flagKey = `lumina:custom-groups-merged:${user.id}`;
+    if (typeof window === 'undefined' || window.localStorage.getItem(flagKey) === '1') return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await migrateCustomGroupWordsIntoSavedWords(user.id);
+        if (cancelled) return;
+        window.localStorage.setItem(flagKey, '1');
+        if (result.inserted > 0) {
+          invalidateLibraryCache(user.id);
+        }
+      } catch (error) {
+        console.error('migrate custom groups into saved words failed:', error);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [user]);
 
   useEffect(() => {
     let active = true;
@@ -1188,7 +1122,10 @@ export const LibraryView = ({
     return <LibraryError message={errorMsg} />;
   }
 
-  const customGroups = groups.filter((group) => group.sourceType === 'custom');
+  const customGroupCount = groups.reduce(
+    (count, group) => (group.sourceType === 'custom' ? count + 1 : count),
+    0,
+  );
   const officialLibraries = OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => ({
     definition,
     summary: buildOfficialLibrarySummary(
@@ -1202,143 +1139,98 @@ export const LibraryView = ({
     ).length,
   }));
 
-  const handleDeleteGroup = async () => {
-    if (!user || !groupPendingDelete) return;
-
-    try {
-      setIsDeletingGroup(true);
-      setDeleteErrorMsg('');
-      await deleteLibraryGroup(user.id, groupPendingDelete.id);
-      removeLibraryGroupFromCache(user.id, groupPendingDelete.id);
-      setGroups((prev) => prev.filter((group) => group.id !== groupPendingDelete.id));
-      setGroupPendingDelete(null);
-      void onLibraryMutated?.();
-    } catch (error) {
-      const msg =
-        error instanceof Error
-          ? error.message
-          : (error as { message?: string })?.message ?? JSON.stringify(error);
-      setDeleteErrorMsg(msg);
-    } finally {
-      setIsDeletingGroup(false);
-    }
-  };
-
   return (
-    <>
-      <div className="w-full max-w-6xl mx-auto space-y-10">
-        <section className="space-y-5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#12192b] text-white">
-                <BookOpen className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="text-2xl font-black text-text-primary">系统路径</h3>
-                <p className="mt-2 text-sm leading-7 text-text-secondary">
-                  官方词库不是一堆散词，而是系统替你推进的学习路径。
-                </p>
-              </div>
-            </div>
+    <div className="mx-auto w-full max-w-6xl space-y-6 px-0 lg:space-y-7">
+      <header className="space-y-6">
+        <div className="flex items-start gap-4">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] bg-apple-green/12 text-apple-green shadow-[0_16px_32px_rgba(52,199,89,0.12)]">
+            <BookOpen className="h-7 w-7" />
           </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {officialLibraries.map(({ definition, summary, existingGroupCount }) => (
-              <Fragment key={definition.id}>
-                <OfficialLibraryPanel
-                  definition={definition}
-                  summary={summary}
-                  existingGroupCount={existingGroupCount}
-                  onStartLearning={onStartLearningGroup}
-                  onOpenDetail={() => navigate(`/app/library/official/${definition.id}`)}
-                  onLibraryMutated={onLibraryMutated}
-                />
-              </Fragment>
-            ))}
+          <div className="min-w-0 pt-1">
+            <h2 className="text-3xl font-black tracking-tight text-text-primary sm:text-4xl">我的词库</h2>
+            <p className="mt-2 text-sm leading-7 text-text-secondary">
+              官方词库和个人收藏的词会先放在这里，按 30 个一组开始学习吧~
+            </p>
           </div>
-        </section>
+        </div>
 
-        {user && (
-          <SavedWordsPanel
-            userId={user.id}
-            nextGroupNumber={customGroups.length + 1}
-            onStartLearningGroup={onStartLearningGroup}
-            onLibraryMutated={onLibraryMutated}
-          />
-        )}
+        <div className="border-b border-black/8">
+          <div className="flex items-center gap-2">
+            {([
+              { key: 'personal', label: '个人词库' },
+              { key: 'system', label: '系统词库' },
+            ] as const).map((tab) => {
+              const selected = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => handleSelectTab(tab.key)}
+                  className={`relative px-5 pb-3 pt-1 text-sm font-black transition-colors ${
+                    selected ? 'text-apple-blue' : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                  aria-pressed={selected}
+                >
+                  {tab.label}
+                  {selected && (
+                    <motion.span
+                      layoutId="library-tab-underline"
+                      className="absolute inset-x-0 bottom-[-1px] h-0.5 rounded-full bg-apple-blue"
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </header>
 
-        <section className="space-y-5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-apple-blue/10 text-apple-blue">
-                <CalendarDays className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="text-2xl font-black text-text-primary">你带进系统的材料</h3>
-                <p className="mt-2 text-sm leading-7 text-text-secondary">
-                  自己带进来的词，也会走同一套状态判断和接续机制。
-                </p>
-              </div>
-            </div>
-            {customGroups.length > 0 && (
-              <div className="glass rounded-2xl px-4 py-2 text-sm font-bold text-text-secondary">
-                {customGroups.length} 组
-              </div>
+      <AnimatePresence mode="wait">
+        {activeTab === 'personal' ? (
+          <motion.div
+            key="library-personal"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18 }}
+          >
+            {user && (
+              <SavedWordsPanel
+                userId={user.id}
+                nextGroupNumber={customGroupCount + 1}
+                onStartLearningGroup={onStartLearningGroup}
+                onLibraryMutated={onLibraryMutated}
+                showHeader={false}
+              />
             )}
-          </div>
-
-          {customGroups.length === 0 ? (
-            <div className="glass rounded-[32px] p-12 text-center jelly-shadow">
-              <PlusCircle className="mx-auto h-10 w-10 text-text-secondary/50" />
-              <p className="mt-4 text-2xl font-black text-text-primary">你还没把自己的词接进来</p>
-              <p className="mt-3 text-sm leading-7 text-text-secondary">
-                去接入一组词，回来这里就能按组看状态、进度和下次安排。
-              </p>
-              <button
-                type="button"
-                onClick={() => navigate('/app/import')}
-                className="mt-8 rounded-[24px] bg-apple-blue px-6 py-4 text-base font-black text-white shadow-[0_18px_34px_rgba(0,122,255,0.24)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
-              >
-                去接一组
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {customGroups.map((group, index) => (
-                <Fragment key={group.id}>
-                  {LibraryGroupCard({
-                    group,
-                    kind: 'custom',
-                    index,
-                    onOpen: () => navigate(`/app/library/group/${group.id}`),
-                    onDelete: () => {
-                      setDeleteErrorMsg('');
-                      setGroupPendingDelete(group);
-                    },
-                  })}
+          </motion.div>
+        ) : (
+          <motion.section
+            key="library-system"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18 }}
+            className="space-y-5"
+          >
+            <div className="grid grid-cols-1 gap-3 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {officialLibraries.map(({ definition, summary, existingGroupCount }) => (
+                <Fragment key={definition.id}>
+                  <OfficialLibraryPanel
+                    definition={definition}
+                    summary={summary}
+                    existingGroupCount={existingGroupCount}
+                    onStartLearning={onStartLearningGroup}
+                    onOpenDetail={() => navigate(`/app/library/official/${definition.id}`)}
+                    onLibraryMutated={onLibraryMutated}
+                  />
                 </Fragment>
               ))}
             </div>
-          )}
-        </section>
-      </div>
-
-      <AnimatePresence>
-        {groupPendingDelete && (
-          <DeleteGroupDialog
-            groupTitle={groupPendingDelete.title}
-            isDeleting={isDeletingGroup}
-            errorMsg={deleteErrorMsg}
-            onCancel={() => {
-              if (isDeletingGroup) return;
-              setDeleteErrorMsg('');
-              setGroupPendingDelete(null);
-            }}
-            onConfirm={() => { void handleDeleteGroup(); }}
-          />
+          </motion.section>
         )}
       </AnimatePresence>
-    </>
+    </div>
   );
 };
 
@@ -1446,7 +1338,7 @@ export const OfficialLibraryDetailView = ({
         <div>
           <button
             type="button"
-            onClick={() => navigate('/app/library')}
+            onClick={() => navigate('/app/library?tab=system')}
             className="inline-flex items-center gap-2 rounded-full bg-white/78 px-4 py-2 text-sm font-bold text-text-secondary shadow-[0_10px_24px_rgba(0,0,0,0.05)] transition-colors hover:text-text-primary"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -1639,8 +1531,8 @@ export const LibraryGroupDetailView = ({
     return <Navigate to={`/app/library/official/${group.libraryId || 'ielts-vocab'}`} replace />;
   }
 
-  const groupSectionLabel = isSystemGroup ? '系统路径' : '你带进系统的材料';
-  const groupHelperLabel = isSystemGroup ? '官方词库' : '你带进来的';
+  const groupSectionLabel = isSystemGroup ? '系统路径' : '我的词库';
+  const groupHelperLabel = isSystemGroup ? '官方词库' : '我的词库';
 
   const handleDeleteGroup = async () => {
     if (!user || !group || isSystemGroup) return;

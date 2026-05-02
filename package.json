@@ -14,6 +14,7 @@
     "seed:official-vocab": "node --import tsx scripts/preload-official-vocab.ts",
     "seed:official-audio": "node --import tsx scripts/prewarm-official-audio.ts",
     "migrate:saved-words": "node --import tsx scripts/migrate-learning-groups-to-saved-words.ts",
+    "cleanup:saved-library": "node --import tsx --env-file=.env scripts/cleanup-saved-library.ts",
     "backfill:forms": "node --import tsx --env-file=.env scripts/backfill-vocabulary-item-forms.ts",
     "lint": "tsc --noEmit",
     "test:review": "tsx scripts/test-review-rules.ts",

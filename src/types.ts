@@ -135,6 +135,7 @@ export interface LearningPreferences {
   wrongAnswerRevealMs: 3000 | 5000 | 8000;
   reinforcementRound3Enabled: boolean;
   reinforcementArticleEnabled: boolean;
+  popoverAutoPlayEnabled: boolean;
 }
 
 // Convert EnrichedWord → Word for the learning engine

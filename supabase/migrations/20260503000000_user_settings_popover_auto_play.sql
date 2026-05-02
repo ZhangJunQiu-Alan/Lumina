@@ -1,0 +1,2 @@
+ALTER TABLE user_settings
+  ADD COLUMN IF NOT EXISTS popover_auto_play_enabled BOOLEAN NOT NULL DEFAULT FALSE;

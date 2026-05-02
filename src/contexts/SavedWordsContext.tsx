@@ -7,6 +7,12 @@ import { invalidateWord, updateCachedLookup } from '../lib/wordLookup';
 
 type SavedWordSource = 'reading_popup' | 'manual';
 
+interface SaveWordResponse {
+  saved?: boolean;
+  inserted?: boolean;
+  skippedReason?: 'non_new_state';
+}
+
 interface SavedWordsContextValue {
   saveWord: (vocabularyItemId: string, source?: SavedWordSource) => Promise<void>;
   removeWord: (vocabularyItemId: string) => Promise<void>;
@@ -54,6 +60,18 @@ export function SavedWordsProvider({ children }: { children: ReactNode }) {
 
     if (!response.ok) {
       throw new Error(await readApiError(response));
+    }
+
+    const payload = await response.json().catch(() => ({ data: {} as SaveWordResponse }));
+    const result = (payload as { data?: SaveWordResponse }).data;
+
+    if (result?.saved === false || result?.skippedReason === 'non_new_state') {
+      updateCachedLookup(vocabularyItemId, (current) => ({
+        ...current,
+        in_user_library: false,
+      }));
+      invalidateLibraryCache(user?.id);
+      return;
     }
 
     updateCachedLookup(vocabularyItemId, (current) => ({

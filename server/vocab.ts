@@ -18,6 +18,8 @@ export interface VocabularyItemRow {
   source_type: string | null;
   enrichment_level: EnrichmentLevel;
   created_at: string | null;
+  audio_uk_url: string | null;
+  audio_us_url: string | null;
 }
 
 export interface WordLookupResult {
@@ -71,7 +73,9 @@ const vocabularyItemSelect = `
   memory_tip,
   source_type,
   enrichment_level,
-  created_at
+  created_at,
+  audio_uk_url,
+  audio_us_url
 `;
 
 const fullEnrichmentInflight = new Map<string, Promise<void>>();
@@ -338,11 +342,12 @@ export async function lookupWordForPopover(userId: string, word: string): Promis
     throw new Error(`Vocabulary item not found after lookup: ${normalizedWord}`);
   }
 
-  const [senses, inUserLibrary, srsState] = await Promise.all([
+  const [senses, rawInUserLibrary, srsState] = await Promise.all([
     fetchVocabularySenses(item.id),
     lookupSavedWord(userId, item.id),
     lookupReviewState(userId, item.id),
   ]);
+  const inUserLibrary = rawInUserLibrary && (!srsState || srsState === 'new');
 
   return {
     vocabulary_item: item,
