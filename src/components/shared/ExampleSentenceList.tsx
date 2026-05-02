@@ -1,5 +1,6 @@
 import { Loader2, Volume2 } from 'lucide-react';
 import { PronunciationLocale } from '../../types';
+import { ClickableText, type WordClickHandler } from './ClickableText';
 
 export interface ExampleSentenceItem {
   key: string;
@@ -13,11 +14,30 @@ function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
 }
 
-function renderBoldSentence(text: string) {
+function renderSentenceText(
+  text: string,
+  onWordClick?: WordClickHandler,
+  targetWords?: ReadonlySet<string>,
+) {
   const parts = text.split(/\*\*(.+?)\*\*/g);
-  return parts.map((part, index) => (
-    index % 2 === 1 ? <strong key={index}>{part}</strong> : part
-  ));
+  return parts.map((part, index) => {
+    if (!part) return null;
+
+    const content = onWordClick ? (
+      <ClickableText
+        text={part}
+        targetWords={targetWords}
+        onWordClick={onWordClick}
+        stopPropagation
+      />
+    ) : part;
+
+    return index % 2 === 1 ? (
+      <strong key={index}>{content}</strong>
+    ) : (
+      <span key={index}>{content}</span>
+    );
+  });
 }
 
 function getAriaLabel(locale: PronunciationLocale, isPlaying: boolean) {
@@ -33,6 +53,8 @@ export function ExampleSentenceList({
   onPlayExample,
   emptyMessage,
   variant = 'panel',
+  targetWords,
+  onWordClick,
 }: {
   items: ExampleSentenceItem[];
   locale: PronunciationLocale;
@@ -41,6 +63,8 @@ export function ExampleSentenceList({
   onPlayExample: (item: ExampleSentenceItem) => void;
   emptyMessage: string;
   variant?: ExampleSentenceVariant;
+  targetWords?: ReadonlySet<string>;
+  onWordClick?: WordClickHandler;
 }) {
   const listClassName = variant === 'drawer' ? 'mt-3 space-y-4' : 'space-y-3';
   const cardClassName = (
@@ -84,7 +108,7 @@ export function ExampleSentenceList({
           <div key={item.key} className={cardClassName}>
             <div className="flex items-start gap-3">
               <div className="min-w-0 flex-1">
-                <p className={sentenceClassName}>{renderBoldSentence(item.sentence)}</p>
+                <p className={sentenceClassName}>{renderSentenceText(item.sentence, onWordClick, targetWords)}</p>
                 {item.translation && (
                   <p className={translationClassName}>{item.translation}</p>
                 )}

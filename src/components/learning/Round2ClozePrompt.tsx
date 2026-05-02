@@ -1,5 +1,6 @@
 import React from 'react';
 import { ClozePrompt, CLOZE_BLANK } from '../../lib/cloze';
+import { ClickableText, type WordClickHandler } from '../shared/ClickableText';
 
 function renderSlots(expectedForm: string, inputValue: string) {
   return Array.from({ length: expectedForm.length }, (_, i) => (
@@ -12,7 +13,13 @@ function renderSlots(expectedForm: string, inputValue: string) {
   ));
 }
 
-function renderBlankedSentence(sentence: string, expectedForm: string, inputValue: string) {
+function renderBlankedSentence(
+  sentence: string,
+  expectedForm: string,
+  inputValue: string,
+  onWordClick?: WordClickHandler,
+  targetWords?: ReadonlySet<string>,
+) {
   const parts = sentence.split(CLOZE_BLANK);
   const nodes: React.ReactNode[] = [];
   parts.forEach((part, i) => {
@@ -27,19 +34,46 @@ function renderBlankedSentence(sentence: string, expectedForm: string, inputValu
         </span>,
       );
     }
-    nodes.push(<span key={`text-${i}`}>{part}</span>);
+    nodes.push(
+      <span key={`text-${i}`}>
+        {onWordClick ? (
+          <ClickableText
+            text={part}
+            targetWords={targetWords}
+            onWordClick={onWordClick}
+            stopPropagation
+          />
+        ) : part}
+      </span>,
+    );
   });
   return nodes;
 }
 
-export const Round2ClozePrompt = ({ prompt, inputValue }: { prompt: ClozePrompt; inputValue: string }) => (
+export const Round2ClozePrompt = ({
+  prompt,
+  inputValue,
+  targetWords,
+  onWordClick,
+}: {
+  prompt: ClozePrompt;
+  inputValue: string;
+  targetWords?: ReadonlySet<string>;
+  onWordClick?: WordClickHandler;
+}) => (
   <div className="mx-auto max-w-3xl">
     <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary/60">
       根据语境复现单词
     </p>
 
     <p className="mt-5 text-2xl font-black leading-[1.5] text-text-primary md:text-[1.95rem] md:leading-[1.55]">
-      {renderBlankedSentence(prompt.blankedSentence, prompt.expectedForm, inputValue)}
+      {renderBlankedSentence(
+        prompt.blankedSentence,
+        prompt.expectedForm,
+        inputValue,
+        onWordClick,
+        targetWords,
+      )}
     </p>
 
     <div className="mt-5 flex flex-wrap items-center justify-center gap-2">

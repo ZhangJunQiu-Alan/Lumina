@@ -69,10 +69,17 @@ function groupSenses(data: WordLookupResult | null | undefined) {
     grouped.set(pos, meanings);
   }
 
-  return [...grouped.entries()].map(([pos, meanings]) => ({
+  const senses = [...grouped.entries()].map(([pos, meanings]) => ({
     pos,
     meaning: meanings.join('；'),
   }));
+
+  const primaryMeaning = data?.vocabulary_item.primary_meaning_zh?.trim();
+  if (senses.length === 0 && primaryMeaning) {
+    return [{ pos: '未标注', meaning: primaryMeaning }];
+  }
+
+  return senses;
 }
 
 function WordPopoverSkeleton() {
@@ -213,19 +220,13 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
         <WordPopoverSkeleton />
       ) : data ? (
         <div className="space-y-4">
-          <div>
-            <p className="text-2xl font-black leading-tight text-text-primary">
-              {data.vocabulary_item.primary_meaning_zh || '暂无释义'}
-            </p>
-          </div>
-
           <div className="space-y-2">
             {senses.length > 0 ? senses.map((sense) => (
-              <div key={`${sense.pos}-${sense.meaning}`} className="grid grid-cols-[34px_minmax(0,1fr)] gap-2">
-                <span className="mt-0.5 rounded-full bg-black/5 px-2 py-0.5 text-center text-[10px] font-black uppercase tracking-wide text-text-secondary">
+              <div key={`${sense.pos}-${sense.meaning}`} className="flex items-start gap-2.5">
+                <span className="mt-0.5 shrink-0 whitespace-nowrap rounded-full bg-black/5 px-2.5 py-1 text-center text-[10px] font-black uppercase leading-none tracking-wide text-text-secondary">
                   {sense.pos}
                 </span>
-                <p className="text-sm font-bold leading-6 text-text-primary">{sense.meaning}</p>
+                <p className="min-w-0 text-sm font-bold leading-6 text-text-primary">{sense.meaning}</p>
               </div>
             )) : (
               <p className="text-sm font-bold text-text-secondary">暂无词性释义</p>

@@ -10,6 +10,7 @@ import {
   Word 
 } from '../../types';
 import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
+import { useWordPopover } from '../../contexts/WordPopoverContext';
 import { apiFetch } from '../../lib/api';
 import { cancelBrowserSpeech, isBrowserSpeechSupported, speakTextViaBrowser } from '../../lib/browserSpeech';
 import { ExampleSentenceList } from '../shared/ExampleSentenceList';
@@ -20,18 +21,43 @@ import {
   SessionProgress,
   WordSenseList
 } from '../shared/LearningUI';
+import { ClickableText, type WordClickHandler } from '../shared/ClickableText';
 import { buildClozePrompt } from '../../lib/cloze';
 import { Round2ClozePrompt } from './Round2ClozePrompt';
 import { attemptBuffer } from '../../lib/attemptBuffer';
 
 // --- Sub-components for Round 1 ---
 
-const Round1MorphologyCard = ({ word }: { word: Word }) => (
+type Round1LookupProps = {
+  targetWords?: ReadonlySet<string>;
+  onWordClick?: WordClickHandler;
+};
+
+const Round1LookupText = ({
+  text,
+  targetWords,
+  onWordClick,
+}: {
+  text: string;
+} & Round1LookupProps) => (
+  onWordClick ? (
+    <ClickableText
+      text={text}
+      targetWords={targetWords}
+      onWordClick={onWordClick}
+      stopPropagation
+    />
+  ) : (
+    <>{text}</>
+  )
+);
+
+const Round1MorphologyCard = ({ word, targetWords, onWordClick }: { word: Word } & Round1LookupProps) => (
   <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-4 sm:p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
     <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.24em] text-text-secondary">构词拆解 / 派生词</p>
     {word.morphology.summaryZh ? (
       <p className="mt-3 text-[15px] sm:text-base leading-7 text-text-primary">
-        {word.morphology.summaryZh}
+        <Round1LookupText text={word.morphology.summaryZh} targetWords={targetWords} onWordClick={onWordClick} />
       </p>
     ) : (
       <p className="mt-3 text-sm leading-6 text-text-secondary">无展示的构词拆解。</p>
@@ -45,10 +71,16 @@ const Round1MorphologyCard = ({ word }: { word: Word }) => (
             key={`${word.id}-derived-${item.word}`}
             className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
           >
-            <p className="text-base sm:text-[18px] font-black text-text-primary">{item.word}</p>
+            <p className="text-base sm:text-[18px] font-black text-text-primary">
+              <Round1LookupText text={item.word} targetWords={targetWords} onWordClick={onWordClick} />
+            </p>
             {(item.meaningZh || item.noteZh) && (
               <p className="mt-1.5 text-sm sm:text-[16px] leading-relaxed text-text-secondary">
-                {[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
+                <Round1LookupText
+                  text={[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
+                  targetWords={targetWords}
+                  onWordClick={onWordClick}
+                />
               </p>
             )}
           </div>
@@ -62,7 +94,7 @@ const Round1MorphologyCard = ({ word }: { word: Word }) => (
   </section>
 );
 
-const Round1RelationsCard = ({ word }: { word: Word }) => (
+const Round1RelationsCard = ({ word, targetWords, onWordClick }: { word: Word } & Round1LookupProps) => (
   <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-4 sm:p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
     <div className="grid gap-4 sm:grid-cols-2">
       <div>
@@ -73,10 +105,16 @@ const Round1RelationsCard = ({ word }: { word: Word }) => (
               key={`${word.id}-synonym-${item.word}`}
               className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
             >
-              <p className="text-base sm:text-[18px] font-black text-text-primary">{item.word}</p>
+              <p className="text-base sm:text-[18px] font-black text-text-primary">
+                <Round1LookupText text={item.word} targetWords={targetWords} onWordClick={onWordClick} />
+              </p>
               {(item.meaningZh || item.noteZh) && (
                 <p className="mt-1.5 text-sm sm:text-[16px] leading-relaxed text-text-secondary">
-                  {[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
+                  <Round1LookupText
+                    text={[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
+                    targetWords={targetWords}
+                    onWordClick={onWordClick}
+                  />
                 </p>
               )}
             </div>
@@ -96,10 +134,16 @@ const Round1RelationsCard = ({ word }: { word: Word }) => (
               key={`${word.id}-antonym-${item.word}`}
               className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
             >
-              <p className="text-base sm:text-[18px] font-black text-text-primary">{item.word}</p>
+              <p className="text-base sm:text-[18px] font-black text-text-primary">
+                <Round1LookupText text={item.word} targetWords={targetWords} onWordClick={onWordClick} />
+              </p>
               {(item.meaningZh || item.noteZh) && (
                 <p className="mt-1.5 text-sm sm:text-[16px] leading-relaxed text-text-secondary">
-                  {[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
+                  <Round1LookupText
+                    text={[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
+                    targetWords={targetWords}
+                    onWordClick={onWordClick}
+                  />
                 </p>
               )}
             </div>
@@ -120,13 +164,15 @@ const Round1ConfusingCard = ({
   canPlayExampleAudio,
   exampleLocale,
   onPlayExample,
+  targetWords,
+  onWordClick,
 }: {
   word: Word;
   activeExampleKey: string | null;
   canPlayExampleAudio: boolean;
   exampleLocale: PronunciationLocale;
   onPlayExample: (sentence: string, key: string) => void;
-}) => (
+} & Round1LookupProps) => (
   <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-4 sm:p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
     <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.24em] text-text-secondary">易混词义对比</p>
     <div className="mt-3 sm:mt-4 space-y-4 sm:space-y-5">
@@ -137,10 +183,12 @@ const Round1ConfusingCard = ({
               key={`${word.id}-confusion-${pair.word}-${index}`}
               className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
             >
-              <p className="text-lg sm:text-[24px] font-black tracking-tight text-text-primary">{pair.word}</p>
+              <p className="text-lg sm:text-[24px] font-black tracking-tight text-text-primary">
+                <Round1LookupText text={pair.word} targetWords={targetWords} onWordClick={onWordClick} />
+              </p>
               {pair.difference && (
                 <p className="mt-1.5 text-sm sm:text-[18px] leading-relaxed text-text-secondary">
-                  {pair.difference}
+                  <Round1LookupText text={pair.difference} targetWords={targetWords} onWordClick={onWordClick} />
                 </p>
               )}
             </div>
@@ -169,6 +217,8 @@ const Round1ConfusingCard = ({
             canPlayAudio={canPlayExampleAudio}
             onPlayExample={({ sentence, key }) => { onPlayExample(sentence, key); }}
             emptyMessage="无例句。"
+            targetWords={targetWords}
+            onWordClick={onWordClick}
           />
         </div>
       </div>
@@ -176,14 +226,14 @@ const Round1ConfusingCard = ({
   </section>
 );
 
-const Round1MemoryTipCard = ({ memoryTip }: { memoryTip: string }) => (
+const Round1MemoryTipCard = ({ memoryTip, targetWords, onWordClick }: { memoryTip: string } & Round1LookupProps) => (
   <aside className="flex h-full min-h-[112px] rounded-[18px] border border-apple-blue/15 bg-apple-blue/5 px-4 py-3 sm:px-5 sm:py-4 lg:min-h-0 lg:max-h-[152px] lg:w-full lg:max-w-[430px] lg:self-stretch lg:overflow-y-auto">
     <div className="my-auto min-w-0">
       <p className="text-[11px] sm:text-[12px] font-bold uppercase tracking-[0.22em] text-apple-blue">
         记忆锦囊
       </p>
       <p className="mt-1.5 text-[13px] sm:text-sm leading-6 text-text-primary">
-        {memoryTip}
+        <Round1LookupText text={memoryTip} targetWords={targetWords} onWordClick={onWordClick} />
       </p>
     </div>
   </aside>
@@ -286,6 +336,7 @@ export const LearningEngine = ({
   sessionActions?: React.ReactNode;
 }) => {
   const { preferences } = useLearningPreferences();
+  const { openPopover } = useWordPopover();
   const initialEngineState = useMemo(() => {
     const hasMatchingSession = initialSession && initialSession.round === type;
     const wordMap = new Map(words.map((word) => [word.id, word]));
@@ -364,6 +415,10 @@ export const LearningEngine = ({
   const currentWord = queue[currentIndex];
   const viewedWord = queue[viewIndex] ?? currentWord;
   const isViewingHistory = viewIndex !== currentIndex;
+  const lookupTargetWords = useMemo(
+    () => new Set(words.map((word) => word.word.trim().toLowerCase()).filter(Boolean)),
+    [words],
+  );
   const clozePrompt = useMemo(() => {
     if ((type !== 'round2' && type !== 'review') || !currentWord) return null;
     return buildClozePrompt({ word: currentWord.word, senses: currentWord.senses });
@@ -1240,7 +1295,11 @@ export const LearningEngine = ({
                       <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:gap-8">
                         <div className="lg:flex-shrink-0">
                           <p className="text-[clamp(1.44rem,8vw,3.36rem)] font-black leading-tight tracking-tight text-text-primary">
-                            {viewedWord.word}
+                            <Round1LookupText
+                              text={viewedWord.word}
+                              targetWords={lookupTargetWords}
+                              onWordClick={openPopover}
+                            />
                           </p>
                           {viewedWord.ner_entities.length > 0 && (
                             <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -1262,21 +1321,35 @@ export const LearningEngine = ({
 
                       {viewedWord.memory_tip && (
                         <div className="flex justify-end">
-                          <Round1MemoryTipCard memoryTip={viewedWord.memory_tip} />
+                          <Round1MemoryTipCard
+                            memoryTip={viewedWord.memory_tip}
+                            targetWords={lookupTargetWords}
+                            onWordClick={openPopover}
+                          />
                         </div>
                       )}
                     </div>
                   </div>
 
                   <div className="grid gap-3 sm:gap-4 lg:grid-cols-3">
-                    <Round1MorphologyCard word={viewedWord} />
-                    <Round1RelationsCard word={viewedWord} />
+                    <Round1MorphologyCard
+                      word={viewedWord}
+                      targetWords={lookupTargetWords}
+                      onWordClick={openPopover}
+                    />
+                    <Round1RelationsCard
+                      word={viewedWord}
+                      targetWords={lookupTargetWords}
+                      onWordClick={openPopover}
+                    />
                     <Round1ConfusingCard
                       word={viewedWord}
                       activeExampleKey={activeExampleKey}
                       canPlayExampleAudio={canPlayExampleAudio}
                       exampleLocale={audioLocale}
                       onPlayExample={(sentence, key) => { void playExampleSentence(sentence, key); }}
+                      targetWords={lookupTargetWords}
+                      onWordClick={openPopover}
                     />
                   </div>
                 </div>
@@ -1328,7 +1401,12 @@ export const LearningEngine = ({
                 <div className="flex min-h-full flex-col justify-center text-center">
                   {replayControls}
                   {viewedClozePrompt ? (
-                    <Round2ClozePrompt prompt={viewedClozePrompt} inputValue={displayedInputValue} />
+                    <Round2ClozePrompt
+                      prompt={viewedClozePrompt}
+                      inputValue={displayedInputValue}
+                      targetWords={lookupTargetWords}
+                      onWordClick={openPopover}
+                    />
                   ) : (
                     <div className="mx-auto max-w-3xl">
                       <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary">

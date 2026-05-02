@@ -76,10 +76,13 @@ export function tokenizeClickableText(text: string): TextToken[] {
 export interface ClickableTextProps {
   text: string;
   targetWords?: ReadonlySet<string>;
-  onWordClick: (word: string, anchor: HTMLElement) => void;
+  onWordClick: WordClickHandler;
+  stopPropagation?: boolean;
 }
 
-export function ClickableText({ text, targetWords, onWordClick }: ClickableTextProps) {
+export type WordClickHandler = (word: string, anchor: HTMLElement) => void;
+
+export function ClickableText({ text, targetWords, onWordClick, stopPropagation = false }: ClickableTextProps) {
   return (
     <>
       {tokenizeClickableText(text).map((token, index): ReactNode => {
@@ -99,7 +102,12 @@ export function ClickableText({ text, targetWords, onWordClick }: ClickableTextP
                 : 'hover:bg-apple-blue/10',
             )}
             data-clickable-word={token.normalized}
-            onClick={(event) => onWordClick(token.normalized!, event.currentTarget)}
+            onClick={(event) => {
+              if (stopPropagation) {
+                event.stopPropagation();
+              }
+              onWordClick(token.normalized!, event.currentTarget);
+            }}
           >
             {token.text}
           </span>
