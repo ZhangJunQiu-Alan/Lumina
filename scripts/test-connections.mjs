@@ -37,7 +37,7 @@ const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 
 try {
   const result = await ai.models.generateContent({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-2.5-flash',
     contents: 'Reply with exactly: "Gemini OK"',
   });
   const text = result.text?.trim();

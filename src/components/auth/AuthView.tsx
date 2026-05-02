@@ -8,7 +8,6 @@ import {
   Lock,
   Mail,
   ShieldCheck,
-  Sparkles,
   UserRound,
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -126,25 +125,6 @@ export const AuthView = () => {
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const nextPath = useMemo(() => safeNextPath(searchParams), [searchParams]);
   const oauthError = useMemo(() => readOAuthError(location.search, location.hash), [location.hash, location.search]);
-  const insightCards = useMemo(() => [
-    {
-      title: '不是先登录再学习，是先接上轨迹再学习。',
-      body: '系统要先认出你，后面才能把词库、复习安排和上次停下的位置一起接回来。',
-    },
-    {
-      title: isGoogleAuthEnabled ? 'Google 和邮箱，只是两种进入方式。' : '邮箱已经可以直接进入。',
-      body: isGoogleAuthEnabled
-        ? '赶时间就走 Google；想慢一点也可以用邮箱，后面接上的都是同一条轨迹。'
-        : '先把学习轨迹接起来，比入口多一个少一个更重要。',
-    },
-    {
-      title: '你不是每次都从零开始。',
-      body: isGoogleAuthEnabled
-        ? 'Lumina 记的不是“你今天来没来”，而是你已经走到了哪。'
-        : '先用邮箱进入就够了。等 Google 入口恢复后，它会自动回到这里。',
-    },
-  ], []);
-
   useEffect(() => {
     const nextMode = searchParams.get('mode');
     if (nextMode === 'login' || nextMode === 'register') {
@@ -255,52 +235,11 @@ export const AuthView = () => {
 
   return (
     <div className="min-h-screen px-6 py-6">
-      <div className="mx-auto grid min-h-[calc(100vh-3rem)] max-w-7xl gap-6 lg:grid-cols-[1.02fr_0.98fr]">
-        <motion.section
-          initial={{ opacity: 0, x: -18 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="glass relative overflow-hidden rounded-[36px] p-8 md:p-10 jelly-shadow"
-        >
-          <div className="pointer-events-none absolute inset-0 overflow-hidden">
-            <div className="absolute -left-8 top-12 h-40 w-40 rounded-full bg-apple-blue/15 blur-3xl" />
-            <div className="absolute right-8 top-24 h-52 w-52 rounded-full bg-apple-teal/12 blur-3xl" />
-            <div className="absolute bottom-0 left-1/3 h-44 w-44 rounded-full bg-apple-green/14 blur-3xl" />
-          </div>
-
-          <div className="relative">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.28em] text-apple-blue">
-              <Sparkles className="h-3.5 w-3.5" />
-              进入系统
-            </div>
-
-            <h1 className="mt-6 max-w-3xl text-5xl font-black leading-[0.98] tracking-tight text-text-primary md:text-6xl">
-              不是为了管住你，是为了把你的进度接回来。
-            </h1>
-            <p className="mt-6 max-w-2xl text-base leading-8 text-text-secondary">
-              Lumina 不靠催你回来。它只是需要先认出你，这样你下次回来，系统知道该从哪里继续。
-            </p>
-
-            <div className="mt-10 grid gap-4">
-              {insightCards.map((card, index) => (
-                <motion.div
-                  key={card.title}
-                  initial={{ opacity: 0, y: 14 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.08 + index * 0.07 }}
-                  className="rounded-[30px] border border-white/65 bg-white/68 p-6 shadow-[0_18px_40px_rgba(0,0,0,0.05)] backdrop-blur-2xl"
-                >
-                  <h2 className="text-xl font-black text-text-primary">{card.title}</h2>
-                  <p className="mt-3 text-sm leading-7 text-text-secondary">{card.body}</p>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </motion.section>
-
+      <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-3xl items-start">
         <motion.section
           initial={{ opacity: 0, x: 18 }}
           animate={{ opacity: 1, x: 0 }}
-          className="glass rounded-[36px] p-6 md:p-8 jelly-shadow"
+          className="glass w-full rounded-[36px] p-6 md:p-8 jelly-shadow"
         >
           <div className="flex items-center justify-between gap-3 rounded-[28px] border border-white/60 bg-white/55 p-2 shadow-[0_16px_30px_rgba(0,0,0,0.04)] backdrop-blur-xl">
             {([
@@ -353,14 +292,7 @@ export const AuthView = () => {
                 </div>
               )}
 
-              <div className="mt-8 rounded-[28px] border border-white/60 bg-white/56 p-5 backdrop-blur-xl">
-                <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">另一种进入方式</p>
-                <p className="mt-2 text-sm leading-7 text-text-secondary">
-                  同一套词库，同一条轨迹，只是入口不同。你用顺手的方式进来就行。
-                </p>
-              </div>
-
-              <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+              <form onSubmit={handleSubmit} className="mt-8 space-y-5">
                 {mode === 'register' && (
                   <AuthField
                     icon={UserRound}

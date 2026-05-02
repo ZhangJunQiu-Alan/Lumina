@@ -39,10 +39,12 @@ export const WordSenseList = ({
   word,
   centered = false,
   compact = false,
+  size = 'default',
 }: {
   word: Word;
   centered?: boolean;
   compact?: boolean;
+  size?: 'default' | 'small';
 }) => {
   const senses = getDisplaySenses(word);
 
@@ -53,7 +55,12 @@ export const WordSenseList = ({
           key={`${word.id}-sense-${sense.pos}-${index}`}
           className={cx('flex flex-wrap items-start gap-2 sm:gap-3', centered && 'justify-center')}
         >
-          <span className="rounded-full bg-black/5 px-2 py-0.5 sm:px-3 sm:py-1 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">
+          <span
+            className={cx(
+              'rounded-full bg-black/5 px-2 py-0.5 sm:px-3 sm:py-1 font-bold uppercase tracking-[0.22em] text-text-secondary',
+              size === 'small' ? 'text-[8px] sm:text-[9px]' : 'text-[10px] sm:text-[11px]',
+            )}
+          >
             {sense.pos}
           </span>
           <p
@@ -61,7 +68,9 @@ export const WordSenseList = ({
               'min-w-0 text-text-primary',
               compact
                 ? 'flex-1 text-sm font-bold leading-6'
-                : 'flex-1 text-[1rem] font-black leading-snug sm:text-[1.15rem] md:text-[1.45rem]',
+                : size === 'small'
+                  ? 'flex-1 text-[0.8rem] font-black leading-snug sm:text-[0.92rem] md:text-[1.16rem]'
+                  : 'flex-1 text-[1rem] font-black leading-snug sm:text-[1.15rem] md:text-[1.45rem]',
               centered && 'text-center',
             )}
           >
@@ -120,14 +129,21 @@ export const PronunciationControls = ({
   audioLocale,
   activePronunciationLocale,
   onPlay,
+  size = 'default',
 }: {
   phonetic: string;
   audioLocale: 'uk' | 'us';
   activePronunciationLocale: PronunciationLocale | null;
   onPlay: (locale: 'uk' | 'us') => void;
+  size?: 'default' | 'small';
 }) => (
   <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-    <span className="rounded-xl sm:rounded-2xl bg-apple-blue px-3 py-1.5 sm:px-4 sm:py-2 text-base sm:text-lg font-black tracking-tight text-white shadow-[0_12px_30px_rgba(0,122,255,0.18)]">
+    <span
+      className={cx(
+        'rounded-xl sm:rounded-2xl bg-apple-blue px-3 py-1.5 sm:px-4 sm:py-2 font-black tracking-tight text-white shadow-[0_12px_30px_rgba(0,122,255,0.18)]',
+        size === 'small' ? 'text-[13px] sm:text-[14px]' : 'text-base sm:text-lg',
+      )}
+    >
       {phonetic || '暂无音标'}
     </span>
     {(['uk', 'us'] as const).map((loc) => (
@@ -136,7 +152,8 @@ export const PronunciationControls = ({
         type="button"
         onClick={() => onPlay(loc)}
         className={cx(
-          'flex items-center gap-1.5 rounded-xl sm:rounded-2xl px-2.5 py-1.5 sm:px-3 sm:py-2 text-[10px] sm:text-xs font-black tracking-wide transition-all',
+          'flex items-center gap-1.5 rounded-xl sm:rounded-2xl px-2.5 py-1.5 sm:px-3 sm:py-2 font-black tracking-wide transition-all',
+          size === 'small' ? 'text-[8px] sm:text-[10px]' : 'text-[10px] sm:text-xs',
           audioLocale === loc
             ? 'bg-apple-blue text-white shadow-[0_10px_24px_rgba(0,122,255,0.16)]'
             : 'bg-apple-blue/10 text-apple-blue hover:bg-apple-blue/15',

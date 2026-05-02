@@ -1,5 +1,6 @@
 import { supabaseAdmin } from './supabase.js';
 import { intervalForState, toNextReviewAt, type MemoryState, type ReviewResultType } from './review-domain.js';
+import { queueFullEnrichmentForVocabularyItemId } from './vocab.js';
 import {
   isOfficialLibraryId,
   resolveLibraryGroupSourceType,
@@ -60,6 +61,19 @@ export interface DiscardActiveOfficialLearningGroupResult {
   forcedFuzzyWordCount: number;
   removedUnlearnedWordCount: number;
   removedReviewStateCount: number;
+}
+
+export type SavedWordSource = 'reading_popup' | 'manual';
+
+export interface SaveWordToLibraryResult {
+  vocabularyItemId: string;
+  inserted: boolean;
+  fullEnrichmentQueued: boolean;
+}
+
+export interface RemoveWordFromLibraryResult {
+  vocabularyItemId: string;
+  removed: boolean;
 }
 
 interface ReviewStateRow {
@@ -239,6 +253,59 @@ export async function deleteLearningGroup(userId: string, groupId: string): Prom
     deletedGroupId: groupId,
     deletedWordCount: targetWordIds.length,
     removedReviewStateCount,
+  };
+}
+
+export async function saveWordToLibrary(
+  userId: string,
+  vocabularyItemId: string,
+  source: SavedWordSource = 'reading_popup',
+): Promise<SaveWordToLibraryResult> {
+  const queueResult = await queueFullEnrichmentForVocabularyItemId(vocabularyItemId, source);
+  if (queueResult.reason === 'not_found') {
+    throw new Error('这个词条不存在，无法加入词库。');
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('user_saved_words')
+    .upsert(
+      {
+        user_id: userId,
+        vocabulary_item_id: vocabularyItemId,
+        source,
+      },
+      { onConflict: 'user_id,vocabulary_item_id', ignoreDuplicates: true },
+    )
+    .select('id');
+
+  if (error) {
+    throw new Error(`user_saved_words upsert failed: ${error.message}`);
+  }
+
+  return {
+    vocabularyItemId,
+    inserted: (data?.length ?? 0) > 0,
+    fullEnrichmentQueued: queueResult.queued,
+  };
+}
+
+export async function removeWordFromLibrary(
+  userId: string,
+  vocabularyItemId: string,
+): Promise<RemoveWordFromLibraryResult> {
+  const { error, count } = await supabaseAdmin
+    .from('user_saved_words')
+    .delete({ count: 'exact' })
+    .eq('user_id', userId)
+    .eq('vocabulary_item_id', vocabularyItemId);
+
+  if (error) {
+    throw new Error(`user_saved_words delete failed: ${error.message}`);
+  }
+
+  return {
+    vocabularyItemId,
+    removed: (count ?? 0) > 0,
   };
 }
 

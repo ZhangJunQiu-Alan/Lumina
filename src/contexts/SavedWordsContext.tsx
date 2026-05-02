@@ -1,0 +1,101 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from 'react';
+import { useAuth } from './AuthContext';
+import { apiFetch } from '../lib/api';
+import { invalidateLibraryCache } from '../lib/libraryCache';
+import { supabase } from '../lib/supabase';
+import { invalidateWord, updateCachedLookup } from '../lib/wordLookup';
+
+type SavedWordSource = 'reading_popup' | 'manual';
+
+interface SavedWordsContextValue {
+  saveWord: (vocabularyItemId: string, source?: SavedWordSource) => Promise<void>;
+  removeWord: (vocabularyItemId: string) => Promise<void>;
+}
+
+const SavedWordsContext = createContext<SavedWordsContextValue | null>(null);
+
+async function readApiError(response: Response) {
+  const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+  return body.error ?? `HTTP ${response.status}`;
+}
+
+export function SavedWordsProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (!user) return undefined;
+
+    const channelName = `vocab-updates-${user.id}-${Math.random().toString(36).slice(2)}`;
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'vocabulary_items' },
+        (payload) => {
+          const word = typeof payload.new?.word === 'string' ? payload.new.word : '';
+          if (word) {
+            invalidateWord(word);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [user]);
+
+  const saveWord = useCallback(async (vocabularyItemId: string, source: SavedWordSource = 'reading_popup') => {
+    const response = await apiFetch('/api/library/saved-words', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vocabularyItemId, source }),
+    });
+
+    if (!response.ok) {
+      throw new Error(await readApiError(response));
+    }
+
+    updateCachedLookup(vocabularyItemId, (current) => ({
+      ...current,
+      in_user_library: true,
+    }));
+    invalidateLibraryCache(user?.id);
+  }, [user?.id]);
+
+  const removeWord = useCallback(async (vocabularyItemId: string) => {
+    const response = await apiFetch(`/api/library/saved-words/${encodeURIComponent(vocabularyItemId)}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      throw new Error(await readApiError(response));
+    }
+
+    updateCachedLookup(vocabularyItemId, (current) => ({
+      ...current,
+      in_user_library: false,
+    }));
+    invalidateLibraryCache(user?.id);
+  }, [user?.id]);
+
+  const value = useMemo(() => ({
+    saveWord,
+    removeWord,
+  }), [removeWord, saveWord]);
+
+  return (
+    <SavedWordsContext.Provider value={value}>
+      {children}
+    </SavedWordsContext.Provider>
+  );
+}
+
+export function useSavedWords() {
+  const context = useContext(SavedWordsContext);
+  if (!context) {
+    throw new Error('useSavedWords must be used within SavedWordsProvider');
+  }
+
+  return context;
+}

@@ -285,7 +285,7 @@ export function OfficialLibraryPanel({
         const res = await apiFetch('/api/vocab/enrich', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ words: missing }),
+          body: JSON.stringify({ words: missing, source: 'official_library' }),
         });
 
         if (!res.ok) {

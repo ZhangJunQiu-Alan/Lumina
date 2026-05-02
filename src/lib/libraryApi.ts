@@ -1,10 +1,11 @@
 import { supabase } from './supabase';
+import { apiFetch } from './api';
 import {
   OFFICIAL_LIBRARY_DEFINITIONS,
   getOfficialLibraryDefinition,
   resolveLibraryGroupSourceType,
 } from './officialLibrary';
-import type { OfficialLibraryId, OfficialLibraryCompletionCounts } from '../types';
+import type { MemoryState, OfficialLibraryId, OfficialLibraryCompletionCounts, ReviewResultType } from '../types';
 
 interface GroupWordRow {
   vocabulary_item_id: string;
@@ -12,6 +13,53 @@ interface GroupWordRow {
 
 interface SharedWordRow {
   vocabulary_item_id: string;
+}
+
+type SavedWordSource = 'import' | 'reading_popup' | 'manual' | 'migration';
+
+interface SavedWordRow {
+  id: string;
+  vocabulary_item_id: string;
+  source: SavedWordSource | null;
+  saved_at: string | null;
+  vocabulary_items:
+    | {
+        id: string;
+        word: string | null;
+        ipa_uk: string | null;
+        primary_meaning_zh: string | null;
+        enrichment_level: 'lite' | 'full' | null;
+      }
+    | Array<{
+        id: string;
+        word: string | null;
+        ipa_uk: string | null;
+        primary_meaning_zh: string | null;
+        enrichment_level: 'lite' | 'full' | null;
+      }>
+    | null;
+}
+
+interface SavedWordReviewStateRow {
+  vocabulary_item_id: string;
+  memory_state: MemoryState | null;
+  next_review_at: string | null;
+  last_result: ReviewResultType | null;
+}
+
+export interface SavedWordEntry {
+  id: string;
+  vocabularyItemId: string;
+  word: string;
+  phonetic: string;
+  meaning: string;
+  enrichmentLevel: 'lite' | 'full';
+  source: SavedWordSource;
+  savedAt: string;
+  memoryState: MemoryState | null;
+  nextReviewAt: string | null;
+  lastResult: ReviewResultType | null;
+  isInActiveLearningGroup: boolean;
 }
 
 export interface DeleteLibraryGroupResponse {
@@ -115,6 +163,123 @@ export async function deleteLibraryGroup(
     deletedWordCount: targetWordIds.length,
     removedReviewStateCount,
   };
+}
+
+function asArray<T>(value: T | T[] | null | undefined): T[] {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+export async function fetchActiveLearningGroupWordIds(userId: string): Promise<Set<string>> {
+  const { data: activeGroups, error: groupError } = await supabase
+    .from('learning_groups')
+    .select('id')
+    .eq('user_id', userId)
+    .is('completed_at', null)
+    .or('status.is.null,status.neq.completed');
+
+  if (groupError) {
+    throw new Error(groupError.message);
+  }
+
+  const groupIds = ((activeGroups ?? []) as Array<{ id: string }>).map((group) => group.id).filter(Boolean);
+  if (groupIds.length === 0) return new Set();
+
+  const { data: groupWords, error: groupWordsError } = await supabase
+    .from('learning_group_words')
+    .select('vocabulary_item_id')
+    .in('learning_group_id', groupIds);
+
+  if (groupWordsError) {
+    throw new Error(groupWordsError.message);
+  }
+
+  return new Set(
+    ((groupWords ?? []) as GroupWordRow[]).map((row) => row.vocabulary_item_id).filter(Boolean),
+  );
+}
+
+export async function fetchSavedWords(userId: string): Promise<SavedWordEntry[]> {
+  const [savedResult, activeWordIds] = await Promise.all([
+    supabase
+      .from('user_saved_words')
+      .select(`
+        id,
+        vocabulary_item_id,
+        source,
+        saved_at,
+        vocabulary_items!inner (
+          id,
+          word,
+          ipa_uk,
+          primary_meaning_zh,
+          enrichment_level
+        )
+      `)
+      .eq('user_id', userId)
+      .order('saved_at', { ascending: true }),
+    fetchActiveLearningGroupWordIds(userId),
+  ]);
+
+  if (savedResult.error) {
+    throw new Error(savedResult.error.message);
+  }
+
+  const savedRows = (savedResult.data ?? []) as unknown as SavedWordRow[];
+  const vocabularyItemIds = Array.from(new Set(savedRows.map((row) => row.vocabulary_item_id).filter(Boolean)));
+
+  let reviewStates: SavedWordReviewStateRow[] = [];
+  if (vocabularyItemIds.length > 0) {
+    const { data, error } = await supabase
+      .from('review_states')
+      .select('vocabulary_item_id, memory_state, next_review_at, last_result')
+      .eq('user_id', userId)
+      .in('vocabulary_item_id', vocabularyItemIds);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    reviewStates = (data ?? []) as SavedWordReviewStateRow[];
+  }
+
+  const reviewStateByWordId = new Map(
+    reviewStates.map((row) => [row.vocabulary_item_id, row]),
+  );
+
+  return savedRows
+    .map((row) => {
+      const vocabularyItem = asArray(row.vocabulary_items)[0];
+      if (!vocabularyItem?.id || !vocabularyItem.word) return null;
+
+      const reviewState = reviewStateByWordId.get(row.vocabulary_item_id);
+      return {
+        id: row.id,
+        vocabularyItemId: vocabularyItem.id,
+        word: vocabularyItem.word,
+        phonetic: vocabularyItem.ipa_uk ?? '',
+        meaning: vocabularyItem.primary_meaning_zh ?? '',
+        enrichmentLevel: vocabularyItem.enrichment_level ?? 'full',
+        source: row.source ?? 'manual',
+        savedAt: row.saved_at ?? new Date(0).toISOString(),
+        memoryState: reviewState?.memory_state ?? null,
+        nextReviewAt: reviewState?.next_review_at ?? null,
+        lastResult: reviewState?.last_result ?? null,
+        isInActiveLearningGroup: activeWordIds.has(vocabularyItem.id),
+      } satisfies SavedWordEntry;
+    })
+    .filter((entry): entry is SavedWordEntry => Boolean(entry));
+}
+
+export async function deleteSavedWord(vocabularyItemId: string): Promise<void> {
+  const response = await apiFetch(`/api/library/saved-words/${encodeURIComponent(vocabularyItemId)}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    throw new Error((payload as { error?: string }).error ?? `HTTP ${response.status}`);
+  }
 }
 
 interface LearnedWordRow {

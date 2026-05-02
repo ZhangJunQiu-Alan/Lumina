@@ -6,6 +6,7 @@ import type {
   OfficialResumeTargets,
   OfficialLibrarySummary,
 } from '../types';
+import type { SavedWordEntry } from './libraryApi';
 
 interface CacheEntry<T> {
   data: T;
@@ -46,6 +47,9 @@ const officialLearnedRequests = new Map<string, Promise<Set<string>>>();
 const officialCompletionCache = new Map<string, CacheEntry<OfficialLibraryCompletionCounts>>();
 const officialCompletionRequests = new Map<string, Promise<OfficialLibraryCompletionCounts>>();
 
+const savedWordsCache = new Map<string, CacheEntry<SavedWordEntry[]>>();
+const savedWordsRequests = new Map<string, Promise<SavedWordEntry[]>>();
+
 function buildGroupDetailKey(userId: string, groupId: string) {
   return `${userId}:${groupId}`;
 }
@@ -61,6 +65,33 @@ export function isLibraryCacheFresh(entry: CacheEntry<unknown> | null | undefine
 
 export function getCachedLibraryGroups(userId: string) {
   return groupListCache.get(userId) ?? null;
+}
+
+export function getCachedSavedWords(userId: string) {
+  return savedWordsCache.get(userId) ?? null;
+}
+
+export async function refreshSavedWords(
+  userId: string,
+  loader: () => Promise<SavedWordEntry[]>,
+) {
+  const existingRequest = savedWordsRequests.get(userId);
+  if (existingRequest) return existingRequest;
+
+  const request = loader()
+    .then((data) => {
+      savedWordsCache.set(userId, {
+        data,
+        cachedAt: Date.now(),
+      });
+      return data;
+    })
+    .finally(() => {
+      savedWordsRequests.delete(userId);
+    });
+
+  savedWordsRequests.set(userId, request);
+  return request;
 }
 
 export function getCachedLibraryGroupDetail(userId: string, groupId: string) {
@@ -241,6 +272,8 @@ export function invalidateLibraryCache(userId?: string) {
     officialLearnedRequests.clear();
     officialCompletionCache.clear();
     officialCompletionRequests.clear();
+    savedWordsCache.clear();
+    savedWordsRequests.clear();
     return;
   }
 
@@ -250,6 +283,8 @@ export function invalidateLibraryCache(userId?: string) {
   officialResumeRequests.delete(userId);
   officialCompletionCache.delete(userId);
   officialCompletionRequests.delete(userId);
+  savedWordsCache.delete(userId);
+  savedWordsRequests.delete(userId);
 
   for (const key of groupDetailCache.keys()) {
     if (key.startsWith(`${userId}:`)) {
@@ -286,6 +321,16 @@ export function invalidateLibraryCache(userId?: string) {
       officialLearnedRequests.delete(key);
     }
   }
+}
+
+export function removeSavedWordFromCache(userId: string, vocabularyItemId: string) {
+  const cache = savedWordsCache.get(userId);
+  if (!cache) return;
+
+  savedWordsCache.set(userId, {
+    data: cache.data.filter((entry) => entry.vocabularyItemId !== vocabularyItemId),
+    cachedAt: Date.now(),
+  });
 }
 
 export function removeLibraryGroupFromCache(userId: string, groupId: string) {

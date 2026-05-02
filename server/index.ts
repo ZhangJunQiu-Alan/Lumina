@@ -10,9 +10,21 @@ import {
 import { fetchDueReviewWords, recordReviewAttempt, recordBatchReviewAttempts } from './review.js';
 import { getOrCreateAudio, batchGenerateAudio } from './audio.js';
 import { ExampleAudioValidationError, getOrCreateExampleAudio } from './exampleAudio.js';
-import { deleteLearningGroup, discardActiveOfficialLearningGroup } from './library.js';
+import {
+  deleteLearningGroup,
+  discardActiveOfficialLearningGroup,
+  removeWordFromLibrary,
+  saveWordToLibrary,
+  type SavedWordSource,
+} from './library.js';
 import { requireAuth, type AuthenticatedRequest } from './auth.js';
 import { getHomeOverview } from './home.js';
+import {
+  ensureLiteVocabularyEntry,
+  lookupWordForPopover,
+  queueFullEnrichmentForWord,
+  sanitizeLookupWord,
+} from './vocab.js';
 import { isOfficialLibraryId } from '../src/lib/officialLibrary.js';
 import { analyzeWordBatch, formatDuplicateWordsMessage } from '../shared/wordBatch.js';
 
@@ -70,19 +82,36 @@ app.options('*', (req, res) => {
   res.sendStatus(204);
 });
 
+function resolveSavedWordSource(value: unknown): SavedWordSource | null {
+  if (value === undefined || value === null) return 'reading_popup';
+  if (value === 'reading_popup' || value === 'manual') return value;
+  return null;
+}
+
+function resolveGeminiSource(value: unknown, fallback: string) {
+  if (typeof value !== 'string') return fallback;
+
+  const normalized = value.trim();
+  return normalized || fallback;
+}
+
 // POST /api/vocab/enrich
 app.post('/api/vocab/enrich', async (req, res) => {
   const { words } = req.body;
+  const source = resolveGeminiSource(req.body?.source, 'manual_api');
   if (!Array.isArray(words) || words.length === 0) {
     return res.status(400).json({ error: 'Missing words array' });
   }
 
   try {
-    const data = await enrichWords(words);
+    const data = await enrichWords(words, {
+      source,
+      enrichmentType: 'batch',
+    });
     res.json({ data });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/vocab/enrich', e, { endpoint: '/api/vocab/enrich' });
+    logger.error('API Error: /api/vocab/enrich', e, { endpoint: '/api/vocab/enrich', source });
     
     if (e instanceof EnrichmentResponseValidationError) {
       return res.status(e.statusCode).json({ error: message });
@@ -90,6 +119,78 @@ app.post('/api/vocab/enrich', async (req, res) => {
     if (e instanceof EnrichmentServiceUnavailableError) {
       return res.status(e.statusCode).json({ error: message });
     }
+    res.status(500).json({ error: message });
+  }
+});
+
+// POST /api/vocab/lite-enrich
+app.post('/api/vocab/lite-enrich', async (req, res) => {
+  const word = sanitizeLookupWord(req.body?.word);
+  const source = resolveGeminiSource(req.body?.source, 'manual_api');
+  if (!word) {
+    return res.status(400).json({ error: 'Missing word' });
+  }
+
+  try {
+    const data = await ensureLiteVocabularyEntry(word, source);
+    res.json({ data });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/vocab/lite-enrich', e, { endpoint: '/api/vocab/lite-enrich', word, source });
+
+    if (e instanceof EnrichmentResponseValidationError) {
+      return res.status(e.statusCode).json({ error: message });
+    }
+    if (e instanceof EnrichmentServiceUnavailableError) {
+      return res.status(e.statusCode).json({ error: message });
+    }
+    res.status(500).json({ error: message });
+  }
+});
+
+// POST /api/vocab/lookup
+app.post('/api/vocab/lookup', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const word = sanitizeLookupWord(req.body?.word);
+  if (!word) {
+    return res.status(400).json({ error: 'Missing word' });
+  }
+
+  const userId = req.authUserId!;
+  try {
+    const data = await lookupWordForPopover(userId, word);
+    res.json({ data });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/vocab/lookup', e, { endpoint: '/api/vocab/lookup', user_id: userId, word });
+
+    if (e instanceof EnrichmentResponseValidationError) {
+      return res.status(e.statusCode).json({ error: message });
+    }
+    if (e instanceof EnrichmentServiceUnavailableError) {
+      return res.status(e.statusCode).json({ error: message });
+    }
+    res.status(500).json({ error: message });
+  }
+});
+
+// POST /api/vocab/full-enrich
+app.post('/api/vocab/full-enrich', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const word = sanitizeLookupWord(req.body?.word);
+  if (!word) {
+    return res.status(400).json({ error: 'Missing word' });
+  }
+
+  const userId = req.authUserId!;
+  try {
+    const result = await queueFullEnrichmentForWord(word, 'manual_api');
+    if (result.reason === 'not_found') {
+      return res.status(404).json({ error: 'Vocabulary item not found' });
+    }
+
+    res.status(result.queued ? 202 : 200).json(result);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/vocab/full-enrich', e, { endpoint: '/api/vocab/full-enrich', user_id: userId, word });
     res.status(500).json({ error: message });
   }
 });
@@ -224,6 +325,57 @@ app.post('/api/library/official/:libraryId/discard-active', requireAuth, async (
       endpoint: `/api/library/official/${libraryId}/discard-active`,
       user_id: userId,
       group_id: groupId,
+    });
+    res.status(500).json({ error: message });
+  }
+});
+
+// POST /api/library/saved-words
+app.post('/api/library/saved-words', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { vocabularyItemId } = req.body ?? {};
+  const source = resolveSavedWordSource(req.body?.source);
+
+  if (typeof vocabularyItemId !== 'string' || vocabularyItemId.trim().length === 0) {
+    return res.status(400).json({ error: 'Missing vocabulary item ID' });
+  }
+
+  if (!source) {
+    return res.status(400).json({ error: 'Invalid saved word source' });
+  }
+
+  const userId = req.authUserId!;
+  try {
+    const data = await saveWordToLibrary(userId, vocabularyItemId.trim(), source);
+    res.json({ data });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/library/saved-words', e, {
+      endpoint: '/api/library/saved-words',
+      user_id: userId,
+      vocabulary_item_id: vocabularyItemId,
+      source,
+    });
+    res.status(500).json({ error: message });
+  }
+});
+
+// DELETE /api/library/saved-words/:vocabularyItemId
+app.delete('/api/library/saved-words/:vocabularyItemId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { vocabularyItemId } = req.params;
+  if (!vocabularyItemId) {
+    return res.status(400).json({ error: 'Missing vocabulary item ID' });
+  }
+
+  const userId = req.authUserId!;
+  try {
+    const data = await removeWordFromLibrary(userId, vocabularyItemId);
+    res.json({ data });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error(`API Error: /api/library/saved-words/${vocabularyItemId}`, e, {
+      endpoint: `/api/library/saved-words/${vocabularyItemId}`,
+      user_id: userId,
+      vocabulary_item_id: vocabularyItemId,
     });
     res.status(500).json({ error: message });
   }

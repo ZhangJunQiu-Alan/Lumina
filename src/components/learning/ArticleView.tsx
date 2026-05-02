@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { BookOpen, CheckCircle2, Languages } from 'lucide-react';
 import type { ArticleSentence, Word } from '../../types';
+import { useWordPopover } from '../../contexts/WordPopoverContext';
+import { ClickableText } from '../shared/ClickableText';
 
 interface ArticleViewProps {
   sentences: ArticleSentence[];
@@ -9,13 +11,8 @@ interface ArticleViewProps {
   onFinish: () => void | Promise<void>;
 }
 
-function normalizeArticleToken(token: string) {
-  return token
-    .replace(/^[^a-z0-9'-]+|[^a-z0-9'-]+$/gi, '')
-    .toLowerCase();
-}
-
 export const ArticleView = ({ sentences, words, onFinish }: ArticleViewProps) => {
+  const { openPopover } = useWordPopover();
   const targetWords = useMemo(
     () => new Set(words.map((word) => word.word.trim().toLowerCase()).filter(Boolean)),
     [words],
@@ -33,23 +30,6 @@ export const ArticleView = ({ sentences, words, onFinish }: ArticleViewProps) =>
         ? '翻译下一句'
         : '逐句翻译';
   const revealedProgressLabel = `${Math.min(revealedCount, sentences.length)} / ${sentences.length}`;
-
-  const renderHighlightedSentence = useCallback((sentence: string, sentenceIndex: number) => (
-    sentence.split(/(\s+)/).map((part, partIndex) => {
-      if (/^\s+$/.test(part)) return part;
-
-      const cleanWord = normalizeArticleToken(part);
-      const isTarget = targetWords.has(cleanWord);
-      return (
-        <span
-          key={`${sentenceIndex}-${partIndex}-${part}`}
-          className={isTarget ? 'bg-apple-blue/10 text-apple-blue font-bold px-1 rounded transition-colors hover:bg-apple-blue/20 cursor-default' : ''}
-        >
-          {part}
-        </span>
-      );
-    })
-  ), [targetWords]);
 
   const handleRevealNext = useCallback(() => {
     setRevealedCount((current) => Math.min(current + 1, sentences.length));
@@ -87,7 +67,11 @@ export const ArticleView = ({ sentences, words, onFinish }: ArticleViewProps) =>
             {sentences.map((sentence, index) => (
               <div key={`${sentence.en}-${index}`} className="space-y-2">
                 <p>
-                  {renderHighlightedSentence(sentence.en, index)}
+                  <ClickableText
+                    text={sentence.en}
+                    targetWords={targetWords}
+                    onWordClick={openPopover}
+                  />
                 </p>
                 {index < revealedCount && (
                   <motion.p

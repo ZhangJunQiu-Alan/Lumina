@@ -28,6 +28,8 @@ import { SessionSettingsDrawer } from './components/settings/SessionSettingsDraw
 import { fetchDueReviewWords, submitReviewAttempt } from './lib/reviewApi';
 import { useAuth } from './contexts/AuthContext';
 import { useLearningPreferences } from './contexts/LearningPreferencesContext';
+import { SavedWordsProvider } from './contexts/SavedWordsContext';
+import { WordPopoverProvider } from './contexts/WordPopoverContext';
 import { apiFetch } from './lib/api';
 import { invalidateLibraryCache } from './lib/libraryCache';
 import { createInitialLearningSession, isCoreLearningRound } from './lib/learningSession';
@@ -746,40 +748,42 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen flex selection:bg-apple-blue/20">
-      <AmbientBackground />
-      <Sidebar
-        activePath={activeNavPath}
-        onNavigate={(to) => navigate(to)}
-      />
-      <WhatsNewModal />
+    <SavedWordsProvider>
+      <WordPopoverProvider>
+        <div className="min-h-screen flex selection:bg-apple-blue/20">
+          <AmbientBackground />
+          <Sidebar
+            activePath={activeNavPath}
+            onNavigate={(to) => navigate(to)}
+          />
+          <WhatsNewModal />
 
-      <div className="flex-1 relative h-screen overflow-hidden">
-        <main
-          ref={mainScrollRef}
-          onPointerDownCapture={(event) => {
-            if (!isSessionRoute || !isSessionSettingsOpen) return;
-            const target = event.target as HTMLElement;
-            if (target.closest('[data-session-settings-toggle]')) return;
-            setIsSessionSettingsOpen(false);
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-          className={cx(
-            'h-full overflow-y-auto relative z-10',
-            isSessionRoute
-              ? 'session-main px-4 py-6 pb-22 md:px-6 md:py-7 lg:pb-7 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10'
-              : 'px-6 pt-4 pb-32 lg:pt-24 lg:px-6 lg:py-7 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10',
-          )}
-        >
-          <div
-            className={cx(
-              'min-h-full',
-              isSessionRoute
-                ? 'session-route-shell mx-auto flex h-full min-h-0 w-full max-w-[1460px] flex-col'
-                : 'flex w-full flex-col',
-            )}
-          >
+          <div className="flex-1 relative h-screen overflow-hidden">
+            <main
+              ref={mainScrollRef}
+              onPointerDownCapture={(event) => {
+                if (!isSessionRoute || !isSessionSettingsOpen) return;
+                const target = event.target as HTMLElement;
+                if (target.closest('[data-session-settings-toggle]')) return;
+                setIsSessionSettingsOpen(false);
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              className={cx(
+                'h-full overflow-y-auto relative z-10',
+                isSessionRoute
+                  ? 'session-main px-4 py-6 pb-22 md:px-6 md:py-7 lg:pb-7 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10'
+                  : 'px-6 pt-4 pb-32 lg:pt-24 lg:px-6 lg:py-7 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10',
+              )}
+            >
+              <div
+                className={cx(
+                  'min-h-full',
+                  isSessionRoute
+                    ? 'session-route-shell mx-auto flex h-full min-h-0 w-full max-w-[1460px] flex-col'
+                    : 'flex w-full flex-col',
+                )}
+              >
             {sessionStartError && (
               <div className="mx-auto mb-4 flex w-full max-w-6xl items-start gap-3 rounded-[28px] border border-apple-red/15 bg-apple-red/8 px-5 py-4 text-apple-red shadow-xl">
                 <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
@@ -848,7 +852,7 @@ export default function App() {
                       />
                     )}
                   />
-                  <Route path="import" element={<ImportView onStartLearning={handleStartLearningGroup} />} />
+                  <Route path="import" element={<ImportView />} />
                   <Route path="notebook" element={<NotebookView />} />
                   <Route
                     path="session"
@@ -926,13 +930,15 @@ export default function App() {
                 </Routes>
               </Suspense>
             </div>
+              </div>
+            </main>
+            <SessionSettingsDrawer
+              isOpen={isSessionRoute && isSessionSettingsOpen}
+              onClose={() => setIsSessionSettingsOpen(false)}
+            />
           </div>
-        </main>
-        <SessionSettingsDrawer
-          isOpen={isSessionRoute && isSessionSettingsOpen}
-          onClose={() => setIsSessionSettingsOpen(false)}
-        />
-      </div>
-    </div>
+        </div>
+      </WordPopoverProvider>
+    </SavedWordsProvider>
   );
 }

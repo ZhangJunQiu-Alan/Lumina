@@ -355,7 +355,7 @@ async function enrichWithRetries(words: string[], retryCount: number, retryDelay
 
   for (let attempt = 1; attempt <= retryCount; attempt += 1) {
     try {
-      return await enrichWords(words);
+      return await enrichWords(words, { source: 'official_library', enrichmentType: 'batch' });
     } catch (error) {
       lastError = error;
       const message = error instanceof Error ? error.message : String(error);

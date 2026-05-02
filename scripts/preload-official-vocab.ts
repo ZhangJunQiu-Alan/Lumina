@@ -363,6 +363,26 @@ async function persistEnrichedBatch(enriched: GeminiWordResult[]) {
         throw new Error(`confused_words insert failed [${entry.word}]: ${insertConfusedError.message}`);
       }
     }
+
+    // forms are GLOBAL UNIQUE(form). Don't DELETE existing rows; just upsert and
+    // skip duplicates (first-write-wins across the whole table).
+    const baseFormKey = normalizeWordKey(entry.word);
+    const formRows = Array.from(
+      new Set(
+        ((entry as GeminiWordResult & { forms?: string[] }).forms ?? [])
+          .map((form) => normalizeWordKey(form))
+          .filter((form) => form && form !== baseFormKey),
+      ),
+    ).map((form) => ({ vocabulary_item_id: vocabularyItemId, form }));
+
+    if (formRows.length > 0) {
+      const { error: insertFormsError } = await supabaseAdmin
+        .from('vocabulary_item_forms')
+        .upsert(formRows, { onConflict: 'form', ignoreDuplicates: true });
+      if (insertFormsError) {
+        throw new Error(`vocabulary_item_forms insert failed [${entry.word}]: ${insertFormsError.message}`);
+      }
+    }
   }
 }
 
@@ -371,7 +391,7 @@ async function enrichWithRetries(words: string[], retryCount: number, retryDelay
 
   for (let attempt = 1; attempt <= retryCount; attempt += 1) {
     try {
-      return await enrichWords(words);
+      return await enrichWords(words, { source: 'official_library', enrichmentType: 'batch' });
     } catch (error) {
       lastError = error;
       const message = error instanceof Error ? error.message : String(error);

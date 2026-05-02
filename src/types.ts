@@ -119,6 +119,7 @@ export interface EnrichedWord {
   confused_word?: string | null;
   confused_diff_zh?: string | null;
   memory_tip: string;
+  forms?: string[];
   audio_uk_url?: string | null;
   audio_us_url?: string | null;
 }

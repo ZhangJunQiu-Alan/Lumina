@@ -25,6 +25,7 @@ import {
   OfficialResumeTargets,
   OfficialLibrarySummary,
   ReviewResultType,
+  Word,
 } from '../../types';
 import { toConfusingPairs, toWordMorphology, toWordRelations } from '../../types';
 import { ExampleSentenceList } from '../shared/ExampleSentenceList';
@@ -54,6 +55,7 @@ import {
   fetchOfficialCompletionCounts,
 } from '../../lib/libraryApi';
 import { OfficialLibraryPanel } from './OfficialLibraryPanel';
+import { SavedWordsPanel } from './SavedWordsPanel';
 import {
   OFFICIAL_LIBRARY_DEFINITIONS,
   buildOfficialLibrarySummary,
@@ -242,7 +244,11 @@ function mapGroupSummary(row: LearningGroupRow): LibraryGroupSummary {
 
   return {
     id: row.id,
-    title: sourceType === 'system' ? row.group_name ?? formatGroupTitle(row.created_at) : formatGroupTitle(row.created_at),
+    title: sourceType === 'system'
+      ? row.group_name ?? formatGroupTitle(row.created_at)
+      : row.group_name?.startsWith('我的词库')
+        ? row.group_name
+        : formatGroupTitle(row.created_at),
     createdAt: row.created_at,
     wordCount: row.learning_group_words?.length ?? 0,
     sourceType,
@@ -1036,7 +1042,7 @@ export const LibraryView = ({
   onStartLearningGroup,
   onLibraryMutated,
 }: {
-  onStartLearningGroup: (groupId: string) => Promise<void> | void;
+  onStartLearningGroup: (groupId: string, words?: Word[]) => Promise<void> | void;
   onLibraryMutated?: () => void | Promise<void>;
 }) => {
   const navigate = useNavigate();
@@ -1251,6 +1257,15 @@ export const LibraryView = ({
             ))}
           </div>
         </section>
+
+        {user && (
+          <SavedWordsPanel
+            userId={user.id}
+            nextGroupNumber={customGroups.length + 1}
+            onStartLearningGroup={onStartLearningGroup}
+            onLibraryMutated={onLibraryMutated}
+          />
+        )}
 
         <section className="space-y-5">
           <div className="flex items-start justify-between gap-4">

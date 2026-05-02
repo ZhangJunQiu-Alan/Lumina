@@ -1,18 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { AlertCircle, ArrowRight, BookOpen, CheckCircle2, Check, Loader2, PlusCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../lib/api';
 import { invalidateLibraryCache } from '../../lib/libraryCache';
-import { fetchVocabularyEntriesByWords, saveToSupabase } from '../../lib/importFlow';
+import {
+  fetchVocabularyEntriesByWords,
+  persistEnrichedVocabularyEntries,
+  saveToUserSavedWords,
+} from '../../lib/importFlow';
 import { useAuth } from '../../contexts/AuthContext';
-import { EnrichedWord, Word } from '../../types';
+import { EnrichedWord } from '../../types';
 import { analyzeWordBatch, formatDuplicateWordsMessage, normalizeWordKey } from '../../../shared/wordBatch';
 
-interface ImportViewProps {
-  onStartLearning: (groupId: string, words?: Word[]) => Promise<void> | void;
-}
-
-type Stage = 'input' | 'loading' | 'preview' | 'saving' | 'audio' | 'error';
+type Stage = 'input' | 'loading' | 'preview' | 'saving' | 'error';
 type LoadingStep = 'fetching' | 'enriching' | 'merging';
 
 const MANUAL_BATCH_SIZE = 30;
@@ -77,7 +78,8 @@ function formatConfusionPreview(entry: EnrichedWord) {
   return entry.confusions.slice(0, 2).map((item) => item.word).join('、');
 }
 
-export const ImportView = ({ onStartLearning }: ImportViewProps) => {
+export const ImportView = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [raw, setRaw] = useState(readManualDraft);
   const [stage, setStage] = useState<Stage>('input');
@@ -136,7 +138,7 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
         const res = await apiFetch('/api/vocab/enrich', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ words: missing }),
+          body: JSON.stringify({ words: missing, source: 'import' }),
           signal: controller.signal,
         });
 
@@ -211,44 +213,23 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
     setErrorMsg('');
   };
 
-  const handleStartLearning = async () => {
+  const handleSaveToLibrary = async () => {
     if (!user) {
-      setErrorMsg('先登录，再把这组词接进系统。');
+      setErrorMsg('先登录，再把这组词保存到你的词库。');
       setStage('error');
       return;
     }
 
     setStage('saving');
     try {
-      const result = await saveToSupabase(enriched, user.id, { groupSourceType: 'custom' });
+      const persistedEntries = await persistEnrichedVocabularyEntries(enriched, {
+        sourceType: 'custom',
+      });
+      await saveToUserSavedWords(persistedEntries, user.id, 'import');
       invalidateLibraryCache(user.id);
       writeManualDraft('');
       setRaw('');
-
-      setStage('audio');
-      let audioMap: Record<string, { uk_url: string; us_url: string }> = {};
-      try {
-        const res = await apiFetch('/api/audio/batch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ words: result.words.map((word) => word.word) }),
-          requiresAuth: false,
-        });
-        if (res.ok) {
-          const { data } = await res.json();
-          audioMap = data ?? {};
-        }
-      } catch {
-        // Audio failure must never block learning.
-      }
-
-      const wordsWithAudio = result.words.map((word) => ({
-        ...word,
-        audio_uk_url: audioMap[word.word.toLowerCase()]?.uk_url ?? null,
-        audio_us_url: audioMap[word.word.toLowerCase()]?.us_url ?? null,
-      }));
-
-      await onStartLearning(result.groupId, wordsWithAudio);
+      navigate('/app/library');
     } catch (error) {
       setErrorMsg(error instanceof Error ? error.message : String(error));
       setStage('error');
@@ -273,9 +254,9 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
             <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-full border-2 border-dashed border-gray-300">
               <PlusCircle className="h-7 w-7 text-gray-400" />
             </div>
-            <h2 className="mb-2 text-2xl font-black">把一组外部词汇接进系统</h2>
+            <h2 className="mb-2 text-2xl font-black">把一组外部词汇保存到词库</h2>
             <p className="mb-6 text-sm text-text-secondary">
-              逗号或换行都可以。先整理成可学状态，再决定要不要开始这一组。
+              逗号或换行都可以。先整理成完整词条，再从我的词库里按 30 个一组开始学习。
             </p>
 
             <textarea
@@ -460,12 +441,12 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
             <button
               type="button"
               onClick={() => {
-                void handleStartLearning();
+                void handleSaveToLibrary();
               }}
               className="flex w-full items-center justify-center gap-3 rounded-2xl bg-apple-blue py-5 text-lg font-black text-white transition-all hover:scale-[1.01] active:scale-[0.99] jelly-shadow"
             >
               <BookOpen className="h-5 w-5" />
-              把这组词接进去
+              保存到我的词库
               <ArrowRight className="h-5 w-5" />
             </button>
           </motion.div>
@@ -479,22 +460,7 @@ export const ImportView = ({ onStartLearning }: ImportViewProps) => {
             className="glass flex flex-col items-center gap-6 rounded-apple-lg p-16 jelly-shadow"
           >
             <Loader2 className="h-10 w-10 animate-spin text-apple-green" />
-            <p className="text-xl font-black">正在把这组词接进你的记忆地图…</p>
-          </motion.div>
-        )}
-
-        {stage === 'audio' && (
-          <motion.div
-            key="audio"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="glass flex flex-col items-center gap-6 rounded-apple-lg p-16 jelly-shadow"
-          >
-            <Loader2 className="h-10 w-10 animate-spin text-apple-blue" />
-            <div className="text-center">
-              <p className="text-xl font-black">正在补齐发音…</p>
-              <p className="mt-1 text-sm text-text-secondary">英音和美音会慢一点，但不影响你先开始这一组。</p>
-            </div>
+            <p className="text-xl font-black">正在保存到我的词库…</p>
           </motion.div>
         )}
       </AnimatePresence>

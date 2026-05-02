@@ -6,6 +6,7 @@ import {
   normalizeWordKey,
   sanitizeWordInput,
 } from '../shared/wordBatch.js';
+import { logger } from './logger.js';
 import type {
   ArticleSentence,
   EnrichedMorphology,
@@ -31,6 +32,60 @@ const DEFAULT_ENRICH_MAX_CONCURRENCY = readPositiveIntEnv('GEMINI_ENRICH_MAX_CON
 const ENRICH_MAX_OUTPUT_TOKENS = readPositiveIntEnv('GEMINI_ENRICH_MAX_OUTPUT_TOKENS', 8192);
 const MAX_ENRICH_RETRIES = 3;
 const BASE_RETRY_DELAY_MS = 2000;
+
+export interface GeminiCallOptions {
+  source?: string;
+  enrichmentType?: 'lite' | 'batch' | 'full' | 'forms_only';
+}
+
+function normalizeGeminiCallSource(source: string | undefined) {
+  return source?.trim() || 'unknown';
+}
+
+function buildGeminiWordsPreview(words: string[]) {
+  return words.slice(0, 5);
+}
+
+function logGeminiCallSuccess(input: {
+  enrichmentType: 'lite' | 'batch' | 'full' | 'forms_only';
+  source?: string;
+  words: string[];
+  durationMs: number;
+  retryCount: number;
+}) {
+  logger.info('gemini_call', {
+    enrichment_type: input.enrichmentType,
+    source: normalizeGeminiCallSource(input.source),
+    word_count: input.words.length,
+    word: input.words.length === 1 ? input.words[0] : undefined,
+    words_preview: input.words.length > 1 ? buildGeminiWordsPreview(input.words) : undefined,
+    model: ENRICH_MODEL,
+    success: true,
+    duration_ms: input.durationMs,
+    retry_count: input.retryCount,
+  });
+}
+
+function logGeminiCallFailure(input: {
+  enrichmentType: 'lite' | 'batch' | 'full' | 'forms_only';
+  source?: string;
+  words: string[];
+  durationMs: number;
+  retryCount: number;
+  error: unknown;
+}) {
+  logger.error('gemini_call', input.error, {
+    enrichment_type: input.enrichmentType,
+    source: normalizeGeminiCallSource(input.source),
+    word_count: input.words.length,
+    word: input.words.length === 1 ? input.words[0] : undefined,
+    words_preview: input.words.length > 1 ? buildGeminiWordsPreview(input.words) : undefined,
+    model: ENRICH_MODEL,
+    success: false,
+    duration_ms: input.durationMs,
+    retry_count: input.retryCount,
+  });
+}
 
 export class EnrichmentResponseValidationError extends Error {
   readonly statusCode = 502;
@@ -70,6 +125,17 @@ export interface GeminiWordResult {
   confused_word: string | null;
   confused_diff_zh: string | null;
   memory_tip: string;
+  forms: string[];
+}
+
+export interface LiteEnrichResult {
+  word: string;
+  primary_meaning_zh: string;
+  senses: {
+    pos: string;
+    meaning_zh: string;
+  }[];
+  forms: string[];
 }
 
 const MORPHOLOGY_PART_KINDS: MorphologyPartKind[] = ['prefix', 'root', 'suffix'];
@@ -77,6 +143,9 @@ const MAX_MORPHOLOGY_PARTS = 3;
 const MAX_RELATED_WORDS = 3;
 const MAX_CONFUSIONS = 2;
 const MAX_SENSES = 3;
+const MAX_LITE_SENSES = 4;
+const MAX_LITE_FORMS = 8;
+const LITE_ENRICH_MAX_OUTPUT_TOKENS = 1024;
 
 function asTrimmedString(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
@@ -243,6 +312,60 @@ function normalizeSenses(items: unknown): GeminiWordResult['senses'] {
   return normalizedSenses;
 }
 
+function normalizeLiteSenses(items: unknown): LiteEnrichResult['senses'] {
+  if (!Array.isArray(items)) return [];
+
+  const seen = new Set<string>();
+  const normalizedSenses: LiteEnrichResult['senses'] = [];
+
+  for (const item of items) {
+    if (normalizedSenses.length >= MAX_LITE_SENSES || !item || typeof item !== 'object') {
+      continue;
+    }
+
+    const record = item as Record<string, unknown>;
+    const pos = clampText(asTrimmedString(record.pos), 20);
+    const meaningZh = clampText(asTrimmedString(record.meaning_zh), 60);
+
+    if (!pos || !meaningZh) continue;
+
+    const dedupeKey = `${pos.toLowerCase()}::${meaningZh.toLowerCase()}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    normalizedSenses.push({
+      pos,
+      meaning_zh: meaningZh,
+    });
+  }
+
+  return normalizedSenses;
+}
+
+function normalizeLiteForms(items: unknown, currentWord: string): string[] {
+  if (!Array.isArray(items)) return [];
+
+  const currentWordKey = normalizeWordKey(currentWord);
+  const seen = new Set<string>();
+  const normalizedForms: string[] = [];
+
+  for (const item of items) {
+    if (normalizedForms.length >= MAX_LITE_FORMS || typeof item !== 'string') {
+      continue;
+    }
+
+    const form = normalizeWordKey(item);
+    if (!form || form === currentWordKey || seen.has(form)) {
+      continue;
+    }
+
+    seen.add(form);
+    normalizedForms.push(form);
+  }
+
+  return normalizedForms;
+}
+
 function chunkWords(words: string[], chunkSize: number) {
   return Array.from(
     { length: Math.ceil(words.length / chunkSize) },
@@ -300,6 +423,7 @@ function isRetriableEnrichmentError(error: unknown) {
     'invalid JSON',
     'response is not an array',
     '整理结果无效',
+    '轻量查词结果无效',
   ].some((marker) => message.includes(marker));
 }
 
@@ -326,6 +450,24 @@ export function normalizeGeminiWordResult(
     confused_word: confusions[0]?.word ?? null,
     confused_diff_zh: confusions[0]?.difference_zh ?? null,
     memory_tip: asTrimmedString(record.memory_tip),
+    forms: normalizeLiteForms(record.forms, word),
+  };
+}
+
+export function normalizeLiteEnrichResult(
+  entry: LiteEnrichResult | Record<string, unknown>,
+  wordOverride?: string,
+): LiteEnrichResult {
+  const record = entry as Record<string, unknown>;
+  const fallbackWord = sanitizeWordInput(wordOverride ?? '');
+  const word = sanitizeWordInput(asTrimmedString(record.word) || fallbackWord);
+  const normalizedWord = normalizeWordKey(word);
+
+  return {
+    word: normalizedWord,
+    primary_meaning_zh: clampText(asTrimmedString(record.primary_meaning_zh), 80),
+    senses: normalizeLiteSenses(record.senses),
+    forms: normalizeLiteForms(record.forms, normalizedWord),
   };
 }
 
@@ -338,6 +480,16 @@ function getMissingRequiredFields(entry: GeminiWordResult) {
   if (!entry.primary_meaning_zh) missingFields.push('primary_meaning_zh');
   if (!entry.memory_tip) missingFields.push('memory_tip');
   if (!entry.morphology.summary_zh) missingFields.push('morphology.summary_zh');
+  if (entry.senses.length === 0) missingFields.push('senses');
+
+  return missingFields;
+}
+
+function getMissingLiteRequiredFields(entry: LiteEnrichResult) {
+  const missingFields: string[] = [];
+
+  if (!entry.word) missingFields.push('word');
+  if (!entry.primary_meaning_zh) missingFields.push('primary_meaning_zh');
   if (entry.senses.length === 0) missingFields.push('senses');
 
   return missingFields;
@@ -360,7 +512,8 @@ Schema per element:
   "synonyms": [{"word": "...", "meaning_zh": "...", "note_zh": "..."}],
   "antonyms": [{"word": "...", "meaning_zh": "...", "note_zh": "..."}],
   "confusions": [{"word": "...", "difference_zh": "..."}],
-  "memory_tip": "..."
+  "memory_tip": "...",
+  "forms": ["common variations of this word, e.g. plural, past tense, gerund, comparative/superlative"]
 }
 
 Rules:
@@ -369,7 +522,29 @@ Rules:
 - memory_tip: creative, memorable, but short.
 - morphology: summary_zh under 80 chars. max 3 parts.
 - derived_words/synonyms/antonyms: max 3 each.
+- forms: LOWERCASE strings, only forms that LOOK DIFFERENT from the base word. Do NOT include the base word itself. Empty array if no variations. Max 8.
 - All Chinese text must be Simplified Chinese.`;
+
+const LITE_ENRICH_PROMPT = `You are an English-Chinese vocabulary helper. For ONE English word or word form, return concise structured data for Chinese learners.
+
+Return ONLY a valid JSON object — no markdown fences, no extra text.
+
+Schema:
+{
+  "word": "canonical dictionary headword/base form",
+  "primary_meaning_zh": "very short 1-line summary",
+  "senses": [
+    { "pos": "n" | "v" | "adj" | "adv" | "phr" | "...", "meaning_zh": "concise meaning, semicolon-separated if multiple" }
+  ],
+  "forms": ["common variations of this word, e.g. plural, past tense, gerund"]
+}
+
+Rules:
+- word: return the canonical dictionary headword/base form. For example, "decided" should return "decide".
+- senses: max 4, ordered by frequency.
+- meaning_zh: under 30 Simplified Chinese characters.
+- forms: include only forms that look DIFFERENT from the base word (don't include the word itself). Empty array if no variations.
+- All Chinese must be Simplified.`;
 
 const ARTICLE_PROMPT = `You are an IELTS reading passage expert. Write a short IELTS-style academic reading passage (250–350 words) that naturally incorporates every vocabulary word provided, and provide a Simplified Chinese translation for each sentence.
 
@@ -438,6 +613,130 @@ export async function generateArticle(words: string[]): Promise<GeneratedArticle
   return normalizeGeneratedArticle(parsed);
 }
 
+async function enrichWordLiteOnce(word: string): Promise<LiteEnrichResult> {
+  const cleanedWord = sanitizeWordInput(word);
+  const prompt = `${LITE_ENRICH_PROMPT}\n\nWord to process: ${cleanedWord}`;
+
+  const result = await ai.models.generateContent({
+    model: ENRICH_MODEL,
+    contents: prompt,
+    config: {
+      responseMimeType: 'application/json',
+      temperature: 0.2,
+      maxOutputTokens: LITE_ENRICH_MAX_OUTPUT_TOKENS,
+    },
+  });
+
+  const raw = result.text?.trim() ?? '';
+  const jsonText = raw.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText) as unknown;
+  } catch {
+    logger.warn('[enrichWordLite] Gemini returned invalid JSON preview', {
+      preview: jsonText.slice(0, 300),
+    });
+    throw new EnrichmentResponseValidationError('轻量查词结果无效：模型没有返回合法 JSON。');
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new EnrichmentResponseValidationError('轻量查词结果无效：模型返回的数据结构不正确。');
+  }
+
+  const normalized = normalizeLiteEnrichResult(parsed as Record<string, unknown>, cleanedWord);
+  const missingFields = getMissingLiteRequiredFields(normalized);
+  if (missingFields.length > 0) {
+    throw new EnrichmentResponseValidationError(
+      `轻量查词结果无效：${normalized.word || cleanedWord || 'unknown'} 缺少必要字段：${missingFields.join(', ')}`,
+    );
+  }
+
+  return normalized;
+}
+
+export async function enrichWordLite(
+  word: string,
+  options: GeminiCallOptions = {},
+  retryCount = 0,
+  startedAt = Date.now(),
+): Promise<LiteEnrichResult> {
+  const loggedWord = sanitizeWordInput(word);
+
+  try {
+    const result = await enrichWordLiteOnce(word);
+    logGeminiCallSuccess({
+      enrichmentType: 'lite',
+      source: options.source,
+      words: [loggedWord || word],
+      durationMs: Date.now() - startedAt,
+      retryCount,
+    });
+    return result;
+  } catch (error) {
+    const message = getErrorMessage(error);
+
+    if (isRateLimitError(error)) {
+      if (retryCount < MAX_ENRICH_RETRIES) {
+        const delayMs = BASE_RETRY_DELAY_MS * (retryCount + 1);
+        logger.warn('[enrichWordLite] rate-limited before retry', {
+          word: loggedWord || word,
+          delay_ms: delayMs,
+          retry_count: retryCount + 1,
+          max_retries: MAX_ENRICH_RETRIES,
+        });
+        await sleep(delayMs);
+        return enrichWordLite(word, options, retryCount + 1, startedAt);
+      }
+
+      const unavailableError = new EnrichmentServiceUnavailableError('AI 轻量查词服务当前较忙，请过一两分钟再试。');
+      logGeminiCallFailure({
+        enrichmentType: 'lite',
+        source: options.source,
+        words: [loggedWord || word],
+        durationMs: Date.now() - startedAt,
+        retryCount,
+        error: unavailableError,
+      });
+      throw new EnrichmentServiceUnavailableError('AI 轻量查词服务当前较忙，请过一两分钟再试。');
+    }
+
+    if (retryCount < MAX_ENRICH_RETRIES) {
+      logger.warn('[enrichWordLite] retrying after error', {
+        word: loggedWord || word,
+        message,
+        retry_count: retryCount + 1,
+        max_retries: MAX_ENRICH_RETRIES,
+      });
+      return enrichWordLite(word, options, retryCount + 1, startedAt);
+    }
+
+    if (isRetriableEnrichmentError(error)) {
+      const validationError = new EnrichmentResponseValidationError('轻量查词结果无效：模型多次返回不完整数据，请稍后重试。');
+      logGeminiCallFailure({
+        enrichmentType: 'lite',
+        source: options.source,
+        words: [loggedWord || word],
+        durationMs: Date.now() - startedAt,
+        retryCount,
+        error: validationError,
+      });
+      throw validationError;
+    }
+
+    const unavailableError = new EnrichmentServiceUnavailableError('AI 轻量查词暂时不可用，请稍后重试。');
+    logGeminiCallFailure({
+      enrichmentType: 'lite',
+      source: options.source,
+      words: [loggedWord || word],
+      durationMs: Date.now() - startedAt,
+      retryCount,
+      error: unavailableError,
+    });
+    throw unavailableError;
+  }
+}
+
 async function enrichWordsChunk(words: string[]): Promise<GeminiWordResult[]> {
   const cleanedWords = words.map(sanitizeWordInput);
   const prompt = `${SYSTEM_PROMPT}\n\nWords to process: ${cleanedWords.join(', ')}`;
@@ -461,7 +760,9 @@ async function enrichWordsChunk(words: string[]): Promise<GeminiWordResult[]> {
   try {
     parsed = JSON.parse(jsonText);
   } catch {
-    console.warn('[enrichWordsChunk] Gemini returned invalid JSON preview:', jsonText.slice(0, 300));
+    logger.warn('[enrichWordsChunk] Gemini returned invalid JSON preview', {
+      preview: jsonText.slice(0, 300),
+    });
     throw new EnrichmentResponseValidationError('整理结果无效：模型返回了不完整的数据。');
   }
 
@@ -495,61 +796,311 @@ async function enrichWordsChunk(words: string[]): Promise<GeminiWordResult[]> {
   return normalizedEntries;
 }
 
-async function enrichWordsResilient(words: string[], retryCount = 0): Promise<GeminiWordResult[]> {
+async function enrichWordsResilient(
+  words: string[],
+  options: GeminiCallOptions = {},
+  retryCount = 0,
+  startedAt = Date.now(),
+): Promise<GeminiWordResult[]> {
+  const enrichmentType = options.enrichmentType ?? 'batch';
+
   try {
-    return await enrichWordsChunk(words);
+    const results = await enrichWordsChunk(words);
+    logGeminiCallSuccess({
+      enrichmentType,
+      source: options.source,
+      words,
+      durationMs: Date.now() - startedAt,
+      retryCount,
+    });
+    return results;
   } catch (error) {
     const message = getErrorMessage(error);
 
     if (isRateLimitError(error)) {
       if (retryCount < MAX_ENRICH_RETRIES) {
         const delayMs = BASE_RETRY_DELAY_MS * (retryCount + 1);
-        console.warn(
-          `[enrichWords] rate-limited for ${words.length} words, waiting ${delayMs}ms before retry ${retryCount + 1}/${MAX_ENRICH_RETRIES}`,
-        );
+        logger.warn('[enrichWords] rate-limited before retry', {
+          word_count: words.length,
+          words_preview: buildGeminiWordsPreview(words),
+          delay_ms: delayMs,
+          retry_count: retryCount + 1,
+          max_retries: MAX_ENRICH_RETRIES,
+        });
         await sleep(delayMs);
-        return enrichWordsResilient(words, retryCount + 1);
+        return enrichWordsResilient(words, options, retryCount + 1, startedAt);
       }
 
-      throw new EnrichmentServiceUnavailableError('AI 词条整理服务当前较忙，请过一两分钟再试。');
+      const unavailableError = new EnrichmentServiceUnavailableError('AI 词条整理服务当前较忙，请过一两分钟再试。');
+      logGeminiCallFailure({
+        enrichmentType,
+        source: options.source,
+        words,
+        durationMs: Date.now() - startedAt,
+        retryCount,
+        error: unavailableError,
+      });
+      throw unavailableError;
     }
 
     if (retryCount < MAX_ENRICH_RETRIES) {
-      console.warn(
-        `[enrichWords] retry ${retryCount + 1}/${MAX_ENRICH_RETRIES} for ${words.length} words after error: ${message}`,
-      );
-      return enrichWordsResilient(words, retryCount + 1);
+      logger.warn('[enrichWords] retrying after error', {
+        word_count: words.length,
+        words_preview: buildGeminiWordsPreview(words),
+        message,
+        retry_count: retryCount + 1,
+        max_retries: MAX_ENRICH_RETRIES,
+      });
+      return enrichWordsResilient(words, options, retryCount + 1, startedAt);
     }
 
     if (isRetriableEnrichmentError(error) && words.length > 1) {
       const midpoint = Math.ceil(words.length / 2);
-      console.warn(
-        `[enrichWords] splitting ${words.length} words into ${midpoint} + ${words.length - midpoint} after validation failure: ${message}`,
-      );
-      const firstHalf = await enrichWordsResilient(words.slice(0, midpoint));
-      const secondHalf = await enrichWordsResilient(words.slice(midpoint));
+      logGeminiCallFailure({
+        enrichmentType,
+        source: options.source,
+        words,
+        durationMs: Date.now() - startedAt,
+        retryCount,
+        error,
+      });
+      logger.warn('[enrichWords] splitting batch after validation failure', {
+        word_count: words.length,
+        first_half_count: midpoint,
+        second_half_count: words.length - midpoint,
+        message,
+      });
+      const firstHalf = await enrichWordsResilient(words.slice(0, midpoint), options);
+      const secondHalf = await enrichWordsResilient(words.slice(midpoint), options);
       return [...firstHalf, ...secondHalf];
     }
 
     if (isRetriableEnrichmentError(error)) {
-      throw new EnrichmentResponseValidationError('整理结果无效：模型多次返回不完整数据，请稍后重试。');
+      const validationError = new EnrichmentResponseValidationError('整理结果无效：模型多次返回不完整数据，请稍后重试。');
+      logGeminiCallFailure({
+        enrichmentType,
+        source: options.source,
+        words,
+        durationMs: Date.now() - startedAt,
+        retryCount,
+        error: validationError,
+      });
+      throw validationError;
     }
 
-    throw new EnrichmentServiceUnavailableError('AI 词条整理暂时不可用，请稍后重试。');
+    const unavailableError = new EnrichmentServiceUnavailableError('AI 词条整理暂时不可用，请稍后重试。');
+    logGeminiCallFailure({
+      enrichmentType,
+      source: options.source,
+      words,
+      durationMs: Date.now() - startedAt,
+      retryCount,
+      error: unavailableError,
+    });
+    throw unavailableError;
   }
 }
 
-export async function enrichWords(words: string[]): Promise<GeminiWordResult[]> {
+export async function enrichWords(words: string[], options: GeminiCallOptions = {}): Promise<GeminiWordResult[]> {
   const cleanedWords = words.map(sanitizeWordInput).filter(Boolean);
   const chunks = chunkWords(cleanedWords, DEFAULT_ENRICH_CHUNK_SIZE);
   const chunkResults = await mapWithConcurrency(
     chunks,
     DEFAULT_ENRICH_MAX_CONCURRENCY,
     (chunk, index) => {
-      console.log(`[enrichWords] chunk ${index + 1}/${chunks.length} start (${chunk.length} words)`);
-      return enrichWordsResilient(chunk);
+      logger.info('[enrichWords] chunk start', {
+        chunk_index: index + 1,
+        chunk_count: chunks.length,
+        word_count: chunk.length,
+        words_preview: buildGeminiWordsPreview(chunk),
+        source: normalizeGeminiCallSource(options.source),
+        enrichment_type: options.enrichmentType ?? 'batch',
+      });
+      return enrichWordsResilient(chunk, options);
     },
   );
 
   return chunkResults.flat();
+}
+
+// ============================================================
+// Forms-only batched enrichment
+// Used by:
+//   1. backfill script (one-time, fills the form gap on existing 13k+ words)
+//   2. anywhere we want to populate vocabulary_item_forms without re-running
+//      a full LLM call.
+// Designed for high throughput: bigger chunks, higher concurrency, smaller token budget.
+// ============================================================
+
+const FORMS_ONLY_CHUNK_SIZE = readPositiveIntEnv('GEMINI_FORMS_BATCH_SIZE', 30);
+const FORMS_ONLY_MAX_CONCURRENCY = readPositiveIntEnv('GEMINI_FORMS_MAX_CONCURRENCY', 25);
+const FORMS_ONLY_MAX_OUTPUT_TOKENS = readPositiveIntEnv('GEMINI_FORMS_MAX_OUTPUT_TOKENS', 2048);
+
+const FORMS_ONLY_PROMPT = `For each English word provided, return its common inflected forms (plural, past tense, gerund, comparative/superlative) and close derivatives that share the same root and meaning (e.g., decide → decision, decisive).
+
+Return ONLY a valid JSON array — no markdown fences, no extra text.
+
+Schema:
+[
+  { "word": "<exact base word as provided>", "forms": ["form1", "form2", ...] }
+]
+
+Rules:
+- "word": preserve casing exactly as provided in the input.
+- "forms": LOWERCASE strings, only forms that LOOK DIFFERENT from the base word.
+- "forms": do NOT include the base word itself.
+- "forms": empty array if no variations exist.
+- max 8 forms per word.
+- include morphological variants (plural, tense, comparative) AND close derivatives sharing the same root.`;
+
+export interface FormsOnlyResult {
+  word: string;
+  forms: string[];
+}
+
+async function enrichFormsOnlyChunk(words: string[]): Promise<FormsOnlyResult[]> {
+  const cleanedWords = words.map(sanitizeWordInput);
+  const prompt = `${FORMS_ONLY_PROMPT}\n\nWords: ${cleanedWords.join(', ')}`;
+
+  const result = await ai.models.generateContent({
+    model: ENRICH_MODEL,
+    contents: prompt,
+    config: {
+      responseMimeType: 'application/json',
+      temperature: 0.2,
+      maxOutputTokens: FORMS_ONLY_MAX_OUTPUT_TOKENS,
+      thinkingConfig: { thinkingBudget: 0 },
+    },
+  });
+
+  const raw = result.text?.trim() ?? '';
+  const jsonText = raw.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    throw new EnrichmentResponseValidationError('forms-only: malformed JSON');
+  }
+  if (!Array.isArray(parsed)) {
+    throw new EnrichmentResponseValidationError('forms-only: response not an array');
+  }
+
+  const results: FormsOnlyResult[] = [];
+  for (const entry of parsed) {
+    if (!entry || typeof entry !== 'object') continue;
+    const record = entry as Record<string, unknown>;
+    const word = sanitizeWordInput(asTrimmedString(record.word));
+    if (!word) continue;
+    const baseKey = normalizeWordKey(word);
+    const rawForms = record.forms;
+    const forms = Array.isArray(rawForms)
+      ? Array.from(
+          new Set(
+            rawForms
+              .map((f) => normalizeWordKey(asTrimmedString(f)))
+              .filter((f) => f && f !== baseKey),
+          ),
+        ).slice(0, MAX_LITE_FORMS)
+      : [];
+    results.push({ word, forms });
+  }
+  return results;
+}
+
+async function enrichFormsOnlyResilient(
+  words: string[],
+  options: GeminiCallOptions = {},
+  retryCount = 0,
+  startedAt = Date.now(),
+): Promise<FormsOnlyResult[]> {
+  try {
+    const results = await enrichFormsOnlyChunk(words);
+    logGeminiCallSuccess({
+      enrichmentType: 'forms_only',
+      source: options.source,
+      words,
+      durationMs: Date.now() - startedAt,
+      retryCount,
+    });
+    return results;
+  } catch (error) {
+    const message = getErrorMessage(error);
+
+    if (isRateLimitError(error)) {
+      if (retryCount < MAX_ENRICH_RETRIES) {
+        const delayMs = BASE_RETRY_DELAY_MS * (retryCount + 1);
+        logger.warn('[enrichFormsOnly] rate-limited before retry', {
+          word_count: words.length,
+          delay_ms: delayMs,
+          retry_count: retryCount + 1,
+        });
+        await sleep(delayMs);
+        return enrichFormsOnlyResilient(words, options, retryCount + 1, startedAt);
+      }
+      const err = new EnrichmentServiceUnavailableError('forms-only: rate-limited after retries');
+      logGeminiCallFailure({
+        enrichmentType: 'forms_only',
+        source: options.source,
+        words,
+        durationMs: Date.now() - startedAt,
+        retryCount,
+        error: err,
+      });
+      throw err;
+    }
+
+    if (retryCount < MAX_ENRICH_RETRIES) {
+      logger.warn('[enrichFormsOnly] retrying after error', {
+        word_count: words.length,
+        message,
+        retry_count: retryCount + 1,
+      });
+      return enrichFormsOnlyResilient(words, options, retryCount + 1, startedAt);
+    }
+
+    logGeminiCallFailure({
+      enrichmentType: 'forms_only',
+      source: options.source,
+      words,
+      durationMs: Date.now() - startedAt,
+      retryCount,
+      error,
+    });
+    throw error;
+  }
+}
+
+export async function enrichFormsOnly(
+  words: string[],
+  options: GeminiCallOptions = {},
+): Promise<FormsOnlyResult[]> {
+  const cleanedWords = words.map(sanitizeWordInput).filter(Boolean);
+  if (cleanedWords.length === 0) return [];
+
+  const chunks = chunkWords(cleanedWords, FORMS_ONLY_CHUNK_SIZE);
+  const results = await mapWithConcurrency(
+    chunks,
+    FORMS_ONLY_MAX_CONCURRENCY,
+    async (chunk, index) => {
+      logger.info('[enrichFormsOnly] chunk start', {
+        chunk_index: index + 1,
+        chunk_count: chunks.length,
+        word_count: chunk.length,
+        source: normalizeGeminiCallSource(options.source),
+      });
+      try {
+        return await enrichFormsOnlyResilient(chunk, options);
+      } catch (error) {
+        logger.error('[enrichFormsOnly] chunk failed permanently, skipping', {
+          chunk_index: index + 1,
+          word_count: chunk.length,
+          words_preview: buildGeminiWordsPreview(chunk),
+          error: getErrorMessage(error),
+        });
+        return [];
+      }
+    },
+  );
+  return results.flat();
 }

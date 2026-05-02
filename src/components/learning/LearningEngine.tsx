@@ -158,6 +158,7 @@ const Round1ConfusingCard = ({
           <ExampleSentenceList
             items={word.senses
               .filter((sense) => (sense.example_sentence ?? '').trim())
+              .slice(0, 2)
               .map((sense, index) => ({
                 key: `${word.id}-example-${index}`,
                 sentence: sense.example_sentence,
@@ -173,6 +174,19 @@ const Round1ConfusingCard = ({
       </div>
     </div>
   </section>
+);
+
+const Round1MemoryTipCard = ({ memoryTip }: { memoryTip: string }) => (
+  <aside className="flex h-full min-h-[112px] rounded-[18px] border border-apple-blue/15 bg-apple-blue/5 px-4 py-3 sm:px-5 sm:py-4 lg:min-h-0 lg:max-h-[152px] lg:w-full lg:max-w-[430px] lg:self-stretch lg:overflow-y-auto">
+    <div className="my-auto min-w-0">
+      <p className="text-[11px] sm:text-[12px] font-bold uppercase tracking-[0.22em] text-apple-blue">
+        记忆锦囊
+      </p>
+      <p className="mt-1.5 text-[13px] sm:text-sm leading-6 text-text-primary">
+        {memoryTip}
+      </p>
+    </div>
+  </aside>
 );
 
 const InputSessionShell = ({
@@ -936,7 +950,12 @@ export const LearningEngine = ({
 
   const inputField = (
     <form onSubmit={handleSubmit} className="w-full">
-      <div className="rounded-[22px] border border-white/80 bg-white/60 px-4 py-3.5 shadow-[0_12px_32px_rgba(14,26,56,0.06)] backdrop-blur-xl sm:px-5 sm:py-5">
+      <div
+        className={cx(
+          'rounded-[22px] border border-white/80 bg-white/60 px-4 shadow-[0_12px_32px_rgba(14,26,56,0.06)] backdrop-blur-xl sm:px-5',
+          type === 'round1' ? 'py-2 sm:py-3' : 'py-3.5 sm:py-5',
+        )}
+      >
         <input
           ref={inputRef}
           type="text"
@@ -1205,46 +1224,49 @@ export const LearningEngine = ({
                       phonetic={viewedWord.phonetic}
                       audioLocale={audioLocale}
                       activePronunciationLocale={activePronunciationLocale}
+                      size="small"
                       onPlay={(locale) => {
                         setAudioLocale(locale);
                         void playAudioSequence(viewedWord, locale, 1, 0);
                       }}
                     />
 
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
-                      <div className="lg:flex-shrink-0">
-                        <p className="text-[clamp(1.8rem,10vw,4.2rem)] font-black leading-tight tracking-tight text-text-primary">
-                          {viewedWord.word}
-                        </p>
-                        {viewedWord.ner_entities.length > 0 && (
-                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                            {viewedWord.ner_entities.map((entity, index) => (
-                              <span
-                                key={`${viewedWord.id}-ner-${index}`}
-                                className="rounded-full bg-apple-indigo/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-apple-indigo"
-                              >
-                                专有名词 · {entity.label}
-                              </span>
-                            ))}
-                          </div>
-                        )}
+                    <div className={cx(
+                      'grid gap-4 lg:items-stretch lg:gap-8',
+                      viewedWord.memory_tip
+                        ? 'lg:grid-cols-[minmax(0,1fr)_minmax(300px,30vw)]'
+                        : 'lg:grid-cols-1',
+                    )}>
+                      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:gap-8">
+                        <div className="lg:flex-shrink-0">
+                          <p className="text-[clamp(1.44rem,8vw,3.36rem)] font-black leading-tight tracking-tight text-text-primary">
+                            {viewedWord.word}
+                          </p>
+                          {viewedWord.ner_entities.length > 0 && (
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                              {viewedWord.ner_entities.map((entity, index) => (
+                                <span
+                                  key={`${viewedWord.id}-ner-${index}`}
+                                  className="rounded-full bg-apple-indigo/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-apple-indigo"
+                                >
+                                  专有名词 · {entity.label}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0 lg:max-w-[680px] lg:flex-1 lg:pt-1">
+                          <WordSenseList word={viewedWord} size="small" />
+                        </div>
                       </div>
-                      <div className="min-w-0 lg:max-w-[960px] lg:flex-1 lg:pt-1">
-                        <WordSenseList word={viewedWord} />
-                      </div>
+
+                      {viewedWord.memory_tip && (
+                        <div className="flex justify-end">
+                          <Round1MemoryTipCard memoryTip={viewedWord.memory_tip} />
+                        </div>
+                      )}
                     </div>
                   </div>
-
-                  {viewedWord.memory_tip && (
-                    <div className="rounded-[18px] border border-apple-blue/15 bg-apple-blue/5 px-4 py-3 sm:px-5 sm:py-3.5">
-                      <p className="text-[11px] sm:text-[12px] font-bold uppercase tracking-[0.22em] text-apple-blue">
-                        记忆锦囊
-                      </p>
-                      <p className="mt-1.5 text-[13px] sm:text-sm leading-6 text-text-primary">
-                        {viewedWord.memory_tip}
-                      </p>
-                    </div>
-                  )}
 
                   <div className="grid gap-3 sm:gap-4 lg:grid-cols-3">
                     <Round1MorphologyCard word={viewedWord} />
@@ -1263,7 +1285,7 @@ export const LearningEngine = ({
               <div className={round1InputDockClassName}>
                 <div className="mx-auto w-full max-w-[1200px]">
                   {isViewingHistory ? (
-                    <div className="flex min-h-[62px] items-center justify-between gap-3 rounded-[22px] border border-[#10B981]/15 bg-[#10B981]/10 px-5 text-[#10B981] shadow-[0_12px_32px_rgba(16,185,129,0.08)]">
+                    <div className="flex min-h-[50px] items-center justify-between gap-3 rounded-[22px] border border-[#10B981]/15 bg-[#10B981]/10 px-5 text-[#10B981] shadow-[0_12px_32px_rgba(16,185,129,0.08)]">
                       <div className="flex min-w-0 items-center gap-3">
                         <CheckCircle2 className="h-5 w-5 shrink-0" />
                         <span className="truncate text-sm font-black sm:text-base">已通过</span>
@@ -1281,7 +1303,7 @@ export const LearningEngine = ({
                             type="button"
                             onClick={() => { void validateCurrentInput(); }}
                             disabled={actionDisabled}
-                            className="flex h-full min-h-[62px] w-full items-center justify-center rounded-[22px] bg-apple-blue text-white shadow-[0_14px_32px_rgba(0,122,255,0.25)] transition-all active:scale-[0.96] disabled:opacity-50"
+                            className="flex h-full min-h-[50px] w-full items-center justify-center rounded-[22px] bg-apple-blue text-white shadow-[0_14px_32px_rgba(0,122,255,0.25)] transition-all active:scale-[0.96] disabled:opacity-50"
                           >
                             <ChevronRight className="h-6 w-6" strokeWidth={3} />
                           </button>

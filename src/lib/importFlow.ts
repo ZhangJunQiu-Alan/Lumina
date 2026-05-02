@@ -3,6 +3,7 @@ import { EnrichedWord, toWord, type OfficialLibraryId, Word } from '../types';
 import { analyzeWordBatch, formatDuplicateWordsMessage, normalizeWordKey, sanitizeWordInput } from '../../shared/wordBatch';
 
 export type GroupSourceType = 'custom' | 'system';
+export type SavedWordSource = 'import' | 'reading_popup' | 'manual';
 
 interface SaveToSupabaseOptions {
   groupName?: string;
@@ -259,6 +260,40 @@ async function loadVocabularyEntriesByNormalizedWords(words: string[]) {
   return ((fallbackResult.data ?? []) as VocabularyItemRow[]).map(mapVocabularyEntry);
 }
 
+export async function fetchPersistedVocabularyEntriesByIds(ids: string[]): Promise<PersistedVocabularyEntry[]> {
+  const uniqueIds = Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean)));
+  if (uniqueIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('vocabulary_items')
+    .select(vocabularyEntrySelect)
+    .in('id', uniqueIds);
+
+  let rows: PersistedVocabularyEntry[];
+
+  if (!error) {
+    rows = ((data ?? []) as VocabularyItemRow[]).map(mapVocabularyEntry);
+  } else {
+    if (!isMissingRichVocabularySchemaError(error)) {
+      throw new Error(`vocabulary_items lookup failed: ${error.message}`);
+    }
+
+    const fallbackResult = await supabase
+      .from('vocabulary_items')
+      .select(legacyVocabularyEntrySelect)
+      .in('id', uniqueIds);
+
+    if (fallbackResult.error) {
+      throw new Error(`vocabulary_items lookup failed: ${fallbackResult.error.message}`);
+    }
+
+    rows = ((fallbackResult.data ?? []) as VocabularyItemRow[]).map(mapVocabularyEntry);
+  }
+
+  const entryById = new Map(rows.map((entry) => [entry.id, entry]));
+  return uniqueIds.map((id) => entryById.get(id)).filter((entry): entry is PersistedVocabularyEntry => Boolean(entry));
+}
+
 export async function fetchVocabularyEntriesByWords(words: string[]) {
   const batch = analyzeWordBatch(words);
   if (batch.words.length === 0) {
@@ -469,6 +504,27 @@ export async function persistEnrichedVocabularyEntries(
         throw new Error(`confused_words [${entry.word}]: ${error.message}`);
       }
     }
+
+    // forms are GLOBAL UNIQUE(form), so we don't DELETE existing rows for this
+    // vocabulary_item — first-write-wins across the whole table. Just upsert and
+    // skip duplicates.
+    const baseKey = normalizeWordKey(entry.word);
+    const formRows = Array.from(
+      new Set(
+        (entry.forms ?? [])
+          .map((form) => normalizeWordKey(form))
+          .filter((form) => form && form !== baseKey),
+      ),
+    ).map((form) => ({ vocabulary_item_id: vocabId, form }));
+
+    if (formRows.length > 0) {
+      const { error } = await supabase
+        .from('vocabulary_item_forms')
+        .upsert(formRows, { onConflict: 'form', ignoreDuplicates: true });
+      if (error) {
+        throw new Error(`vocabulary_item_forms [${entry.word}]: ${error.message}`);
+      }
+    }
   }));
 
   const persistedEntries = await loadVocabularyEntriesByNormalizedWords(batch.words);
@@ -561,4 +617,43 @@ export async function saveToSupabase(
   });
 
   return createLearningGroupFromVocabularyEntries(userId, persistedEntries, options);
+}
+
+export async function saveToUserSavedWords(
+  entries: PersistedVocabularyEntry[],
+  userId: string,
+  source: SavedWordSource,
+): Promise<{ saved: number; skipped: number; total: number }> {
+  const vocabularyItemIds = Array.from(
+    new Set(entries.map((entry) => entry.id).filter(Boolean)),
+  );
+
+  if (vocabularyItemIds.length === 0) {
+    return { saved: 0, skipped: 0, total: 0 };
+  }
+
+  const rows = vocabularyItemIds.map((vocabularyItemId) => ({
+    user_id: userId,
+    vocabulary_item_id: vocabularyItemId,
+    source,
+  }));
+
+  const { data, error } = await supabase
+    .from('user_saved_words')
+    .upsert(rows, {
+      onConflict: 'user_id,vocabulary_item_id',
+      ignoreDuplicates: true,
+    })
+    .select('id');
+
+  if (error) {
+    throw new Error(`user_saved_words: ${error.message}`);
+  }
+
+  const saved = data?.length ?? 0;
+  return {
+    saved,
+    skipped: Math.max(rows.length - saved, 0),
+    total: rows.length,
+  };
 }

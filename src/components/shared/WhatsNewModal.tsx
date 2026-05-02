@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeftRight, CheckCircle2, Languages, Sparkles, X } from 'lucide-react';
+import { BookmarkPlus, BookOpenCheck, Palette, Sparkles, X } from 'lucide-react';
 
-const VERSION_KEY = 'lumina_whatsnew_2026_04_30_card_navigation'; // Bump this key to show the modal again in future updates
+const VERSION_KEY = 'lumina_whatsnew_2026_05_02_word_lookup_saved_words'; // Bump this key to show the modal again in future updates
 
 export function WhatsNewModal() {
   const [isOpen, setIsOpen] = useState(false);
@@ -40,6 +40,7 @@ export function WhatsNewModal() {
           >
             <button
               onClick={handleClose}
+              aria-label="关闭更新弹窗"
               className="absolute right-6 top-6 rounded-full bg-black/5 p-2 text-text-secondary transition-colors hover:bg-black/10 hover:text-text-primary"
             >
               <X className="h-5 w-5" />
@@ -51,40 +52,40 @@ export function WhatsNewModal() {
 
             <h2 className="mb-2 text-2xl font-black text-text-primary">近 6 小时更新</h2>
             <p className="mb-6 text-sm font-medium text-text-secondary">
-              Lumina 刚刚完成了一轮学习体验更新：
+              Lumina 刚刚完成了一轮阅读与词库体验更新：
             </p>
 
             <div className="space-y-4 mb-8">
               <div className="flex gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-apple-blue/10 text-apple-blue">
-                  <ArrowLeftRight className="h-4 w-4" />
+                  <BookmarkPlus className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text-primary">词卡支持左右切换</h3>
+                  <h3 className="text-sm font-bold text-text-primary">阅读页支持点击查词</h3>
                   <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                    复习轮、Round 1、Round 2 新增左右按钮与方向键回看；未学到的下一张不会提前打开。
+                    阅读短文时点击英文实词即可查看释义，并可直接收藏到个人词库。
                   </p>
                 </div>
               </div>
               <div className="flex gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-apple-green/10 text-apple-green">
-                  <CheckCircle2 className="h-4 w-4" />
+                  <BookOpenCheck className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text-primary">只回看真正通过的词</h3>
+                  <h3 className="text-sm font-bold text-text-primary">个人词库思路升级</h3>
                   <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                    Round 2 与复习轮答错后不会出现在左侧历史里；重新答对后才会进入可回看记录。
+                    导入词与阅读收藏词统一进入个人词库，再按节奏组织成学习任务。
                   </p>
                 </div>
               </div>
               <div className="flex gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-apple-orange/10 text-apple-orange">
-                  <Languages className="h-4 w-4" />
+                  <Palette className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text-primary">短文页更顺手</h3>
+                  <h3 className="text-sm font-bold text-text-primary">部分界面细节优化</h3>
                   <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                    短文卡片变宽，翻译下一句改为悬浮在卡片旁边；同时去掉点击后的抖动感。
+                    调整了学习、导入与词库里的部分交互和视觉细节。
                   </p>
                 </div>
               </div>
