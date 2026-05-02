@@ -1,5 +1,7 @@
 import React from 'react';
+import { Loader2, Volume2 } from 'lucide-react';
 import { ClozePrompt, CLOZE_BLANK } from '../../lib/cloze';
+import type { PronunciationLocale } from '../../types';
 import { ClickableText, type WordClickHandler } from '../shared/ClickableText';
 
 function renderSlots(expectedForm: string, inputValue: string) {
@@ -55,11 +57,19 @@ export const Round2ClozePrompt = ({
   inputValue,
   targetWords,
   onWordClick,
+  canPlaySentenceAudio = false,
+  isSentencePlaying = false,
+  onPlaySentence,
+  sentenceAudioLocale = 'uk',
 }: {
   prompt: ClozePrompt;
   inputValue: string;
   targetWords?: ReadonlySet<string>;
   onWordClick?: WordClickHandler;
+  canPlaySentenceAudio?: boolean;
+  isSentencePlaying?: boolean;
+  onPlaySentence?: () => void;
+  sentenceAudioLocale?: PronunciationLocale;
 }) => (
   <div className="mx-auto max-w-3xl">
     <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary/60">
@@ -80,6 +90,24 @@ export const Round2ClozePrompt = ({
       <span className="rounded-full bg-apple-blue/12 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-apple-blue">
         {prompt.formLabel}
       </span>
+      {onPlaySentence && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onPlaySentence();
+          }}
+          disabled={!canPlaySentenceAudio}
+          aria-label={isSentencePlaying ? '停止朗读完整例句' : '播放完整例句'}
+          title={isSentencePlaying ? '停止朗读完整例句' : '播放完整例句'}
+          className="inline-flex items-center gap-1.5 rounded-full bg-apple-blue/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-apple-blue transition-colors hover:bg-apple-blue/15 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-apple-blue/10"
+        >
+          {isSentencePlaying
+            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            : <Volume2 className="h-3.5 w-3.5" />}
+          完整句 {sentenceAudioLocale.toUpperCase()}
+        </button>
+      )}
     </div>
 
     {prompt.translation && (

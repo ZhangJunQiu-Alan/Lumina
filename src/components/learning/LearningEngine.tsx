@@ -227,7 +227,7 @@ const Round1ConfusingCard = ({
 );
 
 const Round1MemoryTipCard = ({ memoryTip, targetWords, onWordClick }: { memoryTip: string } & Round1LookupProps) => (
-  <aside className="flex h-full min-h-[112px] rounded-[18px] border border-apple-blue/15 bg-apple-blue/5 px-4 py-3 sm:px-5 sm:py-4 lg:min-h-0 lg:max-h-[152px] lg:w-full lg:max-w-[430px] lg:self-stretch lg:overflow-y-auto">
+  <aside className="flex min-h-[92px] rounded-[18px] border border-apple-blue/15 bg-apple-blue/5 px-4 py-3 sm:px-5 sm:py-4 lg:min-h-[88px] lg:max-h-[132px] lg:w-full lg:max-w-[430px] lg:self-start lg:overflow-y-auto">
     <div className="my-auto min-w-0">
       <p className="text-[11px] sm:text-[12px] font-bold uppercase tracking-[0.22em] text-apple-blue">
         记忆锦囊
@@ -427,6 +427,16 @@ export const LearningEngine = ({
     if ((type !== 'round2' && type !== 'review') || !viewedWord) return null;
     return buildClozePrompt({ word: viewedWord.word, senses: viewedWord.senses });
   }, [viewedWord, type]);
+  const viewedClozeFullSentence = useMemo(() => {
+    if (!viewedClozePrompt || !viewedWord) return '';
+    return (viewedWord.senses[viewedClozePrompt.senseIndex]?.example_sentence ?? '')
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }, [viewedClozePrompt, viewedWord]);
+  const viewedClozeSentenceAudioKey = viewedClozePrompt && viewedWord
+    ? `${viewedWord.id}:${viewIndex}:cloze-sentence`
+    : '';
   const expectedInput = clozePrompt
     ? clozePrompt.expectedForm
     : currentWord?.word.toLowerCase() ?? '';
@@ -1273,26 +1283,26 @@ export const LearningEngine = ({
           {type === 'round1' ? (
             <div className="flex h-full min-h-0 flex-col">
               <div className={cx(contentAreaClassName, 'pb-4 sm:pb-5')}>
-                <div className="space-y-5 sm:space-y-7">
-                  <div className="space-y-4 sm:space-y-5">
-                    <PronunciationControls
-                      phonetic={viewedWord.phonetic}
-                      audioLocale={audioLocale}
-                      activePronunciationLocale={activePronunciationLocale}
-                      size="small"
-                      onPlay={(locale) => {
-                        setAudioLocale(locale);
-                        void playAudioSequence(viewedWord, locale, 1, 0);
-                      }}
-                    />
+                <div className="space-y-3 sm:space-y-4">
+                  <div className={cx(
+                    'grid gap-3 lg:items-start lg:gap-8',
+                    viewedWord.memory_tip
+                      ? 'lg:grid-cols-[minmax(0,1fr)_minmax(300px,30vw)]'
+                      : 'lg:grid-cols-1',
+                  )}>
+                    <div className="min-w-0 space-y-3 sm:space-y-4">
+                      <PronunciationControls
+                        phonetic={viewedWord.phonetic}
+                        audioLocale={audioLocale}
+                        activePronunciationLocale={activePronunciationLocale}
+                        size="small"
+                        onPlay={(locale) => {
+                          setAudioLocale(locale);
+                          void playAudioSequence(viewedWord, locale, 1, 0);
+                        }}
+                      />
 
-                    <div className={cx(
-                      'grid gap-4 lg:items-stretch lg:gap-8',
-                      viewedWord.memory_tip
-                        ? 'lg:grid-cols-[minmax(0,1fr)_minmax(300px,30vw)]'
-                        : 'lg:grid-cols-1',
-                    )}>
-                      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:gap-8">
+                      <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-start lg:gap-6">
                         <div className="lg:flex-shrink-0">
                           <p className="text-[clamp(1.44rem,8vw,3.36rem)] font-black leading-tight tracking-tight text-text-primary">
                             <Round1LookupText
@@ -1318,17 +1328,17 @@ export const LearningEngine = ({
                           <WordSenseList word={viewedWord} size="small" />
                         </div>
                       </div>
-
-                      {viewedWord.memory_tip && (
-                        <div className="flex justify-end">
-                          <Round1MemoryTipCard
-                            memoryTip={viewedWord.memory_tip}
-                            targetWords={lookupTargetWords}
-                            onWordClick={openPopover}
-                          />
-                        </div>
-                      )}
                     </div>
+
+                    {viewedWord.memory_tip && (
+                      <div className="flex justify-end">
+                        <Round1MemoryTipCard
+                          memoryTip={viewedWord.memory_tip}
+                          targetWords={lookupTargetWords}
+                          onWordClick={openPopover}
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid gap-3 sm:gap-4 lg:grid-cols-3">
@@ -1406,6 +1416,13 @@ export const LearningEngine = ({
                       inputValue={displayedInputValue}
                       targetWords={lookupTargetWords}
                       onWordClick={openPopover}
+                      canPlaySentenceAudio={canPlayExampleAudio && Boolean(viewedClozeFullSentence)}
+                      isSentencePlaying={activeExampleKey === viewedClozeSentenceAudioKey}
+                      sentenceAudioLocale={audioLocale}
+                      onPlaySentence={() => {
+                        if (!viewedClozeFullSentence || !viewedClozeSentenceAudioKey) return;
+                        void playExampleSentence(viewedClozeFullSentence, viewedClozeSentenceAudioKey);
+                      }}
                     />
                   ) : (
                     <div className="mx-auto max-w-3xl">
