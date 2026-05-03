@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { BookmarkPlus, BookOpenCheck, Palette, Sparkles, X } from 'lucide-react';
+import { Hand, Palette, Sparkles, Volume2, X, Zap } from 'lucide-react';
 
-const VERSION_KEY = 'lumina_whatsnew_2026_05_02_word_lookup_saved_words'; // Bump this key to show the modal again in future updates
+const VERSION_KEY = 'lumina_whatsnew_2026_05_03_routine_library_swipe'; // Bump this key to show the modal again in future updates
 
 export function WhatsNewModal() {
   const [isOpen, setIsOpen] = useState(false);
@@ -50,31 +50,42 @@ export function WhatsNewModal() {
               <Sparkles className="h-6 w-6" />
             </div>
 
-            <h2 className="mb-2 text-2xl font-black text-text-primary">近 6 小时更新</h2>
+            <h2 className="mb-2 text-2xl font-black text-text-primary">本次更新</h2>
             <p className="mb-6 text-sm font-medium text-text-secondary">
-              Lumina 刚刚完成了一轮阅读与词库体验更新：
+              一起快乐地刷刷刷吧：
             </p>
 
             <div className="space-y-4 mb-8">
               <div className="flex gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-apple-blue/10 text-apple-blue">
-                  <BookmarkPlus className="h-4 w-4" />
+                  <Volume2 className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text-primary">阅读页支持点击查词</h3>
+                  <h3 className="text-sm font-bold text-text-primary">划词即可朗读</h3>
                   <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                    阅读短文时点击英文实词即可查看释义，并可直接收藏到个人词库。
+                    选中任意单词后即可一键播放发音，听音查词更顺手。
                   </p>
                 </div>
               </div>
               <div className="flex gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-apple-green/10 text-apple-green">
-                  <BookOpenCheck className="h-4 w-4" />
+                  <Zap className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text-primary">个人词库思路升级</h3>
+                  <h3 className="text-sm font-bold text-text-primary">首页 Routine 记住你的词库</h3>
                   <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                    导入词与阅读收藏词统一进入个人词库，再按节奏组织成学习任务。
+                    系统会记录你最近在刷的那本词库，"继续学习"直接抽下一组 30 词，不用每次都跳到词库选一遍。
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-apple-teal/10 text-apple-teal">
+                  <Hand className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-text-primary">手机端 Round 1 支持滑动切卡</h3>
+                  <p className="mt-1 text-xs text-text-secondary leading-relaxed">
+                    左右滑动词卡即可切到上一个 / 下一个，告别小箭头。
                   </p>
                 </div>
               </div>
@@ -83,9 +94,9 @@ export function WhatsNewModal() {
                   <Palette className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text-primary">部分界面细节优化</h3>
+                  <h3 className="text-sm font-bold text-text-primary">UI 优化与 Bug 修复</h3>
                   <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                    调整了学习、导入与词库里的部分交互和视觉细节。
+                    调整了部分界面细节，并修复了已知问题。
                   </p>
                 </div>
               </div>
