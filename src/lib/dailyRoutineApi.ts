@@ -109,6 +109,22 @@ function mergeCompletedSteps(
   return merged;
 }
 
+function pickStillValidCompletedStepsForBoundGroupChange(
+  stepOrder: RoutineStepKey[],
+  completedSteps: RoutineStepKey[],
+  nextRound: LearningRoundType,
+) {
+  if (!stepOrder.some((step) => step === 'round1' || step === 'round2')) {
+    return completedSteps;
+  }
+
+  return mergeCompletedSteps(
+    stepOrder,
+    completedSteps.filter((step) => step === 'review'),
+    inferCompletedLearningSteps(nextRound),
+  );
+}
+
 function resolveRoutineStatus(
   stepOrder: RoutineStepKey[],
   completedSteps: RoutineStepKey[],
@@ -311,18 +327,19 @@ export async function bindRoutineMainLearningGroup(
     return existing;
   }
 
-  if (existing.main_learning_group_id && existing.main_learning_group_id !== input.groupId) {
-    return existing;
-  }
+  const completedSteps = normalizeRoutineSteps(existing.completed_steps_json);
+  const completedStepsForGroup = existing.main_learning_group_id === input.groupId
+    ? completedSteps
+    : pickStillValidCompletedStepsForBoundGroupChange(stepOrder, completedSteps, input.round);
 
   const mergedCompletedSteps = mergeCompletedSteps(
     stepOrder,
-    normalizeRoutineSteps(existing.completed_steps_json),
+    completedStepsForGroup,
     inferCompletedLearningSteps(input.round),
   );
   const nextStatus = resolveRoutineStatus(stepOrder, mergedCompletedSteps, input.groupId);
-  const hasSameCompletedSteps = mergedCompletedSteps.length === normalizeRoutineSteps(existing.completed_steps_json).length
-    && mergedCompletedSteps.every((step, index) => step === normalizeRoutineSteps(existing.completed_steps_json)[index]);
+  const hasSameCompletedSteps = mergedCompletedSteps.length === completedSteps.length
+    && mergedCompletedSteps.every((step, index) => step === completedSteps[index]);
 
   if (
     existing.main_learning_group_id === input.groupId
@@ -359,20 +376,17 @@ export async function markRoutineStepCompleted(
     return existing;
   }
 
-  if (input.step !== 'review') {
-    if (!existing.main_learning_group_id && !input.groupId) {
-      return existing;
-    }
+  const completedSteps = normalizeRoutineSteps(existing.completed_steps_json);
+  const boundGroupId = input.step === 'review'
+    ? existing.main_learning_group_id
+    : input.groupId ?? existing.main_learning_group_id ?? null;
 
-    if (existing.main_learning_group_id && input.groupId && existing.main_learning_group_id !== input.groupId) {
+  if (input.step !== 'review') {
+    if (!boundGroupId) {
       return existing;
     }
   }
 
-  const completedSteps = normalizeRoutineSteps(existing.completed_steps_json);
-  const boundGroupId = input.step === 'review'
-    ? existing.main_learning_group_id
-    : existing.main_learning_group_id ?? input.groupId ?? null;
   const mergedCompletedSteps = mergeCompletedSteps(stepOrder, completedSteps, [input.step]);
   const nextStatus = resolveRoutineStatus(stepOrder, mergedCompletedSteps, boundGroupId);
   const hasSameCompletedSteps = mergedCompletedSteps.length === completedSteps.length

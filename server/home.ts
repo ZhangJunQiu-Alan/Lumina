@@ -512,6 +512,14 @@ function buildCompletedSubtitle(todaySummary: DailySummary | undefined) {
   return `今天已完成复习 ${todaySummary.reviewWordCount} 词 · 新学 ${todaySummary.learnedWordCount} 词`;
 }
 
+function getLearningGroupActivityTime(group: Pick<LearningGroupRow, 'created_at' | 'completed_at' | 'session_last_active_at'>) {
+  return Math.max(
+    Date.parse(group.session_last_active_at ?? '') || 0,
+    Date.parse(group.completed_at ?? '') || 0,
+    Date.parse(group.created_at) || 0,
+  );
+}
+
 interface LastUsedOfficialLibraryRef {
   libraryId: OfficialLibraryId;
   mode: OfficialStudyMode;
@@ -523,8 +531,8 @@ function resolveLastUsedOfficialLibrary(
   learningGroups: LearningGroupRow[],
 ): LastUsedOfficialLibraryRef | null {
   const sorted = [...learningGroups].sort((left, right) => {
-    const leftActive = Date.parse(left.session_last_active_at ?? left.created_at);
-    const rightActive = Date.parse(right.session_last_active_at ?? right.created_at);
+    const leftActive = getLearningGroupActivityTime(left);
+    const rightActive = getLearningGroupActivityTime(right);
     if (rightActive !== leftActive) return rightActive - leftActive;
     return Date.parse(right.created_at) - Date.parse(left.created_at);
   });
@@ -995,8 +1003,8 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
   const resumeCandidate = [...learningGroups]
     .filter((group) => isLearningRoundType(group.session_round))
     .sort((left, right) => {
-      const leftActive = Date.parse(left.session_last_active_at ?? left.created_at);
-      const rightActive = Date.parse(right.session_last_active_at ?? right.created_at);
+      const leftActive = getLearningGroupActivityTime(left);
+      const rightActive = getLearningGroupActivityTime(right);
       if (rightActive !== leftActive) {
         return rightActive - leftActive;
       }

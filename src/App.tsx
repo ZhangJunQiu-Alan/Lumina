@@ -677,18 +677,30 @@ export default function App() {
   }) => {
     if (!activeLearningGroupId || !user) return;
 
+    const lastActiveAt = new Date().toISOString();
+
     void persistLearningGroupSession(user.id, {
       groupId: activeLearningGroupId,
       round: session.round,
       currentIndex: session.currentIndex,
       queueWordIds: session.queueWordIds,
       passedQueueIndices: session.passedQueueIndices,
-      lastActiveAt: new Date().toISOString(),
+      lastActiveAt,
       groupCompleted: activeSessionSeed?.groupCompleted ?? false,
       completedAt: activeSessionSeed?.completedAt ?? null,
     }).catch((error) => {
       console.error('Failed to persist learning session snapshot:', error);
     });
+
+    if (isCoreLearningRound(session.round)) {
+      void bindRoutineMainLearningGroup(user.id, {
+        groupId: activeLearningGroupId,
+        round: session.round,
+        timeZone: resolveBrowserTimeZone(),
+      }).catch((error) => {
+        console.error('Failed to refresh daily routine main learning group:', error);
+      });
+    }
   }, [activeLearningGroupId, activeSessionSeed?.completedAt, activeSessionSeed?.groupCompleted, user]);
 
   const handleRoundComplete = useCallback(async () => {
