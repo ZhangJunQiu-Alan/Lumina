@@ -10,10 +10,11 @@ import type {
   OfficialLibraryId,
   OfficialResumeTargets,
   OfficialLibrarySummary,
+  OfficialStudyMode,
 } from '../types';
 import { isCoreLearningComplete } from './learningSession';
 
-export type OfficialStudyMode = 'sequential' | 'shuffle';
+export type { OfficialStudyMode };
 
 export interface OfficialLibraryDefinition {
   id: OfficialLibraryId;

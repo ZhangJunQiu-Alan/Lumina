@@ -33,6 +33,52 @@ type Round1LookupProps = {
   onWordClick?: WordClickHandler;
 };
 
+const trimDisplayText = (value: string | null | undefined) => value?.trim() ?? '';
+
+const hasDisplayText = (value: string | null | undefined) => trimDisplayText(value).length > 0;
+
+const hasRound1WordItems = (items: readonly { word: string }[]) => (
+  items.some((item) => hasDisplayText(item.word))
+);
+
+const getRound1WordItems = <T extends { word: string }>(items: readonly T[], limit?: number) => {
+  const visibleItems = items.filter((item) => hasDisplayText(item.word));
+  return typeof limit === 'number' ? visibleItems.slice(0, limit) : visibleItems;
+};
+
+const getRelationDetailText = (item: { meaningZh?: string; noteZh?: string }) => (
+  [trimDisplayText(item.meaningZh), trimDisplayText(item.noteZh)].filter(Boolean).join(' · ')
+);
+
+const getRound1ExampleItems = (word: Word) => (
+  word.senses
+    .filter((sense) => hasDisplayText(sense.example_sentence))
+    .slice(0, 2)
+    .map((sense, index) => ({
+      key: `${word.id}-example-${index}`,
+      sentence: trimDisplayText(sense.example_sentence),
+      translation: hasDisplayText(sense.example_translation_zh)
+        ? trimDisplayText(sense.example_translation_zh)
+        : undefined,
+    }))
+);
+
+const hasRound1Examples = (word: Word) => (
+  word.senses.some((sense) => hasDisplayText(sense.example_sentence))
+);
+
+const hasRound1MorphologyContent = (word: Word) => (
+  hasDisplayText(word.morphology.summaryZh) || hasRound1WordItems(word.derivedWords)
+);
+
+const hasRound1RelationsContent = (word: Word) => (
+  hasRound1WordItems(word.synonyms) || hasRound1WordItems(word.antonyms)
+);
+
+const hasRound1ContextContent = (word: Word) => (
+  hasRound1WordItems(word.confusingPairs) || hasRound1Examples(word)
+);
+
 const Round1LookupText = ({
   text,
   targetWords,
@@ -52,111 +98,137 @@ const Round1LookupText = ({
   )
 );
 
-const Round1MorphologyCard = ({ word, targetWords, onWordClick }: { word: Word } & Round1LookupProps) => (
-  <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-4 sm:p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
-    <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.24em] text-text-secondary">构词拆解 / 派生词</p>
-    {word.morphology.summaryZh ? (
-      <p className="mt-3 text-[15px] sm:text-base leading-7 text-text-primary">
-        <Round1LookupText text={word.morphology.summaryZh} targetWords={targetWords} onWordClick={onWordClick} />
-      </p>
-    ) : (
-      <p className="mt-3 text-sm leading-6 text-text-secondary">无展示的构词拆解。</p>
-    )}
+const Round1MorphologyCard = ({ word, targetWords, onWordClick }: { word: Word } & Round1LookupProps) => {
+  const morphologySummary = trimDisplayText(word.morphology.summaryZh);
+  const derivedWords = getRound1WordItems(word.derivedWords);
+  const title = morphologySummary && derivedWords.length > 0
+    ? '构词拆解 / 派生词'
+    : morphologySummary
+      ? '构词拆解'
+      : '派生词';
 
-    <div className="mt-4">
-      <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">派生词</p>
-      <div className="mt-2 sm:mt-3 space-y-2">
-        {word.derivedWords.length > 0 ? word.derivedWords.map((item) => (
-          <div
-            key={`${word.id}-derived-${item.word}`}
-            className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
-          >
-            <p className="text-base sm:text-[18px] font-black text-text-primary">
-              <Round1LookupText text={item.word} targetWords={targetWords} onWordClick={onWordClick} />
-            </p>
-            {(item.meaningZh || item.noteZh) && (
-              <p className="mt-1.5 text-sm sm:text-[16px] leading-relaxed text-text-secondary">
-                <Round1LookupText
-                  text={[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
-                  targetWords={targetWords}
-                  onWordClick={onWordClick}
-                />
-              </p>
-            )}
+  if (!morphologySummary && derivedWords.length === 0) return null;
+
+  return (
+    <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-4 sm:p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
+      <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.24em] text-text-secondary">{title}</p>
+      {morphologySummary && (
+        <p className="mt-3 text-[15px] sm:text-base leading-7 text-text-primary">
+          <Round1LookupText text={morphologySummary} targetWords={targetWords} onWordClick={onWordClick} />
+        </p>
+      )}
+
+      {derivedWords.length > 0 && (
+        <div className={morphologySummary ? 'mt-4' : 'mt-3'}>
+          <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">派生词</p>
+          <div className="mt-2 sm:mt-3 space-y-2">
+            {derivedWords.map((item) => {
+              const itemWord = trimDisplayText(item.word);
+              const detailText = getRelationDetailText(item);
+
+              return (
+                <div
+                  key={`${word.id}-derived-${itemWord}`}
+                  className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
+                >
+                  <p className="text-base sm:text-[18px] font-black text-text-primary">
+                    <Round1LookupText text={itemWord} targetWords={targetWords} onWordClick={onWordClick} />
+                  </p>
+                  {detailText && (
+                    <p className="mt-1.5 text-sm sm:text-[16px] leading-relaxed text-text-secondary">
+                      <Round1LookupText
+                        text={detailText}
+                        targetWords={targetWords}
+                        onWordClick={onWordClick}
+                      />
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        )) : (
-          <div className="rounded-[16px] border border-dashed border-black/8 bg-white/45 px-3 py-3 text-sm sm:text-[18px] text-text-secondary">
-            无派生词线索。
+        </div>
+      )}
+    </section>
+  );
+};
+
+const Round1RelationsCard = ({ word, targetWords, onWordClick }: { word: Word } & Round1LookupProps) => {
+  const synonyms = getRound1WordItems(word.synonyms, 2);
+  const antonyms = getRound1WordItems(word.antonyms, 2);
+
+  if (synonyms.length === 0 && antonyms.length === 0) return null;
+
+  return (
+    <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-4 sm:p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
+      <div className={cx('grid gap-4', synonyms.length > 0 && antonyms.length > 0 ? 'sm:grid-cols-2' : 'sm:grid-cols-1')}>
+        {synonyms.length > 0 && (
+          <div>
+            <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">近义词</p>
+            <div className="mt-2 sm:mt-3 space-y-2">
+              {synonyms.map((item) => {
+                const itemWord = trimDisplayText(item.word);
+                const detailText = getRelationDetailText(item);
+
+                return (
+                  <div
+                    key={`${word.id}-synonym-${itemWord}`}
+                    className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
+                  >
+                    <p className="text-base sm:text-[18px] font-black text-text-primary">
+                      <Round1LookupText text={itemWord} targetWords={targetWords} onWordClick={onWordClick} />
+                    </p>
+                    {detailText && (
+                      <p className="mt-1.5 text-sm sm:text-[16px] leading-relaxed text-text-secondary">
+                        <Round1LookupText
+                          text={detailText}
+                          targetWords={targetWords}
+                          onWordClick={onWordClick}
+                        />
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {antonyms.length > 0 && (
+          <div>
+            <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">反义词</p>
+            <div className="mt-2 sm:mt-3 space-y-2">
+              {antonyms.map((item) => {
+                const itemWord = trimDisplayText(item.word);
+                const detailText = getRelationDetailText(item);
+
+                return (
+                  <div
+                    key={`${word.id}-antonym-${itemWord}`}
+                    className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
+                  >
+                    <p className="text-base sm:text-[18px] font-black text-text-primary">
+                      <Round1LookupText text={itemWord} targetWords={targetWords} onWordClick={onWordClick} />
+                    </p>
+                    {detailText && (
+                      <p className="mt-1.5 text-sm sm:text-[16px] leading-relaxed text-text-secondary">
+                        <Round1LookupText
+                          text={detailText}
+                          targetWords={targetWords}
+                          onWordClick={onWordClick}
+                        />
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
-    </div>
-  </section>
-);
-
-const Round1RelationsCard = ({ word, targetWords, onWordClick }: { word: Word } & Round1LookupProps) => (
-  <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-4 sm:p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
-    <div className="grid gap-4 sm:grid-cols-2">
-      <div>
-        <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">近义词</p>
-        <div className="mt-2 sm:mt-3 space-y-2">
-          {word.synonyms.length > 0 ? word.synonyms.slice(0, 2).map((item) => (
-            <div
-              key={`${word.id}-synonym-${item.word}`}
-              className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
-            >
-              <p className="text-base sm:text-[18px] font-black text-text-primary">
-                <Round1LookupText text={item.word} targetWords={targetWords} onWordClick={onWordClick} />
-              </p>
-              {(item.meaningZh || item.noteZh) && (
-                <p className="mt-1.5 text-sm sm:text-[16px] leading-relaxed text-text-secondary">
-                  <Round1LookupText
-                    text={[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
-                    targetWords={targetWords}
-                    onWordClick={onWordClick}
-                  />
-                </p>
-              )}
-            </div>
-          )) : (
-            <div className="rounded-[16px] border border-dashed border-black/8 bg-white/45 px-3 py-3 text-sm sm:text-[18px] text-text-secondary">
-              无近义词。
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div>
-        <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">反义词</p>
-        <div className="mt-2 sm:mt-3 space-y-2">
-          {word.antonyms.length > 0 ? word.antonyms.slice(0, 2).map((item) => (
-            <div
-              key={`${word.id}-antonym-${item.word}`}
-              className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
-            >
-              <p className="text-base sm:text-[18px] font-black text-text-primary">
-                <Round1LookupText text={item.word} targetWords={targetWords} onWordClick={onWordClick} />
-              </p>
-              {(item.meaningZh || item.noteZh) && (
-                <p className="mt-1.5 text-sm sm:text-[16px] leading-relaxed text-text-secondary">
-                  <Round1LookupText
-                    text={[item.meaningZh, item.noteZh].filter(Boolean).join(' · ')}
-                    targetWords={targetWords}
-                    onWordClick={onWordClick}
-                  />
-                </p>
-              )}
-            </div>
-          )) : (
-            <div className="rounded-[16px] border border-dashed border-black/8 bg-white/45 px-3 py-3 text-sm sm:text-[18px] text-text-secondary">
-              无反义词。
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  </section>
-);
+    </section>
+  );
+};
 
 const Round1ConfusingCard = ({
   word,
@@ -172,59 +244,64 @@ const Round1ConfusingCard = ({
   canPlayExampleAudio: boolean;
   exampleLocale: PronunciationLocale;
   onPlayExample: (sentence: string, key: string) => void;
-} & Round1LookupProps) => (
-  <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-4 sm:p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
-    <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.24em] text-text-secondary">易混词义对比</p>
-    <div className="mt-3 sm:mt-4 space-y-4 sm:space-y-5">
-      {word.confusingPairs.length > 0 ? (
-        <div className="space-y-2">
-          {word.confusingPairs.map((pair, index) => (
-            <div
-              key={`${word.id}-confusion-${pair.word}-${index}`}
-              className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
-            >
-              <p className="text-lg sm:text-[24px] font-black tracking-tight text-text-primary">
-                <Round1LookupText text={pair.word} targetWords={targetWords} onWordClick={onWordClick} />
-              </p>
-              {pair.difference && (
-                <p className="mt-1.5 text-sm sm:text-[18px] leading-relaxed text-text-secondary">
-                  <Round1LookupText text={pair.difference} targetWords={targetWords} onWordClick={onWordClick} />
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm sm:text-[18px] text-text-secondary">
-          没有需要提醒的易混点。
-        </p>
-      )}
+} & Round1LookupProps) => {
+  const confusingPairs = getRound1WordItems(word.confusingPairs);
+  const exampleItems = getRound1ExampleItems(word);
 
-      <div className="border-t border-black/6 pt-4 sm:pt-5">
-        <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">例句</p>
-        <div className="mt-2">
-          <ExampleSentenceList
-            items={word.senses
-              .filter((sense) => (sense.example_sentence ?? '').trim())
-              .slice(0, 2)
-              .map((sense, index) => ({
-                key: `${word.id}-example-${index}`,
-                sentence: sense.example_sentence,
-                translation: sense.example_translation_zh || undefined,
-              }))}
-            locale={exampleLocale}
-            activeExampleKey={activeExampleKey}
-            canPlayAudio={canPlayExampleAudio}
-            onPlayExample={({ sentence, key }) => { onPlayExample(sentence, key); }}
-            emptyMessage="无例句。"
-            targetWords={targetWords}
-            onWordClick={onWordClick}
-          />
-        </div>
+  if (confusingPairs.length === 0 && exampleItems.length === 0) return null;
+
+  return (
+    <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-4 sm:p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
+      <div className="space-y-4 sm:space-y-5">
+        {confusingPairs.length > 0 && (
+          <div>
+            <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.24em] text-text-secondary">易混词义对比</p>
+            <div className="mt-3 sm:mt-4 space-y-2">
+              {confusingPairs.map((pair, index) => {
+                const pairWord = trimDisplayText(pair.word);
+                const difference = trimDisplayText(pair.difference);
+
+                return (
+                  <div
+                    key={`${word.id}-confusion-${pairWord}-${index}`}
+                    className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
+                  >
+                    <p className="text-lg sm:text-[24px] font-black tracking-tight text-text-primary">
+                      <Round1LookupText text={pairWord} targetWords={targetWords} onWordClick={onWordClick} />
+                    </p>
+                    {difference && (
+                      <p className="mt-1.5 text-sm sm:text-[18px] leading-relaxed text-text-secondary">
+                        <Round1LookupText text={difference} targetWords={targetWords} onWordClick={onWordClick} />
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {exampleItems.length > 0 && (
+          <div className={cx(confusingPairs.length > 0 && 'border-t border-black/6 pt-4 sm:pt-5')}>
+            <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">例句</p>
+            <div className="mt-2">
+              <ExampleSentenceList
+                items={exampleItems}
+                locale={exampleLocale}
+                activeExampleKey={activeExampleKey}
+                canPlayAudio={canPlayExampleAudio}
+                onPlayExample={({ sentence, key }) => { onPlayExample(sentence, key); }}
+                emptyMessage=""
+                targetWords={targetWords}
+                onWordClick={onWordClick}
+              />
+            </div>
+          </div>
+        )}
       </div>
-    </div>
-  </section>
-);
+    </section>
+  );
+};
 
 const Round1MemoryTipCard = ({ memoryTip, targetWords, onWordClick }: { memoryTip: string } & Round1LookupProps) => (
   <aside className="flex min-h-[92px] rounded-[18px] border border-apple-blue/15 bg-apple-blue/5 px-4 py-3 sm:px-5 sm:py-4 lg:min-h-[88px] lg:max-h-[132px] lg:w-full lg:max-w-[430px] lg:self-start lg:overflow-y-auto">
@@ -270,22 +347,24 @@ const InputSessionShell = ({
 // --- Helpers ---
 
 function renderProgressBar(currentIndex: number, queueLength: number) {
+  const safeLength = Math.max(queueLength, 1);
+  const completedRatio = Math.min(Math.max(currentIndex / safeLength, 0), 1);
+  const currentRatio = Math.min(Math.max((currentIndex + 1) / safeLength, 0), 1);
+
   return (
-    <div className="mt-auto w-full max-w-3xl flex justify-between items-center px-4 pb-12">
-      <div className="text-xs font-bold text-text-secondary uppercase tracking-widest">
+    <div className="mt-auto flex w-full max-w-3xl items-center gap-3 px-4 pb-6 sm:gap-4 sm:pb-8">
+      <div className="shrink-0 whitespace-nowrap text-xs font-bold uppercase tracking-widest text-text-secondary">
         第 {currentIndex + 1} / {queueLength} 个词
       </div>
-      <div className="flex gap-1">
-        {Array.from({ length: queueLength }, (_, i) => (
-          <div
-            key={i}
-            className={`h-1 rounded-full transition-all ${
-              i === currentIndex ? 'w-8 bg-apple-blue'
-              : i < currentIndex ? 'w-2 bg-apple-blue/30'
-              : 'w-2 bg-black/5'
-            }`}
-          />
-        ))}
+      <div className="relative h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-black/5">
+        <div
+          className="absolute inset-y-0 left-0 rounded-full bg-apple-blue/30 transition-all"
+          style={{ width: `${completedRatio * 100}%` }}
+        />
+        <div
+          className="absolute inset-y-0 left-0 rounded-full bg-apple-blue transition-all"
+          style={{ width: `${currentRatio * 100}%` }}
+        />
       </div>
     </div>
   );
@@ -805,6 +884,31 @@ export const LearningEngine = ({
     setViewIndex(nextViewIndex);
   }, [isCardNavigationLocked, navigableQueueIndices, stopPlayback, viewIndex]);
 
+  const swipeStartRef = useRef<{ x: number; y: number; valid: boolean } | null>(null);
+  const handleCardTouchStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    if (type !== 'round1') return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    const target = event.target as HTMLElement | null;
+    const isInteractive = Boolean(target?.closest('input, textarea, button, a, [role="button"], [contenteditable="true"]'));
+    swipeStartRef.current = { x: touch.clientX, y: touch.clientY, valid: !isInteractive };
+  }, [type]);
+  const handleCardTouchEnd = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+    if (!start || !start.valid) return;
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+    if (Math.abs(deltaX) < 48 || Math.abs(deltaX) <= Math.abs(deltaY) * 1.2) return;
+    if (deltaX < 0 && canNavigateRight) {
+      navigateCard('next');
+    } else if (deltaX > 0 && canNavigateLeft) {
+      navigateCard('previous');
+    }
+  }, [canNavigateLeft, canNavigateRight, navigateCard]);
+
   // 页面隐藏 / 关闭时走 keepalive 通道确保送达；
   // 组件正常卸载（SPA 内路由切换）时走普通 async flush。
   useEffect(() => {
@@ -1012,6 +1116,11 @@ export const LearningEngine = ({
   const contentAreaClassName = 'flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7 sm:py-7 lg:px-8 lg:py-7';
   const inputDockClassName = 'shrink-0 border-t border-black/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(247,249,253,0.92))] px-4 py-4 shadow-[0_-18px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl sm:px-7 sm:py-5 lg:px-8';
   const round1InputDockClassName = 'shrink-0 border-t border-black/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.76),rgba(247,249,253,0.94))] px-4 pt-2 pb-3 shadow-[0_-18px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl sm:px-7 sm:pt-3 sm:pb-4 lg:px-8';
+  const round1MemoryTip = trimDisplayText(viewedWord.memory_tip);
+  const showRound1MorphologyCard = hasRound1MorphologyContent(viewedWord);
+  const showRound1RelationsCard = hasRound1RelationsContent(viewedWord);
+  const showRound1ContextCard = hasRound1ContextContent(viewedWord);
+  const hasRound1InfoCards = showRound1MorphologyCard || showRound1RelationsCard || showRound1ContextCard;
 
   const inputField = (
     <form onSubmit={handleSubmit} className="w-full">
@@ -1168,7 +1277,7 @@ export const LearningEngine = ({
 
   if (type === 'round3') {
     return (
-      <div className="w-full max-w-4xl mx-auto flex flex-col items-center">
+      <div className="w-full max-w-4xl mx-auto flex h-full min-h-0 flex-col items-center">
         <div className="flex w-full max-w-3xl items-center gap-2">
           <RoundIndicator type={type} className="min-w-0 flex-1" />
           {sessionActions}
@@ -1177,7 +1286,7 @@ export const LearningEngine = ({
           key={currentWord.id + currentIndex}
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="w-full flex flex-col items-center justify-center min-h-[500px]"
+          className="w-full flex flex-1 min-h-0 flex-col items-center justify-center py-6 sm:min-h-[500px]"
         >
           <motion.div
             initial={{ y: -10, opacity: 0 }}
@@ -1249,7 +1358,7 @@ export const LearningEngine = ({
 
         {renderProgressBar(displayProgressIndex, initialUniqueCount)}
 
-        <div className="w-full max-w-3xl px-4 pb-8">
+        <div className="w-full max-w-3xl px-4 pb-4 sm:pb-8">
           <button
             type="button"
             onClick={handleRound3PrimaryAction}
@@ -1270,14 +1379,18 @@ export const LearningEngine = ({
       queueLength={initialUniqueCount}
       sessionActions={sessionActions}
       main={(
-        <div className="grid h-full min-h-0 grid-cols-[auto_minmax(0,1fr)_auto] items-stretch gap-2 sm:gap-3">
-          <div className="flex items-center">
+        <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)] items-stretch gap-2 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-3">
+          <div className="hidden items-center sm:flex">
             {leftNavigationButton}
           </div>
         <motion.div
           key={`${viewedWord.id}:${viewIndex}`}
           initial={{ opacity: 0, scale: 0.97, y: 14 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
+          onTouchStart={handleCardTouchStart}
+          onTouchEnd={handleCardTouchEnd}
+          onTouchCancel={() => { swipeStartRef.current = null; }}
+          style={type === 'round1' ? { touchAction: 'pan-y' } : undefined}
           className="glass flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] sm:rounded-[30px] shadow-[0_24px_64px_rgba(14,26,56,0.08)]"
         >
           {type === 'round1' ? (
@@ -1286,7 +1399,7 @@ export const LearningEngine = ({
                 <div className="space-y-3 sm:space-y-4">
                   <div className={cx(
                     'grid gap-3 lg:items-start lg:gap-8',
-                    viewedWord.memory_tip
+                    round1MemoryTip
                       ? 'lg:grid-cols-[minmax(0,1fr)_minmax(300px,30vw)]'
                       : 'lg:grid-cols-1',
                   )}>
@@ -1330,10 +1443,10 @@ export const LearningEngine = ({
                       </div>
                     </div>
 
-                    {viewedWord.memory_tip && (
+                    {round1MemoryTip && (
                       <div className="flex justify-end">
                         <Round1MemoryTipCard
-                          memoryTip={viewedWord.memory_tip}
+                          memoryTip={round1MemoryTip}
                           targetWords={lookupTargetWords}
                           onWordClick={openPopover}
                         />
@@ -1341,27 +1454,35 @@ export const LearningEngine = ({
                     )}
                   </div>
 
-                  <div className="grid gap-3 sm:gap-4 lg:grid-cols-3">
-                    <Round1MorphologyCard
-                      word={viewedWord}
-                      targetWords={lookupTargetWords}
-                      onWordClick={openPopover}
-                    />
-                    <Round1RelationsCard
-                      word={viewedWord}
-                      targetWords={lookupTargetWords}
-                      onWordClick={openPopover}
-                    />
-                    <Round1ConfusingCard
-                      word={viewedWord}
-                      activeExampleKey={activeExampleKey}
-                      canPlayExampleAudio={canPlayExampleAudio}
-                      exampleLocale={audioLocale}
-                      onPlayExample={(sentence, key) => { void playExampleSentence(sentence, key); }}
-                      targetWords={lookupTargetWords}
-                      onWordClick={openPopover}
-                    />
-                  </div>
+                  {hasRound1InfoCards && (
+                    <div className="grid gap-3 sm:gap-4 lg:grid-cols-[repeat(auto-fit,minmax(18rem,1fr))]">
+                      {showRound1MorphologyCard && (
+                        <Round1MorphologyCard
+                          word={viewedWord}
+                          targetWords={lookupTargetWords}
+                          onWordClick={openPopover}
+                        />
+                      )}
+                      {showRound1RelationsCard && (
+                        <Round1RelationsCard
+                          word={viewedWord}
+                          targetWords={lookupTargetWords}
+                          onWordClick={openPopover}
+                        />
+                      )}
+                      {showRound1ContextCard && (
+                        <Round1ConfusingCard
+                          word={viewedWord}
+                          activeExampleKey={activeExampleKey}
+                          canPlayExampleAudio={canPlayExampleAudio}
+                          exampleLocale={audioLocale}
+                          onPlayExample={(sentence, key) => { void playExampleSentence(sentence, key); }}
+                          targetWords={lookupTargetWords}
+                          onWordClick={openPopover}
+                        />
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1485,7 +1606,7 @@ export const LearningEngine = ({
             </div>
           )}
         </motion.div>
-          <div className="flex items-center">
+          <div className="hidden items-center sm:flex">
             {rightNavigationButton}
           </div>
         </div>

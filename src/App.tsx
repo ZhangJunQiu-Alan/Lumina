@@ -35,10 +35,12 @@ import { invalidateLibraryCache } from './lib/libraryCache';
 import { createInitialLearningSession, isCoreLearningRound } from './lib/learningSession';
 import {
   clearLearningGroupSession,
+  fetchGeneratedArticle,
   fetchLearningGroupSession,
   persistLearningGroupSession,
+  upsertGeneratedArticle,
 } from './lib/learningSessionApi';
-import { clearArticleCache, getCachedArticle, setCachedArticle } from './lib/articleCache';
+import { getCachedArticle, setCachedArticle } from './lib/articleCache';
 import {
   bindRoutineMainLearningGroup,
   markRoutineReviewStarted,
@@ -48,6 +50,7 @@ import { cx } from './components/shared/LearningUI';
 import { LibrarySkeleton } from './components/shared/Skeleton';
 import { useDeferredLoading } from './hooks/useDeferredLoading';
 import { fetchHomeOverview, resolveBrowserTimeZone } from './lib/homeApi';
+import { startNextOfficialBatch } from './lib/officialLibraryStart';
 
 // --- Lazy loaded views ---
 const HomeView = lazy(() => import('./components/home/HomeView').then(m => ({ default: m.HomeView })));
@@ -62,6 +65,19 @@ const SettingsView = lazy(() => import('./components/settings/SettingsView').the
 // --- Core Learning Components (Extracted) ---
 const LearningEngine = lazy(() => import('./components/learning/LearningEngine').then(m => ({ default: m.LearningEngine })));
 const ArticleView = lazy(() => import('./components/learning/ArticleView').then(m => ({ default: m.ArticleView })));
+
+const ARTICLE_RETRY_DELAYS_MS = [3000, 6000, 12000, 30000];
+const ARTICLE_REQUEST_TIMEOUT_MS = 60000;
+
+interface ArticleGenerationJob {
+  key: string;
+  groupId: string;
+  runId: number;
+  attempt: number;
+  inFlight: boolean;
+  timerId: ReturnType<typeof setTimeout> | null;
+  controller: AbortController | null;
+}
 
 function AmbientBackground() {
   return (
@@ -164,6 +180,29 @@ function normalizeArticleResponse(data: unknown): ArticleSentence[] {
   return normalized;
 }
 
+function buildArticleGenerationKey(groupId: string, words: Word[]) {
+  return `${groupId}:${words.map((word) => word.id).join('|')}`;
+}
+
+function serializeArticleSentences(sentences: ArticleSentence[]) {
+  return JSON.stringify({ sentences });
+}
+
+function parsePersistedArticleContent(content: string | null | undefined) {
+  const trimmed = content?.trim();
+  if (!trimmed) return null;
+
+  try {
+    return normalizeArticleResponse(JSON.parse(trimmed) as unknown);
+  } catch {
+    return null;
+  }
+}
+
+function getArticleRetryDelay(attempt: number) {
+  return ARTICLE_RETRY_DELAYS_MS[Math.min(attempt, ARTICLE_RETRY_DELAYS_MS.length - 1)];
+}
+
 function buildEmptyStats(): UserStats {
   const timeZone = resolveBrowserTimeZone();
   const todayParts = new Intl.DateTimeFormat('en-CA', {
@@ -194,6 +233,9 @@ function buildEmptyStats(): UserStats {
       ctaLabel: '开始学习',
       ctaMode: 'start_learning',
       boundLearningGroupId: null,
+      lastUsedOfficialLibraryId: null,
+      lastUsedOfficialMode: null,
+      lastUsedOfficialGroupCount: 0,
       visibleSteps: [
         { key: 'round1', label: 'Round 1 · 明示关联', status: 'current' },
         { key: 'round2', label: 'Round 2 · 语境复现', status: 'upcoming' },
@@ -210,6 +252,8 @@ export default function App() {
   const mainScrollRef = useRef<HTMLElement | null>(null);
   const activeLearningGroupIdRef = useRef<string | null>(null);
   const sessionAutoRestoreRef = useRef<string | null>(null);
+  const articleGenerationRef = useRef<ArticleGenerationJob | null>(null);
+  const articleGenerationRunIdRef = useRef(0);
   const [round, setRound] = useState<RoundType>('round1');
   const [activeWords, setActiveWords] = useState<Word[]>([]);
   const [activeLearningGroupId, setActiveLearningGroupId] = useState<string | null>(null);
@@ -220,10 +264,25 @@ export default function App() {
   const [sessionStartError, setSessionStartError] = useState('');
   const [isSessionSettingsOpen, setIsSessionSettingsOpen] = useState(false);
   const [stats, setStats] = useState<UserStats>(buildEmptyStats);
+  const isSessionRoute = location.pathname.startsWith('/app/session');
+  const isHomeRoute = location.pathname.startsWith('/app/home');
 
   useEffect(() => {
     activeLearningGroupIdRef.current = activeLearningGroupId;
   }, [activeLearningGroupId]);
+
+  const cancelArticleGeneration = useCallback((groupId?: string) => {
+    const current = articleGenerationRef.current;
+    if (!current) return;
+    if (groupId && current.groupId !== groupId) return;
+
+    if (current.timerId) {
+      clearTimeout(current.timerId);
+    }
+    current.controller?.abort();
+
+    articleGenerationRef.current = null;
+  }, []);
 
   const fetchStats = useCallback(async () => {
     if (!user) {
@@ -270,6 +329,8 @@ export default function App() {
   }, [fetchStats, location.pathname]);
   useEffect(() => {
     if (!user) {
+      cancelArticleGeneration();
+      activeLearningGroupIdRef.current = null;
       setActiveWords([]);
       setActiveLearningGroupId(null);
       setActiveSessionSeed(null);
@@ -277,53 +338,138 @@ export default function App() {
       setArticleSentences(null);
       setRound('round1');
     }
-  }, [user]);
+  }, [cancelArticleGeneration, user]);
 
   const resetActiveLearningState = useCallback(() => {
+    cancelArticleGeneration();
+    activeLearningGroupIdRef.current = null;
     setActiveWords([]);
     setActiveLearningGroupId(null);
     setActiveSessionSeed(null);
     setArticleSentences(null);
     setRound('round1');
-  }, []);
+  }, [cancelArticleGeneration]);
 
   const ensureArticleForGroup = useCallback(async (groupId: string, words: Word[]) => {
     if (!user) return null;
 
+    const generationKey = buildArticleGenerationKey(groupId, words);
+    const existingJob = articleGenerationRef.current;
+    if (existingJob && existingJob.key !== generationKey) {
+      cancelArticleGeneration();
+    }
+
     const cachedArticle = getCachedArticle(groupId, words);
     if (cachedArticle) {
+      cancelArticleGeneration(groupId);
       if (activeLearningGroupIdRef.current === groupId) {
         setArticleSentences(cachedArticle);
       }
       return cachedArticle;
     }
 
-    try {
-      clearArticleCache();
-      const res = await apiFetch('/api/vocab/article', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ words: words.map((word) => word.word) }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const { data } = await res.json();
-      const sentences = normalizeArticleResponse(data);
+    const currentJob = articleGenerationRef.current;
+    if (currentJob?.key === generationKey && (currentJob.inFlight || currentJob.timerId)) {
+      return null;
+    }
 
+    const runId = currentJob?.key === generationKey
+      ? currentJob.runId
+      : articleGenerationRunIdRef.current + 1;
+    articleGenerationRunIdRef.current = Math.max(articleGenerationRunIdRef.current, runId);
+
+    const startingAttempt = currentJob?.key === generationKey ? currentJob.attempt : 0;
+    articleGenerationRef.current = {
+      key: generationKey,
+      groupId,
+      runId,
+      attempt: startingAttempt,
+      inFlight: true,
+      timerId: null,
+      controller: null,
+    };
+
+    const isCurrentJob = () => (
+      articleGenerationRef.current?.key === generationKey
+      && articleGenerationRef.current.runId === runId
+    );
+
+    const completeWithSentences = (sentences: ArticleSentence[]) => {
+      if (!isCurrentJob()) return;
       setCachedArticle(groupId, words, sentences);
-
       if (activeLearningGroupIdRef.current === groupId) {
         setArticleSentences(sentences);
       }
+      articleGenerationRef.current = null;
+    };
+
+    const scheduleRetry = () => {
+      const current = articleGenerationRef.current;
+      if (!current || current.key !== generationKey || current.runId !== runId) return;
+
+      const delay = getArticleRetryDelay(current.attempt);
+      current.inFlight = false;
+      current.attempt += 1;
+      current.timerId = setTimeout(() => {
+        const scheduled = articleGenerationRef.current;
+        if (!scheduled || scheduled.key !== generationKey || scheduled.runId !== runId) return;
+        scheduled.timerId = null;
+        void ensureArticleForGroup(groupId, words);
+      }, delay);
+    };
+
+    try {
+      const persistedArticle = await fetchGeneratedArticle(user.id, groupId);
+      const persistedSentences = parsePersistedArticleContent(persistedArticle);
+      if (persistedSentences) {
+        completeWithSentences(persistedSentences);
+        return persistedSentences;
+      }
+
+      const controller = new AbortController();
+      const currentJobForRequest = articleGenerationRef.current;
+      if (currentJobForRequest && isCurrentJob()) {
+        currentJobForRequest.controller = controller;
+      }
+      const timeoutId = setTimeout(() => controller.abort(), ARTICLE_REQUEST_TIMEOUT_MS);
+      let sentences: ArticleSentence[];
+      try {
+        const res = await apiFetch('/api/vocab/article', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ words: words.map((word) => word.word) }),
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { data } = await res.json();
+        sentences = normalizeArticleResponse(data);
+      } finally {
+        clearTimeout(timeoutId);
+        const currentJobAfterRequest = articleGenerationRef.current;
+        if (currentJobAfterRequest && isCurrentJob()) {
+          currentJobAfterRequest.controller = null;
+        }
+      }
+
+      if (!isCurrentJob()) {
+        return sentences;
+      }
+
+      await upsertGeneratedArticle(
+        user.id,
+        groupId,
+        serializeArticleSentences(sentences),
+        words.map((word) => word.word.trim()).filter(Boolean),
+      );
+      completeWithSentences(sentences);
 
       return sentences;
     } catch (error) {
       console.error('Article generation failed:', error);
-      if (activeLearningGroupIdRef.current === groupId) {
-        setArticleSentences([]);
-      }
-      return [];
+      scheduleRetry();
+      return null;
     }
-  }, [user]);
+  }, [cancelArticleGeneration, user]);
 
   const openLearningGroup = useCallback(async (groupId: string, preloadedWords?: Word[]) => {
     if (!user) return;
@@ -355,10 +501,16 @@ export default function App() {
 
       setReviewSummary([]);
       setActiveWords(words);
+      activeLearningGroupIdRef.current = groupId;
       setActiveLearningGroupId(groupId);
       setActiveSessionSeed(nextSession);
-      const cachedArticle = nextSession.round === 'article' ? getCachedArticle(groupId, words) : null;
-      setArticleSentences(nextSession.round === 'article' ? cachedArticle : null);
+      const persistedArticle = parsePersistedArticleContent(nextSession.article);
+      const cachedArticle = getCachedArticle(groupId, words);
+      const restoredArticle = cachedArticle ?? persistedArticle;
+      if (restoredArticle) {
+        setCachedArticle(groupId, words, restoredArticle);
+      }
+      setArticleSentences(nextSession.round === 'article' ? restoredArticle : null);
       setRound(nextSession.round);
       navigate('/app/session');
 
@@ -374,7 +526,11 @@ export default function App() {
         });
       }
 
-      if (nextSession.round === 'article' && !cachedArticle) {
+      if (
+        learningPreferences.reinforcementArticleEnabled
+        && (nextSession.round === 'round3' || nextSession.round === 'article')
+        && !restoredArticle
+      ) {
         void ensureArticleForGroup(groupId, words);
       }
     } catch (error) {
@@ -383,7 +539,7 @@ export default function App() {
     } finally {
       setIsStartingSession(false);
     }
-  }, [ensureArticleForGroup, navigate, user]);
+  }, [ensureArticleForGroup, learningPreferences.reinforcementArticleEnabled, navigate, user]);
 
   const handleStart = async () => {
     if (!user) return;
@@ -411,6 +567,8 @@ export default function App() {
         });
 
         setReviewSummary([]);
+        cancelArticleGeneration();
+        activeLearningGroupIdRef.current = null;
         setActiveLearningGroupId(null);
         setActiveSessionSeed(null);
         setActiveWords(dueWords);
@@ -430,6 +588,32 @@ export default function App() {
       const targetGroupId = stats.routineCard.boundLearningGroupId ?? stats.resumeCandidate?.groupId;
       if (targetGroupId) {
         await openLearningGroup(targetGroupId);
+        return;
+      }
+
+      const libraryId = stats.routineCard.lastUsedOfficialLibraryId;
+      if (libraryId) {
+        setIsStartingSession(true);
+        try {
+          const result = await startNextOfficialBatch({
+            userId: user.id,
+            libraryId,
+            mode: stats.routineCard.lastUsedOfficialMode ?? 'sequential',
+            existingGroupCount: stats.routineCard.lastUsedOfficialGroupCount,
+          });
+
+          if (!result) {
+            navigate('/app/library');
+            return;
+          }
+
+          await openLearningGroup(result.groupId, result.words);
+        } catch (error) {
+          console.error('Failed to auto-start next official batch:', error);
+          setSessionStartError(error instanceof Error ? error.message : '开始下一组官方词时出了点问题，请再试一次。');
+        } finally {
+          setIsStartingSession(false);
+        }
         return;
       }
     }
@@ -559,14 +743,17 @@ export default function App() {
         groupCompleted,
         completedAt,
       });
+      const cachedArticle = getCachedArticle(activeLearningGroupId, activeWords);
       setActiveSessionSeed(nextSession);
       setRound('article');
-      setArticleSentences(null);
+      setArticleSentences(cachedArticle);
       invalidateLibraryCache(user.id);
       void persistLearningGroupSession(user.id, nextSession).catch((error) => {
         console.error('Failed to persist article transition:', error);
       });
-      void ensureArticleForGroup(activeLearningGroupId, activeWords);
+      if (!cachedArticle) {
+        void ensureArticleForGroup(activeLearningGroupId, activeWords);
+      }
     };
 
     if (round === 'round2') {
@@ -592,6 +779,9 @@ export default function App() {
         void persistLearningGroupSession(user.id, nextSession).catch((error) => {
           console.error('Failed to persist reinforcement transition:', error);
         });
+        if (learningPreferences.reinforcementArticleEnabled) {
+          void ensureArticleForGroup(activeLearningGroupId, activeWords);
+        }
         return;
       }
 
@@ -657,14 +847,36 @@ export default function App() {
     if (location.pathname.startsWith('/app/profile')) return '/app/profile';
     return '/app/home';
   })();
-  const isSessionRoute = location.pathname.startsWith('/app/session');
-  const isHomeRoute = location.pathname.startsWith('/app/home');
 
   useEffect(() => {
     if (!isSessionRoute) {
       setIsSessionSettingsOpen(false);
+      cancelArticleGeneration();
     }
-  }, [isSessionRoute]);
+  }, [cancelArticleGeneration, isSessionRoute]);
+
+  useEffect(() => {
+    if (
+      !user
+      || !learningPreferences.reinforcementArticleEnabled
+      || !activeLearningGroupId
+      || activeWords.length === 0
+      || (round !== 'round3' && round !== 'article')
+      || (round === 'article' && articleSentences !== null)
+    ) {
+      return;
+    }
+
+    void ensureArticleForGroup(activeLearningGroupId, activeWords);
+  }, [
+    activeLearningGroupId,
+    activeWords,
+    articleSentences,
+    ensureArticleForGroup,
+    learningPreferences.reinforcementArticleEnabled,
+    round,
+    user,
+  ]);
 
   useEffect(() => {
     if (!isSessionSettingsOpen) return;
@@ -868,7 +1080,7 @@ export default function App() {
                             className="glass p-16 rounded-apple-lg shadow-2xl flex flex-col items-center gap-6"
                           >
                             <Loader2 className="w-10 h-10 text-apple-green animate-spin" />
-                            <p className="font-black text-xl">正在生成收尾文章</p>
+                            <p className="font-black text-xl">正在生成收尾文章，失败会自动重试</p>
                           </motion.div>
                         ) : (
                           <ArticleView sentences={articleSentences} words={activeWords} onFinish={handleRoundComplete} />

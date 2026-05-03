@@ -311,6 +311,8 @@ export interface RoutineVisibleStep {
   status: RoutineVisibleStepStatus;
 }
 
+export type OfficialStudyMode = 'sequential' | 'shuffle';
+
 export interface RoutineCard {
   state: RoutineCardState;
   title: string;
@@ -319,6 +321,9 @@ export interface RoutineCard {
   ctaMode: RoutineCardCtaMode;
   boundLearningGroupId: string | null;
   visibleSteps: RoutineVisibleStep[];
+  lastUsedOfficialLibraryId: OfficialLibraryId | null;
+  lastUsedOfficialMode: OfficialStudyMode | null;
+  lastUsedOfficialGroupCount: number;
 }
 
 export interface UserStats {

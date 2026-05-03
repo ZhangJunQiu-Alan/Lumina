@@ -58,7 +58,8 @@ export function LearningPreferencesProvider({ children }: PropsWithChildren) {
   }, [reloadPreferences]);
 
   const handleSavePreferences = useCallback(async (patch: Partial<LearningPreferences>) => {
-    const optimisticPreferences = mergeLearningPreferences(preferences, patch);
+    const previousPreferences = preferences;
+    const optimisticPreferences = mergeLearningPreferences(previousPreferences, patch);
     setPreferences(optimisticPreferences);
 
     if (!user) {
@@ -66,11 +67,13 @@ export function LearningPreferencesProvider({ children }: PropsWithChildren) {
     }
 
     try {
-      const persisted = await saveLearningPreferences(user.id, patch);
+      const persisted = await saveLearningPreferences(user.id, optimisticPreferences);
+      setPreferences(persisted);
       setLoadError('');
       return persisted;
     } catch (error) {
       const message = error instanceof Error ? error.message : '学习设置保存失败';
+      setPreferences(previousPreferences);
       setLoadError(message);
       throw error;
     }

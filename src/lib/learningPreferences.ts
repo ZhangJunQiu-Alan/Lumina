@@ -202,12 +202,9 @@ export async function getLearningPreferences(userId: string): Promise<LearningPr
 
 export async function saveLearningPreferences(
   userId: string,
-  patch: Partial<LearningPreferences>,
+  preferences: LearningPreferences,
 ): Promise<LearningPreferences> {
-  const nextPreferences = mergeLearningPreferences(
-    getLocalLearningPreferences(userId) ?? LEARNING_PREFERENCES_DEFAULTS,
-    patch,
-  );
+  const nextPreferences = normalizeLearningPreferences(preferences);
 
   const { data, error } = await supabase
     .from('user_settings')
