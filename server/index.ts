@@ -212,7 +212,10 @@ app.post('/api/vocab/article', async (req, res) => {
     res.json({ data: article });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/vocab/article', e, { endpoint: '/api/vocab/article' });
+    logger.error('API Error: /api/vocab/article', e, {
+      endpoint: '/api/vocab/article',
+      word_count: cleaned.length,
+    });
     res.status(500).json({ error: message });
   }
 });

@@ -1,4 +1,11 @@
 import { supabaseAdmin } from './supabase.js';
+import {
+  isOfficialLibraryId,
+  resolveOfficialLibraryId,
+  resolveOfficialStudyModeFromGroupName,
+  type OfficialStudyMode,
+} from '../src/lib/officialLibrary.js';
+import type { OfficialLibraryId } from '../src/types.js';
 
 type OrbitDayStatus = 'gap' | 'ordinary' | 'perfect' | 'shielded';
 type LearningRoundType = 'round1' | 'round2' | 'round3' | 'article';
@@ -50,6 +57,9 @@ interface RoutineCardPayload {
   ctaMode: RoutineCardCtaMode;
   boundLearningGroupId: string | null;
   visibleSteps: RoutineVisibleStepPayload[];
+  lastUsedOfficialLibraryId: OfficialLibraryId | null;
+  lastUsedOfficialMode: OfficialStudyMode | null;
+  lastUsedOfficialGroupCount: number;
 }
 
 export interface HomeOverviewPayload {
@@ -502,12 +512,77 @@ function buildCompletedSubtitle(todaySummary: DailySummary | undefined) {
   return `今天已完成复习 ${todaySummary.reviewWordCount} 词 · 新学 ${todaySummary.learnedWordCount} 词`;
 }
 
+interface LastUsedOfficialLibraryRef {
+  libraryId: OfficialLibraryId;
+  mode: OfficialStudyMode;
+  groupCount: number;
+  title: string;
+}
+
+function resolveLastUsedOfficialLibrary(
+  learningGroups: LearningGroupRow[],
+): LastUsedOfficialLibraryRef | null {
+  const sorted = [...learningGroups].sort((left, right) => {
+    const leftActive = Date.parse(left.session_last_active_at ?? left.created_at);
+    const rightActive = Date.parse(right.session_last_active_at ?? right.created_at);
+    if (rightActive !== leftActive) return rightActive - leftActive;
+    return Date.parse(right.created_at) - Date.parse(left.created_at);
+  });
+
+  let resolvedLibraryId: OfficialLibraryId | null = null;
+  let mostRecentMatchingGroup: LearningGroupRow | null = null;
+
+  for (const group of sorted) {
+    if (isOfficialLibraryId(group.library_id)) {
+      resolvedLibraryId = group.library_id;
+      mostRecentMatchingGroup = group;
+      break;
+    }
+
+    const fallbackId = resolveOfficialLibraryId(group.library_id, group.group_name, group.source_type);
+    if (fallbackId) {
+      resolvedLibraryId = fallbackId;
+      mostRecentMatchingGroup = group;
+      break;
+    }
+  }
+
+  if (!resolvedLibraryId || !mostRecentMatchingGroup) {
+    return null;
+  }
+
+  const groupCount = learningGroups.reduce((count, group) => {
+    const groupLibraryId = isOfficialLibraryId(group.library_id)
+      ? group.library_id
+      : resolveOfficialLibraryId(group.library_id, group.group_name, group.source_type);
+    return groupLibraryId === resolvedLibraryId ? count + 1 : count;
+  }, 0);
+
+  return {
+    libraryId: resolvedLibraryId,
+    mode: resolveOfficialStudyModeFromGroupName(resolvedLibraryId, mostRecentMatchingGroup.group_name),
+    groupCount,
+    title: mostRecentMatchingGroup.group_name?.trim() || resolvedLibraryId,
+  };
+}
+
+const OFFICIAL_LIBRARY_TITLES: Record<OfficialLibraryId, string> = {
+  'ielts-vocab': '雅思词汇真经',
+  'gre-zhenkao-v7': 'GRE 真考词汇',
+  'cet4-vocab': '四级核心词汇',
+  'cet6-vocab': '六级核心词汇',
+  'tem4-vocab': '专业四级词汇',
+  'tem8-vocab': '专业八级词汇',
+  'npee-vocab': '考研大纲词汇',
+};
+
 function buildRoutineCard(input: {
   todayReviewCount: number;
   todaySummary: DailySummary | undefined;
   resumeCandidate: ResumeCandidatePayload | null;
   routineProgress: DailyRoutineProgressRow | null;
   learningGroupsById: Map<string, LearningGroupRow>;
+  lastUsedOfficialLibrary: LastUsedOfficialLibraryRef | null;
 }) {
   const {
     todayReviewCount,
@@ -515,6 +590,7 @@ function buildRoutineCard(input: {
     resumeCandidate,
     routineProgress,
     learningGroupsById,
+    lastUsedOfficialLibrary,
   } = input;
 
   const provisionalStepOrder = buildRoutineStepOrder(routineProgress?.starting_due_count ?? todayReviewCount);
@@ -542,7 +618,29 @@ function buildRoutineCard(input: {
   const currentStep = visibleSteps.find((step) => step.status === 'current')?.key ?? null;
   const boundGroupTitle = boundGroup?.group_name?.trim() || resumeCandidate?.groupTitle || null;
 
+  const lastUsedOfficialLibraryId = lastUsedOfficialLibrary?.libraryId ?? null;
+  const lastUsedOfficialMode = lastUsedOfficialLibrary?.mode ?? null;
+  const lastUsedOfficialGroupCount = lastUsedOfficialLibrary?.groupCount ?? 0;
+  const lastUsedOfficialTitle = lastUsedOfficialLibrary
+    ? OFFICIAL_LIBRARY_TITLES[lastUsedOfficialLibrary.libraryId] ?? lastUsedOfficialLibrary.title
+    : null;
+
   if (state === 'completed') {
+    if (lastUsedOfficialLibrary) {
+      return {
+        state,
+        title: '继续主线学习',
+        subtitle: `${lastUsedOfficialTitle} · 抽下一组 30 词`,
+        ctaLabel: '继续学习',
+        ctaMode: 'continue_learning',
+        boundLearningGroupId: null,
+        visibleSteps,
+        lastUsedOfficialLibraryId,
+        lastUsedOfficialMode,
+        lastUsedOfficialGroupCount,
+      } satisfies RoutineCardPayload;
+    }
+
     return {
       state,
       title: '今日已完成',
@@ -551,6 +649,9 @@ function buildRoutineCard(input: {
       ctaMode: 'open_library',
       boundLearningGroupId,
       visibleSteps,
+      lastUsedOfficialLibraryId,
+      lastUsedOfficialMode,
+      lastUsedOfficialGroupCount,
     } satisfies RoutineCardPayload;
   }
 
@@ -563,6 +664,9 @@ function buildRoutineCard(input: {
       ctaMode: state === 'not_started' ? 'start_review' : 'continue_review',
       boundLearningGroupId,
       visibleSteps,
+      lastUsedOfficialLibraryId,
+      lastUsedOfficialMode,
+      lastUsedOfficialGroupCount,
     } satisfies RoutineCardPayload;
   }
 
@@ -575,10 +679,28 @@ function buildRoutineCard(input: {
       ctaMode: 'continue_learning',
       boundLearningGroupId,
       visibleSteps,
+      lastUsedOfficialLibraryId,
+      lastUsedOfficialMode,
+      lastUsedOfficialGroupCount,
     } satisfies RoutineCardPayload;
   }
 
   const reviewAlreadyDone = completedSteps.includes('review');
+
+  if (lastUsedOfficialLibrary) {
+    return {
+      state,
+      title: '继续主线学习',
+      subtitle: `${lastUsedOfficialTitle} · 抽下一组 30 词`,
+      ctaLabel: '继续学习',
+      ctaMode: 'continue_learning',
+      boundLearningGroupId: null,
+      visibleSteps,
+      lastUsedOfficialLibraryId,
+      lastUsedOfficialMode,
+      lastUsedOfficialGroupCount,
+    } satisfies RoutineCardPayload;
+  }
 
   return {
     state,
@@ -588,6 +710,9 @@ function buildRoutineCard(input: {
     ctaMode: 'start_learning',
     boundLearningGroupId,
     visibleSteps,
+    lastUsedOfficialLibraryId,
+    lastUsedOfficialMode,
+    lastUsedOfficialGroupCount,
   } satisfies RoutineCardPayload;
 }
 
@@ -882,12 +1007,15 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
       Boolean(candidate && isCoreLearningRound(candidate.round) && !candidate.groupCompleted)
     )) ?? null;
 
+  const lastUsedOfficialLibrary = resolveLastUsedOfficialLibrary(learningGroups);
+
   const routineCard = buildRoutineCard({
     todayReviewCount: dueCountResult.count ?? 0,
     todaySummary: dailySummaries.get(todayKey),
     resumeCandidate,
     routineProgress,
     learningGroupsById,
+    lastUsedOfficialLibrary,
   });
 
   // 如果今天的 Routine 状态因为实时操作变成了 Completed，同步更新 summary
