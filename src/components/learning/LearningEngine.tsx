@@ -50,6 +50,9 @@ const getRelationDetailText = (item: { meaningZh?: string; noteZh?: string }) =>
   [trimDisplayText(item.meaningZh), trimDisplayText(item.noteZh)].filter(Boolean).join(' · ')
 );
 
+const round1RelationWordClassName = 'text-base sm:text-[18px] font-black text-text-primary [overflow-wrap:anywhere]';
+const round1RelationDetailClassName = 'mt-1.5 text-sm sm:text-[16px] leading-relaxed text-text-secondary [overflow-wrap:anywhere]';
+
 const getRound1ExampleItems = (word: Word) => (
   word.senses
     .filter((sense) => hasDisplayText(sense.example_sentence))
@@ -160,10 +163,10 @@ const Round1RelationsCard = ({ word, targetWords, onWordClick }: { word: Word } 
   if (synonyms.length === 0 && antonyms.length === 0) return null;
 
   return (
-    <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-4 sm:p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
-      <div className={cx('grid gap-4', synonyms.length > 0 && antonyms.length > 0 ? 'sm:grid-cols-2' : 'sm:grid-cols-1')}>
+    <section className="h-full min-w-0 rounded-[24px] border border-white/80 bg-white/60 p-4 sm:p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
+      <div className={cx('grid min-w-0 gap-4', synonyms.length > 0 && antonyms.length > 0 ? 'sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]' : 'sm:grid-cols-1')}>
         {synonyms.length > 0 && (
-          <div>
+          <div className="min-w-0">
             <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">近义词</p>
             <div className="mt-2 sm:mt-3 space-y-2">
               {synonyms.map((item) => {
@@ -173,13 +176,13 @@ const Round1RelationsCard = ({ word, targetWords, onWordClick }: { word: Word } 
                 return (
                   <div
                     key={`${word.id}-synonym-${itemWord}`}
-                    className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
+                    className="min-w-0 rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
                   >
-                    <p className="text-base sm:text-[18px] font-black text-text-primary">
+                    <p className={round1RelationWordClassName}>
                       <Round1LookupText text={itemWord} targetWords={targetWords} onWordClick={onWordClick} />
                     </p>
                     {detailText && (
-                      <p className="mt-1.5 text-sm sm:text-[16px] leading-relaxed text-text-secondary">
+                      <p className={round1RelationDetailClassName}>
                         <Round1LookupText
                           text={detailText}
                           targetWords={targetWords}
@@ -195,7 +198,7 @@ const Round1RelationsCard = ({ word, targetWords, onWordClick }: { word: Word } 
         )}
 
         {antonyms.length > 0 && (
-          <div>
+          <div className="min-w-0">
             <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">反义词</p>
             <div className="mt-2 sm:mt-3 space-y-2">
               {antonyms.map((item) => {
@@ -205,13 +208,13 @@ const Round1RelationsCard = ({ word, targetWords, onWordClick }: { word: Word } 
                 return (
                   <div
                     key={`${word.id}-antonym-${itemWord}`}
-                    className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
+                    className="min-w-0 rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
                   >
-                    <p className="text-base sm:text-[18px] font-black text-text-primary">
+                    <p className={round1RelationWordClassName}>
                       <Round1LookupText text={itemWord} targetWords={targetWords} onWordClick={onWordClick} />
                     </p>
                     {detailText && (
-                      <p className="mt-1.5 text-sm sm:text-[16px] leading-relaxed text-text-secondary">
+                      <p className={round1RelationDetailClassName}>
                         <Round1LookupText
                           text={detailText}
                           targetWords={targetWords}

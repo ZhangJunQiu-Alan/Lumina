@@ -9,6 +9,7 @@ import {
   AlertCircle,
   Loader2,
   LogOut,
+  RefreshCw,
   Settings,
 } from 'lucide-react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
@@ -66,8 +67,10 @@ const SettingsView = lazy(() => import('./components/settings/SettingsView').the
 const LearningEngine = lazy(() => import('./components/learning/LearningEngine').then(m => ({ default: m.LearningEngine })));
 const ArticleView = lazy(() => import('./components/learning/ArticleView').then(m => ({ default: m.ArticleView })));
 
-const ARTICLE_RETRY_DELAYS_MS = [3000, 6000, 12000, 30000];
+const ARTICLE_RETRY_DELAY_MS = 3000;
+const ARTICLE_MAX_RETRY_ATTEMPTS = 3;
 const ARTICLE_REQUEST_TIMEOUT_MS = 60000;
+const ARTICLE_RETRY_EXHAUSTED_MESSAGE = '文章生成失败，已自动重试 3 次。';
 
 interface ArticleGenerationJob {
   key: string;
@@ -77,6 +80,7 @@ interface ArticleGenerationJob {
   inFlight: boolean;
   timerId: ReturnType<typeof setTimeout> | null;
   controller: AbortController | null;
+  exhausted: boolean;
 }
 
 function AmbientBackground() {
@@ -199,10 +203,6 @@ function parsePersistedArticleContent(content: string | null | undefined) {
   }
 }
 
-function getArticleRetryDelay(attempt: number) {
-  return ARTICLE_RETRY_DELAYS_MS[Math.min(attempt, ARTICLE_RETRY_DELAYS_MS.length - 1)];
-}
-
 function buildEmptyStats(): UserStats {
   const timeZone = resolveBrowserTimeZone();
   const todayParts = new Intl.DateTimeFormat('en-CA', {
@@ -259,6 +259,7 @@ export default function App() {
   const [activeLearningGroupId, setActiveLearningGroupId] = useState<string | null>(null);
   const [activeSessionSeed, setActiveSessionSeed] = useState<PersistedLearningSession | null>(null);
   const [articleSentences, setArticleSentences] = useState<ArticleSentence[] | null>(null);
+  const [articleGenerationError, setArticleGenerationError] = useState('');
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [reviewSummary, setReviewSummary] = useState<ReviewSummaryItem[]>([]);
   const [sessionStartError, setSessionStartError] = useState('');
@@ -336,6 +337,7 @@ export default function App() {
       setActiveSessionSeed(null);
       setReviewSummary([]);
       setArticleSentences(null);
+      setArticleGenerationError('');
       setRound('round1');
     }
   }, [cancelArticleGeneration, user]);
@@ -347,6 +349,7 @@ export default function App() {
     setActiveLearningGroupId(null);
     setActiveSessionSeed(null);
     setArticleSentences(null);
+    setArticleGenerationError('');
     setRound('round1');
   }, [cancelArticleGeneration]);
 
@@ -364,11 +367,19 @@ export default function App() {
       cancelArticleGeneration(groupId);
       if (activeLearningGroupIdRef.current === groupId) {
         setArticleSentences(cachedArticle);
+        setArticleGenerationError('');
       }
       return cachedArticle;
     }
 
     const currentJob = articleGenerationRef.current;
+    if (currentJob?.key === generationKey && currentJob.exhausted) {
+      if (activeLearningGroupIdRef.current === groupId) {
+        setArticleGenerationError(ARTICLE_RETRY_EXHAUSTED_MESSAGE);
+      }
+      return null;
+    }
+
     if (currentJob?.key === generationKey && (currentJob.inFlight || currentJob.timerId)) {
       return null;
     }
@@ -387,7 +398,9 @@ export default function App() {
       inFlight: true,
       timerId: null,
       controller: null,
+      exhausted: false,
     };
+    setArticleGenerationError('');
 
     const isCurrentJob = () => (
       articleGenerationRef.current?.key === generationKey
@@ -399,6 +412,7 @@ export default function App() {
       setCachedArticle(groupId, words, sentences);
       if (activeLearningGroupIdRef.current === groupId) {
         setArticleSentences(sentences);
+        setArticleGenerationError('');
       }
       articleGenerationRef.current = null;
     };
@@ -407,7 +421,17 @@ export default function App() {
       const current = articleGenerationRef.current;
       if (!current || current.key !== generationKey || current.runId !== runId) return;
 
-      const delay = getArticleRetryDelay(current.attempt);
+      if (current.attempt >= ARTICLE_MAX_RETRY_ATTEMPTS) {
+        current.inFlight = false;
+        current.timerId = null;
+        current.controller = null;
+        current.exhausted = true;
+        if (activeLearningGroupIdRef.current === groupId) {
+          setArticleGenerationError(ARTICLE_RETRY_EXHAUSTED_MESSAGE);
+        }
+        return;
+      }
+
       current.inFlight = false;
       current.attempt += 1;
       current.timerId = setTimeout(() => {
@@ -415,7 +439,7 @@ export default function App() {
         if (!scheduled || scheduled.key !== generationKey || scheduled.runId !== runId) return;
         scheduled.timerId = null;
         void ensureArticleForGroup(groupId, words);
-      }, delay);
+      }, ARTICLE_RETRY_DELAY_MS);
     };
 
     try {
@@ -500,6 +524,7 @@ export default function App() {
       };
 
       setReviewSummary([]);
+      setArticleGenerationError('');
       setActiveWords(words);
       activeLearningGroupIdRef.current = groupId;
       setActiveLearningGroupId(groupId);
@@ -843,6 +868,15 @@ export default function App() {
     void fetchStats();
   };
 
+  const handleRetryArticleGeneration = useCallback(() => {
+    if (!activeLearningGroupId || activeWords.length === 0) return;
+
+    cancelArticleGeneration(activeLearningGroupId);
+    setArticleGenerationError('');
+    setArticleSentences(null);
+    void ensureArticleForGroup(activeLearningGroupId, activeWords);
+  }, [activeLearningGroupId, activeWords, cancelArticleGeneration, ensureArticleForGroup]);
+
   const handleSignOut = async () => {
     resetActiveLearningState();
     setReviewSummary([]);
@@ -873,6 +907,7 @@ export default function App() {
       || !learningPreferences.reinforcementArticleEnabled
       || !activeLearningGroupId
       || activeWords.length === 0
+      || articleGenerationError
       || (round !== 'round3' && round !== 'article')
       || (round === 'article' && articleSentences !== null)
     ) {
@@ -883,6 +918,7 @@ export default function App() {
   }, [
     activeLearningGroupId,
     activeWords,
+    articleGenerationError,
     articleSentences,
     ensureArticleForGroup,
     learningPreferences.reinforcementArticleEnabled,
@@ -1086,14 +1122,36 @@ export default function App() {
                     element={activeWords.length === 0 ? sessionEmptyState : (
                       round === 'article' ? (
                         articleSentences === null ? (
-                          <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            className="glass p-16 rounded-apple-lg shadow-2xl flex flex-col items-center gap-6"
-                          >
-                            <Loader2 className="w-10 h-10 text-apple-green animate-spin" />
-                            <p className="font-black text-xl">正在生成收尾文章，失败会自动重试</p>
-                          </motion.div>
+                          articleGenerationError ? (
+                            <motion.div
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              className="glass p-16 rounded-apple-lg shadow-2xl flex flex-col items-center gap-6 text-center"
+                            >
+                              <AlertCircle className="h-10 w-10 text-apple-red" />
+                              <div>
+                                <p className="font-black text-xl text-text-primary">文章生成失败</p>
+                                <p className="mt-2 text-sm font-bold text-text-secondary">{articleGenerationError}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={handleRetryArticleGeneration}
+                                className="flex items-center justify-center gap-2 rounded-2xl bg-apple-blue px-6 py-3.5 text-sm font-black text-white shadow-lg shadow-apple-blue/20 transition-transform active:scale-95"
+                              >
+                                <RefreshCw className="h-4 w-4" />
+                                重新生成
+                              </button>
+                            </motion.div>
+                          ) : (
+                            <motion.div
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              className="glass p-16 rounded-apple-lg shadow-2xl flex flex-col items-center gap-6"
+                            >
+                              <Loader2 className="w-10 h-10 text-apple-green animate-spin" />
+                              <p className="font-black text-xl">正在生成收尾文章，失败后会自动重试 3 次</p>
+                            </motion.div>
+                          )
                         ) : (
                           <ArticleView sentences={articleSentences} words={activeWords} onFinish={handleRoundComplete} />
                         )
