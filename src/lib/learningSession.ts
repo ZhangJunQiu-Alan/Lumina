@@ -116,6 +116,69 @@ export function createInitialLearningSession(
   };
 }
 
+function latestIso(left: string | null | undefined, right: string | null | undefined) {
+  if (!left) return right ?? null;
+  if (!right) return left;
+
+  const leftTime = Date.parse(left);
+  const rightTime = Date.parse(right);
+  if (Number.isNaN(leftTime)) return right;
+  if (Number.isNaN(rightTime)) return left;
+  return rightTime > leftTime ? right : left;
+}
+
+export function reconcileSessionWithRound2History(
+  session: PersistedLearningSession,
+  words: Word[],
+  input: {
+    correctWordIds: string[];
+    lastAttemptAt?: string | null;
+  },
+): PersistedLearningSession {
+  if (
+    session.groupCompleted
+    || isReinforcementRound(session.round)
+    || input.correctWordIds.length === 0
+    || words.length === 0
+  ) {
+    return normalizePersistedLearningSession(session, words);
+  }
+
+  const correctWordIds = new Set(input.correctWordIds);
+  const wordIds = words.map((word) => word.id);
+  const hasRelevantAttempt = wordIds.some((wordId) => correctWordIds.has(wordId));
+  if (!hasRelevantAttempt) {
+    return normalizePersistedLearningSession(session, words);
+  }
+
+  const firstPendingIndex = wordIds.findIndex((wordId) => !correctWordIds.has(wordId));
+  const lastActiveAt = latestIso(session.lastActiveAt, input.lastAttemptAt) ?? session.lastActiveAt;
+
+  if (firstPendingIndex === -1) {
+    return normalizePersistedLearningSession({
+      ...session,
+      round: 'round3',
+      currentIndex: 0,
+      queueWordIds: wordIds,
+      passedQueueIndices: [],
+      lastActiveAt,
+      groupCompleted: true,
+      completedAt: session.completedAt ?? input.lastAttemptAt ?? lastActiveAt,
+    }, words);
+  }
+
+  return normalizePersistedLearningSession({
+    ...session,
+    round: 'round2',
+    currentIndex: firstPendingIndex,
+    queueWordIds: wordIds,
+    passedQueueIndices: wordIds
+      .slice(0, firstPendingIndex)
+      .map((_, index) => index),
+    lastActiveAt,
+  }, words);
+}
+
 export function createResumeCandidate(
   input: Omit<ResumeCandidate, 'queueLength'>,
 ): ResumeCandidate {

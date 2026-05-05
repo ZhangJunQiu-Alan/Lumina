@@ -6,6 +6,7 @@ import {
   isCoreLearningComplete,
   normalizePersistedLearningSession,
   normalizeSessionQueueWordIds,
+  reconcileSessionWithRound2History,
   rebuildSessionQueue,
 } from '../src/lib/learningSession.js';
 import {
@@ -138,6 +139,42 @@ const candidate = createResumeCandidate({
 });
 assert.equal(candidate.currentIndex, 0);
 assert.equal(candidate.queueLength, 2);
+
+const reconciledRound2 = reconcileSessionWithRound2History({
+  groupId: 'g-stale',
+  round: 'round1',
+  currentIndex: 1,
+  queueWordIds: ['w1', 'w2', 'w3'],
+  passedQueueIndices: [0],
+  lastActiveAt: '2026-04-18T00:00:00.000Z',
+  groupCompleted: false,
+  completedAt: null,
+}, words, {
+  correctWordIds: ['w1', 'w2'],
+  lastAttemptAt: '2026-04-18T00:05:00.000Z',
+});
+assert.equal(reconciledRound2.round, 'round2');
+assert.equal(reconciledRound2.currentIndex, 2);
+assert.deepEqual(reconciledRound2.queueWordIds, ['w1', 'w2', 'w3']);
+assert.deepEqual(reconciledRound2.passedQueueIndices, [0, 1]);
+assert.equal(reconciledRound2.lastActiveAt, '2026-04-18T00:05:00.000Z');
+
+const reconciledComplete = reconcileSessionWithRound2History({
+  groupId: 'g-complete-stale',
+  round: 'round1',
+  currentIndex: 2,
+  queueWordIds: ['w1', 'w2', 'w3'],
+  passedQueueIndices: [0, 1],
+  lastActiveAt: '2026-04-18T00:00:00.000Z',
+  groupCompleted: false,
+  completedAt: null,
+}, words, {
+  correctWordIds: ['w1', 'w2', 'w3'],
+  lastAttemptAt: '2026-04-18T00:10:00.000Z',
+});
+assert.equal(reconciledComplete.round, 'round3');
+assert.equal(reconciledComplete.groupCompleted, true);
+assert.equal(reconciledComplete.completedAt, '2026-04-18T00:10:00.000Z');
 
 assert.deepEqual(
   resolveActuallyLearnedWordIds({

@@ -26,6 +26,7 @@ import {
   normalizePersistedLearningSession,
   normalizeSessionPassedQueueIndices,
   normalizeSessionQueueWordIds,
+  reconcileSessionWithRound2History,
 } from './learningSession';
 
 interface LearningGroupSessionRow {
@@ -51,6 +52,18 @@ interface LearningGroupBaseRow {
   created_at: string;
   status: 'active' | 'completed' | null;
   completed_at: string | null;
+}
+
+interface LearningGroupStaleGuardRow {
+  status: 'active' | 'completed' | null;
+  completed_at: string | null;
+  session_round: LearningRoundType | null;
+}
+
+interface GroupRound2AttemptRow {
+  vocabulary_item_id: string;
+  was_correct: boolean;
+  created_at: string;
 }
 
 interface VocabularySenseRow {
@@ -719,7 +732,7 @@ export async function fetchLearningGroupSession(
           )
         )
       `;
-  const [groupData, wordResult, articleResult] = await Promise.all([
+  const [groupData, wordResult, articleResult, round2AttemptResult] = await Promise.all([
     fetchLearningGroupRow(userId, groupId),
     supabase
       .from('learning_group_words')
@@ -732,6 +745,14 @@ export async function fetchLearningGroupSession(
       .eq('user_id', userId)
       .eq('learning_group_id', groupId)
       .maybeSingle(),
+    supabase
+      .from('review_events')
+      .select('vocabulary_item_id, was_correct, created_at')
+      .eq('user_id', userId)
+      .eq('learning_group_id', groupId)
+      .eq('source', 'round2')
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true }),
   ]);
 
   if (!groupData) {
@@ -759,25 +780,120 @@ export async function fetchLearningGroupSession(
   if (articleResult.error) {
     throw new Error(`generated_articles lookup failed: ${articleResult.error.message}`);
   }
+  if (round2AttemptResult.error) {
+    throw new Error(`review_events lookup failed: ${round2AttemptResult.error.message}`);
+  }
 
   const words = wordRows
     .map(mapGroupWord)
     .filter((word): word is Word => Boolean(word));
   const group = groupData;
   const article = articleResult.data?.content ?? null;
+  const round2Attempts = (round2AttemptResult.data ?? []) as GroupRound2AttemptRow[];
+  const correctWordIds = round2Attempts
+    .filter((attempt) => attempt.was_correct)
+    .map((attempt) => attempt.vocabulary_item_id);
+  const lastRound2AttemptAt = round2Attempts.at(-1)?.created_at ?? null;
+  const session = toPersistedLearningSession(group, words, article);
 
   return {
     groupTitle: resolveGroupTitle(group),
     words,
-    session: toPersistedLearningSession(group, words, article),
+    session: session
+      ? reconcileSessionWithRound2History(session, words, {
+          correctWordIds,
+          lastAttemptAt: lastRound2AttemptAt,
+        })
+      : null,
   };
 }
 
+const SESSION_ROUND_RANK: Record<LearningRoundType, number> = {
+  round1: 1,
+  round2: 2,
+  round3: 3,
+  article: 4,
+};
+
+async function shouldSkipStaleSessionPersist(userId: string, session: PersistedLearningSession) {
+  const currentResult = await supabase
+    .from('learning_groups')
+    .select('status, completed_at, session_round')
+    .eq('id', session.groupId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (currentResult.error) {
+    if (isMissingLearningSessionColumnError(currentResult.error)) {
+      return false;
+    }
+
+    throw new Error(`learning_groups stale guard failed: ${currentResult.error.message}`);
+  }
+
+  const current = currentResult.data as LearningGroupStaleGuardRow | null;
+  const currentRound = current?.session_round;
+  if (!current || !isLearningRoundType(currentRound)) {
+    return false;
+  }
+
+  const currentCompleted = isCoreLearningComplete({
+    status: current.status,
+    completedAt: current.completed_at,
+    sessionRound: currentRound,
+  });
+  if (currentCompleted && !session.groupCompleted) {
+    return true;
+  }
+
+  if (SESSION_ROUND_RANK[currentRound] > SESSION_ROUND_RANK[session.round]) {
+    return true;
+  }
+
+  if (session.round !== 'round1') {
+    return false;
+  }
+
+  const round2EventsResult = await supabase
+    .from('review_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('learning_group_id', session.groupId)
+    .eq('source', 'round2');
+
+  if (round2EventsResult.error) {
+    throw new Error(`review_events stale guard failed: ${round2EventsResult.error.message}`);
+  }
+
+  return (round2EventsResult.count ?? 0) > 0;
+}
+
+function staleSafeSessionRoundFilter(session: PersistedLearningSession) {
+  if (session.groupCompleted) {
+    return null;
+  }
+
+  switch (session.round) {
+    case 'round1':
+      return 'session_round.is.null,session_round.eq.round1';
+    case 'round2':
+      return 'session_round.is.null,session_round.eq.round1,session_round.eq.round2';
+    default:
+      return null;
+  }
+}
+
 export async function persistLearningGroupSession(userId: string, session: PersistedLearningSession) {
+  if (await shouldSkipStaleSessionPersist(userId, session)) {
+    console.warn(`Skipped stale learning session snapshot for group ${session.groupId} at ${session.round}`);
+    return;
+  }
+
+  const staleSafeFilter = staleSafeSessionRoundFilter(session);
   const completedAt = session.groupCompleted
     ? session.completedAt ?? new Date().toISOString()
     : null;
-  const { error } = await supabase
+  let updateQuery = supabase
     .from('learning_groups')
     .update({
       status: session.groupCompleted ? 'completed' : 'active',
@@ -794,13 +910,18 @@ export async function persistLearningGroupSession(userId: string, session: Persi
     })
     .eq('id', session.groupId)
     .eq('user_id', userId);
+  if (staleSafeFilter) {
+    updateQuery = updateQuery.or(staleSafeFilter).is('completed_at', null);
+  }
+
+  const { error } = await updateQuery;
 
   if (!error) {
     return;
   }
 
   if (isMissingPassedQueueIndicesColumnError(error)) {
-    const legacySessionResult = await supabase
+    let legacySessionQuery = supabase
       .from('learning_groups')
       .update({
         status: session.groupCompleted ? 'completed' : 'active',
@@ -812,6 +933,11 @@ export async function persistLearningGroupSession(userId: string, session: Persi
       })
       .eq('id', session.groupId)
       .eq('user_id', userId);
+    if (staleSafeFilter) {
+      legacySessionQuery = legacySessionQuery.or(staleSafeFilter).is('completed_at', null);
+    }
+
+    const legacySessionResult = await legacySessionQuery;
 
     if (!legacySessionResult.error) {
       return;
@@ -825,7 +951,7 @@ export async function persistLearningGroupSession(userId: string, session: Persi
   }
 
   if (isMissingLearningSessionColumnError(error)) {
-    const fallbackResult = await supabase
+    let fallbackQuery = supabase
       .from('learning_groups')
       .update({
         status: session.groupCompleted ? 'completed' : 'active',
@@ -833,6 +959,11 @@ export async function persistLearningGroupSession(userId: string, session: Persi
       })
       .eq('id', session.groupId)
       .eq('user_id', userId);
+    if (staleSafeFilter) {
+      fallbackQuery = fallbackQuery.is('completed_at', null);
+    }
+
+    const fallbackResult = await fallbackQuery;
 
     if (!fallbackResult.error) {
       return;

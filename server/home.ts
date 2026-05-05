@@ -78,7 +78,9 @@ export interface HomeOverviewPayload {
 interface ReviewEventRow {
   id: string;
   vocabulary_item_id: string;
+  learning_group_id: string | null;
   source: 'round2' | 'review' | null;
+  was_correct: boolean | null;
   next_state: string | null;
   next_review_at: string | null;
   created_at: string;
@@ -121,6 +123,11 @@ interface DailyRoutineProgressRow {
 interface ReconstructedWordState {
   memoryState: string;
   nextReviewAt: string | null;
+}
+
+interface Round2GroupProgress {
+  correctWordIds: Set<string>;
+  lastAttemptAt: string | null;
 }
 
 interface DailySummary {
@@ -229,6 +236,17 @@ function normalizeSessionQueueWordIds(value: unknown) {
   return value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0);
 }
 
+function latestIso(left: string | null | undefined, right: string | null | undefined) {
+  if (!left) return right ?? null;
+  if (!right) return left;
+
+  const leftTime = Date.parse(left);
+  const rightTime = Date.parse(right);
+  if (Number.isNaN(leftTime)) return right;
+  if (Number.isNaN(rightTime)) return left;
+  return rightTime > leftTime ? right : left;
+}
+
 function isLearningRoundType(value: unknown): value is LearningRoundType {
   return typeof value === 'string' && LEARNING_ROUNDS.has(value as LearningRoundType);
 }
@@ -289,6 +307,73 @@ function buildResumeCandidate(row: LearningGroupRow): ResumeCandidatePayload | n
     groupTitle: resolveGroupTitle(row.group_name),
     createdAt: row.created_at,
     queueLength,
+  };
+}
+
+function buildRound2ProgressByGroupId(reviewEvents: ReviewEventRow[]) {
+  const progressByGroupId = new Map<string, Round2GroupProgress>();
+
+  for (const event of reviewEvents) {
+    if (event.source !== 'round2' || !event.learning_group_id) continue;
+
+    const progress = progressByGroupId.get(event.learning_group_id) ?? {
+      correctWordIds: new Set<string>(),
+      lastAttemptAt: null,
+    };
+
+    if (event.was_correct) {
+      progress.correctWordIds.add(event.vocabulary_item_id);
+    }
+    progress.lastAttemptAt = latestIso(progress.lastAttemptAt, event.created_at);
+    progressByGroupId.set(event.learning_group_id, progress);
+  }
+
+  return progressByGroupId;
+}
+
+function reconcileLearningGroupWithRound2History(
+  group: LearningGroupRow,
+  progress: Round2GroupProgress | undefined,
+): LearningGroupRow {
+  if (
+    !progress
+    || progress.correctWordIds.size === 0
+    || isCoreLearningComplete({
+      status: group.status,
+      completedAt: group.completed_at,
+      sessionRound: group.session_round,
+    })
+  ) {
+    return group;
+  }
+
+  const queueWordIds = normalizeSessionQueueWordIds(group.session_queue_word_ids);
+  if (queueWordIds.length === 0 || !queueWordIds.some((wordId) => progress.correctWordIds.has(wordId))) {
+    return group;
+  }
+
+  const lastActiveAt = latestIso(
+    group.session_last_active_at ?? group.created_at,
+    progress.lastAttemptAt,
+  ) ?? group.session_last_active_at;
+  const firstPendingIndex = queueWordIds.findIndex((wordId) => !progress.correctWordIds.has(wordId));
+
+  if (firstPendingIndex === -1) {
+    return {
+      ...group,
+      status: 'completed',
+      completed_at: group.completed_at ?? progress.lastAttemptAt ?? lastActiveAt,
+      session_round: 'round3',
+      session_current_index: 0,
+      session_last_active_at: lastActiveAt,
+    };
+  }
+
+  return {
+    ...group,
+    session_round: 'round2',
+    session_current_index: firstPendingIndex,
+    session_last_active_at: lastActiveAt,
   };
 }
 
@@ -730,7 +815,7 @@ async function fetchReviewEvents(userId: string) {
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await supabaseAdmin
       .from('review_events')
-      .select('id, vocabulary_item_id, source, next_state, next_review_at, created_at')
+      .select('id, vocabulary_item_id, learning_group_id, source, was_correct, next_state, next_review_at, created_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: true })
       .order('id', { ascending: true })
@@ -921,7 +1006,11 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     throw new Error(`review_states due count failed: ${dueCountResult.error.message}`);
   }
 
-  const learningGroupsById = new Map(learningGroups.map((group) => [group.id, group]));
+  const round2ProgressByGroupId = buildRound2ProgressByGroupId(reviewEvents);
+  const reconciledLearningGroups = learningGroups.map((group) =>
+    reconcileLearningGroupWithRound2History(group, round2ProgressByGroupId.get(group.id)),
+  );
+  const learningGroupsById = new Map(reconciledLearningGroups.map((group) => [group.id, group]));
   const reviewWordIdsByDate = new Map<string, Set<string>>();
   const learnedWordIdsByDate = new Map<string, Set<string>>();
   const protectedDates = new Set(
@@ -1000,7 +1089,7 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     });
   }
 
-  const resumeCandidate = [...learningGroups]
+  const resumeCandidate = [...reconciledLearningGroups]
     .filter((group) => isLearningRoundType(group.session_round))
     .sort((left, right) => {
       const leftActive = getLearningGroupActivityTime(left);
@@ -1015,7 +1104,7 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
       Boolean(candidate && isCoreLearningRound(candidate.round) && !candidate.groupCompleted)
     )) ?? null;
 
-  const lastUsedOfficialLibrary = resolveLastUsedOfficialLibrary(learningGroups);
+  const lastUsedOfficialLibrary = resolveLastUsedOfficialLibrary(reconciledLearningGroups);
 
   const routineCard = buildRoutineCard({
     todayReviewCount: dueCountResult.count ?? 0,
