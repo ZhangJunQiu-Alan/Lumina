@@ -13,6 +13,8 @@ import { useLearningPreferences } from '../../contexts/LearningPreferencesContex
 import { useWordPopover } from '../../contexts/WordPopoverContext';
 import { apiFetch } from '../../lib/api';
 import { cancelBrowserSpeech, isBrowserSpeechSupported, speakTextViaBrowser } from '../../lib/browserSpeech';
+import { preloadRound1CardResources } from '../../lib/round1Preload';
+import { fetchWordAudioUrl, primeWordAudioUrl } from '../../lib/wordAudio';
 import { ExampleSentenceList } from '../shared/ExampleSentenceList';
 import {
   cx,
@@ -485,6 +487,7 @@ export const LearningEngine = ({
   const correctReadbackTokenRef = useRef<symbol | null>(null);
   const audioGapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playbackRunIdRef = useRef(0);
+  const lastRound1PreloadKeyRef = useRef<string | null>(null);
   const preferencesRef = useRef(preferences);
   const canPlayExampleAudio = useMemo(() => typeof Audio !== 'undefined' || isBrowserSpeechSupported(), []);
 
@@ -609,13 +612,12 @@ export const LearningEngine = ({
 
   const resolveAudioUrl = useCallback(async (word: Word, locale: PronunciationLocale) => {
     const cachedUrl = locale === 'uk' ? word.audio_uk_url : word.audio_us_url;
-    if (cachedUrl) return cachedUrl;
+    if (cachedUrl) {
+      primeWordAudioUrl(word.word, locale, cachedUrl);
+      return cachedUrl;
+    }
 
-    return apiFetch(`/api/audio/${encodeURIComponent(word.word)}?locale=${locale}`, {
-      requiresAuth: false,
-    })
-      .then((response) => response.ok ? response.json().then((payload: { data: string }) => payload.data) : null)
-      .catch(() => null);
+    return fetchWordAudioUrl(word.word, locale);
   }, []);
 
   const resolveExampleAudioUrl = useCallback(async (sentence: string, locale: PronunciationLocale) => (
@@ -800,6 +802,23 @@ export const LearningEngine = ({
     playAudioSequence,
     stopPlayback,
   ]);
+
+  useEffect(() => {
+    if (type !== 'round1') {
+      lastRound1PreloadKeyRef.current = null;
+      return;
+    }
+
+    const nextRound1Word = queue[currentIndex + 1];
+    if (!nextRound1Word) return;
+
+    const locale = preferences.defaultPronunciationLocale;
+    const preloadKey = `${currentIndex + 1}:${nextRound1Word.id}:${locale}`;
+    if (lastRound1PreloadKeyRef.current === preloadKey) return;
+
+    lastRound1PreloadKeyRef.current = preloadKey;
+    void preloadRound1CardResources(nextRound1Word, locale);
+  }, [currentIndex, preferences.defaultPronunciationLocale, queue, type]);
 
   useEffect(() => {
     if (!roundSource) return;
