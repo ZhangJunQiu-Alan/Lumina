@@ -11,9 +11,10 @@ import {
 } from '../../types';
 import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
 import { useWordPopover } from '../../contexts/WordPopoverContext';
-import { apiFetch } from '../../lib/api';
 import { cancelBrowserSpeech, isBrowserSpeechSupported, speakTextViaBrowser } from '../../lib/browserSpeech';
+import { fetchExampleAudioUrl } from '../../lib/exampleAudio';
 import { preloadRound1CardResources } from '../../lib/round1Preload';
+import { preloadRound2CardResources } from '../../lib/round2Preload';
 import { fetchWordAudioUrl, primeWordAudioUrl } from '../../lib/wordAudio';
 import { ExampleSentenceList } from '../shared/ExampleSentenceList';
 import {
@@ -488,6 +489,7 @@ export const LearningEngine = ({
   const audioGapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playbackRunIdRef = useRef(0);
   const lastRound1PreloadKeyRef = useRef<string | null>(null);
+  const lastRound2PreloadKeyRef = useRef<string | null>(null);
   const preferencesRef = useRef(preferences);
   const canPlayExampleAudio = useMemo(() => typeof Audio !== 'undefined' || isBrowserSpeechSupported(), []);
 
@@ -620,22 +622,10 @@ export const LearningEngine = ({
     return fetchWordAudioUrl(word.word, locale);
   }, []);
 
-  const resolveExampleAudioUrl = useCallback(async (sentence: string, locale: PronunciationLocale) => (
-    apiFetch('/api/example-audio', {
-      method: 'POST',
-      requiresAuth: false,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: sentence, locale }),
-    })
-      .then((response) => (
-        response.ok
-          ? response.json().then((payload: { data?: unknown }) => (
-            typeof payload.data === 'string' ? payload.data : null
-          ))
-          : null
-      ))
-      .catch(() => null)
-  ), []);
+  const resolveExampleAudioUrl = useCallback(
+    (sentence: string, locale: PronunciationLocale) => fetchExampleAudioUrl(sentence, locale),
+    [],
+  );
 
   const waitForGap = useCallback((gapMs: number, runId: number) => (
     new Promise<void>((resolve) => {
@@ -818,6 +808,23 @@ export const LearningEngine = ({
 
     lastRound1PreloadKeyRef.current = preloadKey;
     void preloadRound1CardResources(nextRound1Word, locale);
+  }, [currentIndex, preferences.defaultPronunciationLocale, queue, type]);
+
+  useEffect(() => {
+    if (type !== 'round2') {
+      lastRound2PreloadKeyRef.current = null;
+      return;
+    }
+
+    const nextRound2Word = queue[currentIndex + 1];
+    if (!nextRound2Word) return;
+
+    const locale = preferences.defaultPronunciationLocale;
+    const preloadKey = `${currentIndex + 1}:${nextRound2Word.id}:${locale}`;
+    if (lastRound2PreloadKeyRef.current === preloadKey) return;
+
+    lastRound2PreloadKeyRef.current = preloadKey;
+    void preloadRound2CardResources(nextRound2Word, locale);
   }, [currentIndex, preferences.defaultPronunciationLocale, queue, type]);
 
   useEffect(() => {

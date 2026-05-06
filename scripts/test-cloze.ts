@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { buildClozePrompt, CLOZE_BLANK } from '../src/lib/cloze.js';
+import { normalizeExampleAudioText } from '../src/lib/exampleAudioText.ts';
+import { extractRound2ClickableWords } from '../src/lib/round2ClickableWords.ts';
 
 function sense(example: string, translation = ''): { example_sentence: string; example_translation_zh: string } {
   return { example_sentence: example, example_translation_zh: translation };
@@ -10,14 +12,21 @@ function run() {
   {
     const prompt = buildClozePrompt({
       word: 'abandon',
-      senses: [sense('They decided to abandon the plan.', '他们决定放弃计划。')],
+      senses: [sense('They decided to abandon the plan.', 'translation words stay hidden')],
     });
     assert.ok(prompt);
     assert.equal(prompt.expectedForm, 'abandon');
     assert.equal(prompt.formLabel, '原型');
     assert.equal(prompt.blankedSentence, `They decided to ${CLOZE_BLANK} the plan.`);
-    assert.equal(prompt.translation, '他们决定放弃计划。');
+    assert.equal(prompt.translation, 'translation words stay hidden');
     assert.equal(prompt.senseIndex, 0);
+
+    const clickableWords = new Set(extractRound2ClickableWords(prompt));
+    assert.equal(clickableWords.has('decided'), true);
+    assert.equal(clickableWords.has('plan'), true);
+    assert.equal(clickableWords.has('abandon'), false);
+    assert.equal(clickableWords.has('translation'), false);
+    assert.equal(clickableWords.has('hidden'), false);
   }
 
   // -ed past tense (regular)
@@ -107,6 +116,7 @@ function run() {
     assert.ok(prompt);
     assert.equal(prompt.expectedForm, 'abandoned');
     assert.equal(prompt.blankedSentence, `They ${CLOZE_BLANK} the ship at dawn.`);
+    assert.equal(normalizeExampleAudioText('They **abandoned**   the ship at dawn.'), 'They abandoned the ship at dawn.');
   }
 
   // All occurrences replaced
