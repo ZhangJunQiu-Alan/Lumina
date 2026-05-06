@@ -485,11 +485,17 @@ export const LearningEngine = ({
     const currentIndex = hasMatchingSession
       ? Math.min(Math.max(initialSession.currentIndex, 0), Math.max(queue.length - 1, 0))
       : 0;
-    const initialPassedQueueIndices = hasMatchingSession
+    const normalizedPassedQueueIndices = hasMatchingSession
       ? Array.from(new Set(initialSession.passedQueueIndices ?? []))
           .filter((index) => Number.isInteger(index) && index >= 0 && index < currentIndex && index < queue.length)
           .sort((left, right) => left - right)
       : [];
+    const initialPassedQueueIndices = hasMatchingSession
+      && type === 'round3'
+      && normalizedPassedQueueIndices.length === 0
+      && currentIndex > 0
+      ? Array.from({ length: currentIndex }, (_, index) => index)
+      : normalizedPassedQueueIndices;
 
     // Words before currentIndex that are NOT re-queued later are truly completed.
     // Wrong answers get re-inserted after currentIndex, so prefix ∩ suffix = still pending.
@@ -656,7 +662,7 @@ export const LearningEngine = ({
 
     setPlaybackTarget(target);
 
-    return speakTextViaBrowser(text, locale).finally(() => {
+    return speakTextViaBrowser(text, locale, preferencesRef.current.speechPlaybackRate).finally(() => {
       if (runId === playbackRunIdRef.current) {
         setPlaybackTarget(null);
       }
@@ -709,6 +715,9 @@ export const LearningEngine = ({
     await new Promise<void>((resolve) => {
       const audio = new Audio(resolvedUrl);
       let settled = false;
+      const playbackRate = preferencesRef.current.speechPlaybackRate;
+      audio.defaultPlaybackRate = playbackRate;
+      audio.playbackRate = playbackRate;
 
       const finish = () => {
         if (settled) return;
@@ -784,6 +793,9 @@ export const LearningEngine = ({
     await new Promise<void>((resolve) => {
       const audio = new Audio(resolvedUrl);
       let settled = false;
+      const playbackRate = preferencesRef.current.speechPlaybackRate;
+      audio.defaultPlaybackRate = playbackRate;
+      audio.playbackRate = playbackRate;
 
       const finish = () => {
         if (settled) return;
@@ -885,7 +897,7 @@ export const LearningEngine = ({
   }, [currentIndex, roundSource]);
 
   useEffect(() => {
-    if (type === 'round3') return;
+    if (type === 'article') return;
     const canViewIndex = viewIndex === currentIndex || passedQueueIndices.has(viewIndex);
     if (!canViewIndex || viewIndex >= queue.length) {
       setViewIndex(currentIndex);
@@ -932,7 +944,7 @@ export const LearningEngine = ({
   }, [clearAnswerRevealTimeout, onComplete, stopPlayback]);
 
   const navigableQueueIndices = useMemo(() => {
-    if (type === 'round3' || !currentWord) return [];
+    if (type === 'article' || !currentWord) return [];
 
     const indices = new Set<number>();
     for (const index of passedQueueIndicesArray) {
@@ -945,7 +957,7 @@ export const LearningEngine = ({
     return [...indices].sort((left, right) => left - right);
   }, [currentIndex, currentWord, passedQueueIndicesArray, queue, type]);
   const currentNavigationSlot = navigableQueueIndices.indexOf(viewIndex);
-  const isCardNavigationLocked = showAnswer || isSubmittingAttempt || type === 'round3';
+  const isCardNavigationLocked = showAnswer || isSubmittingAttempt;
   const canNavigateLeft = !isCardNavigationLocked && currentNavigationSlot > 0;
   const canNavigateRight = !isCardNavigationLocked
     && currentNavigationSlot >= 0
@@ -1034,13 +1046,16 @@ export const LearningEngine = ({
   }, [currentWord.id, initialSession?.groupId, roundSource]);
 
   const handleRound3PrimaryAction = useCallback(() => {
+    if (isViewingHistory) return;
+
     if (!showAnswer) {
       setShowAnswer(true);
       return;
     }
 
+    markCurrentQueueIndexPassed();
     nextWord();
-  }, [showAnswer, nextWord]);
+  }, [isViewingHistory, markCurrentQueueIndexPassed, showAnswer, nextWord]);
 
   const validateCurrentInput = useCallback(async () => {
     // 防止重复提交
@@ -1133,7 +1148,7 @@ export const LearningEngine = ({
   }, [handleRound3PrimaryAction, type]);
 
   useEffect(() => {
-    if (type === 'round3' || type === 'article') return;
+    if (type === 'article') return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.repeat || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
@@ -1322,6 +1337,9 @@ export const LearningEngine = ({
       <ChevronRight className="h-5 w-5" strokeWidth={2.8} />
     </button>
   );
+  const shouldShowRound3Answer = isViewingHistory || showAnswer;
+  const round3ExampleSentence = viewedWord.example_sentences[0] ?? '';
+  const round3ExampleKey = `${viewedWord.id}:${viewIndex}:round3-example-0`;
 
   if (type === 'round3') {
     return (
@@ -1330,79 +1348,91 @@ export const LearningEngine = ({
           <RoundIndicator type={type} className="min-w-0 flex-1" />
           {sessionActions}
         </div>
-        <motion.div
-          key={currentWord.id + currentIndex}
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="w-full flex flex-1 min-h-0 flex-col items-center justify-center py-6 sm:min-h-[500px]"
-        >
-          <motion.div
-            initial={{ y: -10, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            className="flex items-center gap-2 mb-8"
-          >
-            <span className="bg-apple-teal text-white px-4 py-1 rounded-lg text-sm font-bold shadow-sm">
-              {currentWord.phonetic}
-            </span>
-            {(['uk', 'us'] as const).map(loc => (
-              <button
-                key={loc}
-                type="button"
-                onClick={() => { setAudioLocale(loc); void playAudioSequence(currentWord, loc, 1, 0); }}
-                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold transition-all ${
-                  audioLocale === loc
-                    ? 'bg-apple-teal text-white shadow-sm'
-                    : 'bg-apple-teal/10 text-apple-teal hover:bg-apple-teal/20'
-                }`}
-              >
-                {activePronunciationLocale === loc
-                  ? <Loader2 className="w-3 h-3 animate-spin" />
-                  : <Volume2 className="w-3 h-3" />}
-                {loc.toUpperCase()}
-              </button>
-            ))}
-          </motion.div>
-
-          <div className="text-7xl font-black text-text-primary mb-4">{currentWord.word}</div>
-          <div className="text-sm font-bold text-text-secondary uppercase tracking-widest mb-8">
-            {currentWord.pos_tags[0]}
+        <div className="grid w-full flex-1 min-h-0 grid-cols-[minmax(0,1fr)] items-stretch gap-2 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-3">
+          <div className="hidden items-center sm:flex">
+            {leftNavigationButton}
           </div>
 
-          <AnimatePresence>
-            {showAnswer && (
-              <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="mt-4 text-center"
-              >
-                <div className="[&_span]:bg-black/5">
-                  <WordSenseList word={currentWord} centered />
-                </div>
-                {currentWord.example_sentences[0] && (
-                  <div className="mx-auto mt-4 w-full max-w-xl">
-                    <ExampleSentenceList
-                      items={[{
-                        key: `${currentWord.id}-round3-example-0`,
-                        sentence: currentWord.example_sentences[0],
-                      }]}
-                      locale={audioLocale}
-                      activeExampleKey={activeExampleKey}
-                      canPlayAudio={canPlayExampleAudio}
-                      onPlayExample={({ sentence, key }) => { void playExampleSentence(sentence, key); }}
-                      emptyMessage="这个词目前还没有例句。"
-                      variant="inline"
-                    />
-                  </div>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <motion.div
+            key={`${viewedWord.id}:${viewIndex}`}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full flex min-h-0 flex-col items-center justify-center py-6 sm:min-h-[500px]"
+          >
+            <motion.div
+              initial={{ y: -10, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              className="flex items-center gap-2 mb-8"
+            >
+              <span className="bg-apple-teal text-white px-4 py-1 rounded-lg text-sm font-bold shadow-sm">
+                {viewedWord.phonetic}
+              </span>
+              {(['uk', 'us'] as const).map(loc => (
+                <button
+                  key={loc}
+                  type="button"
+                  onClick={() => { setAudioLocale(loc); void playAudioSequence(viewedWord, loc, 1, 0); }}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold transition-all ${
+                    audioLocale === loc
+                      ? 'bg-apple-teal text-white shadow-sm'
+                      : 'bg-apple-teal/10 text-apple-teal hover:bg-apple-teal/20'
+                  }`}
+                >
+                  {activePronunciationLocale === loc
+                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                    : <Volume2 className="w-3 h-3" />}
+                  {loc.toUpperCase()}
+                </button>
+              ))}
+            </motion.div>
 
-          {!showAnswer && (
-            <p className="text-text-secondary/40 text-sm mt-8">先自己判断，再决定要不要展开答案。</p>
-          )}
-        </motion.div>
+            <div className="mb-4 max-w-full text-center text-6xl font-black leading-tight text-text-primary sm:text-7xl [overflow-wrap:anywhere]">
+              {viewedWord.word}
+            </div>
+            <div className="text-sm font-bold text-text-secondary uppercase tracking-widest mb-8">
+              {viewedWord.pos_tags[0]}
+            </div>
+
+            <AnimatePresence>
+              {shouldShowRound3Answer && (
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="mt-4 text-center"
+                >
+                  <div className="[&_span]:bg-black/5">
+                    <WordSenseList word={viewedWord} centered />
+                  </div>
+                  {round3ExampleSentence && (
+                    <div className="mx-auto mt-4 w-full max-w-xl">
+                      <ExampleSentenceList
+                        items={[{
+                          key: round3ExampleKey,
+                          sentence: round3ExampleSentence,
+                        }]}
+                        locale={audioLocale}
+                        activeExampleKey={activeExampleKey}
+                        canPlayAudio={canPlayExampleAudio}
+                        onPlayExample={({ sentence, key }) => { void playExampleSentence(sentence, key); }}
+                        emptyMessage="这个词目前还没有例句。"
+                        variant="inline"
+                      />
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {!shouldShowRound3Answer && (
+              <p className="text-text-secondary/40 text-sm mt-8">先自己判断，再决定要不要展开答案。</p>
+            )}
+          </motion.div>
+
+          <div className="hidden items-center sm:flex">
+            {rightNavigationButton}
+          </div>
+        </div>
 
         {renderProgressBar(displayProgressIndex, initialUniqueCount)}
 
@@ -1410,9 +1440,10 @@ export const LearningEngine = ({
           <button
             type="button"
             onClick={handleRound3PrimaryAction}
-            className="w-full py-4 bg-apple-blue text-white font-bold rounded-2xl flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] transition-all"
+            disabled={isViewingHistory}
+            className="w-full py-4 bg-apple-blue text-white font-bold rounded-2xl flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
           >
-            {showAnswer ? '继续下一个词' : '展开释义'}
+            {isViewingHistory ? '回看中' : showAnswer ? '继续下一个词' : '展开释义'}
             <ChevronRight className="w-5 h-5" />
           </button>
         </div>

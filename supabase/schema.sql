@@ -215,6 +215,7 @@ CREATE TABLE IF NOT EXISTS daily_routine_progress (
 CREATE TABLE IF NOT EXISTS user_settings (
   user_id                        TEXT PRIMARY KEY,
   default_pronunciation_locale   TEXT NOT NULL DEFAULT 'uk',
+  speech_playback_rate           NUMERIC(2,1) NOT NULL DEFAULT 1.0,
   auto_play_enabled              BOOLEAN NOT NULL DEFAULT true,
   auto_play_repeat_count         INTEGER NOT NULL DEFAULT 3,
   auto_play_repeat_gap_ms        INTEGER NOT NULL DEFAULT 1500,
@@ -225,6 +226,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
   popover_auto_play_enabled      BOOLEAN NOT NULL DEFAULT false,
   updated_at                     TIMESTAMPTZ DEFAULT NOW(),
   CHECK (default_pronunciation_locale IN ('uk', 'us')),
+  CHECK (speech_playback_rate IN (0.6, 0.8, 1.0)),
   CHECK (auto_play_repeat_count IN (1, 2, 3)),
   CHECK (auto_play_repeat_gap_ms IN (1000, 1500, 2500)),
   CHECK (correct_answer_reveal_ms IN (800, 1000, 1500, 2000)),

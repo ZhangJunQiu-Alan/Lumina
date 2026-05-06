@@ -1,9 +1,10 @@
 import { supabase } from './supabase';
-import type { LearningPreferences, PronunciationLocale } from '../types';
+import type { LearningPreferences, PronunciationLocale, SpeechPlaybackRate } from '../types';
 
 interface LearningPreferencesRow {
   user_id: string;
   default_pronunciation_locale: PronunciationLocale;
+  speech_playback_rate: number;
   auto_play_enabled: boolean;
   auto_play_repeat_count: number;
   auto_play_repeat_gap_ms: number;
@@ -17,6 +18,7 @@ interface LearningPreferencesRow {
 
 export const LEARNING_PREFERENCES_DEFAULTS: LearningPreferences = {
   defaultPronunciationLocale: 'uk',
+  speechPlaybackRate: 1,
   autoPlayEnabled: true,
   autoPlayRepeatCount: 3,
   autoPlayRepeatGapMs: 1500,
@@ -27,6 +29,7 @@ export const LEARNING_PREFERENCES_DEFAULTS: LearningPreferences = {
   popoverAutoPlayEnabled: false,
 };
 
+export const SPEECH_PLAYBACK_RATE_OPTIONS = [0.6, 0.8, 1] as const;
 export const AUTO_PLAY_REPEAT_OPTIONS = [1, 2, 3] as const;
 export const AUTO_PLAY_GAP_OPTIONS = [1000, 1500, 2500] as const;
 export const CORRECT_ANSWER_REVEAL_OPTIONS = [800, 1000, 1500, 2000] as const;
@@ -41,6 +44,12 @@ function isValidLocale(value: unknown): value is PronunciationLocale {
 function normalizeRepeatCount(value: unknown): 1 | 2 | 3 {
   if (value === 1 || value === 2 || value === 3) return value;
   return LEARNING_PREFERENCES_DEFAULTS.autoPlayRepeatCount;
+}
+
+function normalizeSpeechPlaybackRate(value: unknown): SpeechPlaybackRate {
+  const numericValue = typeof value === 'string' ? Number(value) : value;
+  if (numericValue === 0.6 || numericValue === 0.8 || numericValue === 1) return numericValue;
+  return LEARNING_PREFERENCES_DEFAULTS.speechPlaybackRate;
 }
 
 function normalizeGapMs(value: unknown): number {
@@ -69,6 +78,9 @@ function normalizeLearningPreferences(
   const autoPlayEnabledValue = hasCamelCaseShape
     ? (input as Partial<LearningPreferences>).autoPlayEnabled
     : (input as LearningPreferencesRow | null | undefined)?.auto_play_enabled;
+  const speechPlaybackRateValue = hasCamelCaseShape
+    ? (input as Partial<LearningPreferences>).speechPlaybackRate
+    : (input as LearningPreferencesRow | null | undefined)?.speech_playback_rate;
   const repeatCountValue = hasCamelCaseShape
     ? (input as Partial<LearningPreferences>).autoPlayRepeatCount
     : (input as LearningPreferencesRow | null | undefined)?.auto_play_repeat_count;
@@ -95,6 +107,7 @@ function normalizeLearningPreferences(
     defaultPronunciationLocale: isValidLocale(localeValue)
       ? localeValue
       : LEARNING_PREFERENCES_DEFAULTS.defaultPronunciationLocale,
+    speechPlaybackRate: normalizeSpeechPlaybackRate(speechPlaybackRateValue),
     autoPlayEnabled: autoPlayEnabledValue ?? LEARNING_PREFERENCES_DEFAULTS.autoPlayEnabled,
     autoPlayRepeatCount: normalizeRepeatCount(repeatCountValue),
     autoPlayRepeatGapMs: normalizeGapMs(gapMsValue),
@@ -119,6 +132,7 @@ function toDatabaseRow(userId: string, preferences: LearningPreferences): Omit<L
   return {
     user_id: userId,
     default_pronunciation_locale: preferences.defaultPronunciationLocale,
+    speech_playback_rate: preferences.speechPlaybackRate,
     auto_play_enabled: preferences.autoPlayEnabled,
     auto_play_repeat_count: preferences.autoPlayRepeatCount,
     auto_play_repeat_gap_ms: preferences.autoPlayRepeatGapMs,
@@ -135,6 +149,7 @@ function isMissingUserSettingsTableError(error: { message?: string } | null | un
   return message.includes('user_settings')
     || message.includes('correct_answer_reveal_ms')
     || message.includes('popover_auto_play_enabled')
+    || message.includes('speech_playback_rate')
     || message.includes('schema cache');
 }
 
@@ -171,6 +186,7 @@ export async function getLearningPreferences(userId: string): Promise<LearningPr
     .select(`
       user_id,
       default_pronunciation_locale,
+      speech_playback_rate,
       auto_play_enabled,
       auto_play_repeat_count,
       auto_play_repeat_gap_ms,
@@ -215,6 +231,7 @@ export async function saveLearningPreferences(
     .select(`
       user_id,
       default_pronunciation_locale,
+      speech_playback_rate,
       auto_play_enabled,
       auto_play_repeat_count,
       auto_play_repeat_gap_ms,

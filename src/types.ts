@@ -125,9 +125,11 @@ export interface EnrichedWord {
 }
 
 export type PronunciationLocale = 'uk' | 'us';
+export type SpeechPlaybackRate = 0.6 | 0.8 | 1;
 
 export interface LearningPreferences {
   defaultPronunciationLocale: PronunciationLocale;
+  speechPlaybackRate: SpeechPlaybackRate;
   autoPlayEnabled: boolean;
   autoPlayRepeatCount: 1 | 2 | 3;
   autoPlayRepeatGapMs: number;

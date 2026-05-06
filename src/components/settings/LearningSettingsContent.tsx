@@ -16,9 +16,10 @@ import {
   AUTO_PLAY_REPEAT_OPTIONS,
   CORRECT_ANSWER_REVEAL_OPTIONS,
   LEARNING_PREFERENCES_DEFAULTS,
+  SPEECH_PLAYBACK_RATE_OPTIONS,
   WRONG_ANSWER_REVEAL_OPTIONS,
 } from '../../lib/learningPreferences';
-import type { LearningPreferences, PronunciationLocale } from '../../types';
+import type { LearningPreferences, PronunciationLocale, SpeechPlaybackRate } from '../../types';
 
 type PreferenceKey = keyof LearningPreferences;
 type PreferenceStatus = 'idle' | 'saving' | 'saved' | 'error';
@@ -291,6 +292,23 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
             ]}
             value={preferences.defaultPronunciationLocale}
             onChange={(next) => { void handleSave('defaultPronunciationLocale', { defaultPronunciationLocale: next }); }}
+          />
+        )}
+      />
+
+      <SettingItem
+        icon={Volume2}
+        title="朗读速度"
+        description="学习卡片里的单词和例句朗读速度"
+        feedback={feedbackByKey.speechPlaybackRate}
+        control={(
+          <SegmentedOptionGroup<number>
+            options={SPEECH_PLAYBACK_RATE_OPTIONS.map((rate) => ({
+              label: `${rate}倍`,
+              value: rate,
+            }))}
+            value={preferences.speechPlaybackRate}
+            onChange={(next) => { void handleSave('speechPlaybackRate', { speechPlaybackRate: next as SpeechPlaybackRate }); }}
           />
         )}
       />
