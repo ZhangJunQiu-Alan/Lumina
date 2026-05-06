@@ -25,7 +25,7 @@ import {
   WordSenseList
 } from '../shared/LearningUI';
 import { ClickableText, type WordClickHandler } from '../shared/ClickableText';
-import { buildClozePrompt } from '../../lib/cloze';
+import { buildClozePrompt, type ClozePrompt } from '../../lib/cloze';
 import { Round2ClozePrompt } from './Round2ClozePrompt';
 import { attemptBuffer } from '../../lib/attemptBuffer';
 
@@ -67,6 +67,57 @@ const getRound1ExampleItems = (word: Word) => (
         ? trimDisplayText(sense.example_translation_zh)
         : undefined,
     }))
+);
+
+const AnswerFeedbackCard = ({
+  word,
+  clozePrompt,
+  isWrong = false,
+  wrongInput = null,
+}: {
+  word: Word;
+  clozePrompt: ClozePrompt | null;
+  isWrong?: boolean;
+  wrongInput?: string | null;
+}) => (
+  <motion.div
+    initial={{ opacity: 0, y: 18 }}
+    animate={{ opacity: 1, y: 0 }}
+    exit={{ opacity: 0, y: 10 }}
+    className={cx(
+      'mx-auto w-fit max-w-full rounded-[22px] px-5 py-4 text-left font-bold text-white shadow-xl',
+      isWrong ? 'bg-apple-red shadow-apple-red/20' : 'bg-[#10B981] shadow-[#10B981]/20',
+    )}
+  >
+    <div className="flex items-start gap-4">
+      <div className="mt-1 flex-shrink-0">
+        {isWrong ? <XCircle className="h-6 w-6" /> : <CheckCircle2 className="h-6 w-6" />}
+      </div>
+      <div className="space-y-3">
+        <div>
+          <p className="text-[10px] uppercase tracking-widest opacity-70">
+            {isWrong ? '这次没对上 · 正确答案如下' : '这次对上了'}
+          </p>
+          <div className="mt-1 flex flex-wrap items-baseline gap-3">
+            <p className="text-lg font-black leading-none md:text-xl">
+              {clozePrompt ? clozePrompt.expectedForm : word.word}
+            </p>
+            {clozePrompt && clozePrompt.expectedForm !== clozePrompt.baseForm && (
+              <p className="text-xs font-medium opacity-70">原型 · {clozePrompt.baseForm}</p>
+            )}
+            {isWrong && wrongInput && (
+              <p className="text-sm font-medium line-through opacity-60">
+                你刚才写的是：{wrongInput}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="[&_p]:text-white [&_span]:bg-white/16 [&_span]:text-white/90">
+          <WordSenseList word={word} compact />
+        </div>
+      </div>
+    </div>
+  </motion.div>
 );
 
 const hasRound1Examples = (word: Word) => (
@@ -1183,44 +1234,12 @@ export const LearningEngine = ({
   const feedbackReveal = (
     <AnimatePresence>
       {showAnswer && (
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 10 }}
-          className={cx(
-            'mx-auto w-fit max-w-full rounded-[22px] px-5 py-4 text-left font-bold text-white shadow-xl',
-            isWrong ? 'bg-apple-red shadow-apple-red/20' : 'bg-[#10B981] shadow-[#10B981]/20',
-          )}
-        >
-          <div className="flex items-start gap-4">
-            <div className="mt-1 flex-shrink-0">
-              {isWrong ? <XCircle className="h-6 w-6" /> : <CheckCircle2 className="h-6 w-6" />}
-            </div>
-            <div className="space-y-3">
-              <div>
-                <p className="text-[10px] uppercase tracking-widest opacity-70">
-                  {isWrong ? '这次没对上 · 正确答案如下' : '这次对上了'}
-                </p>
-                <div className="mt-1 flex flex-wrap items-baseline gap-3">
-                  <p className="text-lg font-black leading-none md:text-xl">
-                    {clozePrompt ? clozePrompt.expectedForm : currentWord.word}
-                  </p>
-                  {clozePrompt && clozePrompt.expectedForm !== clozePrompt.baseForm && (
-                    <p className="text-xs font-medium opacity-70">原型 · {clozePrompt.baseForm}</p>
-                  )}
-                  {isWrong && lastWrongInput && (
-                    <p className="text-sm font-medium line-through opacity-60">
-                      你刚才写的是：{lastWrongInput}
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div className="[&_p]:text-white [&_span]:bg-white/16 [&_span]:text-white/90">
-                <WordSenseList word={currentWord} compact />
-              </div>
-            </div>
-          </div>
-        </motion.div>
+        <AnswerFeedbackCard
+          word={currentWord}
+          clozePrompt={clozePrompt}
+          isWrong={isWrong}
+          wrongInput={lastWrongInput}
+        />
       )}
     </AnimatePresence>
   );
@@ -1599,10 +1618,10 @@ export const LearningEngine = ({
 
                   <div className="mt-6 space-y-3">
                     {isViewingHistory ? (
-                      <div className="mx-auto flex w-fit max-w-full items-center gap-3 rounded-[22px] bg-[#10B981] px-5 py-4 text-left font-bold text-white shadow-xl shadow-[#10B981]/20">
-                        <CheckCircle2 className="h-5 w-5 shrink-0" />
-                        <span>已通过</span>
-                      </div>
+                      <AnswerFeedbackCard
+                        word={viewedWord}
+                        clozePrompt={viewedClozePrompt}
+                      />
                     ) : (
                       <>
                         {feedbackReveal}

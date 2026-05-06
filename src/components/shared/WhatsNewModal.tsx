@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Hand, Palette, Sparkles, Volume2, X, Zap } from 'lucide-react';
+import { BookOpenCheck, Sparkles, X, Zap } from 'lucide-react';
 
-const VERSION_KEY = 'lumina_whatsnew_2026_05_03_routine_library_swipe'; // Bump this key to show the modal again in future updates
+const VERSION_KEY = 'lumina_whatsnew_2026_05_06_learning_preload_history_feedback'; // Bump this key to show the modal again in future updates
 
 export function WhatsNewModal() {
   const [isOpen, setIsOpen] = useState(false);
@@ -52,51 +52,29 @@ export function WhatsNewModal() {
 
             <h2 className="mb-2 text-2xl font-black text-text-primary">本次更新</h2>
             <p className="mb-6 text-sm font-medium text-text-secondary">
-              一起快乐地刷刷刷吧：
+              学习页这次变快，也更适合回看复习了：
             </p>
 
             <div className="space-y-4 mb-8">
-              <div className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-apple-blue/10 text-apple-blue">
-                  <Volume2 className="h-4 w-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-text-primary">划词即可朗读</h3>
-                  <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                    选中任意单词后即可一键播放发音，听音查词更顺手。
-                  </p>
-                </div>
-              </div>
               <div className="flex gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-apple-green/10 text-apple-green">
                   <Zap className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text-primary">首页 Routine 记住你的词库</h3>
+                  <h3 className="text-sm font-bold text-text-primary">第 1 轮和第 2 轮预加载</h3>
                   <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                    系统会记录你最近在刷的那本词库，"继续学习"直接抽下一组 30 词，不用每次都跳到词库选一遍。
+                    学习页会提前准备下一张词卡资源，点击单词后能更快看到对应意思，减少等待时间。
                   </p>
                 </div>
               </div>
               <div className="flex gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-apple-teal/10 text-apple-teal">
-                  <Hand className="h-4 w-4" />
+                  <BookOpenCheck className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text-primary">手机端 Round 1 支持滑动切卡</h3>
+                  <h3 className="text-sm font-bold text-text-primary">上一张词卡显示具体意思</h3>
                   <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                    左右滑动词卡即可切到上一个 / 下一个，告别小箭头。
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-apple-orange/10 text-apple-orange">
-                  <Palette className="h-4 w-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-text-primary">UI 优化与 Bug 修复</h3>
-                  <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                    调整了部分界面细节，并修复了已知问题。
+                    第 2 轮和复习轮回看上一张时，不再只显示“已通过”，会展示词形和具体释义，方便继续复习。
                   </p>
                 </div>
               </div>
