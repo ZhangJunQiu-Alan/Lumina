@@ -142,6 +142,12 @@ function generateCandidates(base: string): InflectedForm[] {
   };
 
   push(base, LABEL.base);
+  if (base.includes('-')) {
+    push(base.replace(/-/g, ' '), LABEL.base);
+  }
+  if (base.includes(' ')) {
+    push(base.replace(/\s+/g, '-'), LABEL.base);
+  }
   push(base + 's', LABEL.thirdPerson);
   push(base + 'es', LABEL.thirdPerson);
   push(base + 'ing', LABEL.ing);
@@ -183,23 +189,43 @@ function generateCandidates(base: string): InflectedForm[] {
 function findFirstMatch(
   sentence: string,
   candidates: InflectedForm[],
-): { form: InflectedForm; index: number; matchedText: string } | null {
-  let best: { form: InflectedForm; index: number; matchedText: string } | null = null;
+): { form: InflectedForm; index: number; matchedText: string; wholeWord: boolean } | null {
+  let best: { form: InflectedForm; index: number; matchedText: string; wholeWord: boolean } | null = null;
   for (const candidate of candidates) {
     const regex = new RegExp(`\\b${escapeRegex(candidate.form)}\\b`, 'i');
     const match = regex.exec(sentence);
     if (!match) continue;
-    const hit = { form: candidate, index: match.index, matchedText: match[0] };
+    const hit = { form: candidate, index: match.index, matchedText: match[0], wholeWord: true };
     if (!best || hit.index < best.index
       || (hit.index === best.index && hit.matchedText.length > best.matchedText.length)) {
       best = hit;
     }
   }
+  if (best) return best;
+
+  for (const candidate of candidates) {
+    if (candidate.form.length < 4 || /[^a-z]/i.test(candidate.form)) continue;
+    const regex = new RegExp(`\\b[A-Za-z]*${escapeRegex(candidate.form)}[A-Za-z]*\\b`, 'i');
+    const match = regex.exec(sentence);
+    if (!match) continue;
+    const matchedWord = match[0];
+    if (matchedWord.length <= candidate.form.length) continue;
+    const offset = matchedWord.toLowerCase().indexOf(candidate.form);
+    if (offset < 0) continue;
+    const matchedText = matchedWord.slice(offset, offset + candidate.form.length);
+    const hit = { form: candidate, index: match.index + offset, matchedText, wholeWord: false };
+    if (!best || hit.index < best.index
+      || (hit.index === best.index && hit.matchedText.length > best.matchedText.length)) {
+      best = hit;
+    }
+  }
+
   return best;
 }
 
-function blankify(sentence: string, matchedForm: string): string {
-  const regex = new RegExp(`\\b${escapeRegex(matchedForm)}\\b`, 'gi');
+function blankifyMatch(sentence: string, hit: { matchedText: string; wholeWord: boolean }): string {
+  const boundary = hit.wholeWord ? '\\b' : '';
+  const regex = new RegExp(`${boundary}${escapeRegex(hit.matchedText)}${boundary}`, 'gi');
   return sentence.replace(regex, CLOZE_BLANK);
 }
 
@@ -219,7 +245,7 @@ export function buildClozePrompt(input: ClozeInput): ClozePrompt | null {
     if (!hit) continue;
 
     return {
-      blankedSentence: blankify(sentence, hit.matchedText),
+      blankedSentence: blankifyMatch(sentence, hit),
       translation: (sense.example_translation_zh ?? '').trim(),
       expectedForm: hit.matchedText.toLowerCase(),
       baseForm: base,

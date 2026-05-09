@@ -144,6 +144,30 @@ function run() {
     assert.equal(prompt.blankedSentence, `${CLOZE_BLANK} hope, all ye who enter here.`);
   }
 
+  // Hyphenated vocabulary can appear as a spaced phrasal verb in examples
+  {
+    const prompt = buildClozePrompt({
+      word: 'ramp-up',
+      senses: [sense('The company plans to ramp up production next year.')],
+    });
+    assert.ok(prompt);
+    assert.equal(prompt.expectedForm, 'ramp up');
+    assert.equal(prompt.formLabel, '原型');
+    assert.equal(prompt.blankedSentence, `The company plans to ${CLOZE_BLANK} production next year.`);
+  }
+
+  // Some imported examples contain the target as part of a compound word
+  {
+    const prompt = buildClozePrompt({
+      word: 'keeper',
+      senses: [sense('The zookeeper is responsible for feeding the lions.')],
+    });
+    assert.ok(prompt);
+    assert.equal(prompt.expectedForm, 'keeper');
+    assert.equal(prompt.formLabel, '原型');
+    assert.equal(prompt.blankedSentence, `The zoo${CLOZE_BLANK} is responsible for feeding the lions.`);
+  }
+
   // Skip sense with empty example, use next
   {
     const prompt = buildClozePrompt({
@@ -198,6 +222,15 @@ function run() {
     const prompt = buildClozePrompt({
       word: 'run',
       senses: [sense('The brunch was great.')], // contains "run" substring
+    });
+    assert.equal(prompt, null);
+  }
+
+  // Avoid fallback substring prompts for short words
+  {
+    const prompt = buildClozePrompt({
+      word: 'her',
+      senses: [sense('The shelter opened at dawn.')],
     });
     assert.equal(prompt, null);
   }
