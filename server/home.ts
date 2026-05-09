@@ -43,6 +43,12 @@ interface OrbitDayPayload {
   learnedWordCount: number;
 }
 
+interface ActivityDayPayload extends OrbitDayPayload {
+  attemptCount: number;
+  correctAttemptCount: number;
+  accuracy: number | null;
+}
+
 interface RoutineVisibleStepPayload {
   key: RoutineStepKey;
   label: string;
@@ -68,6 +74,7 @@ export interface HomeOverviewPayload {
   perfectCheckinDays: number;
   stableRecallCount: number;
   orbitDays: OrbitDayPayload[];
+  activityDays: ActivityDayPayload[];
   selectedDate: string;
   selectedDayReviewWordCount: number;
   selectedDayLearnedWordCount: number;
@@ -133,6 +140,8 @@ interface Round2GroupProgress {
 interface DailySummary {
   reviewWordCount: number;
   learnedWordCount: number;
+  attemptCount: number;
+  correctAttemptCount: number;
   status: OrbitDayStatus;
 }
 
@@ -1013,6 +1022,8 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
   const learningGroupsById = new Map(reconciledLearningGroups.map((group) => [group.id, group]));
   const reviewWordIdsByDate = new Map<string, Set<string>>();
   const learnedWordIdsByDate = new Map<string, Set<string>>();
+  const attemptCountsByDate = new Map<string, number>();
+  const correctAttemptCountsByDate = new Map<string, number>();
   const protectedDates = new Set(
     protectionEvents
       .map((event) => event.protected_date)
@@ -1025,6 +1036,10 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
   const eventsWithDateKey = reviewEvents.map((event) => {
     const dayKey = dateKeyFromIso(event.created_at, timeZone) ?? todayKey;
     relevantDateKeys.push(dayKey);
+    attemptCountsByDate.set(dayKey, (attemptCountsByDate.get(dayKey) ?? 0) + 1);
+    if (event.was_correct === true) {
+      correctAttemptCountsByDate.set(dayKey, (correctAttemptCountsByDate.get(dayKey) ?? 0) + 1);
+    }
 
     if (event.source === 'review') {
       const seen = reviewWordIdsByDate.get(dayKey) ?? new Set<string>();
@@ -1044,6 +1059,9 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     relevantDateKeys.push(protectedDate);
   }
 
+  // 扩展日期范围：确保包含过去一年，以便账号页年度热力图稳定显示
+  const activityStartDateKey = addDays(todayKey, -364);
+  relevantDateKeys.push(activityStartDateKey);
   // 扩展日期范围：确保至少包含过去 7 天，以便星轨显示和连续学习计算
   const pastSevenDaysStart = addDays(todayKey, -6);
   relevantDateKeys.push(pastSevenDaysStart);
@@ -1073,6 +1091,8 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     const dueAtEndCount = countDueWords(reconstructedStates, dateKey, timeZone);
     const reviewWordCount = reviewWordIdsByDate.get(dateKey)?.size ?? 0;
     const learnedWordCount = learnedWordIdsByDate.get(dateKey)?.size ?? 0;
+    const attemptCount = attemptCountsByDate.get(dateKey) ?? 0;
+    const correctAttemptCount = correctAttemptCountsByDate.get(dateKey) ?? 0;
     const status = resolveDayStatus({
       dueAtStartCount,
       dueAtEndCount,
@@ -1085,6 +1105,8 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     dailySummaries.set(dateKey, {
       reviewWordCount,
       learnedWordCount,
+      attemptCount,
+      correctAttemptCount,
       status,
     });
   }
@@ -1146,6 +1168,8 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     const summary = dailySummaries.get(dateKey) ?? {
       reviewWordCount: 0,
       learnedWordCount: 0,
+      attemptCount: 0,
+      correctAttemptCount: 0,
       status: (protectedDates.has(dateKey) ? 'shielded' : 'gap') as OrbitDayStatus,
     };
 
@@ -1156,6 +1180,28 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
       status: summary.status,
       reviewWordCount: summary.reviewWordCount,
       learnedWordCount: summary.learnedWordCount,
+    };
+  });
+
+  const activityDays = buildDateRange(activityStartDateKey, todayKey).map((dateKey) => {
+    const summary = dailySummaries.get(dateKey) ?? {
+      reviewWordCount: 0,
+      learnedWordCount: 0,
+      attemptCount: 0,
+      correctAttemptCount: 0,
+      status: (protectedDates.has(dateKey) ? 'shielded' : 'gap') as OrbitDayStatus,
+    };
+
+    return {
+      date: dateKey,
+      weekdayLabel: formatWeekdayLabel(dateKey, timeZone),
+      shortDateLabel: formatShortDateLabel(dateKey, timeZone),
+      status: summary.status,
+      reviewWordCount: summary.reviewWordCount,
+      learnedWordCount: summary.learnedWordCount,
+      attemptCount: summary.attemptCount,
+      correctAttemptCount: summary.correctAttemptCount,
+      accuracy: summary.attemptCount > 0 ? Math.round((summary.correctAttemptCount / summary.attemptCount) * 100) : null,
     };
   });
 
@@ -1171,6 +1217,7 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     perfectCheckinDays,
     stableRecallCount: masteredWordCountResult.count ?? 0,
     orbitDays,
+    activityDays,
     selectedDate: selectedOrbitDay.date,
     selectedDayReviewWordCount: selectedOrbitDay.reviewWordCount,
     selectedDayLearnedWordCount: selectedOrbitDay.learnedWordCount,

@@ -15,6 +15,7 @@ interface AuthContextValue {
   user: User | null;
   isAuthenticated: boolean;
   isAuthLoading: boolean;
+  isPasswordRecovery: boolean;
   signInWithGoogle: (nextPath?: string) => Promise<void>;
   signInWithPassword: (email: string, password: string) => Promise<void>;
   signUpWithPassword: (input: {
@@ -22,6 +23,9 @@ interface AuthContextValue {
     email: string;
     password: string;
   }) => Promise<{ requiresEmailConfirmation: boolean }>;
+  requestPasswordReset: (email: string, nextPath?: string) => Promise<void>;
+  updatePassword: (password: string) => Promise<void>;
+  resendSignupConfirmation: (email: string, nextPath?: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -35,13 +39,38 @@ function buildAuthRedirect(nextPath?: string) {
   return redirectUrl.toString();
 }
 
+function hasPasswordRecoveryMarker() {
+  if (typeof window === 'undefined') return false;
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(window.location.hash.startsWith('#')
+    ? window.location.hash.slice(1)
+    : window.location.hash);
+  return searchParams.get('type') === 'recovery' || hashParams.get('type') === 'recovery';
+}
+
 export function AuthProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => hasPasswordRecoveryMarker());
 
   useEffect(() => {
     let active = true;
+
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (!active) return;
+
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
+      setIsAuthLoading(false);
+
+      if (event === 'PASSWORD_RECOVERY' || hasPasswordRecoveryMarker()) {
+        setIsPasswordRecovery(true);
+      } else if (event === 'SIGNED_OUT') {
+        setIsPasswordRecovery(false);
+      }
+    });
 
     supabase.auth.getSession().then(({ data, error }) => {
       if (error) {
@@ -51,14 +80,6 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
       setSession(data.session ?? null);
       setUser(data.session?.user ?? null);
-      setIsAuthLoading(false);
-    });
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (!active) return;
-
-      setSession(nextSession);
-      setUser(nextSession?.user ?? null);
       setIsAuthLoading(false);
     });
 
@@ -73,6 +94,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     user,
     isAuthenticated: Boolean(session?.user),
     isAuthLoading,
+    isPasswordRecovery,
     async signInWithGoogle(nextPath) {
       if (!isGoogleAuthEnabled) {
         throw new Error('Google 登录暂未配置，请先使用邮箱登录。');
@@ -97,6 +119,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         email,
         password,
         options: {
+          emailRedirectTo: buildAuthRedirect('/app/home'),
           data: {
             full_name: fullName,
           },
@@ -106,11 +129,32 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (error) throw error;
       return { requiresEmailConfirmation: !data.session };
     },
+    async requestPasswordReset(email, nextPath) {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: buildAuthRedirect(nextPath),
+      });
+      if (error) throw error;
+    },
+    async updatePassword(password) {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+      setIsPasswordRecovery(false);
+    },
+    async resendSignupConfirmation(email, nextPath) {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: {
+          emailRedirectTo: buildAuthRedirect(nextPath ?? '/app/home'),
+        },
+      });
+      if (error) throw error;
+    },
     async signOut() {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
     },
-  }), [isAuthLoading, session, user]);
+  }), [isAuthLoading, isPasswordRecovery, session, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

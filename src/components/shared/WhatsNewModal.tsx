@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { BookOpenCheck, Sparkles, X, Zap } from 'lucide-react';
+import { KeyRound, LineChart, Sparkles, X } from 'lucide-react';
 
-const VERSION_KEY = 'lumina_whatsnew_2026_05_06_learning_preload_history_feedback'; // Bump this key to show the modal again in future updates
+const VERSION_KEY = 'lumina_whatsnew_2026_05_09_profile_and_password_reset'; // Bump this key to show the modal again in future updates
 
 export function WhatsNewModal() {
   const [isOpen, setIsOpen] = useState(false);
@@ -52,29 +52,29 @@ export function WhatsNewModal() {
 
             <h2 className="mb-2 text-2xl font-black text-text-primary">本次更新</h2>
             <p className="mb-6 text-sm font-medium text-text-secondary">
-              学习页这次变快，也更适合回看复习了：
+              账号页焕新，登录流程也补齐了找回密码：
             </p>
 
             <div className="space-y-4 mb-8">
               <div className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-apple-green/10 text-apple-green">
-                  <Zap className="h-4 w-4" />
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-apple-blue/10 text-apple-blue">
+                  <LineChart className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text-primary">第 1 轮和第 2 轮预加载</h3>
+                  <h3 className="text-sm font-bold text-text-primary">全新账号页</h3>
                   <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                    学习页会提前准备下一张词卡资源，点击单词后能更快看到对应意思，减少等待时间。
+                    新增年度活跃热力图、每日学习趋势和正确率，能一眼看清自己的学习节奏。
                   </p>
                 </div>
               </div>
               <div className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-apple-teal/10 text-apple-teal">
-                  <BookOpenCheck className="h-4 w-4" />
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-apple-orange/10 text-apple-orange">
+                  <KeyRound className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text-primary">上一张词卡显示具体意思</h3>
+                  <h3 className="text-sm font-bold text-text-primary">忘记密码可以重置了</h3>
                   <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                    第 2 轮和复习轮回看上一张时，不再只显示“已通过”，会展示词形和具体释义，方便继续复习。
+                    登录页支持邮件重置密码，注册时还能查看密码强度，重新接上账号更顺手。
                   </p>
                 </div>
               </div>

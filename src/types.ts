@@ -307,6 +307,12 @@ export interface OrbitDay {
   learnedWordCount: number;
 }
 
+export interface ActivityDay extends OrbitDay {
+  attemptCount: number;
+  correctAttemptCount: number;
+  accuracy: number | null;
+}
+
 export interface RoutineVisibleStep {
   key: RoutineStepKey;
   label: string;
@@ -334,6 +340,7 @@ export interface UserStats {
   perfectCheckinDays: number;
   stableRecallCount: number;
   orbitDays: OrbitDay[];
+  activityDays: ActivityDay[];
   selectedDate: string;
   selectedDayReviewWordCount: number;
   selectedDayLearnedWordCount: number;

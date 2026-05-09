@@ -51,14 +51,14 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 }
 
 function PublicOnlyAuthRoute() {
-  const { isAuthenticated, isAuthLoading } = useAuth();
+  const { isAuthenticated, isAuthLoading, isPasswordRecovery } = useAuth();
   const location = useLocation();
 
   if (isAuthLoading) {
     return <FullscreenLoader message="正在确认你该从哪里接上" />;
   }
 
-  if (isAuthenticated) {
+  if (isAuthenticated && !isPasswordRecovery) {
     const params = new URLSearchParams(location.search);
     const nextPath = params.get('next');
     const target = nextPath?.startsWith('/app/') ? nextPath : '/app/home';

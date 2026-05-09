@@ -8,12 +8,12 @@ import { motion } from 'motion/react';
 import {
   AlertCircle,
   Loader2,
-  LogOut,
   RefreshCw,
   Settings,
 } from 'lucide-react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
+  ActivityDay,
   ArticleSentence,
   LearningRoundType,
   PersistedLearningSession,
@@ -58,6 +58,7 @@ const HomeView = lazy(() => import('./components/home/HomeView').then(m => ({ de
 const ImportView = lazy(() => import('./components/import/ImportView').then(m => ({ default: m.ImportView })));
 const LibraryView = lazy(() => import('./components/library/LibraryView').then(m => ({ default: m.LibraryView })));
 const NotebookView = lazy(() => import('./components/notebook/NotebookView').then(m => ({ default: m.NotebookView })));
+const ProfileView = lazy(() => import('./components/profile/ProfileView').then(m => ({ default: m.ProfileView })));
 const OfficialLibraryDetailView = lazy(() => import('./components/library/LibraryView').then(m => ({ default: m.OfficialLibraryDetailView })));
 const LibraryGroupDetailView = lazy(() => import('./components/library/LibraryView').then(m => ({ default: m.LibraryGroupDetailView })));
 const ReviewResultsView = lazy(() => import('./components/review/ReviewResultsView').then(m => ({ default: m.ReviewResultsView })));
@@ -112,7 +113,7 @@ const LoadingShell = ({ children, isSkeleton = false }: { children: React.ReactN
   );
 };
 
-function buildFallbackOrbitDays(timeZone: string) {
+function buildFallbackActivityDays(timeZone: string, length = 365): ActivityDay[] {
   const dayFormatter = new Intl.DateTimeFormat('en-CA', {
     timeZone,
     year: 'numeric',
@@ -129,9 +130,9 @@ function buildFallbackOrbitDays(timeZone: string) {
     day: '2-digit',
   });
 
-  return Array.from({ length: 7 }, (_, index) => {
+  return Array.from({ length }, (_, index) => {
     const date = new Date();
-    date.setDate(date.getDate() - (6 - index));
+    date.setDate(date.getDate() - ((length - 1) - index));
 
     const dayParts = dayFormatter.formatToParts(date);
     const year = dayParts.find((part) => part.type === 'year')?.value ?? '0000';
@@ -149,8 +150,22 @@ function buildFallbackOrbitDays(timeZone: string) {
       status: 'gap' as const,
       reviewWordCount: 0,
       learnedWordCount: 0,
+      attemptCount: 0,
+      correctAttemptCount: 0,
+      accuracy: null,
     };
   });
+}
+
+function buildFallbackOrbitDays(timeZone: string) {
+  return buildFallbackActivityDays(timeZone, 7).map((day) => ({
+    date: day.date,
+    weekdayLabel: day.weekdayLabel,
+    shortDateLabel: day.shortDateLabel,
+    status: day.status,
+    reviewWordCount: day.reviewWordCount,
+    learnedWordCount: day.learnedWordCount,
+  }));
 }
 
 function isArticleSentence(value: unknown): value is ArticleSentence {
@@ -222,6 +237,7 @@ function buildEmptyStats(): UserStats {
     perfectCheckinDays: 0,
     stableRecallCount: 0,
     orbitDays: buildFallbackOrbitDays(timeZone),
+    activityDays: buildFallbackActivityDays(timeZone),
     selectedDate: todayKey,
     selectedDayReviewWordCount: 0,
     selectedDayLearnedWordCount: 0,
@@ -298,6 +314,7 @@ export default function App() {
         ...fallback,
         ...overview,
         orbitDays: overview.orbitDays?.length ? overview.orbitDays : fallback.orbitDays,
+        activityDays: overview.activityDays?.length ? overview.activityDays : fallback.activityDays,
         routineCard: overview.routineCard ?? fallback.routineCard,
       });
     } catch (err) {
@@ -1184,30 +1201,11 @@ export default function App() {
                   <Route
                     path="profile"
                     element={(
-                      <div className="w-full max-w-5xl mx-auto space-y-6">
-                        <div className="glass relative overflow-hidden rounded-[36px] p-8 md:p-10">
-                          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-                            <div>
-                              <div className="flex h-24 w-24 items-center justify-center rounded-[30px] bg-apple-blue text-4xl font-black text-white shadow-lg">
-                                {(user?.email?.[0] ?? 'L').toUpperCase()}
-                              </div>
-                              <h2 className="mt-6 text-4xl font-black text-text-primary prose-serif">
-                                {(user?.user_metadata.full_name as string | undefined) ?? '当前账号'}
-                              </h2>
-                              <p className="mt-3 text-base text-text-secondary">{user?.email ?? '还没拿到邮箱'}</p>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => { void handleSignOut(); }}
-                              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-apple-red/8 px-6 py-4 text-base font-black text-apple-red transition-all hover:bg-apple-red/12 active:scale-95"
-                            >
-                              退出当前账号
-                              <LogOut className="h-5 w-5" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
+                      <ProfileView
+                        user={user}
+                        stats={stats}
+                        onSignOut={() => { void handleSignOut(); }}
+                      />
                     )}
                   />
                   <Route path="settings" element={<SettingsView />} />
