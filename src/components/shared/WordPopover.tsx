@@ -103,6 +103,7 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
   const initialAnchorTopRef = useRef(anchor.getBoundingClientRect().top);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const autoPlayedRef = useRef(false);
+  const playbackRunIdRef = useRef(0);
   const { saveWord, removeWord } = useSavedWords();
   const { preferences } = useLearningPreferences();
   const accent = preferences.defaultPronunciationLocale;
@@ -162,23 +163,37 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
     return () => { cancelled = true; };
   }, [accent, data?.vocabulary_item.word, lookupAudioUrl, word]);
 
-  const stopAudio = useCallback(() => {
+  const haltActiveAudio = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.src = '';
       audioRef.current = null;
     }
     cancelBrowserSpeech();
-    setIsPlayingAudio(false);
   }, []);
+
+  const stopAudio = useCallback(() => {
+    playbackRunIdRef.current += 1;
+    haltActiveAudio();
+    setIsPlayingAudio(false);
+  }, [haltActiveAudio]);
 
   const playAudio = useCallback(async () => {
     if (!playableWord) return;
 
-    stopAudio();
+    const runId = playbackRunIdRef.current + 1;
+    playbackRunIdRef.current = runId;
+    const isCurrentRun = () => runId === playbackRunIdRef.current;
+
+    haltActiveAudio();
     setIsPlayingAudio(true);
 
     const playUrl = async (url: string) => new Promise<boolean>((resolve) => {
+      if (!isCurrentRun()) {
+        resolve(false);
+        return;
+      }
+
       const audio = new Audio(url);
       audioRef.current = audio;
       const settle = (ok: boolean) => {
@@ -193,20 +208,25 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
     });
 
     const url = resolvedAudioUrl ?? await fetchWordAudioUrl(playableWord, accent);
+    if (!isCurrentRun()) return;
+
     if (url) {
       if (!resolvedAudioUrl) setResolvedAudioUrl(url);
       const ok = await playUrl(url);
+      if (!isCurrentRun()) return;
       if (ok) {
         setIsPlayingAudio(false);
         return;
       }
     }
 
-    if (isBrowserSpeechSupported()) {
+    if (isCurrentRun() && isBrowserSpeechSupported()) {
       await speakTextViaBrowser(playableWord, accent);
     }
-    setIsPlayingAudio(false);
-  }, [accent, playableWord, resolvedAudioUrl, stopAudio]);
+    if (isCurrentRun()) {
+      setIsPlayingAudio(false);
+    }
+  }, [accent, haltActiveAudio, playableWord, resolvedAudioUrl]);
 
   const canPlayAudio = Boolean(playableWord);
 

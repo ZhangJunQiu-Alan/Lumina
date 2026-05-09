@@ -49,6 +49,7 @@ export function speakTextViaBrowser(
     utterance.onend = () => finish(true);
     utterance.onerror = () => finish(false);
 
+    window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   });
 }
