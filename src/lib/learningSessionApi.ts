@@ -99,6 +99,7 @@ interface VocabularyItemRow {
   id: string;
   word: string;
   ipa_uk: string | null;
+  ipa_us: string | null;
   primary_meaning_zh: string | null;
   ner_label: string | null;
   morphology_summary_zh: string | null;
@@ -209,6 +210,8 @@ function mapGroupWord(row: LearningGroupWordRow): Word | null {
     id: vocabularyItem.id,
     word: vocabularyItem.word,
     phonetic: vocabularyItem.ipa_uk ?? '',
+    ipa_uk: vocabularyItem.ipa_uk ?? '',
+    ipa_us: vocabularyItem.ipa_us ?? '',
     pos_tags: vocabularyItem.vocabulary_senses
       .map((sense) => sense.pos ?? '')
       .filter(Boolean),
@@ -676,6 +679,7 @@ export async function fetchLearningGroupSession(
           id,
           word,
           ipa_uk,
+          ipa_us,
           primary_meaning_zh,
           ner_label,
           morphology_summary_zh,
@@ -715,6 +719,7 @@ export async function fetchLearningGroupSession(
           id,
           word,
           ipa_uk,
+          ipa_us,
           primary_meaning_zh,
           ner_label,
           memory_tip,

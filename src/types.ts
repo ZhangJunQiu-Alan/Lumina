@@ -78,6 +78,8 @@ export interface Word {
   id: string;
   word: string;
   phonetic: string;
+  ipa_uk?: string | null;
+  ipa_us?: string | null;
   pos_tags: string[];
   ner_entities: { label: string; text: string }[];
   chinese_definition: string;
@@ -127,6 +129,18 @@ export interface EnrichedWord {
 export type PronunciationLocale = 'uk' | 'us';
 export type SpeechPlaybackRate = 0.6 | 0.8 | 1;
 
+export function getWordPhonetic(
+  word: Pick<Word, 'phonetic' | 'ipa_uk' | 'ipa_us'>,
+  locale: PronunciationLocale,
+): string {
+  const preferred = locale === 'us' ? word.ipa_us : word.ipa_uk;
+  return preferred?.trim()
+    || word.phonetic.trim()
+    || word.ipa_uk?.trim()
+    || word.ipa_us?.trim()
+    || '';
+}
+
 export interface LearningPreferences {
   defaultPronunciationLocale: PronunciationLocale;
   speechPlaybackRate: SpeechPlaybackRate;
@@ -148,6 +162,8 @@ export function toWord(e: EnrichedWord): Word {
     id: e.id ?? e.word,
     word: e.word,
     phonetic: e.ipa_uk,
+    ipa_uk: e.ipa_uk,
+    ipa_us: e.ipa_us,
     pos_tags: e.senses.map(s => s.pos),
     ner_entities: e.ner_label ? [{ label: e.ner_label, text: e.word }] : [],
     chinese_definition: e.primary_meaning_zh,

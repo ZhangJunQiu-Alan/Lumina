@@ -1,5 +1,7 @@
 import { PronunciationLocale } from '../types';
 
+let activeSpeechFinish: ((didFinish: boolean) => void) | null = null;
+
 export function isBrowserSpeechSupported(): boolean {
   return (
     typeof window !== 'undefined'
@@ -10,6 +12,8 @@ export function isBrowserSpeechSupported(): boolean {
 
 export function cancelBrowserSpeech(): void {
   if (!isBrowserSpeechSupported()) return;
+  activeSpeechFinish?.(false);
+  activeSpeechFinish = null;
   window.speechSynthesis.cancel();
 }
 
@@ -41,6 +45,9 @@ export function speakTextViaBrowser(
     const finish = (didFinish: boolean) => {
       if (settled) return;
       settled = true;
+      if (activeSpeechFinish === finish) {
+        activeSpeechFinish = null;
+      }
       resolve(didFinish);
     };
 
@@ -49,7 +56,8 @@ export function speakTextViaBrowser(
     utterance.onend = () => finish(true);
     utterance.onerror = () => finish(false);
 
-    window.speechSynthesis.cancel();
+    cancelBrowserSpeech();
+    activeSpeechFinish = finish;
     window.speechSynthesis.speak(utterance);
   });
 }

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2, ChevronLeft, ChevronRight, Loader2, Volume2, XCircle } from 'lucide-react';
 import { 
+  getWordPhonetic,
   LearningRoundType, 
   PersistedLearningSession, 
   PronunciationLocale, 
@@ -545,6 +546,7 @@ export const LearningEngine = ({
   const correctReadbackTokenRef = useRef<symbol | null>(null);
   const audioGapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playbackRunIdRef = useRef(0);
+  const activePlaybackFinishRef = useRef<(() => void) | null>(null);
   const lastRound1PreloadKeyRef = useRef<string | null>(null);
   const lastRound2PreloadKeyRef = useRef<string | null>(null);
   const preferencesRef = useRef(preferences);
@@ -605,6 +607,7 @@ export const LearningEngine = ({
 
   const stopPlayback = useCallback(() => {
     playbackRunIdRef.current += 1;
+    const finishActivePlayback = activePlaybackFinishRef.current;
 
     if (audioGapTimeoutRef.current !== null) {
       clearTimeout(audioGapTimeoutRef.current);
@@ -618,6 +621,7 @@ export const LearningEngine = ({
       audioRef.current = null;
     }
 
+    finishActivePlayback?.();
     cancelBrowserSpeech();
     setPlaybackTarget(null);
   }, []);
@@ -691,10 +695,19 @@ export const LearningEngine = ({
         return;
       }
 
-      audioGapTimeoutRef.current = setTimeout(() => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
         audioGapTimeoutRef.current = null;
+        if (activePlaybackFinishRef.current === finish) {
+          activePlaybackFinishRef.current = null;
+        }
         resolve();
-      }, gapMs);
+      };
+
+      activePlaybackFinishRef.current = finish;
+      audioGapTimeoutRef.current = setTimeout(finish, gapMs);
     })
   ), []);
 
@@ -722,6 +735,9 @@ export const LearningEngine = ({
       const finish = () => {
         if (settled) return;
         settled = true;
+        if (activePlaybackFinishRef.current === finish) {
+          activePlaybackFinishRef.current = null;
+        }
         if (audioRef.current === audio) {
           audioRef.current = null;
         }
@@ -734,6 +750,9 @@ export const LearningEngine = ({
       const fallbackToSpeech = () => {
         if (settled) return;
         settled = true;
+        if (activePlaybackFinishRef.current === finish) {
+          activePlaybackFinishRef.current = null;
+        }
         if (audioRef.current === audio) {
           audioRef.current = null;
         }
@@ -741,6 +760,7 @@ export const LearningEngine = ({
       };
 
       audioRef.current = audio;
+      activePlaybackFinishRef.current = finish;
       audio.onended = finish;
       audio.onerror = fallbackToSpeech;
       audio.play().catch(fallbackToSpeech);
@@ -800,6 +820,9 @@ export const LearningEngine = ({
       const finish = () => {
         if (settled) return;
         settled = true;
+        if (activePlaybackFinishRef.current === finish) {
+          activePlaybackFinishRef.current = null;
+        }
         if (audioRef.current === audio) {
           audioRef.current = null;
         }
@@ -812,6 +835,9 @@ export const LearningEngine = ({
       const fallbackToSpeech = () => {
         if (settled) return;
         settled = true;
+        if (activePlaybackFinishRef.current === finish) {
+          activePlaybackFinishRef.current = null;
+        }
         if (audioRef.current === audio) {
           audioRef.current = null;
         }
@@ -819,6 +845,7 @@ export const LearningEngine = ({
       };
 
       audioRef.current = audio;
+      activePlaybackFinishRef.current = finish;
       audio.onended = finish;
       audio.onerror = fallbackToSpeech;
       audio.play().catch(fallbackToSpeech);
@@ -1216,6 +1243,7 @@ export const LearningEngine = ({
   const showRound1RelationsCard = hasRound1RelationsContent(viewedWord);
   const showRound1ContextCard = hasRound1ContextContent(viewedWord);
   const hasRound1InfoCards = showRound1MorphologyCard || showRound1RelationsCard || showRound1ContextCard;
+  const displayedPhonetic = getWordPhonetic(viewedWord, audioLocale);
 
   const inputField = (
     <form onSubmit={handleSubmit} className="w-full">
@@ -1365,7 +1393,7 @@ export const LearningEngine = ({
               className="flex items-center gap-2 mb-8"
             >
               <span className="bg-apple-teal text-white px-4 py-1 rounded-lg text-sm font-bold shadow-sm">
-                {viewedWord.phonetic}
+                {displayedPhonetic}
               </span>
               {(['uk', 'us'] as const).map(loc => (
                 <button
@@ -1484,7 +1512,7 @@ export const LearningEngine = ({
                   )}>
                     <div className="min-w-0 space-y-3 sm:space-y-4">
                       <PronunciationControls
-                        phonetic={viewedWord.phonetic}
+                        phonetic={displayedPhonetic}
                         audioLocale={audioLocale}
                         activePronunciationLocale={activePronunciationLocale}
                         size="small"

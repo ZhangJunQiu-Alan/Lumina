@@ -99,6 +99,7 @@ interface VocabularyItemRow {
   id: string;
   word: string;
   ipa_uk: string | null;
+  ipa_us: string | null;
   primary_meaning_zh: string | null;
   ner_label: string | null;
   morphology_summary_zh: string | null;
@@ -135,6 +136,8 @@ function buildWord(row: DueReviewRow) {
     id: vocabularyItem?.id ?? row.vocabulary_item_id,
     word: vocabularyItem?.word ?? '',
     phonetic: vocabularyItem?.ipa_uk ?? '',
+    ipa_uk: vocabularyItem?.ipa_uk ?? '',
+    ipa_us: vocabularyItem?.ipa_us ?? '',
     pos_tags: (vocabularyItem?.vocabulary_senses ?? [])
       .map((sense) => sense.pos ?? '')
       .filter(Boolean),
@@ -329,6 +332,7 @@ export async function fetchDueReviewWords(userId: string) {
         id,
         word,
         ipa_uk,
+        ipa_us,
         primary_meaning_zh,
         ner_label,
         morphology_summary_zh,
@@ -369,6 +373,7 @@ export async function fetchDueReviewWords(userId: string) {
         id,
         word,
         ipa_uk,
+        ipa_us,
         primary_meaning_zh,
         ner_label,
         vocabulary_senses (
