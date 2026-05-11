@@ -1,8 +1,9 @@
-import { ReviewAttemptSource } from '../types';
+import { ReviewAttemptResponse, ReviewAttemptSource } from '../types';
 import { submitBatchReviewAttempts } from './reviewApi';
 import { getCachedAccessToken, resolveApiUrl } from './api';
 
 export interface QueuedAttempt {
+  clientAttemptId: string;
   vocabularyItemId: string;
   learningGroupId?: string | null;
   source: ReviewAttemptSource;
@@ -11,18 +12,28 @@ export interface QueuedAttempt {
   timestamp: number;
 }
 
+export type AttemptSyncListener = (params: {
+  attempt: QueuedAttempt;
+  result: ReviewAttemptResponse;
+}) => void;
+
 const STORAGE_KEY = 'lumina_attempt_queue';
 const SYNC_THRESHOLD = 5; // 每积攒 5 个词同步一次
 const SYNC_INTERVAL_MS = 30000; // 每 30 秒强制检查一次同步
 
 class AttemptBuffer {
   private queue: QueuedAttempt[] = [];
-  private isSyncing = false;
+  private activeFlush: Promise<boolean> | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private listeners = new Set<AttemptSyncListener>();
 
   constructor() {
     this.loadFromStorage();
     this.startTimer();
+  }
+
+  private createAttemptId() {
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   }
 
   private loadFromStorage() {
@@ -30,7 +41,15 @@ class AttemptBuffer {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        this.queue = JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        this.queue = Array.isArray(parsed)
+          ? parsed.map((item) => ({
+              ...item,
+              clientAttemptId: typeof item.clientAttemptId === 'string'
+                ? item.clientAttemptId
+                : this.createAttemptId(),
+            }))
+          : [];
       }
     } catch (e) {
       console.error('Failed to load attempt buffer from storage', e);
@@ -56,12 +75,30 @@ class AttemptBuffer {
     }, SYNC_INTERVAL_MS);
   }
 
+  subscribe(listener: AttemptSyncListener) {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private notifySynced(attempt: QueuedAttempt, result: ReviewAttemptResponse) {
+    this.listeners.forEach((listener) => {
+      try {
+        listener({ attempt, result });
+      } catch (error) {
+        console.error('Attempt sync listener failed', error);
+      }
+    });
+  }
+
   /**
    * 将一次练习结果加入队列
    */
-  async pushAttempt(attempt: Omit<QueuedAttempt, 'timestamp'>) {
+  async pushAttempt(attempt: Omit<QueuedAttempt, 'clientAttemptId' | 'timestamp'>) {
     const item: QueuedAttempt = {
       ...attempt,
+      clientAttemptId: this.createAttemptId(),
       timestamp: Date.now(),
     };
 
@@ -69,23 +106,18 @@ class AttemptBuffer {
     this.saveToStorage();
 
     // 如果达到阈值且当前没有正在同步，则触发同步
-    if (this.queue.length >= SYNC_THRESHOLD && !this.isSyncing) {
+    if (this.queue.length >= SYNC_THRESHOLD && !this.activeFlush) {
       void this.flush();
     }
   }
 
-  /**
-   * 强制清空缓冲区并同步到服务器
-   */
-  async flush() {
-    if (this.isSyncing || this.queue.length === 0) return;
-
-    this.isSyncing = true;
+  private async flushOnce() {
     const batchToSync = [...this.queue];
-    
+    if (batchToSync.length === 0) return true;
+
     try {
       // 使用批量接口一次性同步，提高效率
-      await submitBatchReviewAttempts(batchToSync.map(item => ({
+      const results = await submitBatchReviewAttempts(batchToSync.map(item => ({
         vocabularyItemId: item.vocabularyItemId,
         learningGroupId: item.learningGroupId,
         source: item.source,
@@ -94,14 +126,42 @@ class AttemptBuffer {
         timestamp: item.timestamp, // 携带产生时间，用于后端冲突校验
       })));
 
+      results.forEach((result, index) => {
+        const attempt = batchToSync[index];
+        if (attempt) {
+          this.notifySynced(attempt, result);
+        }
+      });
+
       // 同步成功，从主队列中移除这些已同步的项
-      const syncedTimestamps = new Set(batchToSync.map(i => i.timestamp));
-      this.queue = this.queue.filter(i => !syncedTimestamps.has(i.timestamp));
+      const syncedIds = new Set(batchToSync.map(i => i.clientAttemptId));
+      this.queue = this.queue.filter(i => !syncedIds.has(i.clientAttemptId));
       this.saveToStorage();
+      return true;
     } catch (e) {
       console.error('Batch sync failed, will retry later', e);
-    } finally {
-      this.isSyncing = false;
+      return false;
+    }
+  }
+
+  /**
+   * 强制清空缓冲区并同步到服务器
+   */
+  async flush() {
+    while (this.queue.length > 0) {
+      if (this.activeFlush) {
+        const completed = await this.activeFlush;
+        if (!completed) return;
+        continue;
+      }
+
+      const run = this.flushOnce();
+      this.activeFlush = run;
+      const completed = await run;
+      if (this.activeFlush === run) {
+        this.activeFlush = null;
+      }
+      if (!completed) return;
     }
   }
 

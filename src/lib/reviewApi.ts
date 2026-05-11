@@ -12,6 +12,7 @@ interface SubmitReviewAttemptInput {
   source: ReviewAttemptSource;
   wasCorrect: boolean;
   elapsedMs: number;
+  timestamp?: number;
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {

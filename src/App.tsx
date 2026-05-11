@@ -17,7 +17,6 @@ import {
   ArticleSentence,
   LearningRoundType,
   PersistedLearningSession,
-  ReviewAttemptSource,
   ReviewSummaryItem,
   RoundType,
   UserStats,
@@ -26,7 +25,8 @@ import {
 import { Sidebar } from './components/layout/Sidebar';
 import { WhatsNewModal } from './components/shared/WhatsNewModal';
 import { SessionSettingsDrawer } from './components/settings/SessionSettingsDrawer';
-import { fetchDueReviewWords, submitReviewAttempt } from './lib/reviewApi';
+import { fetchDueReviewWords } from './lib/reviewApi';
+import { attemptBuffer } from './lib/attemptBuffer';
 import { useAuth } from './contexts/AuthContext';
 import { useLearningPreferences } from './contexts/LearningPreferencesContext';
 import { SavedWordsProvider } from './contexts/SavedWordsContext';
@@ -270,6 +270,8 @@ export default function App() {
   const sessionAutoRestoreRef = useRef<string | null>(null);
   const articleGenerationRef = useRef<ArticleGenerationJob | null>(null);
   const articleGenerationRunIdRef = useRef(0);
+  const activeWordsRef = useRef<Word[]>([]);
+  const userIdRef = useRef<string | null>(null);
   const [round, setRound] = useState<RoundType>('round1');
   const [activeWords, setActiveWords] = useState<Word[]>([]);
   const [activeLearningGroupId, setActiveLearningGroupId] = useState<string | null>(null);
@@ -287,6 +289,35 @@ export default function App() {
   useEffect(() => {
     activeLearningGroupIdRef.current = activeLearningGroupId;
   }, [activeLearningGroupId]);
+  useEffect(() => {
+    activeWordsRef.current = activeWords;
+  }, [activeWords]);
+  useEffect(() => {
+    userIdRef.current = user?.id ?? null;
+  }, [user?.id]);
+
+  useEffect(() => attemptBuffer.subscribe(({ attempt, result }) => {
+    const userId = userIdRef.current;
+    if (userId) {
+      invalidateLibraryCache(userId);
+    }
+
+    if (attempt.source !== 'review') return;
+
+    const word = activeWordsRef.current.find((item) => item.id === attempt.vocabularyItemId);
+    if (!word) return;
+
+    setReviewSummary((prev) => {
+      const nextItem: ReviewSummaryItem = {
+        wordId: word.id,
+        word: word.word,
+        chineseDefinition: word.chinese_definition,
+        transition: result.transition,
+      };
+
+      return [...prev.filter((item) => item.wordId !== word.id), nextItem];
+    });
+  }), []);
 
   const cancelArticleGeneration = useCallback((groupId?: string) => {
     const current = articleGenerationRef.current;
@@ -672,45 +703,6 @@ export default function App() {
     await openLearningGroup(groupId, words);
   }, [openLearningGroup]);
 
-  const handleAttempt = useCallback(async ({
-    word,
-    source,
-    wasCorrect,
-    elapsedMs,
-  }: {
-    word: Word;
-    source: ReviewAttemptSource;
-    wasCorrect: boolean;
-    elapsedMs: number;
-  }) => {
-    if (source === 'round2' && !activeLearningGroupId) return;
-
-    const result = await submitReviewAttempt({
-      vocabularyItemId: word.id,
-      learningGroupId: source === 'round2' ? activeLearningGroupId : null,
-      source,
-      wasCorrect,
-      elapsedMs,
-    });
-
-    if (user) {
-      invalidateLibraryCache(user.id);
-    }
-
-    if (source === 'review') {
-      setReviewSummary((prev) => {
-        const nextItem: ReviewSummaryItem = {
-          wordId: word.id,
-          word: word.word,
-          chineseDefinition: word.chinese_definition,
-          transition: result.transition,
-        };
-
-        return [...prev.filter((item) => item.wordId !== word.id), nextItem];
-      });
-    }
-  }, [activeLearningGroupId, user]);
-
   const handleLearningSessionChange = useCallback((session: {
     round: LearningRoundType;
     currentIndex: number;
@@ -747,6 +739,8 @@ export default function App() {
 
   const handleRoundComplete = useCallback(async () => {
     if (round === 'review') {
+      await attemptBuffer.flush();
+
       if (user) {
         await markRoutineStepCompleted(user.id, {
           step: 'review',
@@ -1181,7 +1175,6 @@ export default function App() {
                             words={activeWords}
                             initialSession={activeSessionSeed}
                             onComplete={handleRoundComplete}
-                            onAttempt={handleAttempt}
                             onSessionChange={handleLearningSessionChange}
                             sessionActions={sessionSettingsButton}
                           />

@@ -450,7 +450,6 @@ export const LearningEngine = ({
   words,
   initialSession,
   onComplete,
-  onAttempt,
   onSessionChange,
   sessionActions,
 }: {
@@ -458,12 +457,6 @@ export const LearningEngine = ({
   words: Word[];
   initialSession?: PersistedLearningSession | null;
   onComplete: () => void | Promise<void>;
-  onAttempt?: (params: {
-    word: Word;
-    source: ReviewAttemptSource;
-    wasCorrect: boolean;
-    elapsedMs: number;
-  }) => Promise<void>;
   onSessionChange?: (session: {
     round: LearningRoundType;
     currentIndex: number;
@@ -1522,9 +1515,14 @@ export const LearningEngine = ({
                         }}
                       />
 
-                      <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-start lg:gap-6">
-                        <div className="lg:flex-shrink-0">
-                          <p className="text-[clamp(1.44rem,8vw,3.36rem)] font-black leading-tight tracking-tight text-text-primary">
+                      <div className={cx(
+                        'flex min-w-0 flex-col gap-2',
+                        round1MemoryTip
+                          ? '2xl:flex-row 2xl:items-start 2xl:gap-6'
+                          : 'lg:flex-row lg:items-start lg:gap-6',
+                      )}>
+                        <div className={cx('min-w-0', round1MemoryTip ? '2xl:flex-shrink-0' : 'lg:flex-shrink-0')}>
+                          <p className="max-w-full text-[clamp(1.44rem,8vw,3.36rem)] font-black leading-tight tracking-tight text-text-primary [overflow-wrap:anywhere]">
                             <Round1LookupText
                               text={viewedWord.word}
                               targetWords={lookupTargetWords}
@@ -1544,7 +1542,12 @@ export const LearningEngine = ({
                             </div>
                           )}
                         </div>
-                        <div className="min-w-0 lg:max-w-[680px] lg:flex-1 lg:pt-1">
+                        <div className={cx(
+                          'min-w-0',
+                          round1MemoryTip
+                            ? '2xl:min-w-[18rem] 2xl:max-w-[680px] 2xl:flex-1 2xl:pt-1'
+                            : 'lg:min-w-[18rem] lg:max-w-[680px] lg:flex-1 lg:pt-1',
+                        )}>
                           <WordSenseList word={viewedWord} size="small" />
                         </div>
                       </div>

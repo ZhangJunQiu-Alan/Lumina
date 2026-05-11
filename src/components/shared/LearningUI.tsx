@@ -65,7 +65,7 @@ export const WordSenseList = ({
           </span>
           <p
             className={cx(
-              'min-w-0 text-text-primary',
+              'min-w-[10rem] text-text-primary',
               compact
                 ? 'flex-1 text-sm font-bold leading-6'
                 : size === 'small'
