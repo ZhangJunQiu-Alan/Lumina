@@ -4,16 +4,11 @@ import { enrichWords, type GeminiWordResult } from '../server/gemini.ts';
 import { supabaseAdmin } from '../server/supabase.ts';
 import { analyzeWordBatch, formatDuplicateWordsMessage, normalizeWordKey, sanitizeWordInput } from '../shared/wordBatch.ts';
 
-const ALL_OFFICIAL_WORDS = Array.from(
-  new Set(
-    OFFICIAL_LIBRARY_DEFINITIONS.flatMap((def) => def.words)
-  )
-);
-
 interface CliOptions {
   batchSize: number;
   delayMs: number;
   limit: number | null;
+  libraryId: string | null;
   retryCount: number;
   retryDelayMs: number;
 }
@@ -49,6 +44,7 @@ function parseArgs(argv: string[]): CliOptions {
     batchSize: DEFAULT_BATCH_SIZE,
     delayMs: DEFAULT_DELAY_MS,
     limit: null,
+    libraryId: null,
     retryCount: DEFAULT_RETRY_COUNT,
     retryDelayMs: DEFAULT_RETRY_DELAY_MS,
   };
@@ -71,6 +67,12 @@ function parseArgs(argv: string[]): CliOptions {
 
     if (arg === '--limit' && next) {
       options.limit = Number.parseInt(next, 10);
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--library-id' && next) {
+      options.libraryId = next;
       index += 1;
       continue;
     }
@@ -111,6 +113,18 @@ function parseArgs(argv: string[]): CliOptions {
   return options;
 }
 
+function resolveTargetOfficialWords(libraryId: string | null) {
+  const definitions = libraryId === null
+    ? OFFICIAL_LIBRARY_DEFINITIONS
+    : OFFICIAL_LIBRARY_DEFINITIONS.filter((definition) => definition.id === libraryId);
+
+  if (definitions.length === 0) {
+    throw new Error(`Unknown official library id: ${libraryId}`);
+  }
+
+  return Array.from(new Set(definitions.flatMap((definition) => definition.words)));
+}
+
 function chunkWords(words: string[], chunkSize: number) {
   return Array.from(
     { length: Math.ceil(words.length / chunkSize) },
@@ -145,10 +159,10 @@ function isVocabularyReady(row: VocabularyLookupRow) {
   );
 }
 
-async function collectMissingOfficialWords() {
+async function collectMissingOfficialWords(officialWords: string[]) {
   const readyWords = new Set<string>();
 
-  for (const words of chunkWords(ALL_OFFICIAL_WORDS.map(normalizeWordKey), OFFICIAL_WORD_CHUNK_SIZE)) {
+  for (const words of chunkWords(officialWords.map(normalizeWordKey), OFFICIAL_WORD_CHUNK_SIZE)) {
     const { data, error } = await supabaseAdmin
       .from('vocabulary_items')
       .select(`
@@ -178,7 +192,7 @@ async function collectMissingOfficialWords() {
     }
   }
 
-  return ALL_OFFICIAL_WORDS.filter((word) => !readyWords.has(normalizeWordKey(word)));
+  return officialWords.filter((word) => !readyWords.has(normalizeWordKey(word)));
 }
 
 async function persistEnrichedBatch(enriched: GeminiWordResult[]) {
@@ -405,18 +419,19 @@ async function enrichWithRetries(words: string[], retryCount: number, retryDelay
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
-async function printCoverageSummary(label: string) {
-  const missingWords = await collectMissingOfficialWords();
-  const readyCount = ALL_OFFICIAL_WORDS.length - missingWords.length;
-  console.log(`[${label}] ready=${readyCount} missing=${missingWords.length} total=${ALL_OFFICIAL_WORDS.length}`);
+async function printCoverageSummary(label: string, officialWords: string[]) {
+  const missingWords = await collectMissingOfficialWords(officialWords);
+  const readyCount = officialWords.length - missingWords.length;
+  console.log(`[${label}] ready=${readyCount} missing=${missingWords.length} total=${officialWords.length}`);
 }
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  const officialWords = resolveTargetOfficialWords(options.libraryId);
 
-  await printCoverageSummary('before');
+  await printCoverageSummary('before', officialWords);
 
-  const missingWords = await collectMissingOfficialWords();
+  const missingWords = await collectMissingOfficialWords(officialWords);
   const targetWords = options.limit === null ? missingWords : missingWords.slice(0, options.limit);
 
   if (targetWords.length === 0) {
@@ -445,7 +460,7 @@ async function main() {
     }
   }
 
-  await printCoverageSummary('after');
+  await printCoverageSummary('after', officialWords);
   console.log('官方词库预载完成。没有生成任何 articles。');
 }
 

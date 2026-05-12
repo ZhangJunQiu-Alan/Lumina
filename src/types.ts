@@ -221,7 +221,7 @@ export interface ReviewSummaryItem {
   transition: ReviewTransition;
 }
 
-export type OfficialLibraryId = 'ielts-vocab' | 'gre-zhenkao-v7' | 'cet4-vocab' | 'cet6-vocab' | 'tem4-vocab' | 'tem8-vocab' | 'npee-vocab';
+export type OfficialLibraryId = 'ielts-vocab' | 'gre-zhenkao-v7' | 'cet4-vocab' | 'cet6-vocab' | 'tem4-vocab' | 'tem8-vocab' | 'npee-vocab' | 'gaokao-vocab';
 export type OfficialLibraryCompletionCounts = Record<OfficialLibraryId, number>;
 
 export interface LibraryGroupSummary {

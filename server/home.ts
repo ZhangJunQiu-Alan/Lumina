@@ -676,6 +676,7 @@ const OFFICIAL_LIBRARY_TITLES: Record<OfficialLibraryId, string> = {
   'tem4-vocab': '专业四级词汇',
   'tem8-vocab': '专业八级词汇',
   'npee-vocab': '考研大纲词汇',
+  'gaokao-vocab': '高考英语核心词汇',
 };
 
 function buildRoutineCard(input: {

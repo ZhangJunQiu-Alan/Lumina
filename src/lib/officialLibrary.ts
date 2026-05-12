@@ -5,6 +5,7 @@ import { CET6_TITLE, CET6_WORDS } from '../data/cet6-vocab';
 import { TEM4_TITLE, TEM4_WORDS } from '../data/tem4-vocab';
 import { TEM8_TITLE, TEM8_WORDS } from '../data/tem8-vocab';
 import { NPEE_TITLE, NPEE_WORDS } from '../data/npee-vocab';
+import { GAOKAO_TITLE, GAOKAO_WORDS } from '../data/gaokao-vocab';
 import type {
   LibraryGroupSummary,
   OfficialLibraryId,
@@ -105,6 +106,17 @@ export const OFFICIAL_LIBRARY_DEFINITIONS: OfficialLibraryDefinition[] = [
     groupPattern: buildOfficialGroupPattern(`${NPEE_TITLE} · `),
     counterPattern: buildOfficialCounterPattern(`${NPEE_TITLE} · `),
     icon: 'Library',
+  },
+  {
+    id: 'gaokao-vocab',
+    title: GAOKAO_TITLE,
+    groupPrefix: `${GAOKAO_TITLE} · `,
+    batchSize: DEFAULT_BATCH_SIZE,
+    words: GAOKAO_WORDS,
+    description: `高中核心词汇 · ${GAOKAO_WORDS.length} 词 · 顺序或乱序都行，每次直接取 ${DEFAULT_BATCH_SIZE} 词，已学过的自动跳过。`,
+    groupPattern: buildOfficialGroupPattern(`${GAOKAO_TITLE} · `),
+    counterPattern: buildOfficialCounterPattern(`${GAOKAO_TITLE} · `),
+    icon: 'GraduationCap',
   },
   {
     id: 'tem4-vocab',
