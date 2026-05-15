@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { KeyRound, LineChart, Sparkles, X } from 'lucide-react';
+import { BookOpenCheck, CheckCircle2, Clock3, Sparkles, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
-const VERSION_KEY = 'lumina_whatsnew_2026_05_09_profile_and_password_reset'; // Bump this key to show the modal again in future updates
+const VERSION_KEY = 'lumina_whatsnew_2026_05_16_ielts_reading'; // Bump this key to show the modal again in future updates
 
 export function WhatsNewModal() {
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
@@ -19,6 +21,12 @@ export function WhatsNewModal() {
   const handleClose = () => {
     localStorage.setItem(VERSION_KEY, 'true');
     setIsOpen(false);
+  };
+
+  const handleExploreIeltsReading = () => {
+    localStorage.setItem(VERSION_KEY, 'true');
+    setIsOpen(false);
+    navigate('/app/ielts-reading');
   };
 
   return (
@@ -52,39 +60,50 @@ export function WhatsNewModal() {
 
             <h2 className="mb-2 text-2xl font-black text-text-primary">本次更新</h2>
             <p className="mb-6 text-sm font-medium text-text-secondary">
-              账号页焕新，登录流程也补齐了找回密码：
+              雅思阅读真题训练上线了：
             </p>
 
             <div className="space-y-4 mb-8">
               <div className="flex gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-apple-blue/10 text-apple-blue">
-                  <LineChart className="h-4 w-4" />
+                  <BookOpenCheck className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text-primary">全新账号页</h3>
+                  <h3 className="text-sm font-bold text-text-primary">雅思阅读真题训练上线</h3>
                   <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                    新增年度活跃热力图、每日学习趋势和正确率，能一眼看清自己的学习节奏。
+                    新增 Cambridge IELTS Academic Reading 入口，可以直接进入套题训练。
                   </p>
                 </div>
               </div>
               <div className="flex gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-apple-orange/10 text-apple-orange">
-                  <KeyRound className="h-4 w-4" />
+                  <Clock3 className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text-primary">忘记密码可以重置了</h3>
+                  <h3 className="text-sm font-bold text-text-primary">按考试节奏练习</h3>
                   <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                    登录页支持邮件重置密码，注册时还能查看密码强度，重新接上账号更顺手。
+                    60 分钟计时、左右 1/2 阅读与答题布局，答题卡进度也会实时同步。
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#34c759]/10 text-[#34c759]">
+                  <CheckCircle2 className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-text-primary">题目内直接作答</h3>
+                  <p className="mt-1 text-xs text-text-secondary leading-relaxed">
+                    表格填空可直接在表格内填写，提交后显示得分和错题回看。
                   </p>
                 </div>
               </div>
             </div>
 
             <button
-              onClick={handleClose}
+              onClick={handleExploreIeltsReading}
               className="w-full rounded-2xl bg-apple-blue py-3.5 text-sm font-bold text-white transition-transform active:scale-95 shadow-md shadow-apple-blue/20"
             >
-              知道啦，去体验
+              去练雅思阅读
             </button>
           </motion.div>
         </div>
