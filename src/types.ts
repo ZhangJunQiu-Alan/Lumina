@@ -192,6 +192,109 @@ export interface ArticleSentence {
   zh: string;
 }
 
+export type IeltsReadingQuestionType =
+  | 'true_false_not_given'
+  | 'yes_no_not_given'
+  | 'multiple_choice_single'
+  | 'multiple_choice_multi'
+  | 'matching_headings'
+  | 'matching_information'
+  | 'matching_features'
+  | 'matching_sentence_endings'
+  | 'summary_completion'
+  | 'note_completion'
+  | 'table_completion'
+  | 'flow_chart_completion'
+  | 'sentence_completion'
+  | 'short_answer'
+  | 'diagram_label'
+  | 'other';
+
+export interface IeltsReadingOption {
+  key: string;
+  text: string;
+}
+
+export interface IeltsReadingQuestion {
+  id: string;
+  testId: string;
+  groupId: string;
+  number: number;
+  prompt: string;
+  options: IeltsReadingOption[];
+  answer: string[];
+  answerNote: string;
+  type: IeltsReadingQuestionType;
+  passageNumber: number;
+}
+
+export interface IeltsReadingQuestionGroup {
+  id: string;
+  type: IeltsReadingQuestionType;
+  prompt: string;
+  instructions: string;
+  options: IeltsReadingOption[];
+  rangeStart: number | null;
+  rangeEnd: number | null;
+  questions: IeltsReadingQuestion[];
+}
+
+export interface IeltsReadingPassage {
+  id: string;
+  number: number;
+  title: string;
+  body: string;
+  wordCount: number;
+  groups: IeltsReadingQuestionGroup[];
+}
+
+export interface IeltsReadingBookSummary {
+  id: string;
+  bookNumber: number;
+  title: string;
+  sourceLabel: string;
+  tests: IeltsReadingTestSummary[];
+}
+
+export interface IeltsReadingTestSummary {
+  id: string;
+  bookId: string;
+  bookNumber: number;
+  bookTitle: string;
+  testNumber: number;
+  title: string;
+  passageCount: number;
+  questionCount: number;
+}
+
+export interface IeltsReadingTestDetail extends IeltsReadingTestSummary {
+  passages: IeltsReadingPassage[];
+}
+
+export interface IeltsReadingAttemptSummary {
+  id: string;
+  testId: string;
+  bookTitle: string;
+  bookNumber: number;
+  testNumber: number;
+  score: number;
+  totalQuestions: number;
+  elapsedSeconds: number;
+  submittedAt: string;
+}
+
+export interface IeltsReadingAttemptResult extends IeltsReadingAttemptSummary {
+  responses: IeltsReadingResponseResult[];
+}
+
+export interface IeltsReadingResponseResult {
+  questionId: string;
+  questionNumber: number;
+  response: string[];
+  correctAnswer: string[];
+  isCorrect: boolean;
+}
+
 export interface ReviewTransition {
   from: MemoryState | null;
   to: MemoryState;

@@ -56,6 +56,8 @@ import { startNextOfficialBatch } from './lib/officialLibraryStart';
 // --- Lazy loaded views ---
 const HomeView = lazy(() => import('./components/home/HomeView').then(m => ({ default: m.HomeView })));
 const ImportView = lazy(() => import('./components/import/ImportView').then(m => ({ default: m.ImportView })));
+const IeltsReadingHomeView = lazy(() => import('./components/ielts/IeltsReadingView').then(m => ({ default: m.IeltsReadingHomeView })));
+const IeltsReadingTestView = lazy(() => import('./components/ielts/IeltsReadingView').then(m => ({ default: m.IeltsReadingTestView })));
 const LibraryView = lazy(() => import('./components/library/LibraryView').then(m => ({ default: m.LibraryView })));
 const NotebookView = lazy(() => import('./components/notebook/NotebookView').then(m => ({ default: m.NotebookView })));
 const ProfileView = lazy(() => import('./components/profile/ProfileView').then(m => ({ default: m.ProfileView })));
@@ -285,6 +287,7 @@ export default function App() {
   const [stats, setStats] = useState<UserStats>(buildEmptyStats);
   const isSessionRoute = location.pathname.startsWith('/app/session');
   const isHomeRoute = location.pathname.startsWith('/app/home');
+  const isIeltsReadingTestRoute = location.pathname.startsWith('/app/ielts-reading/test/');
 
   useEffect(() => {
     activeLearningGroupIdRef.current = activeLearningGroupId;
@@ -898,7 +901,8 @@ export default function App() {
 
   const activeNavPath = (() => {
     if (location.pathname.startsWith('/app/library')) return '/app/library';
-    if (location.pathname.startsWith('/app/import')) return '/app/import';
+    if (location.pathname.startsWith('/app/ielts-reading')) return '/app/ielts-reading';
+    if (location.pathname.startsWith('/app/import')) return '/app/library';
     if (location.pathname.startsWith('/app/notebook')) return '/app/notebook';
     if (location.pathname.startsWith('/app/settings')) return '/app/settings';
     if (location.pathname.startsWith('/app/profile')) return '/app/profile';
@@ -1024,10 +1028,12 @@ export default function App() {
       <WordPopoverProvider>
         <div className="min-h-screen flex selection:bg-apple-blue/20">
           <AmbientBackground />
-          <Sidebar
-            activePath={activeNavPath}
-            onNavigate={(to) => navigate(to)}
-          />
+          {!isIeltsReadingTestRoute && (
+            <Sidebar
+              activePath={activeNavPath}
+              onNavigate={(to) => navigate(to)}
+            />
+          )}
           <WhatsNewModal />
 
           <div className="flex-1 relative h-screen overflow-hidden">
@@ -1045,9 +1051,11 @@ export default function App() {
                 'h-full overflow-y-auto relative z-10',
                 isSessionRoute
                   ? 'session-main px-4 py-6 pb-22 md:px-6 md:py-7 lg:pb-7 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10'
+                  : isIeltsReadingTestRoute
+                    ? 'px-0 py-0'
                   : isHomeRoute
                     ? 'px-6 pt-4 pb-32 lg:px-6 lg:py-6 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10'
-                  : 'px-6 pt-4 pb-32 lg:pt-24 lg:px-6 lg:py-7 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10',
+                  : 'px-6 pt-4 pb-32 lg:px-6 lg:py-6 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10',
               )}
             >
               <div
@@ -1127,6 +1135,8 @@ export default function App() {
                     )}
                   />
                   <Route path="import" element={<ImportView />} />
+                  <Route path="ielts-reading" element={<IeltsReadingHomeView />} />
+                  <Route path="ielts-reading/test/:testId" element={<IeltsReadingTestView />} />
                   <Route path="notebook" element={<NotebookView />} />
                   <Route
                     path="session"

@@ -101,9 +101,13 @@ dist
 
 # Playwright / local tooling output
 output/
+__pycache__/
+*.py[cod]
 
 # Reference PDFs (kept locally, not in repo)
 *.pdf
+content/ielts-reading/raw/
+content/ielts-reading/extracted/
 
 # Gatsby files
 .cache/

@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Clock3,
   Loader2,
+  PlusCircle,
   Sparkles,
   Trash2,
   X,
@@ -215,7 +216,7 @@ function formatGroupTitle(createdAt: string): string {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, '0');
   const day = `${date.getDate()}`.padStart(2, '0');
-  return `${year}.${month}.${day} 接入词组`;
+  return `${year}.${month}.${day} 导入词组`;
 }
 
 function formatGroupDateLong(createdAt: string): string {
@@ -1155,32 +1156,45 @@ export const LibraryView = ({
         </div>
 
         <div className="border-b border-black/8">
-          <div className="flex items-center gap-2">
-            {([
-              { key: 'personal', label: '个人词库' },
-              { key: 'system', label: '系统词库' },
-            ] as const).map((tab) => {
-              const selected = activeTab === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => handleSelectTab(tab.key)}
-                  className={`relative px-5 pb-3 pt-1 text-sm font-black transition-colors ${
-                    selected ? 'text-apple-blue' : 'text-text-secondary hover:text-text-primary'
-                  }`}
-                  aria-pressed={selected}
-                >
-                  {tab.label}
-                  {selected && (
-                    <motion.span
-                      layoutId="library-tab-underline"
-                      className="absolute inset-x-0 bottom-[-1px] h-0.5 rounded-full bg-apple-blue"
-                    />
-                  )}
-                </button>
-              );
-            })}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              {([
+                { key: 'personal', label: '个人词库' },
+                { key: 'system', label: '系统词库' },
+              ] as const).map((tab) => {
+                const selected = activeTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => handleSelectTab(tab.key)}
+                    className={`relative px-5 pb-3 pt-1 text-sm font-black transition-colors ${
+                      selected ? 'text-apple-blue' : 'text-text-secondary hover:text-text-primary'
+                    }`}
+                    aria-pressed={selected}
+                  >
+                    {tab.label}
+                    {selected && (
+                      <motion.span
+                        layoutId="library-tab-underline"
+                        className="absolute inset-x-0 bottom-[-1px] h-0.5 rounded-full bg-apple-blue"
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {activeTab === 'personal' && (
+              <button
+                type="button"
+                onClick={() => navigate('/app/import')}
+                className="mb-3 inline-flex h-10 w-fit items-center justify-center gap-2 rounded-[16px] bg-apple-blue px-4 text-sm font-black text-white shadow-[0_14px_28px_rgba(0,122,255,0.18)] transition-transform active:scale-[0.98]"
+              >
+                <PlusCircle className="h-4 w-4" />
+                导入
+              </button>
+            )}
           </div>
         </div>
       </header>

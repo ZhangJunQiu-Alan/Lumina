@@ -1,10 +1,10 @@
 import { motion } from 'motion/react';
-import { BookMarked, BookOpen, LayoutDashboard, PlusCircle, User } from 'lucide-react';
+import { BookMarked, BookOpen, ClipboardList, LayoutDashboard, User } from 'lucide-react';
 
 const NAV_ITEMS = [
   { to: '/app/home', icon: LayoutDashboard, label: '路线' },
   { to: '/app/library', icon: BookOpen, label: '地图' },
-  { to: '/app/import', icon: PlusCircle, label: '接入' },
+  { to: '/app/ielts-reading', icon: ClipboardList, label: '雅思' },
   { to: '/app/notebook', icon: BookMarked, label: '生词' },
   { to: '/app/profile', icon: User, label: '账号' },
 ] as const;

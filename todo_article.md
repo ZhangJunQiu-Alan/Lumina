@@ -5,6 +5,18 @@
 
 ---
 
+## IELTS Reading 真题训练接入
+
+- [x] 新增 IELTS Academic Reading 独立数据模型和 RLS：book/test/passage/question group/question/attempt/response。
+- [x] 新增本地 PDF 导入管线：`npm run import:ielts-reading -- --pdf ... --dry-run` 生成候选 JSON 和校对报告，`--apply` 通过硬校验后写入 Supabase。
+- [x] 新增 `/app/ielts-reading` 前端入口：题库列表、60 分钟训练页、答题卡、提交评分、错题回看。
+- [x] 复用现有阅读点击查词和加入个人词库能力。
+- [x] 新增 IELTS 阅读评分 normalization 单元测试。
+- [ ] 放入第一本 Cambridge IELTS A 类 PDF 后执行 dry-run，人工确认目录、文章标题、题号和答案。
+- [ ] 校对通过后执行 `--apply` 写入目标 Supabase。
+
+---
+
 ## Context
 
 ### 为什么做这件事
