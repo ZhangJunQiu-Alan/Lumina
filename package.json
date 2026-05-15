@@ -18,6 +18,7 @@
     "cleanup:saved-library": "node --import tsx --env-file=.env scripts/cleanup-saved-library.ts",
     "backfill:forms": "node --import tsx --env-file=.env scripts/backfill-vocabulary-item-forms.ts",
     "import:ielts-reading": "node --import tsx --env-file=.env scripts/import-ielts-reading.ts",
+    "import:ielts-listening": "node --import tsx --env-file=.env scripts/import-ielts-listening.ts",
     "lint": "tsc --noEmit",
     "test:review": "tsx scripts/test-review-rules.ts",
     "test:cloze": "tsx scripts/test-cloze.ts",
@@ -26,7 +27,8 @@
     "test:session": "tsx scripts/test-learning-session.ts",
     "test:word-batch": "tsx scripts/test-word-batch.ts",
     "test:ielts-reading": "tsx scripts/test-ielts-reading-scoring.ts",
-    "test:ielts-reading-text": "tsx scripts/test-ielts-reading-text.ts"
+    "test:ielts-reading-text": "tsx scripts/test-ielts-reading-text.ts",
+    "test:ielts-listening": "tsx scripts/test-ielts-listening-scoring.ts && tsx scripts/test-ielts-listening-import.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

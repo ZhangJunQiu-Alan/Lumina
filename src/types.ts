@@ -295,6 +295,104 @@ export interface IeltsReadingResponseResult {
   isCorrect: boolean;
 }
 
+export type IeltsListeningQuestionType =
+  | 'form_completion'
+  | 'note_completion'
+  | 'table_completion'
+  | 'sentence_completion'
+  | 'multiple_choice_single'
+  | 'matching'
+  | 'diagram_label'
+  | 'other';
+
+export interface IeltsListeningOption {
+  key: string;
+  text: string;
+}
+
+export interface IeltsListeningQuestion {
+  id: string;
+  testId: string;
+  sectionId: string;
+  groupId: string;
+  number: number;
+  prompt: string;
+  options: IeltsListeningOption[];
+  answer: string[];
+  answerNote: string;
+  type: IeltsListeningQuestionType;
+  sectionNumber: number;
+}
+
+export interface IeltsListeningQuestionGroup {
+  id: string;
+  type: IeltsListeningQuestionType;
+  prompt: string;
+  instructions: string;
+  options: IeltsListeningOption[];
+  rangeStart: number | null;
+  rangeEnd: number | null;
+  questions: IeltsListeningQuestion[];
+}
+
+export interface IeltsListeningSection {
+  id: string;
+  number: number;
+  title: string;
+  instructions: string;
+  audioUrl: string;
+  audioStoragePath: string;
+  sourceAudioFilename: string;
+  groups: IeltsListeningQuestionGroup[];
+}
+
+export interface IeltsListeningBookSummary {
+  id: string;
+  bookNumber: number;
+  title: string;
+  sourceLabel: string;
+  tests: IeltsListeningTestSummary[];
+}
+
+export interface IeltsListeningTestSummary {
+  id: string;
+  bookId: string;
+  bookNumber: number;
+  bookTitle: string;
+  testNumber: number;
+  title: string;
+  sectionCount: number;
+  questionCount: number;
+}
+
+export interface IeltsListeningTestDetail extends IeltsListeningTestSummary {
+  sections: IeltsListeningSection[];
+}
+
+export interface IeltsListeningAttemptSummary {
+  id: string;
+  testId: string;
+  bookTitle: string;
+  bookNumber: number;
+  testNumber: number;
+  score: number;
+  totalQuestions: number;
+  elapsedSeconds: number;
+  submittedAt: string;
+}
+
+export interface IeltsListeningAttemptResult extends IeltsListeningAttemptSummary {
+  responses: IeltsListeningResponseResult[];
+}
+
+export interface IeltsListeningResponseResult {
+  questionId: string;
+  questionNumber: number;
+  response: string[];
+  correctAnswer: string[];
+  isCorrect: boolean;
+}
+
 export interface ReviewTransition {
   from: MemoryState | null;
   to: MemoryState;
