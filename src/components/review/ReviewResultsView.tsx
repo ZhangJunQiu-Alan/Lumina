@@ -56,7 +56,7 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
             <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">状态更新</p>
             <h2 className="mt-2 text-3xl font-black">这一轮已经判完了</h2>
             <p className="mt-3 text-sm text-text-secondary">
-              一共过了 {items.length} 个词 · 更稳了 {upgradedCount} 个 · 还要再见 {downgradedCount} 个 · 可以先放下 {graduatedCount} 个
+              一共过了 {items.length} 个词 · 记忆更牢固了 {upgradedCount} 个 · 还要再见 {downgradedCount} 个 · 掌握 {graduatedCount} 个
             </p>
           </div>
           <div className="w-16 h-16 rounded-2xl bg-apple-green/10 text-apple-green flex items-center justify-center">
