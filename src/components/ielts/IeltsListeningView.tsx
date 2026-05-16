@@ -218,7 +218,7 @@ export function IeltsListeningHomeView() {
             <p className="text-xs font-black uppercase tracking-[0.24em] text-text-secondary">IELTS Listening</p>
             <h2 className="mt-2 text-3xl font-black tracking-tight text-text-primary sm:text-4xl">雅思听力真题训练</h2>
             <p className="mt-2 max-w-2xl text-sm leading-7 text-text-secondary">
-              每套 4 个 Section、40 题、30 分钟。先上线 Cambridge IELTS 4。
+              每套 4 个 Section、40 题、30 分钟。支持 Cambridge IELTS 4 和 5。
             </p>
           </div>
         </div>
@@ -239,7 +239,7 @@ export function IeltsListeningHomeView() {
           <FileAudio className="mx-auto h-10 w-10 text-text-secondary" />
           <h3 className="mt-4 text-2xl font-black text-text-primary">还没有导入听力题库</h3>
           <p className="mx-auto mt-3 max-w-2xl text-sm font-bold leading-7 text-text-secondary">
-            先运行 Cambridge 4 听力导入脚本，音频会上传到 Supabase Storage。
+            先运行 Cambridge 听力导入脚本，音频会上传到 Supabase Storage。
           </p>
         </section>
       ) : (

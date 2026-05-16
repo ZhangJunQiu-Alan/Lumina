@@ -123,10 +123,10 @@ function parseArgs(argv: string[]): CliArgs {
   }
 
   if (!args.book || !Number.isFinite(args.book)) {
-    throw new Error('请传 --book <number>。v1 当前支持 --book 4。');
+    throw new Error('请传 --book <number>。当前支持 --book 4 或 --book 5。');
   }
-  if (args.book !== 4) {
-    throw new Error('IELTS listening v1 先只支持 Cambridge 4。');
+  if (![4, 5].includes(args.book)) {
+    throw new Error('IELTS listening 当前支持 Cambridge 4 和 Cambridge 5。');
   }
   if (!args.dryRun && !args.apply) args.dryRun = true;
   return args;
@@ -137,6 +137,8 @@ function printUsage() {
     'Usage:',
     '  npm run import:ielts-listening -- --book 4 --dry-run',
     '  npm run import:ielts-listening -- --book 4 --apply',
+    '  npm run import:ielts-listening -- --book 5 --dry-run',
+    '  npm run import:ielts-listening -- --book 5 --apply',
     '  npm run import:ielts-listening -- --book 4 --text output/ielts-reading/cambridge-4-extracted.txt --dry-run',
   ].join('\n'));
 }
@@ -201,7 +203,7 @@ async function readSourceText(args: CliArgs): Promise<{ text: string; sourceLabe
 
 function extractMainListeningTestChunks(text: string): Map<number, string> {
   const anchors: { testNumber: number; index: number }[] = [];
-  const re = /(?:^|\n)\s*Test\s*([1-4])\s+LISTE/gi;
+  const re = /(?:^|[\n\f])\s*Test\s*([1-4])\s+LISTE/gi;
   let match: RegExpExecArray | null;
   while ((match = re.exec(text))) {
     const testNumber = Number.parseInt(match[1], 10);
@@ -230,10 +232,11 @@ function extractMainListeningTestChunks(text: string): Map<number, string> {
 
 function splitSections(testChunk: string): Map<number, string> {
   const anchors: { sectionNumber: number; index: number }[] = [];
-  const re = /\bSECTION\s+([1-4])\b/gi;
+  const re = /\bSECTION\s+([1-4]|I{1,3}|IV)\b/gi;
   let match: RegExpExecArray | null;
   while ((match = re.exec(testChunk))) {
-    const sectionNumber = Number.parseInt(match[1], 10);
+    const sectionNumber = parseSectionNumber(match[1]);
+    if (!sectionNumber) continue;
     if (!anchors.some((anchor) => anchor.sectionNumber === sectionNumber)) {
       anchors.push({ sectionNumber, index: match.index });
     }
@@ -248,6 +251,19 @@ function splitSections(testChunk: string): Map<number, string> {
     });
 
   return sections;
+}
+
+function parseSectionNumber(value: string): number | null {
+  const normalized = value.trim().toUpperCase();
+  const romanSections: Record<string, number> = {
+    I: 1,
+    II: 2,
+    III: 3,
+    IV: 4,
+  };
+  if (romanSections[normalized]) return romanSections[normalized];
+  const parsed = Number.parseInt(normalized, 10);
+  return parsed >= 1 && parsed <= 4 ? parsed : null;
 }
 
 function parseQuestionRange(value: string): { start: number; end: number } | null {
@@ -348,7 +364,16 @@ function buildGroups(sectionChunk: string, sectionNumber: number, answerMap: Map
     ? filteredMatches
     : [{ index: 0, heading: `Questions ${sectionStart}-${sectionEnd}`, start: sectionStart, end: sectionEnd }];
 
-  return usableMatches.map((heading, index, ordered) => {
+  const adjustedMatches = usableMatches.map((heading, index, ordered) => {
+    let end = heading.end;
+    const nextHeading = ordered[index + 1];
+    if (nextHeading && nextHeading.start <= end) {
+      end = Math.max(heading.start, nextHeading.start - 1);
+    }
+    return { ...heading, end };
+  }).filter((heading) => heading.start <= heading.end);
+
+  return adjustedMatches.map((heading, index, ordered) => {
     const nextIndex = ordered[index + 1]?.index ?? sectionChunk.length;
     const chunk = sectionChunk.slice(heading.index, nextIndex).trim();
     const type = inferQuestionType(chunk);
@@ -379,8 +404,9 @@ function buildGroups(sectionChunk: string, sectionNumber: number, answerMap: Map
   });
 }
 
-const CAMBRIDGE_4_LISTENING_ANSWERS: Record<number, Record<number, string[]>> = {
-  1: {
+const LISTENING_ANSWERS_BY_BOOK: Record<number, Record<number, Record<number, string[]>>> = {
+  4: {
+    1: {
     1: ['shopping', 'variety of shopping'],
     2: ['guided tours'],
     3: ['more than 12', 'over 12'],
@@ -421,8 +447,8 @@ const CAMBRIDGE_4_LISTENING_ANSWERS: Record<number, Record<number, string[]>> = 
     38: ['considerably reduce', 'decrease', 'filter'],
     39: ['low'],
     40: ['space', 'room'],
-  },
-  2: {
+    },
+    2: {
     1: ['C'],
     2: ['C'],
     3: ['B'],
@@ -463,8 +489,8 @@ const CAMBRIDGE_4_LISTENING_ANSWERS: Record<number, Record<number, string[]>> = 
     38: ['illegal profit', 'illegal profits'],
     39: ['D', 'E'],
     40: ['D', 'E'],
-  },
-  3: {
+    },
+    3: {
     1: ['1 1/2 years', 'one and a half years', '18 months', '1.5 years'],
     2: ['Forest', 'Forrest'],
     3: ['Academic'],
@@ -505,8 +531,8 @@ const CAMBRIDGE_4_LISTENING_ANSWERS: Record<number, Record<number, string[]>> = 
     38: ['D', 'F'],
     39: ['B'],
     40: ['A', 'C'],
-  },
-  4: {
+    },
+    4: {
     1: ['College Dining Room'],
     2: ['office staff', 'students'],
     3: ['office staff', 'students'],
@@ -547,11 +573,182 @@ const CAMBRIDGE_4_LISTENING_ANSWERS: Record<number, Record<number, string[]>> = 
     38: ['B'],
     39: ['B', 'E'],
     40: ['B', 'E'],
+    },
+  },
+  5: {
+    1: {
+      1: ['by minibus', 'a minibus'],
+      2: ['15', '15 people'],
+      3: ['April (the) 18th', '18th April'],
+      4: ['Pallisades'],
+      5: ['B', 'D'],
+      6: ['B', 'D'],
+      7: ['280'],
+      8: ['14'],
+      9: ['20%'],
+      10: ['39745T'],
+      11: ['move around', 'move about'],
+      12: ['brakes'],
+      13: ['fingers'],
+      14: ['satisfactory'],
+      15: ['put (it) together'],
+      16: ['too wide'],
+      17: ['dangerous'],
+      18: ['wheels'],
+      19: ['(the) best', '(the) best buy', 'safe'],
+      20: ['sharp'],
+      21: ['B'],
+      22: ['A'],
+      23: ['C'],
+      24: ['B', 'D'],
+      25: ['B', 'D'],
+      26: ['full-time'],
+      27: ['a term', 'one term'],
+      28: ['intensive'],
+      29: ['two modules', '(for) two terms'],
+      30: ['a topic', 'one topic'],
+      31: ['politics'],
+      32: ['learn'],
+      33: ["children's education", "their children's education"],
+      34: ['a car'],
+      35: ['nursing care'],
+      36: ['crisis'],
+      37: ['early twenties'],
+      38: ['confidence'],
+      39: ['money management'],
+      40: ['low-risk investments'],
+    },
+    2: {
+      1: ['(passport) photos', '(passport) photographs'],
+      2: ['(a) bank statement'],
+      3: ['125', '125 per year'],
+      4: ['8'],
+      5: ['1.50'],
+      6: ['48'],
+      7: ['local papers', 'local newspapers'],
+      8: ['(a) card', 'cards'],
+      9: ['Grantingham'],
+      10: ['Friday'],
+      11: ['C'],
+      12: ['C'],
+      13: ['A'],
+      14: ['C'],
+      15: ['A'],
+      16: ['£75,000', '75,000'],
+      17: ['computers'],
+      18: ['C', 'E', 'F'],
+      19: ['C', 'E', 'F'],
+      20: ['C', 'E', 'F'],
+      21: ['home', "student's home"],
+      22: ['(have) dinner', 'come to dinner', 'go to dinner'],
+      23: ['technical'],
+      24: ['slang'],
+      25: ['cooperating', 'cooperation'],
+      26: ['persuading'],
+      27: ['editing'],
+      28: ['complete'],
+      29: ['experiment'],
+      30: ['long'],
+      31: ['58'],
+      32: ['desert'],
+      33: ['science'],
+      34: ['hospital', 'small hospital'],
+      35: ['ship'],
+      36: ['platforms'],
+      37: ['3,500', '3500'],
+      38: ['currents', 'ocean currents'],
+      39: ['(the) pollution'],
+      40: ['young'],
+    },
+    3: {
+      1: ['1.4 litres', '1.4 liters'],
+      2: ['automatic'],
+      3: ['light', 'sky'],
+      4: ['credit'],
+      5: ['Harries'],
+      6: ['Dr', 'Doctor'],
+      7: ['Alton'],
+      8: ['messages'],
+      9: ['Lion'],
+      10: ['reasonable'],
+      11: ['C', 'E'],
+      12: ['C', 'E'],
+      13: ['references'],
+      14: ['country'],
+      15: ['weather'],
+      16: ['C'],
+      17: ['C'],
+      18: ['A'],
+      19: ['B'],
+      20: ['C'],
+      21: ['5th May'],
+      22: ['16th July', 'Friday 16th July'],
+      23: ['clear', 'was clear'],
+      24: ['(an/the) outline', '(a/the) course outline'],
+      25: ['(the) 2nd half'],
+      26: ['(standard of) teaching', '(standard of) teachers'],
+      27: ['discussion', 'group discussion'],
+      28: ['handouts'],
+      29: ['written work'],
+      30: ['student support', 'support for students'],
+      31: ['12.5%'],
+      32: ['incineration plants'],
+      33: ['drop-off'],
+      34: ['cooking'],
+      35: ['500,000', '500000'],
+      36: ['roads'],
+      37: ['soil conditioner'],
+      38: ['containers'],
+      39: ['pencils'],
+      40: ['business cards'],
+    },
+    4: {
+      1: ['14 Hill Road'],
+      2: ['between 9 and 9.30', '9-9.30'],
+      3: ['1 year', 'one year'],
+      4: ['intermediate'],
+      5: ['North-West', 'North West'],
+      6: ['vegetarian'],
+      7: ['(a) (real) garden', '(a) garden', 'real garden'],
+      8: ['(the) only guest', 'only guest'],
+      9: ['100'],
+      10: ['23rd March', 'Monday 23rd March'],
+      11: ['clubhouse'],
+      12: ['picnic'],
+      13: ['prizes'],
+      14: ['10'],
+      15: ['Wednesday afternoon(s)', 'Wednesday afternoon', 'Wednesday afternoons'],
+      16: ['4'],
+      17: ['Sunday afternoon(s)', 'Sunday afternoon', 'Sunday afternoons'],
+      18: ['collect (the) fees', 'collect (the) money'],
+      19: ['send (out/the) newsletter(s)', 'send out newsletters', 'send the newsletters'],
+      20: ['supervise (the) teams'],
+      21: ['sales'],
+      22: ['competition'],
+      23: ['interest rates', 'rates of interest'],
+      24: ['training'],
+      25: ['A'],
+      26: ['B'],
+      27: ['A'],
+      28: ['C'],
+      29: ['B'],
+      30: ['D'],
+      31: ['B'],
+      32: ['A'],
+      33: ['A'],
+      34: ['C'],
+      35: ['A'],
+      36: ['B'],
+      37: ['B'],
+      38: ['A'],
+      39: ['B'],
+      40: ['C'],
+    },
   },
 };
 
-function answerMapForTest(testNumber: number): Map<number, string[]> {
-  return new Map(Object.entries(CAMBRIDGE_4_LISTENING_ANSWERS[testNumber] ?? {})
+function answerMapForTest(bookNumber: number, testNumber: number): Map<number, string[]> {
+  return new Map(Object.entries(LISTENING_ANSWERS_BY_BOOK[bookNumber]?.[testNumber] ?? {})
     .map(([key, value]) => [Number.parseInt(key, 10), value]));
 }
 
@@ -604,7 +801,7 @@ function buildBook(text: string, sourceLabel: string, bookNumber: number, audioS
   const tests: ImportedListeningTest[] = [];
 
   for (const [testNumber, testChunk] of [...chunks.entries()].sort((left, right) => left[0] - right[0])) {
-    const answerMap = answerMapForTest(testNumber);
+    const answerMap = answerMapForTest(bookNumber, testNumber);
     const sectionChunks = splitSections(testChunk);
     const sections: ImportedListeningSection[] = [];
 
@@ -957,7 +1154,7 @@ async function applyBook(book: ImportedListeningBook, audioSources: Map<string, 
           prompt: question.prompt,
           options_json: question.options.length > 0 ? question.options : group.options,
           answer_json: question.answers,
-          answer_note: question.answerNote || (question.answers.length > 1 ? `Cambridge 4 answer variants ${sourceHash(question.answers.join('|'))}` : ''),
+          answer_note: question.answerNote || (question.answers.length > 1 ? `Cambridge ${book.bookNumber} answer variants ${sourceHash(question.answers.join('|'))}` : ''),
           paper_hotspot_json: question.paperHotspot ?? null,
           sort_order: questionIndex,
         }));

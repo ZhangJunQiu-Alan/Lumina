@@ -305,10 +305,13 @@ function extractAcademicReadingAnswerSections(text: string): string[] {
   return matches.slice(0, 4).map((start, index) => {
     const next = matches[index + 1] ?? text.length;
     const chunk = text.slice(start, next);
-    // Trim at "TEST N" (the next test's Listening section) or "GENERAL TRAINING" boundary.
-    // We do NOT trim at "If you score" because pdfplumber's two-column extraction places that
-    // score-chart footer inline between the two answer columns (e.g. between Q19 and Q20).
-    const nextTestIndex = chunk.search(/(?:^|\n)\s*(?:TEST\s+[1-4]\b|GENERAL\s+TRAINING\b)/i);
+    // Trim at "TEST N" / "GENERAL TRAINING" boundary, or at a form-feed that immediately precedes
+    // LISTENING — this occurs in two-column layouts where the next test's Listening answers appear
+    // on the same page as the current test's right-column AR header (pdfplumber reads left column
+    // first, so the next LISTENING content lands before the "TEST N" header in the extracted text).
+    const nextTestIndex = chunk.search(
+      /(?:^|\n)\s*(?:TEST\s+[1-4]\b|GENERAL\s+TRAINING\b)|\n\s*\d*\s*\n\s*Answer\s+key\s*\n\s*(?:LISTENING\b|READING\s*\n\s*Section\b)|\f\s*Answer\s+key\s*\n\s*(?:LISTENING\b|READING\s*\n\s*Section\b)|\n\s*\d+\s*\f\s*Answer\s+key\s*\n\s*(?:LISTENING\b|READING\s*\n\s*Section\b)|\n\n\s*\d*\n*\s*LISTENING\b/i,
+    );
     const end = nextTestIndex > 0 ? nextTestIndex : chunk.length;
     return chunk.slice(0, end);
   });
@@ -334,13 +337,26 @@ function isAnswerContinuationNoise(value: string): boolean {
   if (/^\d+\s*-\s*\d+/.test(cleaned)) return true;
   if (/^you\s+/i.test(cleaned)) return true;
   if (/^score\s+/i.test(cleaned)) return true;
+  if (/^scores\s+acceptable\b/i.test(cleaned)) return true;
+  if (/^get\s+an\s+acceptable\b/i.test(cleaned)) return true;
+  if (/^acceptable\s+score\b/i.test(cleaned)) return true;
   if (/^conditions\b/i.test(cleaned)) return true;
   if (/^recommend\b/i.test(cleaned)) return true;
+  if (/^we\s+recommend\b/i.test(cleaned)) return true;
   if (/^remember\b/i.test(cleaned)) return true;
+  if (/^practice\s+or\s+lessons\b/i.test(cleaned)) return true;
+  if (/^or\s+lessons\s+before\b/i.test(cleaned)) return true;
   if (/^institutions\b/i.test(cleaned)) return true;
+  if (/^but\s+we\s+recommend\b/i.test(cleaned)) return true;
+  if (/^but\s+think\s+about\b/i.test(cleaned)) return true;
+  if (/^but\s+remember\b/i.test(cleaned)) return true;
   if (/^English\b/i.test(cleaned)) return true;
+  if (/^If\s+you\s+score\b/i.test(cleaned)) return true;
+  if (/^examination\s+conditions\b/i.test(cleaned)) return true;
   if (/^lot of time\b/i.test(cleaned)) return true;
   if (/^more practice\b/i.test(cleaned)) return true;
+  if (/^that\s+you\s+/i.test(cleaned)) return true;
+  if (/^before\s+you\s+take\b/i.test(cleaned)) return true;
   return false;
 }
 
@@ -441,7 +457,21 @@ function parseAnswerColumn(lines: string[]): Map<number, string[]> {
   for (const rawLine of lines) {
     const line = rawLine.trim();
     if (!line) continue;
-    if (isAnswerContinuationNoise(line) && !/^\d{1,2}/.test(line)) continue;
+    // Filter score-range table rows like "12-27 28-40" or "1-13 22 c" — these are "If you score"
+    // footer rows where the left part is a question-count range and the right part is another range
+    // or number, NOT a question answer.  Must run before entryMatch so "12-27" isn't parsed as Q12-27.
+    if (/^\d+\s*[-~]\s*\d+\s*(?:\d+\s*[-~]\s*\d+)?\s*$/.test(line)) {
+      flush();
+      continue;
+    }
+    if (/^\d+\s*-\s*\d+\s+\d/.test(line)) {
+      flush();
+      continue;
+    }
+    if (isAnswerContinuationNoise(line) && !/^\d{1,2}/.test(line)) {
+      flush();
+      continue;
+    }
 
     // The leading number group includes lone "I" (digit 1 OCR'd as capital I by pdfplumber).
     const entryMatch = /^([1-9]\d?|I[Zz20]|I)(?:\s*(?:&|and|[-~])\s*([1-9]\d?|I[Zz20]))?\s+(.+)$/.exec(line);
@@ -468,7 +498,11 @@ function parseAnswerColumn(lines: string[]): Map<number, string[]> {
       continue;
     }
 
-    if (!current || isAnswerContinuationNoise(line)) continue;
+    if (!current) continue;
+    if (isAnswerContinuationNoise(line)) {
+      flush();
+      continue;
+    }
     current.parts.push(line);
   }
 
@@ -484,18 +518,136 @@ function mergeAnswerMaps(target: Map<number, string[]>, source: Map<number, stri
   }
 }
 
+// Detects a "Questions X-Y" / "X+Y" header and returns [start, end], or null.
+function parseQuestionsRangeHeader(line: string): [number, number] | null {
+  // Explicit range: "Questions 1-13", "Questions 1+13", "Questions 14^26", etc.
+  const m = /\bQuestions?\s+(\d{1,2})\s*(?:[+^,\-–—]\s*(\d{1,2}))?(?:\s*$|\s+[A-Za-z])/i.exec(line);
+  if (m) {
+    const start = Number.parseInt(m[1], 10);
+    const end = m[2] ? Number.parseInt(m[2], 10) : start;
+    if (start >= 1 && end <= 40 && start <= end) return [start, end];
+  }
+
+  // Implicit range from "Reading Passage N" with NO question numbers (split by column in some PDFs).
+  // IELTS Academic Reading standard structure: P1→Q1-13, P2→Q14-26, P3→Q27-40.
+  const pm = /\bReading\s+Passage\s+([123])[,.]?\s*$/i.exec(line);
+  if (pm) {
+    const p = Number.parseInt(pm[1], 10);
+    const ranges: [number, number][] = [[1, 13], [14, 26], [27, 40]];
+    return ranges[p - 1] ?? null;
+  }
+
+  return null;
+}
+
+// Standard IELTS passage Q-ranges (P1→Q1-13, P2→Q14-26, P3→Q27-40).
+// Used to infer range when passage header lacks explicit question numbers.
+const IELTS_PASSAGE_RANGES: [number, number][] = [[1, 13], [14, 26], [27, 40]];
+
+// Parse answers listed positionally (no question-number prefix) following a Questions X-Y header.
+function parsePositionalAnswerColumn(lines: string[]): Map<number, string[]> {
+  const map = new Map<number, string[]>();
+  let rangeStart: number | null = null;
+  let rangeEnd: number | null = null;
+  let next: number | null = null;
+  let passageRangeIndex = -1;   // tracks which standard passage range we're in
+
+  for (const rawLine of lines) {
+    // Strip decorative &” separators used in some book layouts
+    const line = rawLine.replace(/&[“””]/g, '').replace(/\s+/g, ' ').trim();
+    if (!line) continue;
+
+    // Update range when a section header is found
+    const range = parseQuestionsRangeHeader(line);
+    if (range) {
+      [rangeStart, rangeEnd] = range;
+      next = rangeStart;
+      passageRangeIndex = IELTS_PASSAGE_RANGES.findIndex(
+        ([s, e]) => s === rangeStart && e === rangeEnd,
+      );
+      continue;
+    }
+
+    // “Reading Passage” without an explicit question range: infer next standard passage range.
+    // This handles PDFs where the column split drops the “N, Questions X-Y” part of the header.
+    if (/\bReading\s+Passage\b/i.test(line) && !/\bQuestions?\b/i.test(line)) {
+      const nextIndex = passageRangeIndex + 1;
+      const inferred = IELTS_PASSAGE_RANGES[nextIndex];
+      if (inferred && (!rangeEnd || (next !== null && next > rangeEnd))) {
+        [rangeStart, rangeEnd] = inferred;
+        next = rangeStart;
+        passageRangeIndex = nextIndex;
+      }
+      continue;
+    }
+
+    if (next === null || rangeEnd === null || next > rangeEnd) continue;
+
+    // Skip lines that already start with a question number (handled by parseAnswerColumn)
+    if (/^([1-9]\d?|I[Zz20]?)\s/.test(line)) {
+      const numMatch = /^([1-9]\d?)\s/.exec(line);
+      if (numMatch) {
+        const qNum = Number.parseInt(numMatch[1], 10);
+        if (rangeStart !== null && qNum >= rangeStart && qNum <= rangeEnd) {
+          next = qNum + 1;
+        }
+      }
+      continue;
+    }
+
+    // Skip noise
+    if (isAnswerContinuationNoise(line)) continue;
+
+    // Assign positionally if not already in map
+    if (!map.has(next)) {
+      const answers = splitAnswerAlternatives(line).map(normalizeParsedAnswer).filter(Boolean);
+      if (answers.length > 0) {
+        map.set(next, answers);
+      }
+    }
+    next++;
+  }
+
+  return map;
+}
+
 function parseAcademicReadingAnswerSection(section: string): Map<number, string[]> {
   const map = new Map<number, string[]>();
+
+  // Detect two-column layout that uses &" as a column separator (e.g. Cambridge 10).
+  // When present, split each line on &" and parse left/right halves separately.
+  const hasTwoColumnSeparator = (section.match(/&["“”]/g) ?? []).length >= 5;
+
+  if (hasTwoColumnSeparator) {
+    const leftLines: string[] = [];
+    const rightLines: string[] = [];
+    for (const line of section.split('\n')) {
+      const sepIdx = line.search(/&["“”]/);
+      if (sepIdx >= 0) {
+        leftLines.push(line.slice(0, sepIdx));
+        rightLines.push(line.slice(sepIdx + 2));
+      } else {
+        // No separator: use char-50 split as fallback
+        leftLines.push(line.slice(0, 50));
+        rightLines.push(line.slice(50));
+      }
+    }
+    mergeAnswerMaps(map, parseAnswerColumn(leftLines));
+    mergeAnswerMaps(map, parseAnswerColumn(rightLines));
+    mergeAnswerMaps(map, parsePositionalAnswerColumn(leftLines));
+    mergeAnswerMaps(map, parsePositionalAnswerColumn(rightLines));
+    return map;
+  }
+
   const left: string[] = [];
   const right: string[] = [];
-
   for (const line of section.split('\n')) {
     left.push(line.slice(0, 50));
     right.push(line.slice(50));
   }
-
   mergeAnswerMaps(map, parseAnswerColumn(left));
   mergeAnswerMaps(map, parseAnswerColumn(right));
+  mergeAnswerMaps(map, parsePositionalAnswerColumn(left));
   return map;
 }
 
@@ -825,22 +977,41 @@ function normalizeBookPassageBodies(book: ImportedBook) {
 }
 
 function applyKnownTitleRepairs(book: ImportedBook) {
-  if (book.bookNumber !== 4) return;
+  const repairsByBook: Record<number, [string, string][]> = {
+    4: [
+      ['1:1', 'Children and Rainforests'],
+      ['1:2', 'What Do Whales Feel?'],
+      ['1:3', 'Visual Symbols and the Blind'],
+      ['2:1', 'Lost for Words'],
+      ['2:2', 'Alternative Medicine in Australia'],
+      ['2:3', 'Play is a Serious Business'],
+      ['3:1', 'Micro-Enterprise Credit for Street Youth'],
+      ['3:2', 'Volcanoes - Earth-Shattering News'],
+      ['3:3', 'Obtaining Linguistic Data'],
+      ['4:1', 'How Much Higher? How Much Faster?'],
+      ['4:2', 'The Nature and Aims of Archaeology'],
+      ['4:3', 'The Problem of Scarce Resources'],
+    ],
+    5: [
+      ['1:1', "Johnson's Dictionary"],
+      ['1:2', 'Nature or Nurture?'],
+      ['1:3', 'The Truth about the Environment'],
+      ['2:1', 'The Birth of Modern Plastics'],
+      ['2:2', "What's so funny?"],
+      ['2:3', 'The Birth of Scientific English'],
+      ['3:1', 'Early Childhood Education'],
+      ['3:2', 'Disappearing Delta'],
+      ['3:3', 'The Return of Artificial Intelligence'],
+      ['4:1', 'The Impact of Wilderness Tourism'],
+      ['4:2', 'Flawed Beauty: the Problem with Toughened Glass'],
+      ['4:3', 'The Effects of Light on Plant and Animal Species'],
+    ],
+  };
 
-  const repairs = new Map<string, string>([
-    ['1:1', 'Children and Rainforests'],
-    ['1:2', 'What Do Whales Feel?'],
-    ['1:3', 'Visual Symbols and the Blind'],
-    ['2:1', 'Lost for Words'],
-    ['2:2', 'Alternative Medicine in Australia'],
-    ['2:3', 'Play is a Serious Business'],
-    ['3:1', 'Micro-Enterprise Credit for Street Youth'],
-    ['3:2', 'Volcanoes - Earth-Shattering News'],
-    ['3:3', 'Obtaining Linguistic Data'],
-    ['4:1', 'How Much Higher? How Much Faster?'],
-    ['4:2', 'The Nature and Aims of Archaeology'],
-    ['4:3', 'The Problem of Scarce Resources'],
-  ]);
+  const repairEntries = repairsByBook[book.bookNumber];
+  if (!repairEntries) return;
+
+  const repairs = new Map<string, string>(repairEntries);
 
   for (const test of book.tests) {
     for (const passage of test.passages) {
@@ -957,7 +1128,8 @@ function applyKnownQuestionRepairs(book: ImportedBook) {
 }
 
 function applyKnownAnswerRepairs(book: ImportedBook) {
-  const repairsByBook: Record<number, [string, string[]][]> = {
+  // [key, answers, forceOverwrite?]
+  const repairsByBook: Record<number, [string, string[], boolean?][]> = {
     4: [
       ['1:15', ['taste buds']],
       ['1:16', ['baleen', 'the baleen whales']],
@@ -971,28 +1143,85 @@ function applyKnownAnswerRepairs(book: ImportedBook) {
       ['4:29', ['i']],
     ],
     5: [
+      ['1:7', ['pension'], true],
+      ['2:39', ['Principia', 'the Principia', "Newton's Principia", 'mathematical treatise'], true],
       // Answer character "I" is physically absent from this PDF page.
-      ['3:15', ['I']],
+      ['3:15', ['i'], true],
+      ['3:17', ['viii'], true],
+      // Cambridge 5 answer key OCR reads roman numerals iii/ii as "m"/"11".
+      ['4:1', ['iii'], true],
+      ['4:3', ['ii'], true],
+      ['4:11', ['tourism', 'tourist', 'tour'], true],
+      ['4:13', ['jewellery', 'jewelry'], true],
     ],
     6: [
       // Answer "i" is physically absent from this PDF page (Test 1 Passage 3).
       ['1:27', ['i']],
+    ],
+    10: [
+      // Test 1 Passage 2: Q19 gets listening garbage due to page-interleave; Q20-26 are in the
+      // right-column of the answer key without question-number prefixes, and Q21 (heading ii for
+      // Paragraph I) is physically absent from the PDF text layer.
+      ['1:19', ['x'], true],
+      ['1:20', ['iv'], true],
+      ['1:21', ['ii'], true],
+      ['1:22', ['TRUE'], true],
+      ['1:23', ['FALSE'], true],
+      ['1:24', ['NOT GIVEN'], true],
+      ['1:25', ['NOT GIVEN'], true],
+      ['1:26', ['FALSE'], true],
+      // Test 2 Passage 2: Q23-26 are sentence-completion answers buried in &" column separators.
+      // Q23 requires both "books" and "activities" (in either order).
+      ['2:23', ['books activities', 'activities books'], true],
+      ['2:24', ['internal regulation', 'self-regulation'], true],
+      ['2:25', ['emotional awareness'], true],
+      ['2:26', ['spoon-feeding'], true],
+      // Test 2 Passage 3: Q32 line "26 32 C" is parsed as Q26="32 C" noise; force Q32=C.
+      ['2:32', ['C'], true],
+      // Test 3 Passage 1: LISTENING contamination corrupts Q1-Q13 answers on page 149.
+      // Correct answers from pdfplumber word positions: left column x<277.
+      ['3:1', ['ii'], true],
+      ['3:2', ['i'], true],
+      ['3:3', ['v'], true],
+      ['3:4', ['vii'], true],
+      ['3:5', ['TRUE'], true],
+      ['3:6', ['NOT GIVEN'], true],
+      ['3:7', ['NOT GIVEN'], true],
+      ['3:8', ['TRUE'], true],
+      ['3:9', ['NOT GIVEN'], true],
+      ['3:10', ['FALSE'], true],
+      ['3:11', ['source of income'], true],
+      ['3:12', ['employer'], true],
+      ['3:13', ['domestic tourism'], true],
+      // Test 3 Passage 2: right column of page 149 — no passage header so auto-extraction skips.
+      ['3:14', ['upper'], true],
+      ['3:15', ['dry'], true],
+      ['3:16', ['north'], true],
+      ['3:17', ['FALSE'], true],
+      ['3:18', ['TRUE'], true],
+      ['3:19', ['NOT GIVEN'], true],
+      ['3:20', ['B'], true],
+      // Test 4 Passage 1: Q10/Q12 have a stray &" prefix from column separator.
+      ['4:10', ['TRUE'], true],
+      ['4:12', ['FALSE'], true],
+      // Test 4 Passage 2: Q18 truncated at line boundary (missing "feelings").
+      ['4:18', ['negative emotions / feelings', 'negative feelings'], true],
     ],
   };
 
   const repairEntries = repairsByBook[book.bookNumber];
   if (!repairEntries) return;
 
-  const repairs = new Map<string, string[]>(repairEntries);
-
   for (const test of book.tests) {
     for (const passage of test.passages) {
       for (const group of passage.groups) {
         for (const question of group.questions) {
-          const repairedAnswer = repairs.get(`${test.testNumber}:${question.questionNumber}`);
-          if (repairedAnswer && question.answer.length === 0) {
+          const entry = repairEntries.find(([key]) => key === `${test.testNumber}:${question.questionNumber}`);
+          if (!entry) continue;
+          const [, repairedAnswer, force] = entry;
+          if (repairedAnswer && (question.answer.length === 0 || force)) {
             question.answer = repairedAnswer;
-            question.answerNote = 'Recovered from Cambridge 4 answer key OCR omission.';
+            question.answerNote = `Recovered from Cambridge ${book.bookNumber} answer key OCR issue.`;
           }
         }
       }
@@ -1007,6 +1236,7 @@ function validateBook(book: ImportedBook): ImportReport {
     test.passages.flatMap((passage) => passage.groups.flatMap((group) => group.questions)),
   );
   const answerCount = allQuestions.filter((question) => question.answer.length > 0).length;
+  const suspiciousAnswerRe = /\b(?:Answer key|LISTENING|GENERAL TRAINING|Model and sample tasks|IELTS|score under|examination conditions|scores acceptable|acceptable score)\b/i;
 
   if (!Number.isInteger(book.bookNumber) || book.bookNumber <= 0) {
     errors.push('册号无效。');
@@ -1029,6 +1259,12 @@ function validateBook(book: ImportedBook): ImportReport {
     const missingAnswers = questions.filter((question) => question.answer.length === 0).map((question) => question.questionNumber);
     if (missingAnswers.length > 0) {
       errors.push(`Test ${test.testNumber} 缺少答案：${missingAnswers.join(', ')}。`);
+    }
+    const suspiciousAnswers = questions
+      .filter((question) => question.answer.some((answer) => suspiciousAnswerRe.test(answer)))
+      .map((question) => `${question.questionNumber}:${question.answer.join(' / ')}`);
+    if (suspiciousAnswers.length > 0) {
+      errors.push(`Test ${test.testNumber} 答案疑似混入页脚或其他答案区：${suspiciousAnswers.join('; ')}。`);
     }
 
     for (const passage of test.passages) {
