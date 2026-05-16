@@ -46,6 +46,7 @@ import {
   type IeltsReadingAnswerMap,
   type IeltsReadingAnswerValue,
 } from '../../lib/ieltsReadingScoring';
+import { splitIeltsPassageParagraphs } from '../../lib/ieltsReadingText';
 
 const TEST_DURATION_SECONDS = 60 * 60;
 
@@ -509,7 +510,7 @@ function clampReadingFontSize(value: unknown): number {
 }
 
 function getPassageParagraphs(body: string): string[] {
-  return body.split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean);
+  return splitIeltsPassageParagraphs(body);
 }
 
 function getQuestionRangeLabel(passage: IeltsReadingPassage) {
@@ -1339,7 +1340,6 @@ export function IeltsReadingTestView() {
   const [annotations, setAnnotations] = useState<ReadingAnnotation[]>([]);
   const [fontSize, setFontSize] = useState(DEFAULT_READING_FONT_SIZE);
   const [pendingNoteSelection, setPendingNoteSelection] = useState<AnnotationSelection | null>(null);
-  const [annotationMessage, setAnnotationMessage] = useState('');
   const [now, setNow] = useState(() => Date.now());
   const [result, setResult] = useState<IeltsReadingAttemptResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -1406,12 +1406,6 @@ export function IeltsReadingTestView() {
       fontSize,
     });
   }, [answers, annotations, flaggedNumbers, fontSize, result, selectedPassage, startedAt, testId, user]);
-
-  useEffect(() => {
-    if (!annotationMessage) return;
-    const timeout = window.setTimeout(() => setAnnotationMessage(''), 2200);
-    return () => window.clearTimeout(timeout);
-  }, [annotationMessage]);
 
   const questions = useMemo(() => (test ? getIeltsReadingQuestions(test) : []), [test]);
   const selectedPassageData = test?.passages.find((passage) => passage.number === selectedPassage) ?? test?.passages[0] ?? null;
@@ -1490,7 +1484,6 @@ export function IeltsReadingTestView() {
 
     if (readingMode === 'clear') {
       clearSelectedAnnotations(selection);
-      setAnnotationMessage('已清除选中区域的高亮和笔记');
       window.getSelection()?.removeAllRanges();
       return;
     }
@@ -1501,7 +1494,6 @@ export function IeltsReadingTestView() {
     }
 
     upsertAnnotation(selection);
-    setAnnotationMessage('已高亮选中原文');
     window.getSelection()?.removeAllRanges();
   }, [clearSelectedAnnotations, inputsLocked, readingMode, selectedPassage, upsertAnnotation]);
 
@@ -1509,7 +1501,6 @@ export function IeltsReadingTestView() {
     if (inputsLocked) return;
     if (readingMode === 'clear') {
       setAnnotations((current) => current.filter((item) => item.id !== annotation.id));
-      setAnnotationMessage('已清除这条标注');
       return;
     }
     if (readingMode !== 'note' || !test) return;
@@ -1529,7 +1520,6 @@ export function IeltsReadingTestView() {
   const handleSaveNote = useCallback((note: string) => {
     if (!pendingNoteSelection) return;
     upsertAnnotation(pendingNoteSelection, note);
-    setAnnotationMessage(note ? '已保存笔记' : '已保存高亮');
     setPendingNoteSelection(null);
     window.getSelection()?.removeAllRanges();
   }, [pendingNoteSelection, upsertAnnotation]);
@@ -1609,7 +1599,6 @@ export function IeltsReadingTestView() {
     setAnnotations([]);
     setFontSize(DEFAULT_READING_FONT_SIZE);
     setPendingNoteSelection(null);
-    setAnnotationMessage('');
     setIsSubmitDialogOpen(false);
     setIsLockedByTimeout(false);
     setTimeoutSubmitAttempted(false);
@@ -1801,12 +1790,6 @@ export function IeltsReadingTestView() {
         {isLockedByTimeout && !result && (
           <div className="rounded-[24px] bg-apple-red/10 px-5 py-4 text-sm font-bold text-apple-red">
             {isSubmitting ? '时间到，正在自动交卷。' : '时间到，答案已锁定。若提交失败，请点击右上角重新提交。'}
-          </div>
-        )}
-
-        {annotationMessage && (
-          <div className="rounded-[24px] bg-apple-blue/10 px-5 py-4 text-sm font-black text-apple-blue">
-            {annotationMessage}
           </div>
         )}
 
