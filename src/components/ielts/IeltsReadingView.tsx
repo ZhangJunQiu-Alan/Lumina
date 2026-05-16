@@ -54,6 +54,14 @@ type ReadingPane = 'passage' | 'questions';
 type SubmitMode = 'manual' | 'timeout';
 type ReviewFilter = 'all' | 'wrong' | 'unanswered';
 type ReadingToolMode = 'highlight' | 'note' | 'clear';
+type ReviewItem = {
+  question: IeltsReadingQuestion;
+  response: IeltsReadingAttemptResult['responses'][number] | undefined;
+  answered: boolean;
+  isCorrect: boolean;
+  isWrong: boolean;
+  isUnanswered: boolean;
+};
 
 const DEFAULT_READING_FONT_SIZE = 17;
 const MIN_READING_FONT_SIZE = 15;
@@ -517,6 +525,13 @@ function getQuestionRangeLabel(passage: IeltsReadingPassage) {
   const numbers = passage.groups.flatMap((group) => group.questions.map((question) => question.number));
   if (numbers.length === 0) return '';
   return `${Math.min(...numbers)}-${Math.max(...numbers)}`;
+}
+
+function getQuestionGroupRangeLabel(group: IeltsReadingQuestionGroup) {
+  const start = group.rangeStart ?? group.questions[0]?.number;
+  const end = group.rangeEnd ?? group.questions[group.questions.length - 1]?.number ?? start;
+  if (!start) return 'Questions';
+  return start === end ? `Question ${start}` : `Questions ${start}-${end}`;
 }
 
 function countPassageAnswers(passage: IeltsReadingPassage, answers: IeltsReadingAnswerMap) {
@@ -1150,7 +1165,7 @@ function ResultPanel({
   );
   const responseByQuestion = new Map(result.responses.map((response) => [response.questionNumber, response]));
   const summary = summarizeIeltsReadingResult(result.responses, result.totalQuestions);
-  const reviewItems = questions.map((question) => {
+  const reviewItems: ReviewItem[] = questions.map((question) => {
     const response = responseByQuestion.get(question.number);
     const answered = Boolean(response && response.response.length > 0);
     return {
@@ -1162,11 +1177,25 @@ function ResultPanel({
       isUnanswered: !answered,
     };
   });
-  const filteredItems = reviewItems.filter((item) => {
+  const reviewItemByQuestionNumber = new Map(reviewItems.map((item) => [item.question.number, item]));
+  const applyReviewFilter = (item: ReviewItem) => {
     if (filter === 'wrong') return item.isWrong;
     if (filter === 'unanswered') return item.isUnanswered;
     return true;
-  });
+  };
+  const filteredReviewGroups = test.passages
+    .flatMap((passage) => passage.groups.map((group) => {
+      const allItems = group.questions
+        .map((question) => reviewItemByQuestionNumber.get(question.number))
+        .filter((item): item is ReviewItem => Boolean(item));
+      return {
+        passage,
+        group,
+        allItems,
+        items: allItems.filter(applyReviewFilter),
+      };
+    }))
+    .filter((group) => group.items.length > 0);
 
   const scrollToReviewQuestion = (questionNumber: number) => {
     setFilter('all');
@@ -1262,60 +1291,75 @@ function ResultPanel({
           </div>
         </div>
 
-        {filteredItems.length === 0 ? (
+        {filteredReviewGroups.length === 0 ? (
           <div className="rounded-[26px] bg-apple-green/10 p-5 text-sm font-black text-apple-green">
             {filter === 'wrong' ? '没有错题。' : filter === 'unanswered' ? '没有未答题。' : '这套题全部答对了。'}
           </div>
         ) : (
-          filteredItems.map(({ question, response, isCorrect, isWrong, isUnanswered }) => {
+          filteredReviewGroups.map(({ passage, group, allItems, items }) => {
+            const groupCorrectCount = allItems.filter((item) => item.isCorrect).length;
+            const groupUnansweredCount = allItems.filter((item) => item.isUnanswered).length;
             return (
               <div
-                key={question.id}
-                ref={(node) => {
-                  reviewRefs.current[question.number] = node;
-                }}
-                className={cx(
-                  'rounded-[26px] border bg-white/80 p-5 transition-all',
-                  activeReviewNumber === question.number
-                    ? 'border-apple-blue shadow-[0_18px_44px_rgba(0,122,255,0.14)]'
-                    : 'border-white/70',
-                )}
+                key={group.id}
+                className="overflow-hidden rounded-[26px] border border-white/70 bg-white/82 transition-all"
               >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex flex-col gap-3 border-b border-[#edf1f7] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-text-secondary">
-                      {questionTypeLabel[question.type]}
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-apple-blue">
+                      Passage {passage.number} · {questionTypeLabel[group.type]}
                     </p>
-                    <p className="mt-2 text-sm font-black leading-6 text-text-primary">
-                      {question.number}. {getQuestionDisplayPrompt(question, groupByQuestionId.get(question.id))}
+                    <p className="mt-1 text-sm font-black text-text-primary">
+                      {getQuestionGroupRangeLabel(group)}
                     </p>
                   </div>
-                  <span
-                    className={cx(
-                      'inline-flex shrink-0 items-center justify-center rounded-2xl px-3 py-2 text-xs font-black',
-                      isCorrect && 'bg-apple-green/12 text-apple-green',
-                      isWrong && 'bg-apple-red/10 text-apple-red',
-                      isUnanswered && 'bg-black/5 text-text-secondary',
+                  <div className="flex flex-wrap gap-2 text-xs font-black">
+                    <span className="rounded-xl bg-apple-green/10 px-3 py-1.5 text-apple-green">
+                      正确 {groupCorrectCount}/{allItems.length}
+                    </span>
+                    {groupUnansweredCount > 0 && (
+                      <span className="rounded-xl bg-black/5 px-3 py-1.5 text-text-secondary">
+                        未答 {groupUnansweredCount}
+                      </span>
                     )}
-                  >
-                    {isCorrect ? '正确' : isUnanswered ? '未答' : '错误'}
-                  </span>
-                </div>
-                <div className="mt-4 grid gap-3 text-sm font-bold md:grid-cols-2">
-                  <div className="rounded-[20px] bg-black/[0.025] p-4">
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-text-secondary">你的答案</p>
-                    <p className="mt-2 text-text-primary">{formatAnswerList(response?.response ?? [])}</p>
-                  </div>
-                  <div className="rounded-[20px] bg-apple-green/10 p-4">
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-apple-green">正确答案</p>
-                    <p className="mt-2 text-text-primary">{formatAnswerList(response?.correctAnswer ?? question.answer)}</p>
                   </div>
                 </div>
-                {question.answerNote && (
-                  <p className="mt-3 rounded-[18px] bg-white/70 px-4 py-3 text-sm font-bold leading-6 text-text-secondary">
-                    {question.answerNote}
-                  </p>
-                )}
+                <div className="divide-y divide-[#edf1f7]">
+                  {items.map(({ question, response, isCorrect, isWrong, isUnanswered }) => (
+                    <div
+                      key={question.id}
+                      ref={(node) => {
+                        reviewRefs.current[question.number] = node;
+                      }}
+                      className={cx(
+                        'grid gap-3 px-5 py-4 text-sm transition-all md:grid-cols-[minmax(0,1fr)_minmax(9rem,0.32fr)_minmax(9rem,0.32fr)_5rem] md:items-center',
+                        activeReviewNumber === question.number && 'bg-apple-blue/7 ring-1 ring-inset ring-apple-blue/20',
+                      )}
+                    >
+                      <p className="min-w-0 font-black leading-6 text-text-primary">
+                        {question.number}. {getQuestionDisplayPrompt(question, groupByQuestionId.get(question.id))}
+                      </p>
+                      <div className="min-w-0 rounded-[16px] bg-black/[0.025] px-3 py-2">
+                        <p className="text-[0.68rem] font-black uppercase tracking-[0.14em] text-text-secondary">你的答案</p>
+                        <p className="mt-1 break-words font-bold text-text-primary">{formatAnswerList(response?.response ?? [])}</p>
+                      </div>
+                      <div className="min-w-0 rounded-[16px] bg-apple-green/10 px-3 py-2">
+                        <p className="text-[0.68rem] font-black uppercase tracking-[0.14em] text-apple-green">正确答案</p>
+                        <p className="mt-1 break-words font-bold text-text-primary">{formatAnswerList(response?.correctAnswer ?? question.answer)}</p>
+                      </div>
+                      <span
+                        className={cx(
+                          'inline-flex w-fit items-center justify-center rounded-2xl px-3 py-2 text-xs font-black md:justify-self-end',
+                          isCorrect && 'bg-apple-green/12 text-apple-green',
+                          isWrong && 'bg-apple-red/10 text-apple-red',
+                          isUnanswered && 'bg-black/5 text-text-secondary',
+                        )}
+                      >
+                        {isCorrect ? '正确' : isUnanswered ? '未答' : '错误'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             );
           })
