@@ -10,10 +10,13 @@ const KNOWN_STANDALONE_HEADINGS = new Set([
   'Street Business Partnerships',
 ]);
 const OCR_SPACING_REPAIRS: [RegExp, string][] = [
+  [/~econd\b/g, 'second'],
   [/\bofa\b/g, 'of a'],
   [/\boft\s*he\b/g, 'of the'],
   [/\bofr\s*ain\s*forests\b/g, 'of rainforests'],
   [/\bofr\s*ainforest\b/g, 'of rainforest'],
+  [/\br8%/g, '18%'],
+  [/\bro%/g, '10%'],
   [/\bendan\s+gers\b/g, 'endangers'],
   [/\bcur\s+riculum\b/g, 'curriculum'],
   [/\bincorpo\s+rated\b/g, 'incorporated'],

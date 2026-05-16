@@ -24,6 +24,7 @@ const baseQuestion: IeltsReadingQuestion = {
 
 assert.equal(normalizeIeltsAnswerText('  Eco–Tourism. '), 'eco-tourism');
 assert.equal(isIeltsQuestionCorrect(baseQuestion, 'eco tourism'), true);
+assert.equal(isIeltsQuestionCorrect({ ...baseQuestion, answer: ['lower frequencies'] }, 'lower frequencies'), true);
 assert.equal(isIeltsQuestionCorrect({ ...baseQuestion, answer: ['parks'] }, 'park'), true);
 assert.equal(isIeltsQuestionCorrect({ ...baseQuestion, answer: ['TRUE'], type: 'true_false_not_given' }, 'true'), true);
 assert.equal(isIeltsQuestionCorrect({ ...baseQuestion, answer: ['A', 'C'], type: 'multiple_choice_multi' }, ['C', 'A']), true);

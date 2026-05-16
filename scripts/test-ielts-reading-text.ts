@@ -30,6 +30,9 @@ const cambridge4Spacing = [
   'coverage, what endan gers them-independent of any formal tuition.',
   "Many studies have shown misconceptions about 'pure', cur riculum science.",
   'These misconceptions become incorpo rated into a multifaceted framework.',
+  'The ~econd question concerned the geographical location ofr ain forests.',
+  'About r8% oft he pupils referred specifically to logging activity.',
+  'One misconception, expressed by some ro% of the pupils, was about acid rain.',
 ].join('\n\n');
 
 const cambridge4Normalized = normalizeIeltsPassageBody(cambridge4Spacing);
@@ -38,6 +41,9 @@ assert.match(cambridge4Normalized, /face of the frequent/);
 assert.match(cambridge4Normalized, /what endangers them- independent/);
 assert.match(cambridge4Normalized, /'pure', curriculum science/);
 assert.match(cambridge4Normalized, /become incorporated into/);
+assert.match(cambridge4Normalized, /The second question concerned/);
+assert.match(cambridge4Normalized, /About 18% of the pupils/);
+assert.match(cambridge4Normalized, /some 10% of the pupils/);
 
 const paragraphs = splitIeltsPassageParagraphs(wrapped);
 assert.ok(paragraphs.length < 5);

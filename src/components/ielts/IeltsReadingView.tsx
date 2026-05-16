@@ -1121,7 +1121,7 @@ function QuestionInput({
 
   return (
     <input
-      value={response[0] ?? ''}
+      value={getRawAnswerText(value)}
       onChange={(event) => onChange(event.target.value)}
       disabled={disabled}
       className="w-full rounded-2xl border border-black/10 bg-white/85 px-4 py-3 text-sm font-bold text-text-primary outline-none transition-colors placeholder:text-text-secondary/60 focus:border-apple-blue disabled:cursor-not-allowed disabled:opacity-60"
