@@ -24,6 +24,9 @@ const report = JSON.parse(await readFile('output/ielts-listening/cambridge-4-lis
     questionCount: number;
     answerCount: number;
     audioCount: number;
+    paperPageCount: number;
+    hotspotCount: number;
+    fallbackHotspotCount: number;
   };
   errors: string[];
 };
@@ -33,6 +36,9 @@ assert.equal(report.summary.sectionCount, 16);
 assert.equal(report.summary.questionCount, 160);
 assert.equal(report.summary.answerCount, 160);
 assert.equal(report.summary.audioCount, 16);
+assert.ok(report.summary.paperPageCount >= 16);
+assert.equal(report.summary.hotspotCount, 160);
+assert.ok(report.summary.fallbackHotspotCount < 40);
 assert.deepEqual(report.errors, []);
 
 console.log('IELTS listening import tests passed.');

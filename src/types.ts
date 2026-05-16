@@ -310,6 +310,27 @@ export interface IeltsListeningOption {
   text: string;
 }
 
+export interface IeltsListeningPaperPage {
+  pageKey: string;
+  pdfPage: number;
+  width: number;
+  height: number;
+  storagePath: string;
+  imageUrl: string;
+  sortOrder: number;
+}
+
+export interface IeltsListeningPaperHotspot {
+  pageKey: string;
+  pdfPage: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  inputKind: 'text' | 'choice';
+  source?: string;
+}
+
 export interface IeltsListeningQuestion {
   id: string;
   testId: string;
@@ -322,6 +343,7 @@ export interface IeltsListeningQuestion {
   answerNote: string;
   type: IeltsListeningQuestionType;
   sectionNumber: number;
+  paperHotspot: IeltsListeningPaperHotspot | null;
 }
 
 export interface IeltsListeningQuestionGroup {
@@ -343,6 +365,7 @@ export interface IeltsListeningSection {
   audioUrl: string;
   audioStoragePath: string;
   sourceAudioFilename: string;
+  paperPages: IeltsListeningPaperPage[];
   groups: IeltsListeningQuestionGroup[];
 }
 

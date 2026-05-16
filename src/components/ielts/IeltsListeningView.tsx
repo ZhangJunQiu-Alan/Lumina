@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import {
   AlertCircle,
   ArrowLeft,
@@ -11,13 +12,15 @@ import {
   PenLine,
   RotateCcw,
 } from 'lucide-react';
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type {
   IeltsListeningAttemptResult,
   IeltsListeningAttemptSummary,
   IeltsListeningBookSummary,
+  IeltsListeningPaperHotspot,
   IeltsListeningQuestion,
   IeltsListeningQuestionGroup,
+  IeltsListeningResponseResult,
   IeltsListeningSection,
   IeltsListeningTestDetail,
 } from '../../types';
@@ -25,6 +28,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { cx } from '../shared/LearningUI';
 import {
   fetchIeltsListeningBooks,
+  fetchIeltsListeningAttemptResult,
   fetchIeltsListeningTestDetail,
   fetchRecentIeltsListeningAttempts,
   getIeltsListeningQuestions,
@@ -125,7 +129,13 @@ function IeltsListeningErrorShell({ message, onBack }: { message: string; onBack
   );
 }
 
-function RecentListeningAttempts({ attempts }: { attempts: IeltsListeningAttemptSummary[] }) {
+function RecentListeningAttempts({
+  attempts,
+  onOpenAttempt,
+}: {
+  attempts: IeltsListeningAttemptSummary[];
+  onOpenAttempt: (attempt: IeltsListeningAttemptSummary) => void;
+}) {
   if (attempts.length === 0) {
     return (
       <div className="rounded-[28px] border border-dashed border-[#dbe3ef] bg-white/58 p-6 text-sm font-bold text-text-secondary">
@@ -137,7 +147,12 @@ function RecentListeningAttempts({ attempts }: { attempts: IeltsListeningAttempt
   return (
     <div className="grid gap-3 md:grid-cols-2">
       {attempts.map((attempt) => (
-        <div key={attempt.id} className="rounded-[24px] bg-white/76 p-5 shadow-[0_12px_30px_rgba(14,26,56,0.06)]">
+        <button
+          key={attempt.id}
+          type="button"
+          onClick={() => onOpenAttempt(attempt)}
+          className="rounded-[24px] bg-white/76 p-5 text-left shadow-[0_12px_30px_rgba(14,26,56,0.06)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
+        >
           <p className="text-xs font-black uppercase tracking-[0.18em] text-text-secondary">
             Cambridge {attempt.bookNumber} · Test {attempt.testNumber}
           </p>
@@ -145,7 +160,7 @@ function RecentListeningAttempts({ attempts }: { attempts: IeltsListeningAttempt
             <p className="text-2xl font-black text-text-primary">{attempt.score} / {attempt.totalQuestions}</p>
             <p className="text-xs font-bold text-text-secondary">{formatElapsedTime(attempt.elapsedSeconds)}</p>
           </div>
-        </div>
+        </button>
       ))}
     </div>
   );
@@ -269,7 +284,10 @@ export function IeltsListeningHomeView() {
           <Clock3 className="h-5 w-5 text-apple-orange" />
           <h3 className="text-xl font-black text-text-primary">最近记录</h3>
         </div>
-        <RecentListeningAttempts attempts={attempts} />
+        <RecentListeningAttempts
+          attempts={attempts}
+          onOpenAttempt={(attempt) => navigate(`/app/ielts-listening/test/${attempt.testId}?attempt=${attempt.id}`)}
+        />
       </section>
     </div>
   );
@@ -330,6 +348,167 @@ function QuestionInput({
       placeholder="输入答案"
     />
   );
+}
+
+function answerMapFromResult(result: IeltsListeningAttemptResult | null): IeltsListeningAnswerMap {
+  if (!result) return {};
+  return result.responses.reduce<IeltsListeningAnswerMap>((map, response) => {
+    map[response.questionNumber] = response.response;
+    return map;
+  }, {});
+}
+
+function getResponseStatus(response?: IeltsListeningResponseResult): 'neutral' | 'correct' | 'wrong' | 'unanswered' {
+  if (!response) return 'neutral';
+  if (response.response.length === 0) return 'unanswered';
+  return response.isCorrect ? 'correct' : 'wrong';
+}
+
+function getPaperControlClass(status: ReturnType<typeof getResponseStatus>, answered: boolean) {
+  if (status === 'correct') return 'border-apple-green bg-apple-green/95 text-white shadow-[0_10px_22px_rgba(52,199,89,0.22)]';
+  if (status === 'wrong') return 'border-apple-red bg-apple-red/95 text-white shadow-[0_10px_22px_rgba(255,59,48,0.20)]';
+  if (status === 'unanswered') return 'border-apple-red bg-white text-apple-red shadow-[0_10px_22px_rgba(255,59,48,0.12)]';
+  if (answered) return 'border-apple-orange bg-white text-text-primary shadow-[0_10px_22px_rgba(255,149,0,0.16)]';
+  return 'border-apple-orange/45 bg-white/92 text-text-primary shadow-[0_8px_18px_rgba(31,45,75,0.12)]';
+}
+
+function hotspotStyle(hotspot: IeltsListeningPaperHotspot): CSSProperties {
+  return {
+    left: `${hotspot.x * 100}%`,
+    top: `${hotspot.y * 100}%`,
+    width: `${Math.max(hotspot.width * 100, hotspot.inputKind === 'choice' ? 8 : 11)}%`,
+    minHeight: `${Math.max(hotspot.height * 100, 3)}%`,
+  };
+}
+
+function PaperHotspotControl({
+  question,
+  group,
+  value,
+  response,
+  disabled,
+  onChange,
+}: {
+  question: IeltsListeningQuestion;
+  group: IeltsListeningQuestionGroup;
+  value: IeltsListeningAnswerValue;
+  response?: IeltsListeningResponseResult;
+  disabled: boolean;
+  onChange: (value: IeltsListeningAnswerValue) => void;
+}) {
+  if (!question.paperHotspot) return null;
+
+  const normalized = normalizeIeltsAnswerValue(value);
+  const answered = normalized.length > 0;
+  const status = getResponseStatus(response);
+  const controlClass = getPaperControlClass(status, answered);
+  const options = question.options.length > 0 ? question.options : group.options;
+  const title = response
+    ? `第 ${question.number} 题：你的答案 ${response.response.join(', ') || '未答'}；正确答案 ${response.correctAnswer.join(' / ')}`
+    : `第 ${question.number} 题`;
+
+  if (question.paperHotspot.inputKind === 'choice' && options.length > 0) {
+    return (
+      <div className="absolute z-10" style={hotspotStyle(question.paperHotspot)} title={title}>
+        <div className="flex flex-wrap gap-1 rounded-xl bg-white/82 p-1 shadow-[0_6px_14px_rgba(31,45,75,0.12)] backdrop-blur">
+          {options.map((option) => {
+            const selected = normalized.includes(option.key.toLowerCase());
+            return (
+              <button
+                key={option.key}
+                type="button"
+                disabled={disabled}
+                onClick={() => onChange(option.key)}
+                className={cx(
+                  'flex h-7 min-w-7 items-center justify-center rounded-lg border px-2 text-[11px] font-black transition-colors',
+                  selected ? controlClass : 'border-[#d7deea] bg-white text-text-secondary',
+                  disabled && 'cursor-default',
+                )}
+              >
+                {option.key}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <input
+      aria-label={`Question ${question.number}`}
+      disabled={disabled}
+      title={title}
+      value={typeof value === 'string' ? value : normalized.join(' ')}
+      onChange={(event) => onChange(event.target.value)}
+      className={cx(
+        'absolute z-10 rounded-lg border px-2 py-1 text-[12px] font-black outline-none transition-colors backdrop-blur placeholder:text-text-secondary/55',
+        controlClass,
+        disabled && 'cursor-default opacity-95',
+      )}
+      style={hotspotStyle(question.paperHotspot)}
+      placeholder={String(question.number)}
+    />
+  );
+}
+
+function PaperSectionViewer({
+  section,
+  answers,
+  result,
+  disabled,
+  onAnswerChange,
+}: {
+  section: IeltsListeningSection;
+  answers: IeltsListeningAnswerMap;
+  result: IeltsListeningAttemptResult | null;
+  disabled: boolean;
+  onAnswerChange: (questionNumber: number, value: IeltsListeningAnswerValue) => void;
+}) {
+  const questionsByPage = new Map<string, { question: IeltsListeningQuestion; group: IeltsListeningQuestionGroup }[]>();
+  const responsesByQuestion = new Map(result?.responses.map((response) => [response.questionNumber, response]) ?? []);
+
+  for (const group of section.groups) {
+    for (const question of group.questions) {
+      const pageKey = question.paperHotspot?.pageKey;
+      if (!pageKey) continue;
+      questionsByPage.set(pageKey, [...(questionsByPage.get(pageKey) ?? []), { question, group }]);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      {section.paperPages.map((page) => (
+        <div
+          key={page.pageKey}
+          className="relative overflow-hidden rounded-[18px] border border-[#dfe6f1] bg-white shadow-[0_18px_44px_rgba(14,26,56,0.07)]"
+        >
+          <img
+            src={page.imageUrl}
+            alt={`Cambridge IELTS listening paper page ${page.pdfPage}`}
+            className="block w-full select-none"
+            draggable={false}
+          />
+          {(questionsByPage.get(page.pageKey) ?? []).map(({ question, group }) => (
+            <PaperHotspotControl
+              key={question.id}
+              question={question}
+              group={group}
+              value={answers[question.number]}
+              response={responsesByQuestion.get(question.number)}
+              disabled={disabled}
+              onChange={(value) => onAnswerChange(question.number, value)}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function hasCompletePaperOverlay(section: IeltsListeningSection) {
+  const questions = getQuestionsForSection(section);
+  return section.paperPages.length > 0 && questions.length > 0 && questions.every((question) => question.paperHotspot);
 }
 
 function ResultPanel({
@@ -451,6 +630,8 @@ export function IeltsListeningTestView() {
   const { testId } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const attemptId = searchParams.get('attempt');
   const [test, setTest] = useState<IeltsListeningTestDetail | null>(null);
   const [answers, setAnswers] = useState<IeltsListeningAnswerMap>({});
   const [selectedSection, setSelectedSection] = useState(1);
@@ -464,14 +645,14 @@ export function IeltsListeningTestView() {
   const timeoutSubmitAttempted = useRef(false);
 
   useEffect(() => {
-    if (!testId || !user) return;
+    if (!testId || !user || attemptId) return;
     const draft = readDraft(user.id, testId);
     if (!draft) return;
     setStartedAt(draft.startedAt);
     setAnswers(draft.answers);
     setSelectedSection(draft.selectedSection);
     setFlaggedNumbers(draft.flags ?? []);
-  }, [testId, user]);
+  }, [attemptId, testId, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -503,14 +684,46 @@ export function IeltsListeningTestView() {
   }, [selectedSection, testId]);
 
   useEffect(() => {
-    if (!testId || !user || result) return;
+    let cancelled = false;
+    async function loadAttempt() {
+      if (!attemptId || !user) {
+        if (!attemptId) setResult(null);
+        return;
+      }
+
+      setIsLoading(true);
+      setErrorMsg('');
+      try {
+        const attempt = await fetchIeltsListeningAttemptResult(user.id, attemptId);
+        if (cancelled) return;
+        if (!attempt) {
+          setErrorMsg('找不到这次听力记录。');
+          return;
+        }
+        setResult(attempt);
+        setAnswers(answerMapFromResult(attempt));
+      } catch (error) {
+        if (!cancelled) setErrorMsg(error instanceof Error ? error.message : String(error));
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    }
+
+    void loadAttempt();
+    return () => {
+      cancelled = true;
+    };
+  }, [attemptId, user]);
+
+  useEffect(() => {
+    if (!testId || !user || result || attemptId) return;
     writeDraft(user.id, testId, {
       startedAt,
       answers,
       selectedSection,
       flags: flaggedNumbers,
     });
-  }, [answers, flaggedNumbers, result, selectedSection, startedAt, testId, user]);
+  }, [answers, attemptId, flaggedNumbers, result, selectedSection, startedAt, testId, user]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -521,8 +734,10 @@ export function IeltsListeningTestView() {
   const selectedSectionData = test?.sections.find((section) => section.number === selectedSection) ?? test?.sections[0] ?? null;
   const elapsedSeconds = clampIeltsElapsedSeconds((now - new Date(startedAt).getTime()) / 1000, TEST_DURATION_SECONDS);
   const remainingSeconds = Math.max(0, TEST_DURATION_SECONDS - elapsedSeconds);
-  const answeredCount = questions.filter((question) => isAnswered(answers[question.number])).length;
   const flaggedSet = useMemo(() => new Set(flaggedNumbers), [flaggedNumbers]);
+  const displayAnswers = result ? answerMapFromResult(result) : answers;
+  const answeredCount = questions.filter((question) => isAnswered(displayAnswers[question.number])).length;
+  const isReviewMode = Boolean(result);
 
   const setAnswer = useCallback((questionNumber: number, value: IeltsListeningAnswerValue) => {
     setAnswers((current) => ({ ...current, [questionNumber]: value }));
@@ -571,28 +786,13 @@ export function IeltsListeningTestView() {
     setSelectedSection(1);
     setResult(null);
     timeoutSubmitAttempted.current = false;
+    navigate(`/app/ielts-listening/test/${testId}`, { replace: true });
   };
 
   if (!testId) return <Navigate to="/app/ielts-listening" replace />;
   if (isLoading) return <IeltsListeningLoadingShell label="正在读取雅思听力套题" />;
   if (errorMsg && !test) return <IeltsListeningErrorShell message={errorMsg} onBack={() => navigate('/app/ielts-listening')} />;
   if (!test) return <IeltsListeningErrorShell message="找不到这套雅思听力。" onBack={() => navigate('/app/ielts-listening')} />;
-
-  if (result) {
-    return (
-      <div className="mx-auto w-full max-w-7xl space-y-6">
-        <button
-          type="button"
-          onClick={() => navigate('/app/ielts-listening')}
-          className="inline-flex items-center gap-2 rounded-2xl bg-white/70 px-4 py-3 text-sm font-black text-text-secondary shadow-[0_10px_24px_rgba(14,26,56,0.06)]"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          听力列表
-        </button>
-        <ResultPanel result={result} test={test} onReset={handleReset} />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-full bg-[#edf3ff] px-4 pb-8 pt-5 sm:px-6 lg:px-8 lg:pt-8">
@@ -615,30 +815,50 @@ export function IeltsListeningTestView() {
           </div>
 
           <div className="flex items-center gap-3 overflow-x-auto pb-1 xl:pb-0">
-            <div className={cx(
-              'inline-flex h-16 shrink-0 items-center gap-3 rounded-[18px] bg-white px-5 text-xl font-black tracking-[0.08em] text-text-primary shadow-[0_14px_30px_rgba(31,45,75,0.08)]',
-              remainingSeconds <= 180 && 'text-apple-red',
+            {isReviewMode ? (
+              <div className="inline-flex h-16 shrink-0 items-center gap-3 rounded-[18px] bg-white px-5 text-xl font-black tracking-[0.08em] text-text-primary shadow-[0_14px_30px_rgba(31,45,75,0.08)]">
+                <Check className="h-5 w-5 text-apple-green" />
+                <span>{result?.score ?? 0}</span>
+                <span className="text-text-secondary">/</span>
+                <span className="text-text-secondary">{result?.totalQuestions ?? questions.length}</span>
+              </div>
+            ) : (
+              <div className={cx(
+                'inline-flex h-16 shrink-0 items-center gap-3 rounded-[18px] bg-white px-5 text-xl font-black tracking-[0.08em] text-text-primary shadow-[0_14px_30px_rgba(31,45,75,0.08)]',
+                remainingSeconds <= 180 && 'text-apple-red',
+              )}
+              >
+                <Clock3 className="h-5 w-5 text-text-secondary" />
+                <span>{formatElapsedTime(remainingSeconds)}</span>
+                <span className="text-xs font-black tracking-[0.08em] text-text-secondary">剩余</span>
+              </div>
             )}
-            >
-              <Clock3 className="h-5 w-5 text-text-secondary" />
-              <span>{formatElapsedTime(remainingSeconds)}</span>
-              <span className="text-xs font-black tracking-[0.08em] text-text-secondary">剩余</span>
-            </div>
             <div className="inline-flex h-16 shrink-0 items-center gap-3 rounded-[18px] bg-white px-5 text-xl font-black tracking-[0.12em] text-text-primary shadow-[0_14px_30px_rgba(31,45,75,0.08)]">
               <PenLine className="h-5 w-5 text-text-secondary" />
               <span>{String(answeredCount).padStart(2, '0')}</span>
               <span className="text-text-secondary">/</span>
               <span className="text-text-secondary">{questions.length}</span>
             </div>
-            <button
-              type="button"
-              onClick={() => { void submitAttempt(); }}
-              disabled={isSubmitting}
-              className="inline-flex h-16 shrink-0 items-center gap-3 rounded-[18px] bg-apple-orange px-6 text-base font-black text-white shadow-[0_16px_34px_rgba(255,149,0,0.24)] disabled:opacity-70"
-            >
-              {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
-              交卷
-            </button>
+            {isReviewMode ? (
+              <button
+                type="button"
+                onClick={handleReset}
+                className="inline-flex h-16 shrink-0 items-center gap-3 rounded-[18px] bg-apple-orange px-6 text-base font-black text-white shadow-[0_16px_34px_rgba(255,149,0,0.24)]"
+              >
+                <RotateCcw className="h-5 w-5" />
+                再练一次
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { void submitAttempt(); }}
+                disabled={isSubmitting}
+                className="inline-flex h-16 shrink-0 items-center gap-3 rounded-[18px] bg-apple-orange px-6 text-base font-black text-white shadow-[0_16px_34px_rgba(255,149,0,0.24)] disabled:opacity-70"
+              >
+                {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
+                交卷
+              </button>
+            )}
           </div>
         </header>
 
@@ -687,7 +907,7 @@ export function IeltsListeningTestView() {
               </div>
               <div className="grid grid-cols-10 gap-2">
                 {questions.map((question) => {
-                  const answered = isAnswered(answers[question.number]);
+                  const answered = isAnswered(displayAnswers[question.number]);
                   const flagged = flaggedSet.has(question.number);
                   return (
                     <button
@@ -709,75 +929,90 @@ export function IeltsListeningTestView() {
           </aside>
 
           <main className="space-y-5">
-            {selectedSectionData && (
-              <section className="rounded-[30px] border border-white/70 bg-white/84 p-6 shadow-[0_18px_44px_rgba(14,26,56,0.07)]">
-                <div className="mb-5 flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.22em] text-apple-orange">
-                      Section {selectedSectionData.number}
-                    </p>
-                    <h3 className="mt-2 text-2xl font-black text-text-primary">Questions {((selectedSectionData.number - 1) * 10) + 1}-{selectedSectionData.number * 10}</h3>
-                  </div>
-                </div>
+            {selectedSectionData && hasCompletePaperOverlay(selectedSectionData) ? (
+              <PaperSectionViewer
+                section={selectedSectionData}
+                answers={displayAnswers}
+                result={result}
+                disabled={isReviewMode}
+                onAnswerChange={setAnswer}
+              />
+            ) : (
+              <>
+                {selectedSectionData && (
+                  <section className="rounded-[30px] border border-white/70 bg-white/84 p-6 shadow-[0_18px_44px_rgba(14,26,56,0.07)]">
+                    <div className="mb-5 flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.22em] text-apple-orange">
+                          Section {selectedSectionData.number}
+                        </p>
+                        <h3 className="mt-2 text-2xl font-black text-text-primary">Questions {((selectedSectionData.number - 1) * 10) + 1}-{selectedSectionData.number * 10}</h3>
+                      </div>
+                    </div>
 
-                <div className="max-h-[360px] overflow-y-auto rounded-[24px] bg-[#f7f9fd] p-5 font-serif text-base font-medium leading-8 text-[#25252a] whitespace-pre-wrap">
-                  {selectedSectionData.instructions}
-                </div>
-              </section>
+                    <div className="max-h-[360px] overflow-y-auto rounded-[24px] bg-[#f7f9fd] p-5 font-serif text-base font-medium leading-8 text-[#25252a] whitespace-pre-wrap">
+                      {selectedSectionData.instructions}
+                    </div>
+                  </section>
+                )}
+
+                {selectedSectionData?.groups.map((group) => (
+                  <section key={group.id} className="space-y-4 rounded-[30px] border border-white/70 bg-white/84 p-6 shadow-[0_18px_44px_rgba(14,26,56,0.07)]">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="rounded-lg bg-apple-orange/10 px-3 py-2 text-xs font-black uppercase tracking-[0.18em] text-apple-orange">
+                        {group.type.replaceAll('_', ' ')}
+                      </p>
+                      <p className="text-sm font-black tracking-[0.12em] text-text-primary">
+                        Questions {group.rangeStart}-{group.rangeEnd}
+                      </p>
+                    </div>
+
+                    <div className="space-y-4">
+                      {group.questions.map((question) => {
+                        const answered = isAnswered(displayAnswers[question.number]);
+                        const flagged = flaggedSet.has(question.number);
+                        return (
+                          <div key={question.id} className="rounded-[24px] border border-[#e5ebf5] bg-white p-5">
+                            <div className="mb-4 flex items-start gap-4">
+                              <div className={cx(
+                                'flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] text-base font-black',
+                                answered ? 'bg-apple-orange text-white' : 'bg-[#f0f3f9] text-text-secondary',
+                              )}
+                              >
+                                {question.number}
+                              </div>
+                              <p className="min-w-0 flex-1 text-base font-black leading-7 text-text-primary">
+                                {question.prompt || `Question ${question.number}`}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => toggleFlag(question.number)}
+                                className={cx(
+                                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors',
+                                  flagged ? 'bg-[#fff4df] text-[#ff9500]' : 'bg-[#f3f5fa] text-text-secondary',
+                                )}
+                                aria-label={`标记第 ${question.number} 题`}
+                              >
+                                <Flag className="h-5 w-5" />
+                              </button>
+                            </div>
+                            <QuestionInput
+                              question={question}
+                              group={group}
+                              value={displayAnswers[question.number]}
+                              disabled={isReviewMode}
+                              onChange={(value) => setAnswer(question.number, value)}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
+              </>
             )}
 
-            {selectedSectionData?.groups.map((group) => (
-              <section key={group.id} className="space-y-4 rounded-[30px] border border-white/70 bg-white/84 p-6 shadow-[0_18px_44px_rgba(14,26,56,0.07)]">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="rounded-lg bg-apple-orange/10 px-3 py-2 text-xs font-black uppercase tracking-[0.18em] text-apple-orange">
-                    {group.type.replaceAll('_', ' ')}
-                  </p>
-                  <p className="text-sm font-black tracking-[0.12em] text-text-primary">
-                    Questions {group.rangeStart}-{group.rangeEnd}
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  {group.questions.map((question) => {
-                    const answered = isAnswered(answers[question.number]);
-                    const flagged = flaggedSet.has(question.number);
-                    return (
-                      <div key={question.id} className="rounded-[24px] border border-[#e5ebf5] bg-white p-5">
-                        <div className="mb-4 flex items-start gap-4">
-                          <div className={cx(
-                            'flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] text-base font-black',
-                            answered ? 'bg-apple-orange text-white' : 'bg-[#f0f3f9] text-text-secondary',
-                          )}
-                          >
-                            {question.number}
-                          </div>
-                          <p className="min-w-0 flex-1 text-base font-black leading-7 text-text-primary">
-                            {question.prompt || `Question ${question.number}`}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => toggleFlag(question.number)}
-                            className={cx(
-                              'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors',
-                              flagged ? 'bg-[#fff4df] text-[#ff9500]' : 'bg-[#f3f5fa] text-text-secondary',
-                            )}
-                            aria-label={`标记第 ${question.number} 题`}
-                          >
-                            <Flag className="h-5 w-5" />
-                          </button>
-                        </div>
-                        <QuestionInput
-                          question={question}
-                          group={group}
-                          value={answers[question.number]}
-                          onChange={(value) => setAnswer(question.number, value)}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
+            {result && <ResultPanel result={result} test={test} onReset={handleReset} />}
           </main>
         </div>
       </div>

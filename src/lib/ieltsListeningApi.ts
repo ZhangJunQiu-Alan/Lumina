@@ -3,6 +3,8 @@ import type {
   IeltsListeningAttemptSummary,
   IeltsListeningBookSummary,
   IeltsListeningOption,
+  IeltsListeningPaperHotspot,
+  IeltsListeningPaperPage,
   IeltsListeningQuestion,
   IeltsListeningQuestionGroup,
   IeltsListeningQuestionType,
@@ -47,6 +49,7 @@ interface SectionRow {
   audio_url: string | null;
   audio_storage_path: string | null;
   source_audio_filename: string | null;
+  paper_pages_json?: JsonValue;
   sort_order: number | null;
   ielts_listening_question_groups?: QuestionGroupRow[] | QuestionGroupRow | null;
 }
@@ -74,6 +77,7 @@ interface QuestionRow {
   options_json: JsonValue;
   answer_json: JsonValue;
   answer_note: string | null;
+  paper_hotspot_json?: JsonValue;
   sort_order: number | null;
 }
 
@@ -86,6 +90,15 @@ interface AttemptRow {
   submitted_at: string | null;
   created_at?: string | null;
   ielts_listening_tests?: TestRow | TestRow[] | null;
+  ielts_listening_responses?: ResponseRow[] | ResponseRow | null;
+}
+
+interface ResponseRow {
+  question_id: string | null;
+  question_number: number | null;
+  response_json: JsonValue;
+  correct_answer_json: JsonValue;
+  is_correct: boolean | null;
 }
 
 function asArray<T>(value: T | T[] | null | undefined): T[] {
@@ -124,6 +137,43 @@ function coerceAnswers(value: JsonValue): string[] {
   return [];
 }
 
+function coercePaperPages(value: JsonValue | undefined): IeltsListeningPaperPage[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .flatMap((item): IeltsListeningPaperPage[] => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+      const record = item as Record<string, JsonValue>;
+      if (typeof record.pageKey !== 'string' || typeof record.imageUrl !== 'string') return [];
+      return [{
+        pageKey: record.pageKey,
+        pdfPage: typeof record.pdfPage === 'number' ? record.pdfPage : 0,
+        width: typeof record.width === 'number' ? record.width : 0,
+        height: typeof record.height === 'number' ? record.height : 0,
+        storagePath: typeof record.storagePath === 'string' ? record.storagePath : '',
+        imageUrl: record.imageUrl,
+        sortOrder: typeof record.sortOrder === 'number' ? record.sortOrder : 0,
+      }];
+    })
+    .sort((left, right) => left.sortOrder - right.sortOrder);
+}
+
+function coercePaperHotspot(value: JsonValue | undefined): IeltsListeningPaperHotspot | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, JsonValue>;
+  if (typeof record.pageKey !== 'string') return null;
+  const inputKind = record.inputKind === 'choice' ? 'choice' : 'text';
+  return {
+    pageKey: record.pageKey,
+    pdfPage: typeof record.pdfPage === 'number' ? record.pdfPage : 0,
+    x: typeof record.x === 'number' ? record.x : 0,
+    y: typeof record.y === 'number' ? record.y : 0,
+    width: typeof record.width === 'number' ? record.width : 0,
+    height: typeof record.height === 'number' ? record.height : 0,
+    inputKind,
+    source: typeof record.source === 'string' ? record.source : undefined,
+  };
+}
+
 function mapQuestion(
   row: QuestionRow,
   group: Pick<IeltsListeningQuestionGroup, 'id' | 'type'>,
@@ -141,6 +191,7 @@ function mapQuestion(
     answerNote: row.answer_note?.trim() ?? '',
     type: group.type,
     sectionNumber,
+    paperHotspot: coercePaperHotspot(row.paper_hotspot_json),
   };
 }
 
@@ -174,6 +225,7 @@ function mapSection(row: SectionRow): IeltsListeningSection {
     audioUrl: row.audio_url?.trim() ?? '',
     audioStoragePath: row.audio_storage_path?.trim() ?? '',
     sourceAudioFilename: row.source_audio_filename?.trim() ?? '',
+    paperPages: coercePaperPages(row.paper_pages_json),
     groups: asArray(row.ielts_listening_question_groups)
       .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
       .map((group) => mapQuestionGroup(group, sectionNumber)),
@@ -264,6 +316,7 @@ export async function fetchIeltsListeningTestDetail(testId: string): Promise<Iel
         audio_url,
         audio_storage_path,
         source_audio_filename,
+        paper_pages_json,
         sort_order,
         ielts_listening_question_groups (
           id,
@@ -285,6 +338,7 @@ export async function fetchIeltsListeningTestDetail(testId: string): Promise<Iel
             options_json,
             answer_json,
             answer_note,
+            paper_hotspot_json,
             sort_order
           )
         )
@@ -354,6 +408,72 @@ export async function fetchRecentIeltsListeningAttempts(userId: string): Promise
       submittedAt: row.submitted_at ?? row.created_at ?? '',
     };
   });
+}
+
+export async function fetchIeltsListeningAttemptResult(
+  userId: string,
+  attemptId: string,
+): Promise<IeltsListeningAttemptResult | null> {
+  const { data, error } = await supabase
+    .from('ielts_listening_attempts')
+    .select(`
+      id,
+      test_id,
+      score,
+      total_questions,
+      elapsed_seconds,
+      submitted_at,
+      created_at,
+      ielts_listening_tests (
+        id,
+        test_number,
+        title,
+        ielts_listening_books (
+          id,
+          book_number,
+          title
+        )
+      ),
+      ielts_listening_responses (
+        question_id,
+        question_number,
+        response_json,
+        correct_answer_json,
+        is_correct
+      )
+    `)
+    .eq('id', attemptId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) throw new Error(`ielts_listening_attempt lookup failed: ${error.message}`);
+  if (!data) return null;
+
+  const row = data as AttemptRow;
+  const test = asArray(row.ielts_listening_tests)[0];
+  const book = asArray(test?.ielts_listening_books)[0];
+  const responses = asArray(row.ielts_listening_responses)
+    .map((response): IeltsListeningResponseResult => ({
+      questionId: response.question_id ?? '',
+      questionNumber: response.question_number ?? 0,
+      response: coerceAnswers(response.response_json),
+      correctAnswer: coerceAnswers(response.correct_answer_json),
+      isCorrect: Boolean(response.is_correct),
+    }))
+    .sort((left, right) => left.questionNumber - right.questionNumber);
+
+  return {
+    id: row.id,
+    testId: row.test_id ?? test?.id ?? '',
+    bookTitle: book?.title ?? 'Cambridge IELTS',
+    bookNumber: book?.book_number ?? 0,
+    testNumber: test?.test_number ?? 0,
+    score: row.score ?? 0,
+    totalQuestions: row.total_questions ?? 40,
+    elapsedSeconds: row.elapsed_seconds ?? 0,
+    submittedAt: row.submitted_at ?? row.created_at ?? '',
+    responses,
+  };
 }
 
 export async function submitIeltsListeningAttempt({

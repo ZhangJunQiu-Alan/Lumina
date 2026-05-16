@@ -4,10 +4,16 @@ import { promisify } from 'node:util';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { supabaseAdmin } from '../server/supabase.ts';
-import type { IeltsListeningOption, IeltsListeningQuestionType } from '../src/types.ts';
+import type {
+  IeltsListeningOption,
+  IeltsListeningPaperHotspot,
+  IeltsListeningPaperPage,
+  IeltsListeningQuestionType,
+} from '../src/types.ts';
 
 const execFileAsync = promisify(execFile);
 const AUDIO_BUCKET = 'ielts-listening-audio';
+const PAPER_BUCKET = 'ielts-listening-paper-pages';
 const DEFAULT_RAW_DIR = 'content/ielts-reading/raw';
 const DEFAULT_OUTPUT_DIR = 'output/ielts-listening';
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.m4a', '.wav', '.aac']);
@@ -27,6 +33,7 @@ interface ImportedListeningQuestion {
   options: IeltsListeningOption[];
   answers: string[];
   answerNote: string;
+  paperHotspot?: IeltsListeningPaperHotspot;
 }
 
 interface ImportedListeningGroup {
@@ -46,6 +53,7 @@ interface ImportedListeningSection {
   sourceAudioFilename: string;
   audioStoragePath: string;
   audioUrl?: string;
+  paperPages: IeltsListeningPaperPage[];
   groups: ImportedListeningGroup[];
 }
 
@@ -78,6 +86,10 @@ interface ImportReport {
     questionCount: number;
     answerCount: number;
     audioCount: number;
+    paperPageCount: number;
+    uniquePaperPageCount: number;
+    hotspotCount: number;
+    fallbackHotspotCount: number;
   };
   errors: string[];
   warnings: string[];
@@ -165,16 +177,17 @@ async function findBookPdf(bookNumber: number): Promise<string> {
   return path.join(DEFAULT_RAW_DIR, match);
 }
 
-async function readSourceText(args: CliArgs): Promise<{ text: string; sourceLabel: string }> {
+async function readSourceText(args: CliArgs): Promise<{ text: string; sourceLabel: string; pdfPath: string }> {
+  const pdfPath = args.pdf ?? await findBookPdf(args.book!);
   const textPath = args.text ?? `output/ielts-reading/cambridge-${args.book}-extracted.txt`;
   if (await pathExists(textPath)) {
     return {
       text: normalizeExtractedText(await readFile(textPath, 'utf8')),
       sourceLabel: path.basename(textPath),
+      pdfPath,
     };
   }
 
-  const pdfPath = args.pdf ?? await findBookPdf(args.book!);
   const scriptPath = path.join(path.dirname(new URL(import.meta.url).pathname), 'extract-pdf-text.py');
   const { stdout } = await execFileAsync('python3', [scriptPath, pdfPath], {
     maxBuffer: 80 * 1024 * 1024,
@@ -182,6 +195,7 @@ async function readSourceText(args: CliArgs): Promise<{ text: string; sourceLabe
   return {
     text: normalizeExtractedText(stdout),
     sourceLabel: path.basename(pdfPath),
+    pdfPath,
   };
 }
 
@@ -602,6 +616,7 @@ function buildBook(text: string, sourceLabel: string, bookNumber: number, audioS
         instructions: sectionChunk.trim(),
         sourceAudioFilename: audioSource?.sourceAudioFilename ?? '',
         audioStoragePath: audioSource?.storagePath ?? `cambridge-${bookNumber}/test-${testNumber}/section-${sectionNumber}.mp3`,
+        paperPages: [],
         groups: buildGroups(sectionChunk, sectionNumber, answerMap),
       });
     }
@@ -621,18 +636,64 @@ function buildBook(text: string, sourceLabel: string, bookNumber: number, audioS
   };
 }
 
+interface PaperOverlayResult {
+  paperPagesBySection: Record<string, IeltsListeningPaperPage[]>;
+  hotspots: Record<string, IeltsListeningPaperHotspot>;
+  missingSections: string[];
+  summary: {
+    paperPageCount: number;
+    uniquePdfPageCount: number;
+    hotspotCount: number;
+    fallbackHotspotCount: number;
+  };
+}
+
+async function attachPaperOverlay(book: ImportedListeningBook, pdfPath: string) {
+  const overlayInputPath = path.join(DEFAULT_OUTPUT_DIR, `cambridge-${book.bookNumber}-listening.paper-input.json`);
+  await mkdir(path.dirname(overlayInputPath), { recursive: true });
+  await writeFile(overlayInputPath, `${JSON.stringify(book, null, 2)}\n`);
+
+  const scriptPath = path.join(path.dirname(new URL(import.meta.url).pathname), 'extract-ielts-listening-paper.py');
+  const { stdout } = await execFileAsync('python3', [scriptPath, pdfPath, overlayInputPath], {
+    maxBuffer: 80 * 1024 * 1024,
+  });
+  const overlay = JSON.parse(stdout) as PaperOverlayResult;
+
+  for (const test of book.tests) {
+    for (const section of test.sections) {
+      section.paperPages = overlay.paperPagesBySection[`${test.testNumber}:${section.sectionNumber}`] ?? [];
+      for (const group of section.groups) {
+        for (const question of group.questions) {
+          question.paperHotspot = overlay.hotspots[`${test.testNumber}:${question.questionNumber}`];
+        }
+      }
+    }
+  }
+}
+
 function validateBook(book: ImportedListeningBook, audioSources: Map<string, AudioSource>): ImportReport {
   const errors: string[] = [];
   const warnings: string[] = [];
   const sectionCount = book.tests.reduce((sum, test) => sum + test.sections.length, 0);
   const questions = book.tests.flatMap((test) => test.sections.flatMap((section) => section.groups.flatMap((group) => group.questions)));
   const answerCount = questions.filter((question) => question.answers.length > 0).length;
+  const paperPageCount = book.tests.reduce(
+    (sum, test) => sum + test.sections.reduce((sectionSum, section) => sectionSum + section.paperPages.length, 0),
+    0,
+  );
+  const uniquePaperPageCount = new Set(book.tests.flatMap((test) => (
+    test.sections.flatMap((section) => section.paperPages.map((page) => page.pdfPage))
+  ))).size;
+  const hotspotCount = questions.filter((question) => question.paperHotspot).length;
+  const fallbackHotspotCount = questions.filter((question) => question.paperHotspot?.source === 'fallback-grid').length;
 
   if (book.tests.length !== 4) errors.push(`Expected 4 tests, found ${book.tests.length}`);
   if (sectionCount !== 16) errors.push(`Expected 16 sections, found ${sectionCount}`);
   if (questions.length !== 160) errors.push(`Expected 160 questions, found ${questions.length}`);
   if (answerCount !== 160) errors.push(`Expected 160 answers, found ${answerCount}`);
   if (audioSources.size !== 16) errors.push(`Expected 16 audio files, found ${audioSources.size}`);
+  if (paperPageCount < 16) errors.push(`Expected paper pages for 16 sections, found ${paperPageCount}`);
+  if (hotspotCount !== 160) errors.push(`Expected 160 paper hotspots, found ${hotspotCount}`);
 
   for (const test of book.tests) {
     if (test.sections.length !== 4) errors.push(`Test ${test.testNumber}: expected 4 sections, found ${test.sections.length}`);
@@ -645,6 +706,9 @@ function validateBook(book: ImportedListeningBook, audioSources: Map<string, Aud
     }
     for (const section of test.sections) {
       if (!section.sourceAudioFilename) warnings.push(`Test ${test.testNumber} Section ${section.sectionNumber}: missing audio source`);
+      if (section.paperPages.length === 0) errors.push(`Test ${test.testNumber} Section ${section.sectionNumber}: missing paper page`);
+      const sectionHotspots = section.groups.flatMap((group) => group.questions).filter((question) => question.paperHotspot).length;
+      if (sectionHotspots !== 10) errors.push(`Test ${test.testNumber} Section ${section.sectionNumber}: expected 10 paper hotspots, found ${sectionHotspots}`);
     }
   }
 
@@ -656,6 +720,10 @@ function validateBook(book: ImportedListeningBook, audioSources: Map<string, Aud
       questionCount: questions.length,
       answerCount,
       audioCount: audioSources.size,
+      paperPageCount,
+      uniquePaperPageCount,
+      hotspotCount,
+      fallbackHotspotCount,
     },
     errors,
     warnings,
@@ -719,12 +787,100 @@ async function uploadAudioSources(audioSources: Map<string, AudioSource>): Promi
   return urls;
 }
 
+async function ensurePaperBucket() {
+  const bucketOptions = {
+    public: true,
+    allowedMimeTypes: ['image/jpeg'],
+  };
+
+  const { data: existingBucket, error: getBucketError } = await supabaseAdmin.storage.getBucket(PAPER_BUCKET);
+  if (existingBucket) {
+    const { error } = await supabaseAdmin.storage.updateBucket(PAPER_BUCKET, bucketOptions);
+    if (error) throw new Error(`Paper bucket update failed: ${error.message}`);
+    return;
+  }
+  if (getBucketError && !getBucketError.message.toLowerCase().includes('not found')) {
+    throw new Error(`Paper bucket lookup failed: ${getBucketError.message}`);
+  }
+
+  const { error } = await supabaseAdmin.storage.createBucket(PAPER_BUCKET, bucketOptions);
+  if (error && !error.message.toLowerCase().includes('already exists')) {
+    throw new Error(`Paper bucket setup failed: ${error.message}`);
+  }
+}
+
+function getPaperPages(book: ImportedListeningBook): IeltsListeningPaperPage[] {
+  const pages = new Map<string, IeltsListeningPaperPage>();
+  for (const test of book.tests) {
+    for (const section of test.sections) {
+      for (const page of section.paperPages) {
+        pages.set(page.storagePath, page);
+      }
+    }
+  }
+  return [...pages.values()].sort((left, right) => left.pdfPage - right.pdfPage);
+}
+
+async function renderPdfPage(pdfPath: string, pdfPage: number): Promise<string> {
+  const outputDir = path.join(DEFAULT_OUTPUT_DIR, 'paper-pages');
+  await mkdir(outputDir, { recursive: true });
+  const prefix = path.join(outputDir, `page-${String(pdfPage).padStart(3, '0')}`);
+  await execFileAsync('pdftoppm', [
+    '-jpeg',
+    '-r',
+    '150',
+    '-f',
+    String(pdfPage),
+    '-l',
+    String(pdfPage),
+    pdfPath,
+    prefix,
+  ], {
+    maxBuffer: 20 * 1024 * 1024,
+  });
+  const renderedPath = `${prefix}-${String(pdfPage).padStart(3, '0')}.jpg`;
+  if (!(await pathExists(renderedPath))) {
+    throw new Error(`PDF page render failed for page ${pdfPage}`);
+  }
+  return renderedPath;
+}
+
+async function uploadPaperPages(book: ImportedListeningBook, pdfPath: string): Promise<Map<string, string>> {
+  await ensurePaperBucket();
+  const urls = new Map<string, string>();
+  for (const page of getPaperPages(book)) {
+    const renderedPath = await renderPdfPage(pdfPath, page.pdfPage);
+    const buffer = await readFile(renderedPath);
+    const { error } = await supabaseAdmin.storage
+      .from(PAPER_BUCKET)
+      .upload(page.storagePath, buffer, {
+        contentType: 'image/jpeg',
+        upsert: true,
+      });
+    if (error) throw new Error(`Paper page upload failed [${page.storagePath}]: ${error.message}`);
+    const { data } = supabaseAdmin.storage.from(PAPER_BUCKET).getPublicUrl(page.storagePath);
+    urls.set(page.storagePath, data.publicUrl);
+  }
+
+  for (const test of book.tests) {
+    for (const section of test.sections) {
+      section.paperPages = section.paperPages.map((page) => ({
+        ...page,
+        imageUrl: urls.get(page.storagePath) ?? page.imageUrl,
+      }));
+    }
+  }
+
+  return urls;
+}
+
 function sourceHash(value: string): string {
   return createHash('sha1').update(value).digest('hex').slice(0, 10);
 }
 
-async function applyBook(book: ImportedListeningBook, audioSources: Map<string, AudioSource>) {
+async function applyBook(book: ImportedListeningBook, audioSources: Map<string, AudioSource>, pdfPath: string) {
   const audioUrls = await uploadAudioSources(audioSources);
+  await uploadPaperPages(book, pdfPath);
   const { data: bookRow, error: bookError } = await supabaseAdmin
     .from('ielts_listening_books')
     .upsert({
@@ -761,6 +917,7 @@ async function applyBook(book: ImportedListeningBook, audioSources: Map<string, 
           audio_url: audioUrl,
           audio_storage_path: section.audioStoragePath,
           source_audio_filename: section.sourceAudioFilename,
+          paper_pages_json: section.paperPages,
           sort_order: section.sectionNumber,
         }, { onConflict: 'test_id,section_number' })
         .select('id')
@@ -801,6 +958,7 @@ async function applyBook(book: ImportedListeningBook, audioSources: Map<string, 
           options_json: question.options.length > 0 ? question.options : group.options,
           answer_json: question.answers,
           answer_note: question.answerNote || (question.answers.length > 1 ? `Cambridge 4 answer variants ${sourceHash(question.answers.join('|'))}` : ''),
+          paper_hotspot_json: question.paperHotspot ?? null,
           sort_order: questionIndex,
         }));
 
@@ -817,14 +975,16 @@ async function applyBook(book: ImportedListeningBook, audioSources: Map<string, 
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const { text, sourceLabel } = await readSourceText(args);
+  const { text, sourceLabel, pdfPath } = await readSourceText(args);
   const audioSources = await findAudioSources(args.book!);
   const book = buildBook(text, sourceLabel, args.book!, audioSources);
+  await attachPaperOverlay(book, pdfPath);
   const report = validateBook(book, audioSources);
   const output = await writeDryRunOutput(book, report, args.out);
 
   console.log(`IELTS listening import candidate: Cambridge ${report.summary.bookNumber}`);
   console.log(`Tests: ${report.summary.testCount}, sections: ${report.summary.sectionCount}, questions: ${report.summary.questionCount}, answers: ${report.summary.answerCount}, audio: ${report.summary.audioCount}`);
+  console.log(`Paper pages: ${report.summary.paperPageCount} (${report.summary.uniquePaperPageCount} unique), hotspots: ${report.summary.hotspotCount}, fallback hotspots: ${report.summary.fallbackHotspotCount}`);
   console.log(`Candidate JSON: ${output.candidatePath}`);
   console.log(`Report JSON: ${output.reportPath}`);
 
@@ -835,7 +995,7 @@ async function main() {
     if (report.errors.length > 0) {
       throw new Error('校验未通过，已拒绝写入数据库。先修正 candidate JSON/report 后再 --apply。');
     }
-    await applyBook(book, audioSources);
+    await applyBook(book, audioSources, pdfPath);
     console.log('IELTS listening import applied successfully.');
   } else {
     console.log('Dry-run complete. Review the JSON/report before applying.');

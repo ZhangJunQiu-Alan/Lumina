@@ -21,6 +21,7 @@ const baseQuestion: IeltsListeningQuestion = {
   answerNote: '',
   type: 'note_completion',
   sectionNumber: 1,
+  paperHotspot: null,
 };
 
 assert.equal(normalizeIeltsAnswerText('  Notice–Board. '), 'notice-board');
