@@ -152,6 +152,7 @@ export interface LearningPreferences {
   reinforcementRound3Enabled: boolean;
   reinforcementArticleEnabled: boolean;
   popoverAutoPlayEnabled: boolean;
+  clozeSentenceAutoPlayEnabled: boolean;
 }
 
 // Convert EnrichedWord → Word for the learning engine

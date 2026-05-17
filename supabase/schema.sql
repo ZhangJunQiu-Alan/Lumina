@@ -351,6 +351,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
   reinforcement_round3_enabled   BOOLEAN NOT NULL DEFAULT true,
   reinforcement_article_enabled  BOOLEAN NOT NULL DEFAULT true,
   popover_auto_play_enabled      BOOLEAN NOT NULL DEFAULT false,
+  cloze_sentence_auto_play_enabled BOOLEAN NOT NULL DEFAULT true,
   updated_at                     TIMESTAMPTZ DEFAULT NOW(),
   CHECK (default_pronunciation_locale IN ('uk', 'us')),
   CHECK (speech_playback_rate IN (0.6, 0.8, 1.0)),

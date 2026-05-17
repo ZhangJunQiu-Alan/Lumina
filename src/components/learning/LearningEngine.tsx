@@ -1106,7 +1106,7 @@ export const LearningEngine = ({
           nextWord();
         };
 
-        if ((type === 'round2' || type === 'review') && clozePrompt) {
+        if ((type === 'round2' || type === 'review') && clozePrompt && preferences.clozeSentenceAutoPlayEnabled) {
           const fullSentence = (currentWord.senses[clozePrompt.senseIndex]?.example_sentence ?? '')
             .replace(/\*\*(.+?)\*\*/g, '$1')
             .trim();
@@ -1152,7 +1152,7 @@ export const LearningEngine = ({
         nextWord();
       }, preferences.wrongAnswerRevealMs);
     }
-  }, [showAnswer, isSubmittingAttempt, isViewingHistory, inputValue, expectedInput, persistAttempt, currentWord, type, nextWord, clearAnswerRevealTimeout, queue, currentIndex, preferences.correctAnswerRevealMs, preferences.wrongAnswerRevealMs, clozePrompt, playExampleSentence, markCurrentQueueIndexPassed]);
+  }, [showAnswer, isSubmittingAttempt, isViewingHistory, inputValue, expectedInput, persistAttempt, currentWord, type, nextWord, clearAnswerRevealTimeout, queue, currentIndex, preferences.clozeSentenceAutoPlayEnabled, preferences.correctAnswerRevealMs, preferences.wrongAnswerRevealMs, clozePrompt, playExampleSentence, markCurrentQueueIndexPassed]);
 
   useEffect(() => {
     if (type !== 'round3') return;

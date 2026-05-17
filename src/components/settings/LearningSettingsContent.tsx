@@ -341,6 +341,19 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
 
       <SettingItem
         icon={Volume2}
+        title="句子默认朗读"
+        description="复习轮和 Round 2 答对后自动朗读完整句"
+        feedback={feedbackByKey.clozeSentenceAutoPlayEnabled}
+        control={(
+          <ToggleControl
+            checked={preferences.clozeSentenceAutoPlayEnabled}
+            onChange={(checked) => { void handleSave('clozeSentenceAutoPlayEnabled', { clozeSentenceAutoPlayEnabled: checked }); }}
+          />
+        )}
+      />
+
+      <SettingItem
+        icon={Volume2}
         title="朗读次数"
         description="每个单词自动朗读的次数"
         feedback={feedbackByKey.autoPlayRepeatCount}
