@@ -22,18 +22,18 @@
 
 ### 官方词库预加载脚本
 
-- 已新增 [`scripts/preload-official-vocab.ts`](/Users/zhangjunqiu/Desktop/Primoria_English/scripts/preload-official-vocab.ts:1)。
-- 已在 [`package.json`](/Users/zhangjunqiu/Desktop/Primoria_English/package.json:1) 增加 `npm run seed:official-vocab`。
+- 已新增 [`scripts/preload-official-vocab.ts`](/Users/zhangjunqiu/Desktop/Lumina/scripts/preload-official-vocab.ts:1)。
+- 已在 [`package.json`](/Users/zhangjunqiu/Desktop/Lumina/package.json:1) 增加 `npm run seed:official-vocab`。
 - 该脚本会批量扫描 `IELTS_WORDS_FLAT`，跳过已完整存在的词条，仅对缺失词做 enrich 并回写 `vocabulary_items / vocabulary_senses / confused_words`。
 
 ### 生产部署与自动发布
 
-- 前端已部署到 Cloudflare Pages：`https://primoria-english.pages.dev`
+- 前端已部署到 Cloudflare Pages：`https://lumina-1oi.pages.dev`
 - 后端已部署到 Railway：`https://api-production-0052.up.railway.app`
 - GitHub 自动发布已打通：
   - `CI` workflow 负责类型检查、规则测试、session 测试、word batch 测试和生产构建验证
   - `Deploy Pages` workflow 负责将 `main` 的前端构建结果发布到现有 Pages 项目
-  - Railway `api` 服务已连接 GitHub 仓库 `ZhangJunQiu-Alan/Primoria_English` 的 `main`
+  - Railway `api` 服务已连接 GitHub 仓库 `ZhangJunQiu-Alan/Lumina` 的 `main`
   - Railway `Wait for CI` 已开启，只有 GitHub Actions 通过后才会部署
 - 已确认：
   - `Deploy Pages` 成功
