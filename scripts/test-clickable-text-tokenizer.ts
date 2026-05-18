@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { tokenizeClickableText } from '../src/components/shared/ClickableText.tsx';
+import { coerceIeltsReadingDraft } from '../src/lib/ieltsReadingDraft.ts';
 import { isStopWord } from '../src/lib/stopWords.ts';
+import { extractIeltsReadingLookupWords } from '../src/lib/ieltsReadingLookupWords.ts';
 import { extractRound1ClickableWords } from '../src/lib/round1ClickableWords.ts';
 import type { Word } from '../src/types.ts';
 
@@ -24,6 +26,28 @@ assert.deepEqual(
   ['salt', 'table'],
 );
 assert.equal(mixedTokens.some((token) => token.kind === 'cjk' && token.text === '盐'), true);
+
+assert.deepEqual(
+  extractIeltsReadingLookupWords(
+    "The well-developed acoustic sense isn't weak, and well-developed dolphins track o'clock signals.",
+  ),
+  ['well-developed', 'acoustic', 'sense', "isn't", 'weak', 'dolphins', 'track', "o'clock", 'signals'],
+);
+
+const legacyReadingDraft = coerceIeltsReadingDraft(JSON.stringify({
+  startedAt: '2026-05-18T08:00:00.000Z',
+  answers: {},
+  selectedPassage: 2,
+}));
+assert.equal(legacyReadingDraft?.practiceMode, false);
+
+const practiceReadingDraft = coerceIeltsReadingDraft(JSON.stringify({
+  startedAt: '2026-05-18T08:00:00.000Z',
+  answers: {},
+  selectedPassage: 2,
+  practiceMode: true,
+}));
+assert.equal(practiceReadingDraft?.practiceMode, true);
 
 const round1Word: Word = {
   id: 'round1-test',

@@ -15,6 +15,7 @@ import {
   PenLine,
   Plus,
   RotateCcw,
+  Search,
   StickyNote,
   X,
 } from 'lucide-react';
@@ -30,7 +31,10 @@ import type {
   IeltsReadingTestDetail,
 } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
+import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
+import { useWordPopover } from '../../contexts/WordPopoverContext';
 import { cx } from '../shared/LearningUI';
+import { ClickableText, type WordClickHandler } from '../shared/ClickableText';
 import {
   fetchIeltsReadingBooks,
   fetchIeltsReadingTestDetail,
@@ -47,13 +51,15 @@ import {
   type IeltsReadingAnswerValue,
 } from '../../lib/ieltsReadingScoring';
 import { splitIeltsPassageParagraphs } from '../../lib/ieltsReadingText';
+import { preloadIeltsReadingPassageLookupResources } from '../../lib/ieltsReadingLookupPreload';
+import { coerceIeltsReadingDraft, type IeltsReadingDraft } from '../../lib/ieltsReadingDraft';
 
 const TEST_DURATION_SECONDS = 60 * 60;
 
 type ReadingPane = 'passage' | 'questions';
 type SubmitMode = 'manual' | 'timeout';
 type ReviewFilter = 'all' | 'wrong' | 'unanswered';
-type ReadingToolMode = 'highlight' | 'note' | 'clear';
+type ReadingToolMode = 'highlight' | 'note' | 'clear' | 'lookup';
 type ReviewItem = {
   question: IeltsReadingQuestion;
   response: IeltsReadingAttemptResult['responses'][number] | undefined;
@@ -86,14 +92,7 @@ interface AnnotationSelection {
   note?: string;
 }
 
-interface ReadingDraft {
-  startedAt: string;
-  answers: IeltsReadingAnswerMap;
-  selectedPassage: number;
-  flags?: number[];
-  annotations?: ReadingAnnotation[];
-  fontSize?: number;
-}
+type ReadingDraft = IeltsReadingDraft;
 
 const questionTypeLabel: Record<IeltsReadingQuestionGroup['type'], string> = {
   true_false_not_given: 'TRUE / FALSE / NOT GIVEN',
@@ -120,22 +119,7 @@ function draftKey(userId: string, testId: string) {
 
 function readDraft(userId: string, testId: string): ReadingDraft | null {
   if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.localStorage.getItem(draftKey(userId, testId));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<ReadingDraft>;
-    if (typeof parsed.startedAt !== 'string' || typeof parsed.answers !== 'object') return null;
-    return {
-      startedAt: parsed.startedAt,
-      answers: parsed.answers as IeltsReadingAnswerMap,
-      selectedPassage: parsed.selectedPassage ?? 1,
-      flags: Array.isArray(parsed.flags) ? parsed.flags.filter((item): item is number => typeof item === 'number') : [],
-      annotations: Array.isArray(parsed.annotations) ? parsed.annotations.filter(isReadingAnnotation) : [],
-      fontSize: clampReadingFontSize(parsed.fontSize),
-    };
-  } catch {
-    return null;
-  }
+  return coerceIeltsReadingDraft(window.localStorage.getItem(draftKey(userId, testId)), clampReadingFontSize);
 }
 
 function writeDraft(userId: string, testId: string, draft: ReadingDraft) {
@@ -580,19 +564,6 @@ function getUnansweredNumbers(questions: IeltsReadingQuestion[], answers: IeltsR
     .map((question) => question.number);
 }
 
-function isReadingAnnotation(value: unknown): value is ReadingAnnotation {
-  if (!value || typeof value !== 'object') return false;
-  const item = value as Partial<ReadingAnnotation>;
-  return (
-    typeof item.id === 'string'
-    && typeof item.passageNumber === 'number'
-    && typeof item.paragraphIndex === 'number'
-    && typeof item.start === 'number'
-    && typeof item.end === 'number'
-    && item.end > item.start
-  );
-}
-
 function clampReadingFontSize(value: unknown): number {
   const numericValue = typeof value === 'number' ? value : DEFAULT_READING_FONT_SIZE;
   return Math.min(MAX_READING_FONT_SIZE, Math.max(MIN_READING_FONT_SIZE, Math.round(numericValue)));
@@ -697,6 +668,21 @@ function trueFalseChoiceClass(choice: string, active: boolean) {
   );
 }
 
+function renderLookupTextSegment(
+  text: string,
+  readingMode: ReadingToolMode,
+  onWordClick: WordClickHandler,
+) {
+  if (readingMode !== 'lookup') return text;
+  return (
+    <ClickableText
+      text={text}
+      onWordClick={onWordClick}
+      stopPropagation
+    />
+  );
+}
+
 function renderAnnotatedParagraph({
   text,
   passageNumber,
@@ -704,6 +690,7 @@ function renderAnnotatedParagraph({
   annotations,
   readingMode,
   onAnnotationClick,
+  onWordClick,
 }: {
   text: string;
   passageNumber: number;
@@ -711,6 +698,7 @@ function renderAnnotatedParagraph({
   annotations: ReadingAnnotation[];
   readingMode: ReadingToolMode;
   onAnnotationClick: (annotation: ReadingAnnotation) => void;
+  onWordClick: WordClickHandler;
 }) {
   const paragraphAnnotations = annotations
     .filter((annotation) => (
@@ -728,7 +716,12 @@ function renderAnnotatedParagraph({
   paragraphAnnotations.forEach((annotation) => {
     if (annotation.start < cursor) return;
     if (annotation.start > cursor) {
-      nodes.push(text.slice(cursor, annotation.start));
+      const segment = text.slice(cursor, annotation.start);
+      nodes.push(
+        <Fragment key={`text-${cursor}-${annotation.start}`}>
+          {renderLookupTextSegment(segment, readingMode, onWordClick)}
+        </Fragment>,
+      );
     }
     nodes.push(
       <span
@@ -740,13 +733,13 @@ function renderAnnotatedParagraph({
           readingMode === 'note' && 'cursor-pointer ring-1 ring-apple-blue/30',
         )}
         onClick={(event) => {
-          if (readingMode === 'highlight') return;
+          if (readingMode === 'highlight' || readingMode === 'lookup') return;
           event.preventDefault();
           event.stopPropagation();
           onAnnotationClick(annotation);
         }}
       >
-        {text.slice(annotation.start, annotation.end)}
+        {renderLookupTextSegment(text.slice(annotation.start, annotation.end), readingMode, onWordClick)}
         {annotation.note && (
           <span className="ml-1 inline-flex h-4 w-4 translate-y-0.5 items-center justify-center rounded-[5px] bg-apple-blue text-white">
             <PenLine className="h-3 w-3" aria-hidden="true" />
@@ -758,7 +751,11 @@ function renderAnnotatedParagraph({
   });
 
   if (cursor < text.length) {
-    nodes.push(text.slice(cursor));
+    nodes.push(
+      <Fragment key={`text-${cursor}-${text.length}`}>
+        {renderLookupTextSegment(text.slice(cursor), readingMode, onWordClick)}
+      </Fragment>,
+    );
   }
 
   return nodes;
@@ -1454,13 +1451,17 @@ export function IeltsReadingTestView() {
   const { testId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { preferences } = useLearningPreferences();
+  const { openPopover, closePopover } = useWordPopover();
   const questionRefs = useRef<Record<number, HTMLElement | null>>({});
+  const preloadedLookupPassagesRef = useRef<Set<string>>(new Set());
   const [test, setTest] = useState<IeltsReadingTestDetail | null>(null);
   const [answers, setAnswers] = useState<IeltsReadingAnswerMap>({});
   const [startedAt, setStartedAt] = useState(() => new Date().toISOString());
   const [selectedPassage, setSelectedPassage] = useState(1);
   const [pane, setPane] = useState<ReadingPane>('passage');
   const [readingMode, setReadingMode] = useState<ReadingToolMode>('highlight');
+  const [practiceMode, setPracticeMode] = useState(false);
   const [flaggedNumbers, setFlaggedNumbers] = useState<number[]>([]);
   const [annotations, setAnnotations] = useState<ReadingAnnotation[]>([]);
   const [fontSize, setFontSize] = useState(DEFAULT_READING_FONT_SIZE);
@@ -1485,6 +1486,7 @@ export function IeltsReadingTestView() {
     setFlaggedNumbers(draft.flags ?? []);
     setAnnotations(draft.annotations ?? []);
     setFontSize(clampReadingFontSize(draft.fontSize));
+    setPracticeMode(draft.practiceMode);
   }, [testId, user]);
 
   useEffect(() => {
@@ -1529,18 +1531,43 @@ export function IeltsReadingTestView() {
       flags: flaggedNumbers,
       annotations,
       fontSize,
+      practiceMode,
     });
-  }, [answers, annotations, flaggedNumbers, fontSize, result, selectedPassage, startedAt, testId, user]);
+  }, [answers, annotations, flaggedNumbers, fontSize, practiceMode, result, selectedPassage, startedAt, testId, user]);
 
   const questions = useMemo(() => (test ? getIeltsReadingQuestions(test) : []), [test]);
   const selectedPassageData = test?.passages.find((passage) => passage.number === selectedPassage) ?? test?.passages[0] ?? null;
   const flaggedSet = useMemo(() => new Set(flaggedNumbers), [flaggedNumbers]);
   const elapsedSeconds = Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000));
   const remainingSeconds = Math.max(0, TEST_DURATION_SECONDS - elapsedSeconds);
+  const timerSeconds = practiceMode ? TEST_DURATION_SECONDS : remainingSeconds;
+  const pronunciationLocale = preferences.defaultPronunciationLocale;
   const answeredCount = questions.filter((question) => isAnswered(answers[question.number])).length;
-  const submitElapsedSeconds = clampIeltsElapsedSeconds(elapsedSeconds, TEST_DURATION_SECONDS);
+  const submitElapsedSeconds = practiceMode
+    ? elapsedSeconds
+    : clampIeltsElapsedSeconds(elapsedSeconds, TEST_DURATION_SECONDS);
   const unansweredNumbers = useMemo(() => getUnansweredNumbers(questions, answers), [answers, questions]);
   const inputsLocked = isSubmitting || isLockedByTimeout;
+
+  useEffect(() => {
+    if (practiceMode || readingMode !== 'lookup') return;
+    setReadingMode('highlight');
+    closePopover();
+  }, [closePopover, practiceMode, readingMode]);
+
+  useEffect(() => {
+    closePopover();
+  }, [closePopover, selectedPassage]);
+
+  useEffect(() => {
+    if (!practiceMode || !selectedPassageData) return;
+
+    const preloadKey = `${selectedPassageData.id}:${pronunciationLocale}`;
+    if (preloadedLookupPassagesRef.current.has(preloadKey)) return;
+    preloadedLookupPassagesRef.current.add(preloadKey);
+
+    void preloadIeltsReadingPassageLookupResources(selectedPassageData.body, pronunciationLocale);
+  }, [practiceMode, pronunciationLocale, selectedPassageData]);
 
   const setAnswer = useCallback((questionNumber: number, value: IeltsReadingAnswerValue) => {
     if (inputsLocked) return;
@@ -1603,6 +1630,7 @@ export function IeltsReadingTestView() {
 
   const handleArticleSelection = useCallback(() => {
     if (inputsLocked) return;
+    if (readingMode === 'lookup') return;
     const selection = readArticleSelection();
     if (!selection) return;
     if (selection.passageNumber !== selectedPassage) return;
@@ -1624,6 +1652,7 @@ export function IeltsReadingTestView() {
 
   const handleAnnotationClick = useCallback((annotation: ReadingAnnotation) => {
     if (inputsLocked) return;
+    if (readingMode === 'lookup') return;
     if (readingMode === 'clear') {
       setAnnotations((current) => current.filter((item) => item.id !== annotation.id));
       return;
@@ -1668,6 +1697,7 @@ export function IeltsReadingTestView() {
         elapsedSeconds: mode === 'timeout' ? TEST_DURATION_SECONDS : submitElapsedSeconds,
       });
       clearDraft(user.id, testId);
+      closePopover();
       setResult(nextResult);
       setIsSubmitDialogOpen(false);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1681,15 +1711,15 @@ export function IeltsReadingTestView() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [answers, isSubmitting, startedAt, submitElapsedSeconds, test, testId, user]);
+  }, [answers, closePopover, isSubmitting, startedAt, submitElapsedSeconds, test, testId, user]);
 
   useEffect(() => {
-    if (!test || result || isSubmitting || timeoutSubmitAttempted || remainingSeconds > 0) return;
+    if (!test || practiceMode || result || isSubmitting || timeoutSubmitAttempted || remainingSeconds > 0) return;
     setTimeoutSubmitAttempted(true);
     setIsLockedByTimeout(true);
     setIsSubmitDialogOpen(false);
     void submitAttempt('timeout');
-  }, [isSubmitting, remainingSeconds, result, submitAttempt, test, timeoutSubmitAttempted]);
+  }, [isSubmitting, practiceMode, remainingSeconds, result, submitAttempt, test, timeoutSubmitAttempted]);
 
   const handleSubmitClick = () => {
     if (isLockedByTimeout) {
@@ -1713,6 +1743,7 @@ export function IeltsReadingTestView() {
 
   const handleReset = () => {
     if (testId && user) clearDraft(user.id, testId);
+    closePopover();
     setAnswers({});
     setStartedAt(new Date().toISOString());
     setNow(Date.now());
@@ -1720,6 +1751,7 @@ export function IeltsReadingTestView() {
     setSelectedPassage(1);
     setPane('passage');
     setReadingMode('highlight');
+    setPracticeMode(false);
     setFlaggedNumbers([]);
     setAnnotations([]);
     setFontSize(DEFAULT_READING_FONT_SIZE);
@@ -1772,15 +1804,45 @@ export function IeltsReadingTestView() {
           </div>
 
           <div className="flex items-center gap-3 overflow-x-auto pb-1 xl:pb-0">
+            <button
+              type="button"
+              aria-pressed={practiceMode}
+              onClick={() => {
+                if (isLockedByTimeout || isSubmitting) return;
+                setPracticeMode((current) => !current);
+              }}
+              disabled={isLockedByTimeout || isSubmitting}
+              className={cx(
+                'inline-flex h-16 shrink-0 items-center gap-3 rounded-full px-5 text-sm font-black shadow-[0_14px_30px_rgba(31,45,75,0.08)] transition-all disabled:cursor-not-allowed disabled:opacity-60',
+                practiceMode
+                  ? 'bg-apple-blue text-white'
+                  : 'bg-white text-text-secondary hover:bg-[#f4f6fb] hover:text-text-primary',
+              )}
+            >
+              <span
+                className={cx(
+                  'relative h-7 w-12 rounded-full transition-colors',
+                  practiceMode ? 'bg-white/25' : 'bg-[#e8edf7]',
+                )}
+                aria-hidden="true"
+              >
+                <span
+                  className={cx(
+                    'absolute top-1 h-5 w-5 rounded-full bg-white shadow-[0_4px_10px_rgba(14,26,56,0.18)] transition-transform',
+                    practiceMode ? 'translate-x-6' : 'translate-x-1',
+                  )}
+                />
+              </span>
+              练习模式
+            </button>
             <div
               className={cx(
                 'inline-flex h-16 shrink-0 items-center gap-3 rounded-[18px] bg-white px-5 text-xl font-black tracking-[0.08em] text-text-primary shadow-[0_14px_30px_rgba(31,45,75,0.08)]',
-                remainingSeconds <= 300 && 'text-apple-red',
+                !practiceMode && remainingSeconds <= 300 && 'text-apple-red',
               )}
             >
               <Clock3 className="h-5 w-5 text-text-secondary" />
-              <span>{formatElapsedTime(remainingSeconds)}</span>
-              <span className="text-xs font-black tracking-[0.08em] text-text-secondary">剩余</span>
+              <span>{formatElapsedTime(timerSeconds)}</span>
             </div>
             <div className="inline-flex h-16 shrink-0 items-center gap-3 rounded-[18px] bg-white px-5 text-xl font-black tracking-[0.12em] text-text-primary shadow-[0_14px_30px_rgba(31,45,75,0.08)]">
               <PenLine className="h-5 w-5 text-text-secondary" />
@@ -1860,6 +1922,7 @@ export function IeltsReadingTestView() {
               { key: 'highlight' as const, label: '高亮', icon: Highlighter },
               { key: 'note' as const, label: '笔记', icon: StickyNote },
               { key: 'clear' as const, label: '清除', icon: Eraser },
+              ...(practiceMode ? [{ key: 'lookup' as const, label: '查阅', icon: Search }] : []),
             ]).map((tool) => {
               const Icon = tool.icon;
               return (
@@ -1886,6 +1949,7 @@ export function IeltsReadingTestView() {
               {readingMode === 'highlight' && '高亮模式 — 选中文字以高亮'}
               {readingMode === 'note' && '笔记模式 — 选中文字或点击标注写笔记'}
               {readingMode === 'clear' && '清除模式 — 选中文字或点击标注清除'}
+              {readingMode === 'lookup' && '查阅模式 — 点击英文单词查看读音和释义'}
             </span>
           </div>
 
@@ -1995,6 +2059,7 @@ export function IeltsReadingTestView() {
                               annotations,
                               readingMode,
                               onAnnotationClick: handleAnnotationClick,
+                              onWordClick: openPopover,
                             })}
                           </p>
                           {figure && <EmbeddedPassageFigureBlock figure={figure} />}

@@ -370,6 +370,7 @@ export async function persistEnrichedVocabularyEntries(
       morphology_summary_zh: entry.morphology.summary_zh,
       memory_tip: entry.memory_tip,
       source_type: existingSourceTypeByWord.get(normalizedWord) ?? options.sourceType ?? 'custom',
+      enrichment_level: 'full',
     };
   });
 

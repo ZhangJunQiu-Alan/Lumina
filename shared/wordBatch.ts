@@ -13,6 +13,20 @@ export interface WordBatchMismatch {
   unexpectedWords: string[];
 }
 
+export interface CanonicalWordBatchEntry {
+  word: string;
+  canonicalWord: string;
+}
+
+export interface CanonicalWordBatchResult {
+  words: string[];
+  changedWords: Array<{
+    word: string;
+    canonicalWord: string;
+  }>;
+  collapsedWords: string[];
+}
+
 export function sanitizeWordInput(word: string): string {
   return word.trim().replace(/\s+/g, ' ');
 }
@@ -53,6 +67,37 @@ export function analyzeWordBatch(
     words: preparedWords,
     normalizedWords: preparedWords.map(normalizeWordKey),
     duplicateWords,
+  };
+}
+
+export function collapseCanonicalWordBatch(entries: CanonicalWordBatchEntry[]): CanonicalWordBatchResult {
+  const words: string[] = [];
+  const changedWords: CanonicalWordBatchResult['changedWords'] = [];
+  const collapsedWords: string[] = [];
+  const seenCanonicalWords = new Set<string>();
+
+  for (const entry of entries) {
+    const word = sanitizeWordInput(entry.word);
+    const canonicalWord = normalizeWordKey(entry.canonicalWord || word);
+    if (!word || !canonicalWord) continue;
+
+    if (normalizeWordKey(word) !== canonicalWord) {
+      changedWords.push({ word, canonicalWord });
+    }
+
+    if (seenCanonicalWords.has(canonicalWord)) {
+      collapsedWords.push(word);
+      continue;
+    }
+
+    seenCanonicalWords.add(canonicalWord);
+    words.push(canonicalWord);
+  }
+
+  return {
+    words,
+    changedWords,
+    collapsedWords,
   };
 }
 

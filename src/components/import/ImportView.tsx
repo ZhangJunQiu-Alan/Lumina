@@ -11,15 +11,25 @@ import {
 } from '../../lib/importFlow';
 import { useAuth } from '../../contexts/AuthContext';
 import { EnrichedWord } from '../../types';
-import { analyzeWordBatch, formatDuplicateWordsMessage, normalizeWordKey } from '../../../shared/wordBatch';
+import {
+  analyzeWordBatch,
+  collapseCanonicalWordBatch,
+  formatDuplicateWordsMessage,
+  normalizeWordKey,
+} from '../../../shared/wordBatch';
 
 type Stage = 'input' | 'loading' | 'preview' | 'saving' | 'error';
-type LoadingStep = 'fetching' | 'enriching' | 'merging';
+type LoadingStep = 'lemmatizing' | 'fetching' | 'enriching' | 'merging';
 
 const MANUAL_BATCH_SIZE = 30;
 const MANUAL_DRAFT_KEY = 'manual_vocab_import_draft';
+const IMPORT_LEMMATIZE_CONCURRENCY = 4;
 
 const LOADING_STEP_COPY: Record<LoadingStep, { title: string; detail: string }> = {
+  lemmatizing: {
+    title: '正在做词形还原',
+    detail: '先把复数、时态等形式归到基础词形。',
+  },
   fetching: {
     title: '正在检索已有词库',
     detail: '先把能直接复用的词挑出来，省下 AI 时间。',
@@ -39,6 +49,65 @@ function splitWords(raw: string): string[] {
     .split(/[\n,]+/)
     .map((word) => word.trim())
     .filter(Boolean);
+}
+
+interface LiteVocabularyResult {
+  word: string;
+}
+
+async function mapWithConcurrency<T, U>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<U>,
+): Promise<U[]> {
+  const results: U[] = new Array(items.length);
+  let cursor = 0;
+  const workerCount = Math.min(Math.max(concurrency, 1), items.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (cursor < items.length) {
+        const index = cursor;
+        cursor += 1;
+        const item = items[index];
+        if (item === undefined) break;
+        results[index] = await worker(item);
+      }
+    }),
+  );
+
+  return results;
+}
+
+async function lemmatizeImportWord(word: string, signal: AbortSignal): Promise<string> {
+  const res = await apiFetch('/api/vocab/lemmatize', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ word, source: 'import_lemmatize' }),
+    signal,
+    requiresAuth: false,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(err.error ?? `HTTP ${res.status}`);
+  }
+
+  const { data } = await res.json() as { data?: LiteVocabularyResult };
+  return normalizeWordKey(data?.word ?? word) || normalizeWordKey(word);
+}
+
+async function lemmatizeImportWords(words: string[], signal: AbortSignal): Promise<string[]> {
+  const entries = await mapWithConcurrency(
+    words,
+    IMPORT_LEMMATIZE_CONCURRENCY,
+    async (word) => ({
+      word,
+      canonicalWord: await lemmatizeImportWord(word, signal),
+    }),
+  );
+
+  return collapseCanonicalWordBatch(entries).words;
 }
 
 function readManualDraft() {
@@ -120,14 +189,18 @@ export const ImportView = () => {
     abortRef.current = controller;
 
     setStage('loading');
-    setLoadingStep('fetching');
+    setLoadingStep('lemmatizing');
     setLoadingMissingCount(0);
     setErrorMsg('');
     setEnriched([]);
 
     try {
+      const canonicalWords = await lemmatizeImportWords(words, controller.signal);
+      if (controller.signal.aborted) return;
+
       // 1. 先从本地词库查找已经整理好的词条
-      const { existing, missing } = await fetchVocabularyEntriesByWords(words);
+      setLoadingStep('fetching');
+      const { existing, missing } = await fetchVocabularyEntriesByWords(canonicalWords);
       if (controller.signal.aborted) return;
       let newlyEnriched: EnrichedWord[] = [];
 
@@ -164,7 +237,7 @@ export const ImportView = () => {
       }
 
       const combined: EnrichedWord[] = [];
-      for (const word of words) {
+      for (const word of canonicalWords) {
         const item = wordMap.get(normalizeWordKey(word));
         if (item) {
           combined.push(item);
@@ -297,7 +370,7 @@ export const ImportView = () => {
         )}
 
         {stage === 'loading' && (() => {
-          const stepOrder: LoadingStep[] = ['fetching', 'enriching', 'merging'];
+          const stepOrder: LoadingStep[] = ['lemmatizing', 'fetching', 'enriching', 'merging'];
           const currentStepIndex = stepOrder.indexOf(loadingStep);
           const activeCopy = LOADING_STEP_COPY[loadingStep];
           const activeTitle = loadingStep === 'enriching' && loadingMissingCount > 0

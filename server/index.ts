@@ -22,6 +22,7 @@ import { requireAuth, type AuthenticatedRequest } from './auth.js';
 import { getHomeOverview } from './home.js';
 import {
   ensureLiteVocabularyEntry,
+  lemmatizeVocabularyWord,
   lookupWordForPopover,
   queueFullEnrichmentForWord,
   sanitizeLookupWord,
@@ -138,6 +139,31 @@ app.post('/api/vocab/lite-enrich', async (req, res) => {
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     logger.error('API Error: /api/vocab/lite-enrich', e, { endpoint: '/api/vocab/lite-enrich', word, source });
+
+    if (e instanceof EnrichmentResponseValidationError) {
+      return res.status(e.statusCode).json({ error: message });
+    }
+    if (e instanceof EnrichmentServiceUnavailableError) {
+      return res.status(e.statusCode).json({ error: message });
+    }
+    res.status(500).json({ error: message });
+  }
+});
+
+// POST /api/vocab/lemmatize
+app.post('/api/vocab/lemmatize', async (req, res) => {
+  const word = sanitizeLookupWord(req.body?.word);
+  const source = resolveGeminiSource(req.body?.source, 'import_lemmatize');
+  if (!word) {
+    return res.status(400).json({ error: 'Missing word' });
+  }
+
+  try {
+    const data = await lemmatizeVocabularyWord(word, source);
+    res.json({ data });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/vocab/lemmatize', e, { endpoint: '/api/vocab/lemmatize', word, source });
 
     if (e instanceof EnrichmentResponseValidationError) {
       return res.status(e.statusCode).json({ error: message });

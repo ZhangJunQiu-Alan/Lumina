@@ -300,6 +300,65 @@ export async function ensureLiteVocabularyEntry(
   return toLiteVocabularyResult(item);
 }
 
+export async function lemmatizeVocabularyWord(
+  word: string,
+  source = 'import_lemmatize',
+): Promise<LiteVocabularyResult> {
+  const normalizedRequestedWord = sanitizeLookupWord(word);
+  if (!normalizedRequestedWord) {
+    throw new Error('Missing word');
+  }
+
+  const existingFormItem = await fetchVocabularyItemByForm(normalizedRequestedWord);
+  if (existingFormItem) {
+    return toLiteVocabularyResult(existingFormItem);
+  }
+
+  const liteResult = await enrichWordLite(normalizedRequestedWord, {
+    source,
+    enrichmentType: 'lite',
+  });
+  const canonicalWord = normalizeWordKey(liteResult.word || normalizedRequestedWord);
+  const requestedForm = normalizedRequestedWord !== canonicalWord ? normalizedRequestedWord : '';
+  const forms = [...liteResult.forms, requestedForm].filter(Boolean);
+
+  const canonicalExistingItem = await fetchVocabularyItemByWord(canonicalWord);
+  if (canonicalExistingItem) {
+    await insertVocabularyForms(canonicalExistingItem.id, canonicalWord, forms);
+    return toLiteVocabularyResult(canonicalExistingItem);
+  }
+
+  const { data: insertedRows, error: insertError } = await supabaseAdmin
+    .from('vocabulary_items')
+    .upsert(
+      {
+        word: canonicalWord,
+        primary_meaning_zh: liteResult.primary_meaning_zh,
+        source_type: 'custom',
+        enrichment_level: 'lite',
+      },
+      { onConflict: 'word', ignoreDuplicates: true },
+    )
+    .select(vocabularyItemSelect);
+
+  if (insertError && !isPostgrestDuplicateError(insertError)) {
+    throw new Error(`vocabulary_items lemma insert failed: ${insertError.message}`);
+  }
+
+  const insertedItem = ((insertedRows ?? []) as VocabularyItemRow[])[0] ?? null;
+  const item = insertedItem ?? await fetchVocabularyItemByWord(canonicalWord);
+  if (!item) {
+    throw new Error(`vocabulary_items lemma insert did not return item: ${canonicalWord}`);
+  }
+
+  if (insertedItem) {
+    await replaceLiteVocabularySenses(item.id, liteResult.senses);
+  }
+
+  await insertVocabularyForms(item.id, canonicalWord, forms);
+  return toLiteVocabularyResult(item);
+}
+
 async function lookupSavedWord(userId: string, vocabularyItemId: string) {
   const { data, error } = await supabaseAdmin
     .from('user_saved_words')
