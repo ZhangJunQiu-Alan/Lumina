@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   ArrowLeft,
@@ -200,6 +200,43 @@ interface CompletionTable {
   header: string[];
   rows: string[][];
 }
+
+interface EmbeddedPassageFigure {
+  id: string;
+  title: string;
+  headers: [string, string];
+  rows: [string, string][];
+  caption: string;
+}
+
+const visualSymbolsFig2: EmbeddedPassageFigure = {
+  id: 'visual-symbols-fig-2',
+  title: 'Fig. 2',
+  headers: ['Words associated with circle/square', 'Agreement among subjects (%)'],
+  rows: [
+    ['SOFT-HARD', '100'],
+    ['MOTHER-FATHER', '94'],
+    ['HAPPY-SAD', '94'],
+    ['GOOD-EVIL', '89'],
+    ['LOVE-HATE', '89'],
+    ['ALIVE-DEAD', '87'],
+    ['BRIGHT-DARK', '87'],
+    ['LIGHT-HEAVY', '85'],
+    ['WARM-COLD', '81'],
+    ['SUMMER-WINTER', '81'],
+    ['WEAK-STRONG', '79'],
+    ['FAST-SLOW', '79'],
+    ['CAT-DOG', '74'],
+    ['SPRING-FALL', '74'],
+    ['QUIET-LOUD', '62'],
+    ['WALKING-STANDING', '62'],
+    ['ODD-EVEN', '57'],
+    ['FAR-NEAR', '53'],
+    ['PLANT-ANIMAL', '53'],
+    ['DEEP-SHALLOW', '51'],
+  ],
+  caption: 'Subjects were asked which word in each pair fits best with a circle and which with a square. These percentages show the level of consensus among sighted subjects.',
+};
 
 interface CompletionInputContext {
   group: IeltsReadingQuestionGroup;
@@ -490,6 +527,50 @@ function CompletionSourceBlock({
         </div>
       )}
     </div>
+  );
+}
+
+function isPassagePartHeading(value: string) {
+  return /^Part\s+\d+$/i.test(value.trim());
+}
+
+function getEmbeddedFigureAfterParagraph(passage: IeltsReadingPassage, paragraph: string): EmbeddedPassageFigure | null {
+  if (passage.title !== 'Visual Symbols and the Blind') return null;
+  if (!/\(See Fig\. 2\.\)/.test(paragraph)) return null;
+  return visualSymbolsFig2;
+}
+
+function EmbeddedPassageFigureBlock({ figure }: { figure: EmbeddedPassageFigure }) {
+  return (
+    <figure className="my-8 overflow-hidden rounded-[18px] border border-[#dfe5ef] bg-white font-sans shadow-[0_16px_36px_rgba(31,31,34,0.06)]">
+      <div className="overflow-x-auto">
+        <table className="min-w-[520px] w-full border-collapse text-left">
+          <thead>
+            <tr>
+              {figure.headers.map((header) => (
+                <th
+                  key={header}
+                  className="border-b border-[#dfe5ef] bg-[#f3f6fb] px-4 py-3 text-[0.72rem] font-black uppercase tracking-[0.08em] text-text-primary"
+                >
+                  {header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {figure.rows.map(([label, value]) => (
+              <tr key={label} className="border-b border-[#edf1f7] last:border-b-0">
+                <td className="px-4 py-2.5 text-sm font-black tracking-[0.02em] text-[#25252a]">{label}</td>
+                <td className="px-4 py-2.5 text-sm font-black text-[#25252a]">{value}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <figcaption className="border-t border-[#dfe5ef] bg-[#fafbfe] px-4 py-3 text-center text-xs font-bold italic leading-5 text-text-secondary">
+        <span className="font-black text-text-primary">{figure.title}</span> {figure.caption}
+      </figcaption>
+    </figure>
   );
 }
 
@@ -1890,27 +1971,36 @@ export function IeltsReadingTestView() {
                     className="space-y-7 font-serif font-medium leading-[1.72] text-[#25252a]"
                     style={{ fontSize: `${fontSize}px` }}
                   >
-                    {getPassageParagraphs(selectedPassageData.body).map((paragraph, index) => (
-                      <p
-                        key={`${selectedPassageData.id}-${index}`}
-                        data-ielts-paragraph
-                        data-passage-number={selectedPassageData.number}
-                        data-paragraph-index={index}
-                        className={cx(
-                          'selection:bg-apple-blue/20',
-                          index === 0 && 'first-letter:float-left first-letter:mr-3 first-letter:text-[4.6em] first-letter:font-black first-letter:leading-[0.82]',
-                        )}
-                      >
-                        {renderAnnotatedParagraph({
-                          text: paragraph,
-                          passageNumber: selectedPassageData.number,
-                          paragraphIndex: index,
-                          annotations,
-                          readingMode,
-                          onAnnotationClick: handleAnnotationClick,
-                        })}
-                      </p>
-                    ))}
+                    {getPassageParagraphs(selectedPassageData.body).map((paragraph, index) => {
+                      const isPartHeading = isPassagePartHeading(paragraph);
+                      const figure = getEmbeddedFigureAfterParagraph(selectedPassageData, paragraph);
+
+                      return (
+                        <Fragment key={`${selectedPassageData.id}-${index}`}>
+                          <p
+                            data-ielts-paragraph
+                            data-passage-number={selectedPassageData.number}
+                            data-paragraph-index={index}
+                            className={cx(
+                              'selection:bg-apple-blue/20',
+                              isPartHeading
+                                ? 'font-sans text-sm font-black uppercase tracking-[0.18em] text-text-secondary'
+                                : index === 0 && 'first-letter:float-left first-letter:mr-3 first-letter:text-[4.6em] first-letter:font-black first-letter:leading-[0.82]',
+                            )}
+                          >
+                            {renderAnnotatedParagraph({
+                              text: paragraph,
+                              passageNumber: selectedPassageData.number,
+                              paragraphIndex: index,
+                              annotations,
+                              readingMode,
+                              onAnnotationClick: handleAnnotationClick,
+                            })}
+                          </p>
+                          {figure && <EmbeddedPassageFigureBlock figure={figure} />}
+                        </Fragment>
+                      );
+                    })}
                   </div>
 
                   <div className="pt-6 text-sm font-black text-[#c2c7d1]">
