@@ -49,5 +49,10 @@ async function assertListeningImport(bookNumber: number, maxFallbackHotspots: nu
 
 await assertListeningImport(4, 39);
 await assertListeningImport(5, 40);
+await assertListeningImport(6, 12);
+await assertListeningImport(7, 2);
+await assertListeningImport(8, 25);
+await assertListeningImport(9, 0);
+await assertListeningImport(10, 6);
 
 console.log('IELTS listening import tests passed.');

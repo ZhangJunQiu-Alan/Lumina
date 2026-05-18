@@ -3,6 +3,7 @@ import type {
   RoutineCardState,
   RoutineStepKey,
 } from '../types';
+import { resolveTimeZone as normalizeTimeZone, toRoutineDateKey } from './routineDate';
 import { supabase } from './supabase';
 
 type RoutineDayKind = 'review_day' | 'learning_day';
@@ -142,30 +143,12 @@ function resolveRoutineStatus(
 }
 
 function resolveTimeZone(timeZone?: string) {
-  if (!timeZone) {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  }
-
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date());
-    return timeZone;
-  } catch {
-    return 'UTC';
-  }
+  const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  return normalizeTimeZone(timeZone, browserTimeZone);
 }
 
 export function resolveRoutineLocalDate(timeZone = resolveTimeZone()) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date());
-
-  const year = parts.find((part) => part.type === 'year')?.value ?? '0000';
-  const month = parts.find((part) => part.type === 'month')?.value ?? '01';
-  const day = parts.find((part) => part.type === 'day')?.value ?? '01';
-  return `${year}-${month}-${day}`;
+  return toRoutineDateKey(new Date(), timeZone);
 }
 
 async function fetchDailyRoutineProgress(

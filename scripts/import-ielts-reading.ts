@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -62,6 +62,7 @@ interface CliArgs {
   book?: number;
   out?: string;
   apply: boolean;
+  applyPassagesOnly: boolean;
   dryRun: boolean;
 }
 
@@ -70,12 +71,22 @@ const execFileAsync = promisify(execFile);
 // Allow optional page-number prefix (e.g. "20Questions") and optional space between
 // "Questions" and the first digit (pdfplumber sometimes fuses them as "Questions5").
 const QUESTION_HEADING_RE = /(?:^|\n)\s*(?:\d{1,3})?\s*Questions?\s*(\d{1,2})(?:\s*(?:[-–—~]|and)\s*(\d{1,2}))?/gi;
-// Matches "READING PASSAGE 1/2/3" and also the Roman-numeral variant "READING PASSAGE I/II/III" (books 5-8)
-const READING_PASSAGE_RE = /(?:^|\n)\s*READING\s+PASSAGE\s+(I{1,3}|[123])\s*(?:\n|$)/gi;
+// Matches actual "READING PASSAGE 1/2/3" headings, not question instructions such as
+// "Reading Passage 2 has five paragraphs".
+const READING_PASSAGE_RE = /(?:^|\n)\s*READING\s+PASSAGE\s+(I{1,3}|[123])\s*(?:below\.?|on the following pages?\.?)?\s*(?:\n|$)/gi;
 const WORD_RE = /[\p{Script=Latin}]+(?:[-'][\p{Script=Latin}]+)?/gu;
 
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await stat(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function parseArgs(argv: string[]): CliArgs {
-  const args: CliArgs = { apply: false, dryRun: true };
+  const args: CliArgs = { apply: false, applyPassagesOnly: false, dryRun: true };
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -96,8 +107,13 @@ function parseArgs(argv: string[]): CliArgs {
     } else if (arg === '--apply') {
       args.apply = true;
       args.dryRun = false;
+    } else if (arg === '--apply-passages-only') {
+      args.apply = true;
+      args.applyPassagesOnly = true;
+      args.dryRun = false;
     } else if (arg === '--dry-run') {
       args.apply = false;
+      args.applyPassagesOnly = false;
       args.dryRun = true;
     }
   }
@@ -114,6 +130,7 @@ function usage(): never {
     'Notes:',
     '  --dry-run writes a candidate JSON and validation report under output/ielts-reading.',
     '  --apply refuses to write when validation has errors.',
+    '  --apply-passages-only updates book/test/passage metadata and passage bodies without rebuilding questions.',
   ].join('\n'));
   process.exit(1);
 }
@@ -121,6 +138,7 @@ function usage(): never {
 function normalizePdfText(value: string): string {
   return value
     .replace(/\r/g, '\n')
+    .replace(/[\u0000-\u0008\u000b\u000e-\u001f\u007f]/g, ' ')
     .replace(/\f/g, '\n\n')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
@@ -161,7 +179,26 @@ async function extractPdfTextWithPdftotext(pdfPath: string): Promise<string | nu
   }
 }
 
-async function extractPdfText(pdfPath: string): Promise<string> {
+async function extractPdfTextWithVisionOcr(pdfPath: string, bookNumber: number): Promise<string | null> {
+  const outputPath = path.join('output', 'ielts-ocr', `cambridge-${bookNumber}.json`);
+  try {
+    if (!(await pathExists(outputPath))) {
+      const scriptPath = path.join(path.dirname(new URL(import.meta.url).pathname), 'extract-pdf-vision-ocr.swift');
+      await execFileAsync('swift', [scriptPath, '--pdf', pdfPath, '--out', outputPath], {
+        maxBuffer: 120 * 1024 * 1024,
+      });
+    }
+
+    const payload = JSON.parse(await readFile(outputPath, 'utf8')) as { text?: string };
+    const text = normalizePdfText(payload.text ?? '');
+    const englishChars = (text.match(/[A-Za-z]/g) ?? []).length;
+    return englishChars >= 500 ? text : null;
+  } catch {
+    return null;
+  }
+}
+
+async function extractPdfText(pdfPath: string, explicitBookNumber?: number): Promise<string> {
   const pdfplumberText = await extractPdfTextWithPdfplumber(pdfPath);
   if (pdfplumberText) {
     return pdfplumberText;
@@ -172,12 +209,19 @@ async function extractPdfText(pdfPath: string): Promise<string> {
     return layoutText;
   }
 
+  const bookNumber = inferBookNumber(pdfPath, '', explicitBookNumber);
+  const ocrText = await extractPdfTextWithVisionOcr(pdfPath, bookNumber);
+  if (ocrText) {
+    return ocrText;
+  }
+
   const buffer = await readFile(pdfPath);
   const parser = new PDFParse({ data: buffer });
   try {
     const result = await parser.getText();
     const text = normalizePdfText(result.text ?? '');
-    if (text.length < 1000) {
+    const englishChars = (text.match(/[A-Za-z]/g) ?? []).length;
+    if (text.length < 1000 || englishChars < 500) {
       throw new Error('PDF 提取出的文字太少，可能是扫描版。请先 OCR 或换成可复制文字的 PDF。');
     }
     return text;
@@ -196,7 +240,7 @@ function inferBookNumber(sourcePath: string, text: string, explicit?: number): n
 }
 
 function lineClean(value: string): string {
-  return value.replace(/\s+/g, ' ').trim();
+  return value.replace(/[\u0000-\u0008\u000b\u000e-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function splitTests(text: string): Map<number, string> {
@@ -305,13 +349,7 @@ function extractAcademicReadingAnswerSections(text: string): string[] {
   return matches.slice(0, 4).map((start, index) => {
     const next = matches[index + 1] ?? text.length;
     const chunk = text.slice(start, next);
-    // Trim at "TEST N" / "GENERAL TRAINING" boundary, or at a form-feed that immediately precedes
-    // LISTENING — this occurs in two-column layouts where the next test's Listening answers appear
-    // on the same page as the current test's right-column AR header (pdfplumber reads left column
-    // first, so the next LISTENING content lands before the "TEST N" header in the extracted text).
-    const nextTestIndex = chunk.search(
-      /(?:^|\n)\s*(?:TEST\s+[1-4]\b|GENERAL\s+TRAINING\b)|\n\s*\d*\s*\n\s*Answer\s+key\s*\n\s*(?:LISTENING\b|READING\s*\n\s*Section\b)|\f\s*Answer\s+key\s*\n\s*(?:LISTENING\b|READING\s*\n\s*Section\b)|\n\s*\d+\s*\f\s*Answer\s+key\s*\n\s*(?:LISTENING\b|READING\s*\n\s*Section\b)|\n\n\s*\d*\n*\s*LISTENING\b/i,
-    );
+    const nextTestIndex = chunk.search(/(?:^|\n)\s*(?:TEST\s+[1-4]\b|GENERAL\s+TRAINING\b)/i);
     const end = nextTestIndex > 0 ? nextTestIndex : chunk.length;
     return chunk.slice(0, end);
   });
@@ -937,7 +975,7 @@ function countWords(body: string): number {
 }
 
 async function parsePdfBook(pdfPath: string, explicitBookNumber?: number): Promise<ImportedBook> {
-  const text = await extractPdfText(pdfPath);
+  const text = await extractPdfText(pdfPath, explicitBookNumber);
   const bookNumber = inferBookNumber(pdfPath, text, explicitBookNumber);
   const answerMaps = extractAcademicReadingAnswerSections(text).map(parseAcademicReadingAnswerSection);
   const tests = [...splitTests(text).entries()]
@@ -1026,6 +1064,17 @@ function findQuestionGroup(book: ImportedBook, testNumber: number, passageNumber
   return passage?.groups.find((candidate) =>
     candidate.questionRangeStart <= questionNumber && candidate.questionRangeEnd >= questionNumber,
   );
+}
+
+function forcedAnswerRepairs(
+  testNumber: number,
+  answers: Record<number, string[]>,
+): [string, string[], boolean][] {
+  return Object.entries(answers).map(([questionNumber, answer]) => [
+    `${testNumber}:${questionNumber}`,
+    answer,
+    true,
+  ]);
 }
 
 function applyKnownQuestionRepairs(book: ImportedBook) {
@@ -1138,6 +1187,7 @@ function applyKnownAnswerRepairs(book: ImportedBook) {
       ['1:19', ['water', 'the water']],
       ['1:20', ['lower frequencies', 'the lower frequencies']],
       ['1:21', ['bowhead humpback', 'humpback bowhead']],
+      ['2:20', ['YES'], true],
       // The pdftotext output drops the roman-numeral "i" on these two answer-key rows.
       ['3:15', ['i']],
       ['4:29', ['i']],
@@ -1158,54 +1208,345 @@ function applyKnownAnswerRepairs(book: ImportedBook) {
       // Answer "i" is physically absent from this PDF page (Test 1 Passage 3).
       ['1:27', ['i']],
     ],
+    9: [
+      ...forcedAnswerRepairs(1, {
+        1: ['FALSE'],
+        2: ['NOT GIVEN'],
+        3: ['FALSE'],
+        4: ['TRUE'],
+        5: ['NOT GIVEN'],
+        6: ['TRUE'],
+        7: ['NOT GIVEN'],
+        8: ['rich', 'the rich', 'only rich', 'the only rich'],
+        9: ['commercial possibilities', 'commercial'],
+        10: ['mauve', 'mauve was', 'mauve is'],
+        11: ['Pullar', 'Robert Pullar'],
+        12: ['France', 'in France'],
+        13: ['malaria'],
+        14: ['iv'],
+        15: ['vii'],
+        16: ['i'],
+        17: ['ii'],
+        18: ['several billion years'],
+        19: ['radio waves', 'radio signals'],
+        20: ['1000 stars', '1000'],
+        21: ['YES'],
+        22: ['YES'],
+        23: ['NOT GIVEN'],
+        24: ['NO'],
+        25: ['NOT GIVEN'],
+        26: ['NO'],
+        27: ['plants'],
+        28: ['breathing reproduction', 'reproduction breathing'],
+        29: ['gills'],
+        30: ['dolphins'],
+        31: ['NOT GIVEN'],
+        32: ['FALSE'],
+        33: ['TRUE'],
+        34: ['3 measurements', 'measurements'],
+        35: ['triangular graph', 'graph'],
+        36: ['cluster'],
+        37: ['amphibious'],
+        38: ['half way'],
+        39: ['dry-land tortoises', 'dry land tortoises'],
+        40: ['D'],
+      }),
+      ...forcedAnswerRepairs(2, {
+        1: ['H'],
+        2: ['C'],
+        3: ['B'],
+        4: ['I'],
+        5: ['D'],
+        6: ['A'],
+        7: ['two decades'],
+        8: ['crowd noise', 'crowd'],
+        9: ['invisible disabilities', 'invisible disability'],
+        10: ['Objective 3'],
+        11: ['A', 'C'],
+        12: ['A', 'C'],
+        13: ['C'],
+        14: ['F'],
+        15: ['D'],
+        16: ['G'],
+        17: ['E'],
+        18: ['D'],
+        19: ['A'],
+        20: ['B'],
+        21: ['C'],
+        22: ['FALSE'],
+        23: ['FALSE'],
+        24: ['TRUE'],
+        25: ['NOT GIVEN'],
+        26: ['TRUE'],
+        27: ['C'],
+        28: ['B'],
+        29: ['D'],
+        30: ['C'],
+        31: ['B'],
+        32: ['YES'],
+        33: ['YES'],
+        34: ['NOT GIVEN'],
+        35: ['NO'],
+        36: ['NOT GIVEN'],
+        37: ['NO'],
+        38: ['A'],
+        39: ['B'],
+        40: ['C'],
+      }),
+      ...forcedAnswerRepairs(3, {
+        1: ['YES'],
+        2: ['NO'],
+        3: ['YES'],
+        4: ['NOT GIVEN'],
+        5: ['YES'],
+        6: ['YES'],
+        7: ['NO'],
+        8: ['YES'],
+        9: ['H'],
+        10: ['F'],
+        11: ['A'],
+        12: ['C'],
+        13: ['B'],
+        14: ['C'],
+        15: ['E'],
+        16: ['A'],
+        17: ['C'],
+        18: ['A', 'D', 'E', 'F', 'J'],
+        19: ['A', 'D', 'E', 'F', 'J'],
+        20: ['A', 'D', 'E', 'F', 'J'],
+        21: ['A', 'D', 'E', 'F', 'J'],
+        22: ['A', 'D', 'E', 'F', 'J'],
+        23: ['maintenance'],
+        24: ['slow turning', 'slow'],
+        25: ['low pressure'],
+        26: ['cavitation'],
+        27: ['D'],
+        28: ['F'],
+        29: ['B'],
+        30: ['E'],
+        31: ['A'],
+        32: ['C'],
+        33: ['Jupiter Saturn', 'Saturn Jupiter'],
+        34: ['Solar System'],
+        35: ['sensors circuits', 'circuits sensors'],
+        36: ['spares'],
+        37: ['radio dish'],
+        38: ['TRUE'],
+        39: ['TRUE'],
+        40: ['FALSE'],
+      }),
+      ...forcedAnswerRepairs(4, {
+        1: ['FALSE'],
+        2: ['NOT GIVEN'],
+        3: ['TRUE'],
+        4: ['FALSE'],
+        5: ['TRUE'],
+        6: ['NOT GIVEN'],
+        7: ['thorium'],
+        8: ['pitchblende'],
+        9: ['radium'],
+        10: ['soldiers'],
+        11: ['illness'],
+        12: ['neutron'],
+        13: ['leukaemia', 'leukemia'],
+        14: ['G'],
+        15: ['C'],
+        16: ['G'],
+        17: ['D'],
+        18: ['H'],
+        19: ['E'],
+        20: ['D'],
+        21: ['B'],
+        22: ['E'],
+        23: ['C'],
+        24: ['mirror'],
+        25: ['communication'],
+        26: ['ownership'],
+        27: ['ii'],
+        28: ['vi'],
+        29: ['i'],
+        30: ['iii'],
+        31: ['B'],
+        32: ['A'],
+        33: ['D'],
+        34: ['D'],
+        35: ['C'],
+        36: ['B'],
+        37: ['FALSE'],
+        38: ['NOT GIVEN'],
+        39: ['FALSE'],
+        40: ['TRUE'],
+      }),
+    ],
     10: [
-      // Test 1 Passage 2: Q19 gets listening garbage due to page-interleave; Q20-26 are in the
-      // right-column of the answer key without question-number prefixes, and Q21 (heading ii for
-      // Paragraph I) is physically absent from the PDF text layer.
-      ['1:19', ['x'], true],
-      ['1:20', ['iv'], true],
-      ['1:21', ['ii'], true],
-      ['1:22', ['TRUE'], true],
-      ['1:23', ['FALSE'], true],
-      ['1:24', ['NOT GIVEN'], true],
-      ['1:25', ['NOT GIVEN'], true],
-      ['1:26', ['FALSE'], true],
-      // Test 2 Passage 2: Q23-26 are sentence-completion answers buried in &" column separators.
-      // Q23 requires both "books" and "activities" (in either order).
-      ['2:23', ['books activities', 'activities books'], true],
-      ['2:24', ['internal regulation', 'self-regulation'], true],
-      ['2:25', ['emotional awareness'], true],
-      ['2:26', ['spoon-feeding'], true],
-      // Test 2 Passage 3: Q32 line "26 32 C" is parsed as Q26="32 C" noise; force Q32=C.
-      ['2:32', ['C'], true],
-      // Test 3 Passage 1: LISTENING contamination corrupts Q1-Q13 answers on page 149.
-      // Correct answers from pdfplumber word positions: left column x<277.
-      ['3:1', ['ii'], true],
-      ['3:2', ['i'], true],
-      ['3:3', ['v'], true],
-      ['3:4', ['vii'], true],
-      ['3:5', ['TRUE'], true],
-      ['3:6', ['NOT GIVEN'], true],
-      ['3:7', ['NOT GIVEN'], true],
-      ['3:8', ['TRUE'], true],
-      ['3:9', ['NOT GIVEN'], true],
-      ['3:10', ['FALSE'], true],
-      ['3:11', ['source of income'], true],
-      ['3:12', ['employer'], true],
-      ['3:13', ['domestic tourism'], true],
-      // Test 3 Passage 2: right column of page 149 — no passage header so auto-extraction skips.
-      ['3:14', ['upper'], true],
-      ['3:15', ['dry'], true],
-      ['3:16', ['north'], true],
-      ['3:17', ['FALSE'], true],
-      ['3:18', ['TRUE'], true],
-      ['3:19', ['NOT GIVEN'], true],
-      ['3:20', ['B'], true],
-      // Test 4 Passage 1: Q10/Q12 have a stray &" prefix from column separator.
-      ['4:10', ['TRUE'], true],
-      ['4:12', ['FALSE'], true],
-      // Test 4 Passage 2: Q18 truncated at line boundary (missing "feelings").
-      ['4:18', ['negative emotions / feelings', 'negative feelings'], true],
+      ...forcedAnswerRepairs(1, {
+        1: ['FALSE'],
+        2: ['TRUE'],
+        3: ['NOT GIVEN'],
+        4: ['NOT GIVEN'],
+        5: ['TRUE'],
+        6: ['pavilions'],
+        7: ['drought'],
+        8: ['tourists'],
+        9: ['earthquake'],
+        10: ['4 sides', 'four sides'],
+        11: ['tank'],
+        12: ['verandas', 'verandahs'],
+        13: ['underwater'],
+        14: ['viii'],
+        15: ['iii'],
+        16: ['xi'],
+        17: ['i'],
+        18: ['v'],
+        19: ['x'],
+        20: ['ii'],
+        21: ['iv'],
+        22: ['TRUE'],
+        23: ['FALSE'],
+        24: ['NOT GIVEN'],
+        25: ['NOT GIVEN'],
+        26: ['FALSE'],
+        27: ['C'],
+        28: ['A'],
+        29: ['D'],
+        30: ['B'],
+        31: ['G'],
+        32: ['E'],
+        33: ['A'],
+        34: ['F'],
+        35: ['B'],
+        36: ['NO'],
+        37: ['YES'],
+        38: ['NOT GIVEN'],
+        39: ['NOT GIVEN'],
+        40: ['NO'],
+      }),
+      ...forcedAnswerRepairs(2, {
+        1: ['iv'],
+        2: ['viii'],
+        3: ['vii'],
+        4: ['i'],
+        5: ['vi'],
+        6: ['ix'],
+        7: ['ii'],
+        8: ['NOT GIVEN'],
+        9: ['TRUE'],
+        10: ['FALSE'],
+        11: ['FALSE'],
+        12: ['NOT GIVEN'],
+        13: ['TRUE'],
+        14: ['A'],
+        15: ['D'],
+        16: ['F'],
+        17: ['D'],
+        18: ['B'],
+        19: ['D'],
+        20: ['E'],
+        21: ['A'],
+        22: ['C'],
+        23: ['books activities', 'activities books'],
+        24: ['internal regulation', 'self-regulation'],
+        25: ['emotional awareness'],
+        26: ['spoon-feeding'],
+        27: ['B'],
+        28: ['H'],
+        29: ['L'],
+        30: ['G'],
+        31: ['D'],
+        32: ['C'],
+        33: ['D'],
+        34: ['A'],
+        35: ['D'],
+        36: ['NOT GIVEN'],
+        37: ['NO'],
+        38: ['YES'],
+        39: ['NOT GIVEN'],
+        40: ['NO'],
+      }),
+      ...forcedAnswerRepairs(3, {
+        1: ['ii'],
+        2: ['i'],
+        3: ['v'],
+        4: ['vii'],
+        5: ['TRUE'],
+        6: ['NOT GIVEN'],
+        7: ['NOT GIVEN'],
+        8: ['TRUE'],
+        9: ['NOT GIVEN'],
+        10: ['FALSE'],
+        11: ['source of income', 'industry'],
+        12: ['employer'],
+        13: ['domestic tourism'],
+        14: ['C'],
+        15: ['B'],
+        16: ['H'],
+        17: ['B'],
+        18: ['E'],
+        19: ['sunlight', 'sun light'],
+        20: ['upper'],
+        21: ['dry'],
+        22: ['north'],
+        23: ['FALSE'],
+        24: ['TRUE'],
+        25: ['NOT GIVEN'],
+        26: ['B'],
+        27: ['B'],
+        28: ['F'],
+        29: ['I'],
+        30: ['G'],
+        31: ['D'],
+        32: ['C'],
+        33: ['A'],
+        34: ['D'],
+        35: ['C'],
+        36: ['NO'],
+        37: ['YES'],
+        38: ['NOT GIVEN'],
+        39: ['YES'],
+        40: ['NOT GIVEN'],
+      }),
+      ...forcedAnswerRepairs(4, {
+        1: ['spread'],
+        2: ['10 times', 'ten times'],
+        3: ['below'],
+        4: ['fuel'],
+        5: ['seasons'],
+        6: ['homes', 'housing'],
+        7: ['TRUE'],
+        8: ['FALSE'],
+        9: ['TRUE'],
+        10: ['TRUE'],
+        11: ['NOT GIVEN'],
+        12: ['FALSE'],
+        13: ['FALSE'],
+        14: ['transformation', 'change'],
+        15: ['young age'],
+        16: ['optimism'],
+        17: ['skills', 'techniques'],
+        18: ['negative emotions', 'negative feelings'],
+        19: ['E'],
+        20: ['C'],
+        21: ['G'],
+        22: ['A'],
+        23: ['E'],
+        24: ['C'],
+        25: ['G'],
+        26: ['H'],
+        27: ['C'],
+        28: ['D'],
+        29: ['C'],
+        30: ['B'],
+        31: ['A'],
+        32: ['F'],
+        33: ['G'],
+        34: ['A'],
+        35: ['B'],
+        36: ['D'],
+        37: ['NOT GIVEN'],
+        38: ['YES'],
+        39: ['NO'],
+        40: ['YES'],
+      }),
     ],
   };
 
@@ -1386,6 +1727,48 @@ async function applyBook(book: ImportedBook) {
   }
 }
 
+async function applyBookPassagesOnly(book: ImportedBook) {
+  const { supabaseAdmin } = await import('../server/supabase.ts');
+
+  const { data: bookRow, error: bookError } = await supabaseAdmin
+    .from('ielts_reading_books')
+    .upsert({
+      book_number: book.bookNumber,
+      title: book.title,
+      source_label: book.sourceLabel,
+    }, { onConflict: 'book_number' })
+    .select('id')
+    .single();
+  if (bookError || !bookRow) throw new Error(`ielts_reading_books upsert failed: ${bookError?.message ?? 'missing row'}`);
+
+  for (const test of book.tests) {
+    const { data: testRow, error: testError } = await supabaseAdmin
+      .from('ielts_reading_tests')
+      .upsert({
+        book_id: bookRow.id,
+        test_number: test.testNumber,
+        title: test.title,
+      }, { onConflict: 'book_id,test_number' })
+      .select('id')
+      .single();
+    if (testError || !testRow) throw new Error(`ielts_reading_tests upsert failed [Test ${test.testNumber}]: ${testError?.message ?? 'missing row'}`);
+
+    for (const passage of test.passages) {
+      const { error: passageError } = await supabaseAdmin
+        .from('ielts_reading_passages')
+        .upsert({
+          test_id: testRow.id,
+          passage_number: passage.passageNumber,
+          title: passage.title,
+          body: passage.body,
+          word_count: countWords(passage.body),
+          sort_order: passage.passageNumber,
+        }, { onConflict: 'test_id,passage_number' });
+      if (passageError) throw new Error(`ielts_reading_passages upsert failed [Test ${test.testNumber} Passage ${passage.passageNumber}]: ${passageError.message}`);
+    }
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.pdf && !args.json) usage();
@@ -1413,8 +1796,13 @@ async function main() {
     if (report.errors.length > 0) {
       throw new Error('校验未通过，已拒绝写入数据库。先修正 candidate JSON 后再 --apply。');
     }
-    await applyBook(book);
-    console.log('IELTS reading import applied successfully.');
+    if (args.applyPassagesOnly) {
+      await applyBookPassagesOnly(book);
+      console.log('IELTS reading passage bodies applied successfully.');
+    } else {
+      await applyBook(book);
+      console.log('IELTS reading import applied successfully.');
+    }
   } else {
     console.log('Dry-run complete. Review the JSON/report before applying.');
   }

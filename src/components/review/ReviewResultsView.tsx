@@ -43,6 +43,10 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
     && !item.transition.graduated
     && getRank(item.transition.to) < getRank(item.transition.from)
   )).length;
+  const confirmedCount = items.filter((item) => (
+    item.transition.from !== null
+    && item.transition.from === item.transition.to
+  )).length;
 
   return (
     <motion.div
@@ -56,7 +60,7 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
             <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">状态更新</p>
             <h2 className="mt-2 text-3xl font-black">这一轮已经判完了</h2>
             <p className="mt-3 text-sm text-text-secondary">
-              一共过了 {items.length} 个词 · 记忆更牢固了 {upgradedCount} 个 · 还要再见 {downgradedCount} 个 · 掌握 {graduatedCount} 个
+              一共过了 {items.length} 个词 · 记忆更牢固了 {upgradedCount} 个 · 稳定确认 {confirmedCount} 个 · 还要再见 {downgradedCount} 个 · 掌握 {graduatedCount} 个
             </p>
           </div>
           <div className="w-16 h-16 rounded-2xl bg-apple-green/10 text-apple-green flex items-center justify-center">
@@ -79,19 +83,27 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
               <p className="mt-1 text-sm text-text-secondary">{item.chineseDefinition}</p>
             </div>
 
-            <div className="flex items-center gap-3 text-sm font-bold">
-              <span className="rounded-full bg-black/5 px-3 py-1 text-text-secondary">
-                {item.transition.from ? memoryStateLabel[item.transition.from] : '刚接进系统'}
-              </span>
-              <ArrowRight className="w-4 h-4 text-text-secondary" />
-              <span className={`rounded-full px-3 py-1 ${
-                item.transition.graduated
-                  ? 'bg-apple-green/10 text-apple-green'
-                  : 'bg-apple-blue/10 text-apple-blue'
-              }`}>
-                {memoryStateLabel[item.transition.to]}
-              </span>
-            </div>
+            {item.transition.from === item.transition.to ? (
+              <div className="flex items-center gap-3 text-sm font-bold">
+                <span className="rounded-full bg-apple-blue/10 px-3 py-1 text-apple-blue">
+                  {memoryStateLabel[item.transition.to]}确认
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 text-sm font-bold">
+                <span className="rounded-full bg-black/5 px-3 py-1 text-text-secondary">
+                  {item.transition.from ? memoryStateLabel[item.transition.from] : '刚接进系统'}
+                </span>
+                <ArrowRight className="w-4 h-4 text-text-secondary" />
+                <span className={`rounded-full px-3 py-1 ${
+                  item.transition.graduated
+                    ? 'bg-apple-green/10 text-apple-green'
+                    : 'bg-apple-blue/10 text-apple-blue'
+                }`}>
+                  {memoryStateLabel[item.transition.to]}
+                </span>
+              </div>
+            )}
           </motion.div>
         ))}
       </div>

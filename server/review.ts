@@ -44,6 +44,7 @@ export interface ReviewAttemptResponse {
   memoryState: MemoryState;
   nextReviewAt: string | null;
   graduated: boolean;
+  ignored?: boolean;
   transition: {
     from: MemoryState | null;
     to: MemoryState;
@@ -64,6 +65,15 @@ interface ReviewStateRow {
   next_review_at: string | null;
   ease_factor: number | null;
   graduated_at: string | null;
+}
+
+interface ReviewEventTransitionRow {
+  previous_state: MemoryState | null;
+  next_state: MemoryState;
+  source: ReviewAttemptSource;
+  was_correct: boolean;
+  elapsed_ms: number | null;
+  next_review_at: string | null;
 }
 
 interface VocabularySenseRow {
@@ -207,6 +217,25 @@ function isMissingRichVocabularySchemaError(error: { message?: string } | null |
   ].some((part) => message.includes(part));
 }
 
+async function fetchRecordedAttemptTransition(
+  input: ReviewAttemptInput,
+  createdAt: string,
+) {
+  const { data, error } = await supabaseAdmin
+    .from('review_events')
+    .select('previous_state, next_state, source, was_correct, elapsed_ms, next_review_at')
+    .eq('user_id', input.userId)
+    .eq('vocabulary_item_id', input.vocabularyItemId)
+    .eq('created_at', createdAt);
+
+  if (error) {
+    throw new Error(`review_events replay lookup failed: ${error.message}`);
+  }
+
+  const rows = (data as ReviewEventTransitionRow[] | null) ?? [];
+  return rows.find((row) => row.previous_state !== row.next_state) ?? rows[0] ?? null;
+}
+
 export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<ReviewAttemptResponse> {
   const now = input.timestamp ? new Date(input.timestamp) : new Date();
   const elapsedMs = normalizeElapsedMs(input.elapsedMs);
@@ -223,20 +252,60 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
     throw new Error(`review_states lookup failed: ${existingError.message}`);
   }
 
-  // Conflict handling: if DB has a newer record, skip this stale attempt.
-  if (existing?.last_assessed_at && new Date(existing.last_assessed_at) > now) {
+  const lastAssessedAt = existing?.last_assessed_at ? new Date(existing.last_assessed_at).getTime() : null;
+  const incomingAssessedAt = now.getTime();
+
+  // Conflict handling: if DB has this exact attempt, replay its original transition.
+  if (existing && lastAssessedAt === incomingAssessedAt) {
+    const recorded = await fetchRecordedAttemptTransition(input, now.toISOString());
+    if (recorded) {
+      const replayGraduated = recorded.previous_state !== 'mastered' && recorded.next_state === 'mastered';
+      return {
+        memoryState: existing.memory_state,
+        nextReviewAt: existing.next_review_at,
+        graduated: replayGraduated,
+        transition: {
+          from: recorded.previous_state,
+          to: recorded.next_state,
+          source: recorded.source,
+          result: toResultType(recorded.was_correct, normalizeElapsedMs(recorded.elapsed_ms ?? elapsedMs)),
+          graduated: replayGraduated,
+          nextReviewAt: recorded.next_review_at,
+        },
+      };
+    }
+
+    return {
+      memoryState: existing.memory_state,
+      nextReviewAt: existing.next_review_at,
+      graduated: false,
+      ignored: true,
+      transition: {
+        from: existing.memory_state,
+        to: existing.memory_state,
+        source: input.source,
+        result,
+        graduated: false,
+        nextReviewAt: existing.next_review_at,
+      },
+    };
+  }
+
+  // If DB has a newer record, skip this stale attempt.
+  if (existing?.last_assessed_at && lastAssessedAt !== null && lastAssessedAt > incomingAssessedAt) {
     console.warn(`[Conflict] Skipping stale attempt for word ${input.vocabularyItemId}. DB: ${existing.last_assessed_at}, Incoming: ${now.toISOString()}`);
     const currentState = existing.memory_state;
     return {
       memoryState: currentState,
       nextReviewAt: existing.next_review_at,
-      graduated: currentState === 'mastered',
+      graduated: false,
+      ignored: true,
       transition: {
         from: currentState,
         to: currentState,
         source: input.source,
         result,
-        graduated: currentState === 'mastered',
+        graduated: false,
         nextReviewAt: existing.next_review_at,
       },
     };
@@ -260,7 +329,7 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
     ? (existing?.next_review_at ?? now.toISOString())
     : toNextReviewAt(nextState, now);
 
-  const graduated = nextState === 'mastered';
+  const graduated = currentState !== 'mastered' && nextState === 'mastered';
 
   const { error: upsertError } = await supabaseAdmin
     .from('review_states')
@@ -279,7 +348,7 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
       last_result: result,
       last_elapsed_ms: elapsedMs,
       last_assessed_at: now.toISOString(),
-      graduated_at: graduated ? (existing?.graduated_at ?? now.toISOString()) : null,
+      graduated_at: nextState === 'mastered' ? (existing?.graduated_at ?? now.toISOString()) : null,
     }, { onConflict: 'user_id,vocabulary_item_id' });
 
   if (upsertError) {

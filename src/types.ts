@@ -430,6 +430,7 @@ export interface ReviewAttemptResponse {
   memoryState: MemoryState;
   nextReviewAt: string | null;
   graduated: boolean;
+  ignored?: boolean;
   transition: ReviewTransition;
 }
 

@@ -13,6 +13,8 @@ import {
   resolveActuallyLearnedWordIds,
 } from '../shared/officialDiscard.js';
 
+const ROUTINE_DAY_RESET_HOUR = 5;
+
 interface GroupWordRow {
   vocabulary_item_id: string;
   sequence_no?: number | null;
@@ -140,12 +142,13 @@ function resolveTimeZone(timeZone?: string | null) {
 
 function resolveLocalDate(timeZone?: string | null) {
   const safeTimeZone = resolveTimeZone(timeZone);
+  const shifted = new Date(Date.now() - ROUTINE_DAY_RESET_HOUR * 60 * 60 * 1000);
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: safeTimeZone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).formatToParts(new Date());
+  }).formatToParts(shifted);
 
   const year = parts.find((part) => part.type === 'year')?.value ?? '0000';
   const month = parts.find((part) => part.type === 'month')?.value ?? '01';

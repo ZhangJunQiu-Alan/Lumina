@@ -218,7 +218,7 @@ export function IeltsListeningHomeView() {
             <p className="text-xs font-black uppercase tracking-[0.24em] text-text-secondary">IELTS Listening</p>
             <h2 className="mt-2 text-3xl font-black tracking-tight text-text-primary sm:text-4xl">雅思听力真题训练</h2>
             <p className="mt-2 max-w-2xl text-sm leading-7 text-text-secondary">
-              每套 4 个 Section、40 题、30 分钟。支持 Cambridge IELTS 4 和 5。
+              每套 4 个 Section、40 题、30 分钟。支持 Cambridge IELTS 4-10。
             </p>
           </div>
         </div>

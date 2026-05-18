@@ -52,6 +52,7 @@ import { LibrarySkeleton } from './components/shared/Skeleton';
 import { useDeferredLoading } from './hooks/useDeferredLoading';
 import { fetchHomeOverview, resolveBrowserTimeZone } from './lib/homeApi';
 import { startNextOfficialBatch } from './lib/officialLibraryStart';
+import { toRoutineDateKey } from './lib/routineDate';
 
 // --- Lazy loaded views ---
 const HomeView = lazy(() => import('./components/home/HomeView').then(m => ({ default: m.HomeView })));
@@ -119,39 +120,23 @@ const LoadingShell = ({ children, isSkeleton = false }: { children: React.ReactN
 };
 
 function buildFallbackActivityDays(timeZone: string, length = 365): ActivityDay[] {
-  const dayFormatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
   const weekdayFormatter = new Intl.DateTimeFormat('zh-CN', {
-    timeZone,
+    timeZone: 'UTC',
     weekday: 'short',
-  });
-  const shortDateFormatter = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    month: '2-digit',
-    day: '2-digit',
   });
 
   return Array.from({ length }, (_, index) => {
     const date = new Date();
     date.setDate(date.getDate() - ((length - 1) - index));
 
-    const dayParts = dayFormatter.formatToParts(date);
-    const year = dayParts.find((part) => part.type === 'year')?.value ?? '0000';
-    const month = dayParts.find((part) => part.type === 'month')?.value ?? '01';
-    const day = dayParts.find((part) => part.type === 'day')?.value ?? '01';
-
-    const shortDateParts = shortDateFormatter.formatToParts(date);
-    const shortMonth = shortDateParts.find((part) => part.type === 'month')?.value ?? '01';
-    const shortDay = shortDateParts.find((part) => part.type === 'day')?.value ?? '01';
+    const dateKey = toRoutineDateKey(date, timeZone);
+    const labelDate = new Date(`${dateKey}T12:00:00.000Z`);
+    const [year = '0000', month = '01', day = '01'] = dateKey.split('-');
 
     return {
       date: `${year}-${month}-${day}`,
-      weekdayLabel: weekdayFormatter.format(date),
-      shortDateLabel: `${shortMonth}.${shortDay}`,
+      weekdayLabel: weekdayFormatter.format(labelDate),
+      shortDateLabel: `${month}.${day}`,
       status: 'gap' as const,
       reviewWordCount: 0,
       learnedWordCount: 0,
@@ -225,16 +210,7 @@ function parsePersistedArticleContent(content: string | null | undefined) {
 
 function buildEmptyStats(): UserStats {
   const timeZone = resolveBrowserTimeZone();
-  const todayParts = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date());
-  const year = todayParts.find((part) => part.type === 'year')?.value ?? '0000';
-  const month = todayParts.find((part) => part.type === 'month')?.value ?? '01';
-  const day = todayParts.find((part) => part.type === 'day')?.value ?? '01';
-  const todayKey = `${year}-${month}-${day}`;
+  const todayKey = toRoutineDateKey(new Date(), timeZone);
 
   return {
     todayReviewCount: 0,

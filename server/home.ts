@@ -149,6 +149,7 @@ const PAGE_SIZE = 1000;
 const GROUP_ID_CHUNK_SIZE = 200;
 const LEARNING_ROUNDS = new Set<LearningRoundType>(['round1', 'round2', 'round3', 'article']);
 const ROUTINE_STEPS: RoutineStepKey[] = ['review', 'round1', 'round2'];
+const ROUTINE_DAY_RESET_HOUR = 5;
 const ROUTINE_STEP_LABELS: Record<RoutineStepKey, string> = {
   review: 'Round 0 · 到期复习',
   round1: 'Round 1 · 明示关联',
@@ -194,11 +195,16 @@ function toDateKey(date: Date, timeZone: string) {
   return `${year}-${month}-${day}`;
 }
 
+function toRoutineDateKey(date: Date, timeZone: string) {
+  const shifted = new Date(date.getTime() - ROUTINE_DAY_RESET_HOUR * 60 * 60 * 1000);
+  return toDateKey(shifted, timeZone);
+}
+
 function dateKeyFromIso(iso: string | null | undefined, timeZone: string) {
   if (!iso) return null;
   const parsed = new Date(iso);
   if (Number.isNaN(parsed.getTime())) return null;
-  return toDateKey(parsed, timeZone);
+  return toRoutineDateKey(parsed, timeZone);
 }
 
 function parseDateKey(dateKey: string) {
@@ -226,18 +232,14 @@ function buildDateRange(startDateKey: string, endDateKey: string) {
 }
 
 function formatWeekdayLabel(dateKey: string, timeZone: string) {
-  return getFormatter('zh-CN', timeZone, { weekday: 'short' }).format(toStableDate(dateKey));
+  void timeZone;
+  return getFormatter('zh-CN', 'UTC', { weekday: 'short' }).format(toStableDate(dateKey));
 }
 
 function formatShortDateLabel(dateKey: string, timeZone: string) {
-  const parts = getFormatter('en-US', timeZone, {
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(toStableDate(dateKey));
-
-  const month = parts.find((part) => part.type === 'month')?.value ?? '01';
-  const day = parts.find((part) => part.type === 'day')?.value ?? '01';
-  return `${month}.${day}`;
+  void timeZone;
+  const { month, day } = parseDateKey(dateKey);
+  return `${String(month).padStart(2, '0')}.${String(day).padStart(2, '0')}`;
 }
 
 function normalizeSessionQueueWordIds(value: unknown) {
@@ -981,7 +983,7 @@ async function fetchDailyRoutineProgress(userId: string, localDate: string) {
 export async function getHomeOverview(userId: string, requestedTimeZone: string | null | undefined) {
   const timeZone = normalizeTimeZone(requestedTimeZone);
   const nowIso = new Date().toISOString();
-  const todayKey = toDateKey(new Date(), timeZone);
+  const todayKey = toRoutineDateKey(new Date(), timeZone);
 
   const [
     reviewEvents,

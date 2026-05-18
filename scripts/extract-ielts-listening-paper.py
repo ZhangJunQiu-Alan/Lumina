@@ -19,7 +19,7 @@ import pdfplumber
 
 
 DOT_RE = re.compile(r"[.\u00b7\u2022·•]{3,}")
-RANGE_RE = re.compile(r"\bQuestions?\s*([0-9]{1,2})(?:\s*(?::?\s*-|:-|-|to|and|&)\s*([0-9]{1,2}))?", re.I)
+RANGE_RE = re.compile(r"\bQuestions?[\s~:.-]*([0-9](?:\s*[0-9Oo])?)(?:\s*(?::?\s*-|:-|-|to|and|&)\s*([0-9](?:\s*[0-9Oo])?))?", re.I)
 
 
 @dataclass
@@ -34,6 +34,18 @@ class Line:
 
 def clean_token(value: str) -> str:
     return re.sub(r"[^0-9]", "", value)
+
+
+def parse_range_token(value: str) -> int:
+    return int(re.sub(r"\s+", "", value).replace("O", "0").replace("o", "0"))
+
+
+def normalize_text_markers(value: str) -> str:
+    value = re.sub(r"L\s*I\s*S\s*T\s*E\s*N\s*I\s*N\s*G", "LISTENING", value, flags=re.I)
+    value = re.sub(r"S\s*e\s*c\s*t\s*i\s*o\s*n", "Section", value, flags=re.I)
+    value = re.sub(r"Q\s*u\s*e\s*s\s*t\s*i\s*o\s*n\s*s", "Questions", value, flags=re.I)
+    value = value.replace("＋", "-").replace("+", "-").replace("^", "-").replace("一", "-").replace("—", "-").replace("–", "-")
+    return value
 
 
 def page_key(pdf_page: int) -> str:
@@ -79,11 +91,61 @@ def group_lines(words: list[dict[str, Any]]) -> list[Line]:
     return lines
 
 
+def line_from_ocr(raw_line: dict[str, Any], page_width: float, page_height: float) -> Line:
+    text = str(raw_line.get("text", ""))
+    x0 = float(raw_line.get("x", 0)) * page_width
+    top = float(raw_line.get("y", 0)) * page_height
+    width = max(1.0, float(raw_line.get("width", 0)) * page_width)
+    height = max(1.0, float(raw_line.get("height", 0)) * page_height)
+    tokens = text.split()
+    words: list[dict[str, Any]] = []
+    cursor = x0
+    total_chars = max(1, sum(len(token) for token in tokens))
+    for token in tokens:
+        token_width = max(8.0, width * (len(token) / total_chars) * 0.82)
+        words.append({
+            "text": token,
+            "x0": cursor,
+            "x1": min(x0 + width, cursor + token_width),
+            "top": top,
+            "bottom": top + height,
+        })
+        cursor += token_width + 4
+    if not words:
+        words = [{"text": text, "x0": x0, "x1": x0 + width, "top": top, "bottom": top + height}]
+    return Line(words=words, text=text, x0=x0, x1=x0 + width, top=top, bottom=top + height)
+
+
+def load_ocr_pages(ocr_json_path: str | None) -> list[dict[str, Any]]:
+    if not ocr_json_path:
+        return []
+    try:
+        with open(ocr_json_path, "r", encoding="utf-8") as file:
+            payload = json.load(file)
+    except FileNotFoundError:
+        return []
+
+    pages: list[dict[str, Any]] = []
+    for page in payload.get("pages", []):
+        page_width = float(page.get("width") or 1)
+        page_height = float(page.get("height") or 1)
+        lines = [line_from_ocr(line, page_width, page_height) for line in page.get("lines", [])]
+        pages.append({
+            "pdfPage": int(page.get("pageNumber")),
+            "pageKey": page_key(int(page.get("pageNumber"))),
+            "width": page_width,
+            "height": page_height,
+            "lines": lines,
+            "text": normalize_text_markers("\n".join(line.text for line in lines)),
+        })
+    return pages
+
+
 def extract_ranges(text: str) -> list[tuple[int, int]]:
     ranges: list[tuple[int, int]] = []
     for match in RANGE_RE.finditer(text):
-        start = int(match.group(1))
-        end = int(match.group(2) or match.group(1))
+        start = parse_range_token(match.group(1))
+        end = parse_range_token(match.group(2) or match.group(1))
         if start == 17 and end == 30:
             start = 27
         if 1 <= start <= 40 and 1 <= end <= 40:
@@ -247,62 +309,90 @@ def best_hotspot(pages: list[dict[str, Any]], question: dict[str, Any], question
     return fallback_hotspot(page, question, kind, fallback_index)
 
 
-def extract_overlay(pdf_path: str, candidate_path: str) -> dict[str, Any]:
+def collect_raw_pages_from_page_stream(book_number: int, page_stream: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    raw_pages: list[dict[str, Any]] = []
+    current_test: int | None = None
+    in_listening = False
+
+    for page in page_stream:
+        lines = page["lines"]
+        text = normalize_text_markers(page["text"])
+        if re.search(r"\bAnswer Key\b|Each question correctly answered|SAMPLE ANSWER", text, re.I):
+            current_test = None
+            in_listening = False
+            continue
+        test_match = re.search(r"\bTest\s+([1-4])\b", text, re.I)
+        if test_match:
+            next_test = int(test_match.group(1))
+            has_listening_marker = re.search(r"LISTE|Section\s+1", text, re.I) is not None
+            in_listening = has_listening_marker or (current_test == next_test and in_listening)
+            current_test = next_test
+        elif current_test and re.search(r"LISTE", text, re.I):
+            in_listening = True
+
+        has_reading_marker = bool(re.search(r"\bREADING PASSAGE\b|(?:^|\n)\s*R\s*E\s*A\s*DING\b|(?:^|\n)\s*READING\b", text, re.I))
+
+        if not current_test or not in_listening:
+            continue
+
+        page_sections: set[int] = set()
+        for start, end in extract_ranges(text):
+            if 1 <= start <= 40:
+                page_sections.add(question_section(start))
+            if 1 <= end <= 40:
+                page_sections.add(question_section(end))
+
+        if not page_sections:
+            for question_number in extract_line_question_numbers(lines):
+                page_sections.add(question_section(question_number))
+
+        if not page_sections:
+            if current_test and in_listening and has_reading_marker:
+                in_listening = False
+            continue
+
+        raw_pages.append({
+            "testNumber": current_test,
+            "sectionNumbers": sorted(page_sections),
+            "pdfPage": page["pdfPage"],
+            "pageKey": page["pageKey"],
+            "width": page["width"],
+            "height": page["height"],
+            "storagePath": "",
+            "lines": lines,
+        })
+
+        if has_reading_marker:
+            in_listening = False
+
+    return raw_pages
+
+
+def extract_overlay(pdf_path: str, candidate_path: str, ocr_json_path: str | None = None) -> dict[str, Any]:
     with open(candidate_path, "r", encoding="utf-8") as file:
         book = json.load(file)
 
     book_number = int(book["bookNumber"])
-    raw_pages: list[dict[str, Any]] = []
-    current_test: int | None = None
-    in_listening = False
+    page_stream: list[dict[str, Any]] = []
 
     with pdfplumber.open(pdf_path) as pdf:
         for index, pdf_page in enumerate(pdf.pages, start=1):
             words = pdf_page.extract_words(x_tolerance=3, y_tolerance=3, keep_blank_chars=False) or []
             lines = group_lines(words)
-            text = "\n".join(line.text for line in lines)
-            if re.search(r"\bAnswer Key\b|Each question correctly answered|SAMPLE ANSWER", text, re.I):
-                current_test = None
-                in_listening = False
-                continue
-            test_match = re.search(r"\bTest\s+([1-4])\b", text, re.I)
-            if test_match:
-                current_test = int(test_match.group(1))
-                in_listening = re.search(r"LISTE", text, re.I) is not None
-            elif current_test and re.search(r"LISTE", text, re.I):
-                in_listening = True
-
-            if current_test and in_listening and re.search(r"\bREADING PASSAGE\b|(?:^|\n)\s*R\s*E\s*A\s*DING\b|(?:^|\n)\s*READING\b", text, re.I):
-                in_listening = False
-
-            if not current_test or not in_listening:
-                continue
-
-            page_sections: set[int] = set()
-            for start, end in extract_ranges(text):
-                if 1 <= start <= 40:
-                    section_number = question_section(start)
-                    page_sections.add(section_number)
-                if 1 <= end <= 40:
-                    page_sections.add(question_section(end))
-
-            if not page_sections:
-                for question_number in extract_line_question_numbers(lines):
-                    page_sections.add(question_section(question_number))
-
-            if not page_sections:
-                continue
-
-            raw_pages.append({
-                "testNumber": current_test,
-                "sectionNumbers": sorted(page_sections),
+            page_stream.append({
                 "pdfPage": index,
                 "pageKey": page_key(index),
                 "width": float(pdf_page.width),
                 "height": float(pdf_page.height),
-                "storagePath": "",
                 "lines": lines,
+                "text": "\n".join(line.text for line in lines),
             })
+
+    raw_pages = collect_raw_pages_from_page_stream(book_number, page_stream)
+    if len(raw_pages) < 16:
+        ocr_raw_pages = collect_raw_pages_from_page_stream(book_number, load_ocr_pages(ocr_json_path))
+        if len(ocr_raw_pages) > len(raw_pages):
+            raw_pages = ocr_raw_pages
 
     pages_by_section: dict[str, list[dict[str, Any]]] = {}
     for page in raw_pages:
@@ -367,11 +457,11 @@ def extract_overlay(pdf_path: str, candidate_path: str) -> dict[str, Any]:
 
 
 def main() -> None:
-    if len(sys.argv) != 3:
-        print("Usage: extract-ielts-listening-paper.py <pdf_path> <candidate_json>", file=sys.stderr)
+    if len(sys.argv) not in (3, 4):
+        print("Usage: extract-ielts-listening-paper.py <pdf_path> <candidate_json> [ocr_json]", file=sys.stderr)
         sys.exit(1)
 
-    result = extract_overlay(sys.argv[1], sys.argv[2])
+    result = extract_overlay(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) == 4 else None)
     sys.stdout.write(json.dumps(result, ensure_ascii=False))
 
 

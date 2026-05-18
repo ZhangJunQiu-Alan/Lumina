@@ -128,7 +128,7 @@ class AttemptBuffer {
 
       results.forEach((result, index) => {
         const attempt = batchToSync[index];
-        if (attempt) {
+        if (attempt && !result.ignored) {
           this.notifySynced(attempt, result);
         }
       });

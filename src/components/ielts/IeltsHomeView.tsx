@@ -48,7 +48,7 @@ export function IeltsHomeView() {
           </div>
           <h3 className="mt-6 text-2xl font-black text-text-primary">Listening</h3>
           <p className="mt-2 text-sm font-bold leading-7 text-text-secondary">
-            Cambridge 4 和 5 已上线。4 个 Section、40 题、30 分钟，音频和题目在同一页完成。
+            Cambridge 4-10 已上线。4 个 Section、40 题、30 分钟，音频和题目在同一页完成。
           </p>
           <div className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-apple-orange px-4 py-3 text-sm font-black text-white">
             <Timer className="h-4 w-4" />
