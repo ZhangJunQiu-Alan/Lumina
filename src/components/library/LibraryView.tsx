@@ -72,6 +72,7 @@ import { isCoreLearningComplete, isCoreLearningRound, isReinforcementRound } fro
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
+import { AI_CONTENT_FEATURES_ENABLED } from '../../lib/aiFeatures';
 
 interface LearningGroupRow {
   id: string;
@@ -1185,7 +1186,7 @@ export const LibraryView = ({
               })}
             </div>
 
-            {activeTab === 'personal' && (
+            {activeTab === 'personal' && AI_CONTENT_FEATURES_ENABLED && (
               <button
                 type="button"
                 onClick={() => navigate('/app/import')}

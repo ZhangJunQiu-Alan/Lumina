@@ -11,6 +11,7 @@ import {
 } from './officialLibrary';
 import { fetchOfficialLearnedWords } from './libraryApi';
 import { invalidateLibraryCache, refreshOfficialLearnedWords } from './libraryCache';
+import { AI_CONTENT_FEATURES_ENABLED } from './aiFeatures';
 import type { EnrichedWord, OfficialLibraryId, Word } from '../types';
 import { normalizeWordKey } from '../../shared/wordBatch';
 
@@ -47,6 +48,10 @@ export async function startNextOfficialBatch({
   let persistedEntries: PersistedVocabularyEntry[] = existing;
 
   if (missing.length > 0) {
+    if (!AI_CONTENT_FEATURES_ENABLED) {
+      throw new Error('这批官方词还没预置完成，暂时不能自动补齐。');
+    }
+
     const res = await apiFetch('/api/vocab/enrich', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

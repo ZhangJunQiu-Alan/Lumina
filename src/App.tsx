@@ -53,6 +53,7 @@ import { useDeferredLoading } from './hooks/useDeferredLoading';
 import { fetchHomeOverview, resolveBrowserTimeZone } from './lib/homeApi';
 import { startNextOfficialBatch } from './lib/officialLibraryStart';
 import { toRoutineDateKey } from './lib/routineDate';
+import { AI_CONTENT_FEATURES_ENABLED } from './lib/aiFeatures';
 
 // --- Lazy loaded views ---
 const HomeView = lazy(() => import('./components/home/HomeView').then(m => ({ default: m.HomeView })));
@@ -268,6 +269,8 @@ export default function App() {
   const isHomeRoute = location.pathname.startsWith('/app/home');
   const isIeltsTestRoute = location.pathname.startsWith('/app/ielts-reading/test/')
     || location.pathname.startsWith('/app/ielts-listening/test/');
+  const articleReinforcementEnabled = AI_CONTENT_FEATURES_ENABLED
+    && learningPreferences.reinforcementArticleEnabled;
 
   useEffect(() => {
     activeLearningGroupIdRef.current = activeLearningGroupId;
@@ -549,10 +552,16 @@ export default function App() {
         throw new Error('这组词还没有可学习的内容。');
       }
 
-      const nextSession = {
+      const restoredOrInitialSession = {
         ...(restoredSession ?? createInitialLearningSession(groupId, words)),
         lastActiveAt: new Date().toISOString(),
       };
+      const nextSession = !AI_CONTENT_FEATURES_ENABLED && restoredOrInitialSession.round === 'article'
+        ? createInitialLearningSession(groupId, words, 'round3', {
+          groupCompleted: restoredOrInitialSession.groupCompleted ?? true,
+          completedAt: restoredOrInitialSession.completedAt ?? new Date().toISOString(),
+        })
+        : restoredOrInitialSession;
 
       setReviewSummary([]);
       setArticleGenerationError('');
@@ -583,7 +592,7 @@ export default function App() {
       }
 
       if (
-        learningPreferences.reinforcementArticleEnabled
+        articleReinforcementEnabled
         && (nextSession.round === 'round3' || nextSession.round === 'article')
         && !restoredArticle
       ) {
@@ -595,7 +604,7 @@ export default function App() {
     } finally {
       setIsStartingSession(false);
     }
-  }, [ensureArticleForGroup, learningPreferences.reinforcementArticleEnabled, navigate, user]);
+  }, [articleReinforcementEnabled, ensureArticleForGroup, navigate, user]);
 
   const handleStart = async () => {
     if (!user) return;
@@ -810,13 +819,13 @@ export default function App() {
         void persistLearningGroupSession(user.id, nextSession).catch((error) => {
           console.error('Failed to persist reinforcement transition:', error);
         });
-        if (learningPreferences.reinforcementArticleEnabled) {
+        if (articleReinforcementEnabled) {
           void ensureArticleForGroup(activeLearningGroupId, activeWords);
         }
         return;
       }
 
-      if (learningPreferences.reinforcementArticleEnabled) {
+      if (articleReinforcementEnabled) {
         advanceToArticle(completedAt, true);
         return;
       }
@@ -826,7 +835,7 @@ export default function App() {
     }
 
     if (round === 'round3') {
-      if (learningPreferences.reinforcementArticleEnabled) {
+      if (articleReinforcementEnabled) {
         advanceToArticle(
           activeSessionSeed?.completedAt ?? new Date().toISOString(),
           activeSessionSeed?.groupCompleted ?? true,
@@ -844,9 +853,9 @@ export default function App() {
     activeSessionSeed?.completedAt,
     activeSessionSeed?.groupCompleted,
     activeWords,
+    articleReinforcementEnabled,
     ensureArticleForGroup,
     fetchStats,
-    learningPreferences.reinforcementArticleEnabled,
     learningPreferences.reinforcementRound3Enabled,
     navigate,
     resetActiveLearningState,
@@ -899,7 +908,7 @@ export default function App() {
   useEffect(() => {
     if (
       !user
-      || !learningPreferences.reinforcementArticleEnabled
+      || !articleReinforcementEnabled
       || !activeLearningGroupId
       || activeWords.length === 0
       || articleGenerationError
@@ -915,8 +924,8 @@ export default function App() {
     activeWords,
     articleGenerationError,
     articleSentences,
+    articleReinforcementEnabled,
     ensureArticleForGroup,
-    learningPreferences.reinforcementArticleEnabled,
     round,
     user,
   ]);
@@ -1114,7 +1123,7 @@ export default function App() {
                       />
                     )}
                   />
-                  <Route path="import" element={<ImportView />} />
+                  <Route path="import" element={AI_CONTENT_FEATURES_ENABLED ? <ImportView /> : <Navigate to="/app/library" replace />} />
                   <Route path="ielts" element={<IeltsHomeView />} />
                   <Route path="ielts-reading" element={<IeltsReadingHomeView />} />
                   <Route path="ielts-reading/test/:testId" element={<IeltsReadingTestView />} />
@@ -1124,7 +1133,7 @@ export default function App() {
                   <Route
                     path="session"
                     element={activeWords.length === 0 ? sessionEmptyState : (
-                      round === 'article' ? (
+                      round === 'article' && AI_CONTENT_FEATURES_ENABLED ? (
                         articleSentences === null ? (
                           articleGenerationError ? (
                             <motion.div

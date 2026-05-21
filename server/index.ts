@@ -51,6 +51,15 @@ app.use((req, res, next) => {
 
 const appOrigin = process.env.APP_ORIGIN?.trim();
 const allowedOrigins = new Set(['http://localhost:3000', appOrigin].filter(Boolean));
+const aiContentFeaturesEnabled = process.env.LUMINA_AI_FEATURES_ENABLED === 'true';
+const AI_FEATURE_PATHS = new Set([
+  '/api/vocab/enrich',
+  '/api/vocab/lite-enrich',
+  '/api/vocab/lemmatize',
+  '/api/vocab/lookup',
+  '/api/vocab/full-enrich',
+  '/api/vocab/article',
+]);
 
 app.use((req, res, next) => {
   const origin = req.header('Origin');
@@ -82,6 +91,15 @@ app.options('*', (req, res) => {
   }
 
   res.sendStatus(204);
+});
+
+app.use((req, res, next) => {
+  if (!aiContentFeaturesEnabled && AI_FEATURE_PATHS.has(req.path)) {
+    res.status(503).json({ error: 'AI 内容功能暂时关闭。' });
+    return;
+  }
+
+  next();
 });
 
 function resolveSavedWordSource(value: unknown): SavedWordSource | null {

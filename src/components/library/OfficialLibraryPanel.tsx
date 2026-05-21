@@ -32,6 +32,7 @@ import {
   refreshOfficialLearnedWords,
 } from '../../lib/libraryCache';
 import { fetchOfficialLearnedWords } from '../../lib/libraryApi';
+import { AI_CONTENT_FEATURES_ENABLED } from '../../lib/aiFeatures';
 import {
   getOfficialNextBatch,
   type OfficialLibraryDefinition,
@@ -282,6 +283,10 @@ export function OfficialLibraryPanel({
       let persistedEntries = existing;
 
       if (missing.length > 0) {
+        if (!AI_CONTENT_FEATURES_ENABLED) {
+          throw new Error('这批官方词还没预置完成，暂时不能自动补齐。');
+        }
+
         const res = await apiFetch('/api/vocab/enrich', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

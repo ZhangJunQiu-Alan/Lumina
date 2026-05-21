@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from './api';
+import { AI_CONTENT_FEATURES_ENABLED } from './aiFeatures';
 
 export type MemoryState = 'new' | 'fuzzy' | 'slow_recall' | 'stable_recall' | 'mastered';
 export type EnrichmentLevel = 'lite' | 'full';
@@ -93,6 +94,8 @@ export function subscribeWordLookup(listener: WordLookupListener) {
 }
 
 export async function lookupWord(word: string): Promise<WordLookupResult | null> {
+  if (!AI_CONTENT_FEATURES_ENABLED) return null;
+
   const key = normalizeLookupKey(word);
   if (!key) return null;
 
@@ -200,6 +203,13 @@ export function useWordLookup(word: string | null) {
 
     if (!word) {
       setData(undefined);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!AI_CONTENT_FEATURES_ENABLED) {
+      setData(null);
       return () => {
         cancelled = true;
       };

@@ -31,6 +31,7 @@ import {
   refreshSavedWords,
   removeSavedWordFromCache,
 } from '../../lib/libraryCache';
+import { AI_CONTENT_FEATURES_ENABLED } from '../../lib/aiFeatures';
 
 type StudyMode = 'sequential' | 'manual';
 
@@ -424,7 +425,7 @@ export function SavedWordsPanel({
           <BookOpen className="mx-auto h-10 w-10 text-text-secondary/50" />
           <p className="mt-4 text-2xl font-black text-text-primary">我的词库还是空的</p>
           <p className="mt-3 text-sm leading-7 text-text-secondary">
-            从阅读浮窗加入，或从导入页保存一批词后，这里会变成你的统一词池。
+            从官方词库或已保存的学习组开始，这里会变成你的统一词池。
           </p>
         </div>
       ) : (
@@ -592,7 +593,7 @@ export function SavedWordsPanel({
                             <Clock3 className="h-3.5 w-3.5" />
                             {formatSavedDate(entry.savedAt)}
                           </span>
-                          {entry.enrichmentLevel === 'lite' && (
+                          {AI_CONTENT_FEATURES_ENABLED && entry.enrichmentLevel === 'lite' && (
                             <span className="rounded-full bg-apple-orange/10 px-2.5 py-0.5 text-[11px] font-bold text-apple-orange">
                               生成中
                             </span>

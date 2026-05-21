@@ -17,12 +17,15 @@ import { Link, useNavigate } from 'react-router-dom';
 import { LuminaLogo } from '../brand/LuminaLogo';
 import { useAuth } from '../../contexts/AuthContext';
 import { isGoogleAuthEnabled } from '../../lib/authFeatures';
+import { AI_CONTENT_FEATURES_ENABLED } from '../../lib/aiFeatures';
 
 const learningFlowSteps = [
   { round: 'Round 1', title: '建立连接', desc: '先把词形、发音和含义对上' },
   { round: 'Round 2', title: '语境填空', desc: '在真实例句里主动回忆词形' },
   { round: 'Round 3', title: '快速识别', desc: '压缩确认，固定长时记忆' },
-  { round: 'Article', title: '文章巩固', desc: '把词放回鲜活的语境中收尾' },
+  ...(AI_CONTENT_FEATURES_ENABLED
+    ? [{ round: 'Article', title: '文章巩固', desc: '把词放回鲜活的语境中收尾' }]
+    : []),
 ];
 
 export const LandingView = () => {
@@ -49,7 +52,7 @@ export const LandingView = () => {
           建立你的个人词汇护城河。<br/>从机械记忆，进化为深度吸收。
         </h1>
         <p className="mt-8 text-lg md:text-xl text-text-secondary max-w-3xl mx-auto leading-relaxed font-medium">
-          借助 Lumina 独创的学习引擎，单词将依次经历：明示关联、语境复现、快速确认与长篇阅读巩固。AI 动态算法会实时优化复习权重，助你更彻底地攻克每一个单词。
+          借助 Lumina 的学习引擎，单词将依次经历：明示关联、语境复现与快速确认。复习权重会跟随真实记忆状态持续更新，助你更彻底地攻克每一个单词。
         </p>
         
         <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -93,7 +96,7 @@ export const LandingView = () => {
           </div>
 
           <h2 className="text-3xl md:text-4xl font-black text-text-primary tracking-tight mb-10">
-            独创四段式吸收链路，<br/>让单词在语境中彻底鲜活。
+            多轮吸收链路，<br/>让单词在语境中彻底鲜活。
           </h2>
 
           <div className="space-y-4">
@@ -167,49 +170,51 @@ export const LandingView = () => {
           </div>
         </motion.div>
 
-        {/* 4. AI Content (4 cols) */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ delay: 0.3 }}
-          className="md:col-span-6 lg:col-span-4 glass rounded-[40px] p-8 md:p-10 jelly-shadow flex flex-col justify-between"
-        >
-          <div>
-            <div className="w-12 h-12 bg-apple-orange/10 rounded-2xl flex items-center justify-center mb-8 text-apple-orange shadow-sm">
-              <Sparkles className="w-6 h-6" />
+        {AI_CONTENT_FEATURES_ENABLED && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.3 }}
+            className="md:col-span-6 lg:col-span-4 glass rounded-[40px] p-8 md:p-10 jelly-shadow flex flex-col justify-between"
+          >
+            <div>
+              <div className="w-12 h-12 bg-apple-orange/10 rounded-2xl flex items-center justify-center mb-8 text-apple-orange shadow-sm">
+                <Sparkles className="w-6 h-6" />
+              </div>
+              <h3 className="text-2xl font-black text-text-primary tracking-tight">AI 词条全景增强</h3>
+              <p className="mt-4 text-sm text-text-secondary leading-relaxed font-medium">
+                不止是释义。包含构词拆解、派生、近反义、易混对比及助记词。基于 Gemini 2.5 Flash。
+              </p>
             </div>
-            <h3 className="text-2xl font-black text-text-primary tracking-tight">AI 词条全景增强</h3>
-            <p className="mt-4 text-sm text-text-secondary leading-relaxed font-medium">
-              不止是释义。包含构词拆解、派生、近反义、易混对比及助记词。基于 Gemini 2.5 Flash。
-            </p>
-          </div>
-          <div className="mt-8 flex flex-wrap gap-2 pt-6 border-t border-black/5">
-             {['构词', '例句', '对比', '助记'].map(tag => (
-               <span key={tag} className="text-[10px] font-bold bg-apple-orange/10 text-apple-orange px-2 py-0.5 rounded-md">{tag}</span>
-             ))}
-          </div>
-        </motion.div>
+            <div className="mt-8 flex flex-wrap gap-2 pt-6 border-t border-black/5">
+              {['构词', '例句', '对比', '助记'].map(tag => (
+                <span key={tag} className="text-[10px] font-bold bg-apple-orange/10 text-apple-orange px-2 py-0.5 rounded-md">{tag}</span>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
-        {/* 5. Custom Import (4 cols) */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ delay: 0.4 }}
-          className="md:col-span-6 lg:col-span-4 glass rounded-[40px] p-8 md:p-10 jelly-shadow flex flex-col justify-between"
-        >
-          <div>
-            <div className="w-12 h-12 bg-apple-teal/10 rounded-2xl flex items-center justify-center mb-8 text-apple-teal shadow-sm">
-              <PlusCircle className="w-6 h-6" />
+        {AI_CONTENT_FEATURES_ENABLED && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.4 }}
+            className="md:col-span-6 lg:col-span-4 glass rounded-[40px] p-8 md:p-10 jelly-shadow flex flex-col justify-between"
+          >
+            <div>
+              <div className="w-12 h-12 bg-apple-teal/10 rounded-2xl flex items-center justify-center mb-8 text-apple-teal shadow-sm">
+                <PlusCircle className="w-6 h-6" />
+              </div>
+              <h3 className="text-2xl font-black text-text-primary tracking-tight">自由导入，即刻起步</h3>
+              <p className="mt-4 text-sm text-text-secondary leading-relaxed font-medium">
+                粘贴单词，按换行或逗号切分。AI 自动补齐所有维度数据，生成你的私人词组。
+              </p>
             </div>
-            <h3 className="text-2xl font-black text-text-primary tracking-tight">自由导入，即刻起步</h3>
-            <p className="mt-4 text-sm text-text-secondary leading-relaxed font-medium">
-              粘贴单词，按换行或逗号切分。AI 自动补齐所有维度数据，生成你的私人词组。
-            </p>
-          </div>
-          <p className="mt-8 text-[11px] font-bold text-apple-teal uppercase tracking-widest pt-6 border-t border-black/5">Customizable Batches</p>
-        </motion.div>
+            <p className="mt-8 text-[11px] font-bold text-apple-teal uppercase tracking-widest pt-6 border-t border-black/5">Customizable Batches</p>
+          </motion.div>
+        )}
 
         {/* 6. Settings & Sync (6 cols) */}
         <motion.div 

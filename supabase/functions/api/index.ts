@@ -40,6 +40,15 @@ const configuredOrigins = (Deno.env.get('LUMINA_APP_ORIGINS') ?? '')
   .filter(Boolean);
 
 const allowedOrigins = new Set([...DEFAULT_ALLOWED_ORIGINS, ...configuredOrigins]);
+const aiContentFeaturesEnabled = (Deno.env.get('LUMINA_AI_FEATURES_ENABLED') ?? '').toLowerCase() === 'true';
+const AI_FEATURE_PATHS = new Set([
+  '/api/vocab/enrich',
+  '/api/vocab/lite-enrich',
+  '/api/vocab/lemmatize',
+  '/api/vocab/lookup',
+  '/api/vocab/full-enrich',
+  '/api/vocab/article',
+]);
 
 function corsHeaders(request: Request) {
   const origin = request.headers.get('Origin');
@@ -68,6 +77,10 @@ function emptyResponse(request: Request, status = 204) {
 
 function errorResponse(request: Request, error: string, status = 500) {
   return jsonResponse(request, { error }, status);
+}
+
+function isAiFeaturePath(path: string) {
+  return AI_FEATURE_PATHS.has(path);
 }
 
 function validateOrigin(request: Request) {
@@ -155,6 +168,11 @@ Deno.serve(async (request) => {
     if (method === 'GET' && path === '/api/health') {
       status = 200;
       return jsonResponse(request, { status: 'ok', timestamp: new Date().toISOString() }, status);
+    }
+
+    if (!aiContentFeaturesEnabled && isAiFeaturePath(path)) {
+      status = 503;
+      return errorResponse(request, 'AI 内容功能暂时关闭。', status);
     }
 
     const body = await readJsonBody(request);

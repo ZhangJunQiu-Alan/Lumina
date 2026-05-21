@@ -26,7 +26,7 @@ export const LEARNING_PREFERENCES_DEFAULTS: LearningPreferences = {
   correctAnswerRevealMs: 1000,
   wrongAnswerRevealMs: 8000,
   reinforcementRound3Enabled: true,
-  reinforcementArticleEnabled: true,
+  reinforcementArticleEnabled: false,
   popoverAutoPlayEnabled: false,
   clozeSentenceAutoPlayEnabled: true,
 };

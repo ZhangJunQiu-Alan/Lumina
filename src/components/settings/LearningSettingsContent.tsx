@@ -19,6 +19,7 @@ import {
   SPEECH_PLAYBACK_RATE_OPTIONS,
   WRONG_ANSWER_REVEAL_OPTIONS,
 } from '../../lib/learningPreferences';
+import { AI_CONTENT_FEATURES_ENABLED } from '../../lib/aiFeatures';
 import type { LearningPreferences, PronunciationLocale, SpeechPlaybackRate } from '../../types';
 
 type PreferenceKey = keyof LearningPreferences;
@@ -435,18 +436,20 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
         )}
       />
 
-      <SettingItem
-        icon={BookOpen}
-        title="文章巩固"
-        description="用短文把单词放回语境"
-        feedback={feedbackByKey.reinforcementArticleEnabled}
-        control={(
-          <ToggleControl
-            checked={preferences.reinforcementArticleEnabled}
-            onChange={(checked) => { void handleSave('reinforcementArticleEnabled', { reinforcementArticleEnabled: checked }); }}
-          />
-        )}
-      />
+      {AI_CONTENT_FEATURES_ENABLED && (
+        <SettingItem
+          icon={BookOpen}
+          title="文章巩固"
+          description="用短文把单词放回语境"
+          feedback={feedbackByKey.reinforcementArticleEnabled}
+          control={(
+            <ToggleControl
+              checked={preferences.reinforcementArticleEnabled}
+              onChange={(checked) => { void handleSave('reinforcementArticleEnabled', { reinforcementArticleEnabled: checked }); }}
+            />
+          )}
+        />
+      )}
 
       <div className="border-t border-black/6 pt-2">
         <button

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 import { createPortal } from 'react-dom';
 import { AnimatePresence } from 'motion/react';
 import { WordPopover } from '../components/shared/WordPopover';
+import { AI_CONTENT_FEATURES_ENABLED } from '../lib/aiFeatures';
 
 interface WordPopoverState {
   word: string;
@@ -24,6 +25,8 @@ export function WordPopoverProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const openPopover = useCallback((word: string, anchor: HTMLElement) => {
+    if (!AI_CONTENT_FEATURES_ENABLED) return;
+
     const normalizedWord = word.trim().toLowerCase();
     if (!normalizedWord) return;
 
