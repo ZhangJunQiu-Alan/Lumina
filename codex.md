@@ -29,16 +29,15 @@
 ### 生产部署与自动发布
 
 - 前端已部署到 Cloudflare Pages：`https://lumina-1oi.pages.dev`
-- 后端已部署到 Railway：`https://api-production-0052.up.railway.app`
+- 后端统一部署到 Supabase Edge Functions：`https://zhjdsvcgccdvtnicyasi.supabase.co/functions/v1/api`
 - GitHub 自动发布已打通：
   - `CI` workflow 负责类型检查、规则测试、session 测试、word batch 测试和生产构建验证
   - `Deploy Pages` workflow 负责将 `main` 的前端构建结果发布到现有 Pages 项目
-  - Railway `api` 服务已连接 GitHub 仓库 `ZhangJunQiu-Alan/Lumina` 的 `main`
-  - Railway `Wait for CI` 已开启，只有 GitHub Actions 通过后才会部署
+  - Supabase Edge Function `api` 保留 `/api/*` 路由兼容层
+  - GitHub Actions 通过后可触发 Supabase Function 部署 workflow
 - 已确认：
   - `Deploy Pages` 成功
-  - Railway 最新 GitHub 部署成功
-  - `GET /api/health` 返回 `{ "ok": true }`
+  - Supabase Edge Function `api` 部署成功后，`GET /api/health` 返回 `{ "status": "ok" }`
 
 ---
 

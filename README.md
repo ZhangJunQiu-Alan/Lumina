@@ -210,15 +210,16 @@ Lumina 的 SRS 逻辑以状态为核心：
 # Frontend
 VITE_SUPABASE_URL=https://<your-project>.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_<your-key>
-VITE_API_BASE_URL=
+VITE_API_BASE_URL=https://<your-project>.supabase.co/functions/v1/api
 VITE_GOOGLE_AUTH_ENABLED=false
 
 # Backend
 SUPABASE_URL=https://<your-project>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
+LUMINA_SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
 GEMINI_API_KEY=<your-gemini-api-key>
 GOOGLE_TTS_API_KEY=<your-google-tts-api-key>
-APP_ORIGIN=http://localhost:3000
+LUMINA_APP_ORIGINS=http://localhost:3000,https://lumina-1oi.pages.dev,https://lumina.college
 PORT=4000
 
 # Optional Gemini tuning
@@ -234,7 +235,7 @@ SUPABASE_DB_PASSWORD=<database-password>
 LOG_LEVEL=info
 ```
 
-本地开发时，Vite 会把 `/api/*` 代理到 `http://localhost:4000`，因此 `VITE_API_BASE_URL` 可以留空。前后端分离部署时，需要把它设置为后端 API 域名。
+本地开发时，Vite 会把 `/api/*` 代理到 `http://localhost:4000`，因此 `VITE_API_BASE_URL` 可以临时留空。生产部署时，需要把它设置为 Supabase Edge Function 网关：`https://<project-ref>.supabase.co/functions/v1/api`。
 
 ## 本地启动
 
@@ -314,16 +315,17 @@ npx tsx scripts/test-official-library.ts
 
 ## 部署说明
 
-项目适合前后端分离部署：
+项目生产环境采用 Cloudflare Pages + Supabase：
 
 - 前端：构建后产物在 `dist/`，可部署到 Cloudflare Pages、Vercel、Netlify 等静态站点平台。
-- 后端：Express API 可部署到 Railway、Render、Fly.io 或其他 Node 服务。
+- 后端：生产 API 部署到 Supabase Edge Functions，入口为 `supabase/functions/api/index.ts`。
 - 数据库与鉴权：Supabase 项目需要配置 schema、Auth redirect URL、Storage bucket 和必要环境变量。
 
 部署时需要注意：
 
-- 前端平台设置 `VITE_API_BASE_URL` 指向后端 API。
-- 后端设置 `APP_ORIGIN` 为前端正式域名，否则 CORS 会拒绝浏览器请求。
+- 前端平台设置 `VITE_API_BASE_URL` 指向 Supabase Function 网关。
+- Supabase Function secrets 设置 `LUMINA_APP_ORIGINS` 为允许访问的前端域名，否则 CORS 会拒绝浏览器请求。
+- Supabase Function 使用 `--no-verify-jwt` 部署，由函数内部按接口决定公开访问或 Bearer token 鉴权。
 - Supabase Auth 的 Site URL 和 Redirect URLs 需要包含生产域名及 `/auth`。
 - 如果开启 Google 登录，需要在 Supabase 和 Google Cloud 同时配置 OAuth client、callback URL 和发布状态。
 

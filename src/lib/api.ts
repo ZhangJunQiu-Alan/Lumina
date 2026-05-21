@@ -24,7 +24,8 @@ export function resolveApiUrl(path: string) {
     return path;
   }
 
-  return new URL(path, apiBaseUrl).toString();
+  const normalizedBase = apiBaseUrl.endsWith('/') ? apiBaseUrl : `${apiBaseUrl}/`;
+  return new URL(path.replace(/^\/+/, ''), normalizedBase).toString();
 }
 
 function resolveFetchInput(input: RequestInfo | URL) {
@@ -38,7 +39,7 @@ function resolveFetchInput(input: RequestInfo | URL) {
     && apiBaseUrl
     && input.origin === window.location.origin
   ) {
-    return new URL(`${input.pathname}${input.search}${input.hash}`, apiBaseUrl);
+    return new URL(`${input.pathname.replace(/^\/+/, '')}${input.search}${input.hash}`, apiBaseUrl.endsWith('/') ? apiBaseUrl : `${apiBaseUrl}/`);
   }
 
   return input;
