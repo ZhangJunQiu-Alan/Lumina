@@ -240,12 +240,29 @@ export interface IeltsReadingQuestionGroup {
   questions: IeltsReadingQuestion[];
 }
 
+export interface IeltsReadingPassageFigure {
+  id: string;
+  figureKey: string;
+  title: string;
+  caption: string;
+  imageUrl: string;
+  storagePath: string;
+  pdfPage: number | null;
+  anchorText: string;
+  sortOrder: number;
+  fallback: {
+    headers?: [string, string];
+    rows?: [string, string][];
+  };
+}
+
 export interface IeltsReadingPassage {
   id: string;
   number: number;
   title: string;
   body: string;
   wordCount: number;
+  figures: IeltsReadingPassageFigure[];
   groups: IeltsReadingQuestionGroup[];
 }
 

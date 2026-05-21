@@ -18,6 +18,7 @@
     "cleanup:saved-library": "node --import tsx --env-file=.env scripts/cleanup-saved-library.ts",
     "backfill:forms": "node --import tsx --env-file=.env scripts/backfill-vocabulary-item-forms.ts",
     "import:ielts-reading": "node --import tsx --env-file=.env scripts/import-ielts-reading.ts",
+    "import:ielts-reading-figures": "node --import tsx --env-file=.env scripts/import-ielts-reading-figures.ts",
     "import:ielts-listening": "node --import tsx --env-file=.env scripts/import-ielts-listening.ts",
     "lint": "tsc --noEmit",
     "test:review": "tsx scripts/test-review-rules.ts",

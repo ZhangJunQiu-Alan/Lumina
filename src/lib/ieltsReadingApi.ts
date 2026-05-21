@@ -4,6 +4,7 @@ import type {
   IeltsReadingBookSummary,
   IeltsReadingOption,
   IeltsReadingPassage,
+  IeltsReadingPassageFigure,
   IeltsReadingQuestion,
   IeltsReadingQuestionGroup,
   IeltsReadingQuestionType,
@@ -18,6 +19,8 @@ import {
   type IeltsReadingAnswerMap,
 } from './ieltsReadingScoring';
 import { normalizeIeltsPassageBody } from './ieltsReadingText';
+
+const IELTS_READING_FIGURE_BUCKET = 'ielts-reading-figures';
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
@@ -47,7 +50,22 @@ interface PassageRow {
   body: string | null;
   word_count: number | null;
   sort_order: number | null;
+  ielts_reading_passage_figures?: PassageFigureRow[] | PassageFigureRow | null;
   ielts_reading_question_groups?: QuestionGroupRow[] | QuestionGroupRow | null;
+}
+
+interface PassageFigureRow {
+  id: string;
+  passage_id?: string | null;
+  figure_key: string | null;
+  title: string | null;
+  caption: string | null;
+  image_url: string | null;
+  storage_path: string | null;
+  pdf_page: number | null;
+  anchor_text: string | null;
+  fallback_json: JsonValue;
+  sort_order: number | null;
 }
 
 interface QuestionGroupRow {
@@ -173,6 +191,41 @@ function mapQuestionGroup(row: QuestionGroupRow, passageNumber: number): IeltsRe
   return group;
 }
 
+function coercePairTable(value: JsonValue): Pick<IeltsReadingPassageFigure['fallback'], 'headers' | 'rows'> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const record = value as Record<string, JsonValue>;
+  const headers = Array.isArray(record.headers)
+    ? record.headers.filter((item): item is string => typeof item === 'string').slice(0, 2)
+    : [];
+  const rows = Array.isArray(record.rows)
+    ? record.rows.flatMap((row) => {
+      if (!Array.isArray(row)) return [];
+      const cells = row.filter((item): item is string => typeof item === 'string').slice(0, 2);
+      return cells.length === 2 ? [[cells[0], cells[1]] as [string, string]] : [];
+    })
+    : [];
+
+  return {
+    ...(headers.length === 2 ? { headers: [headers[0], headers[1]] as [string, string] } : {}),
+    ...(rows.length > 0 ? { rows } : {}),
+  };
+}
+
+function mapPassageFigure(row: PassageFigureRow): IeltsReadingPassageFigure {
+  return {
+    id: row.id,
+    figureKey: row.figure_key?.trim() ?? '',
+    title: row.title?.trim() ?? '',
+    caption: row.caption?.trim() ?? '',
+    imageUrl: row.image_url?.trim() ?? '',
+    storagePath: row.storage_path?.trim() ?? '',
+    pdfPage: row.pdf_page,
+    anchorText: row.anchor_text?.trim() ?? '',
+    sortOrder: row.sort_order ?? 0,
+    fallback: coercePairTable(row.fallback_json),
+  };
+}
+
 function mapPassage(row: PassageRow): IeltsReadingPassage {
   const passageNumber = row.passage_number ?? 0;
   return {
@@ -181,6 +234,9 @@ function mapPassage(row: PassageRow): IeltsReadingPassage {
     title: row.title?.trim() ?? `Reading Passage ${passageNumber}`,
     body: normalizeIeltsPassageBody(row.body ?? ''),
     wordCount: row.word_count ?? 0,
+    figures: asArray(row.ielts_reading_passage_figures)
+      .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
+      .map(mapPassageFigure),
     groups: asArray(row.ielts_reading_question_groups)
       .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
       .map((group) => mapQuestionGroup(group, passageNumber)),
@@ -191,6 +247,37 @@ function flattenQuestions(passages: IeltsReadingPassage[]): IeltsReadingQuestion
   return passages
     .flatMap((passage) => passage.groups.flatMap((group) => group.questions))
     .sort((left, right) => left.number - right.number);
+}
+
+async function signPassageFigureUrls(passages: IeltsReadingPassage[]): Promise<IeltsReadingPassage[]> {
+  const figureEntries = passages.flatMap((passage, passageIndex) =>
+    passage.figures.map((figure, figureIndex) => ({ passageIndex, figureIndex, figure })),
+  );
+  if (figureEntries.length === 0) return passages;
+
+  const signedUrls = await Promise.all(figureEntries.map(async ({ figure }) => {
+    if (!figure.storagePath) return figure.imageUrl;
+
+    const { data, error } = await supabase.storage
+      .from(IELTS_READING_FIGURE_BUCKET)
+      .createSignedUrl(figure.storagePath, 6 * 60 * 60);
+
+    if (error || !data?.signedUrl) return figure.imageUrl;
+    return data.signedUrl;
+  }));
+
+  return passages.map((passage, passageIndex) => ({
+    ...passage,
+    figures: passage.figures.map((figure, figureIndex) => {
+      const entryIndex = figureEntries.findIndex((entry) =>
+        entry.passageIndex === passageIndex && entry.figureIndex === figureIndex,
+      );
+      return {
+        ...figure,
+        imageUrl: entryIndex >= 0 ? signedUrls[entryIndex] : figure.imageUrl,
+      };
+    }),
+  }));
 }
 
 function mapTestSummary(row: TestRow, fallbackBook?: BookRow): IeltsReadingTestSummary {
@@ -270,6 +357,19 @@ export async function fetchIeltsReadingTestDetail(testId: string): Promise<Ielts
         body,
         word_count,
         sort_order,
+        ielts_reading_passage_figures (
+          id,
+          passage_id,
+          figure_key,
+          title,
+          caption,
+          image_url,
+          storage_path,
+          pdf_page,
+          anchor_text,
+          fallback_json,
+          sort_order
+        ),
         ielts_reading_question_groups (
           id,
           passage_id,
@@ -301,10 +401,10 @@ export async function fetchIeltsReadingTestDetail(testId: string): Promise<Ielts
   if (!data) return null;
 
   const row = data as TestRow;
-  const passages = asArray(row.ielts_reading_passages)
+  const passages = await signPassageFigureUrls(asArray(row.ielts_reading_passages)
     .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
     .map(mapPassage)
-    .sort((left, right) => left.number - right.number);
+    .sort((left, right) => left.number - right.number));
   const summary = mapTestSummary({ ...row, ielts_reading_passages: passages as unknown as PassageRow[] });
 
   return {

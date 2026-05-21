@@ -26,6 +26,7 @@ import type {
   IeltsReadingBookSummary,
   IeltsReadingOption,
   IeltsReadingPassage,
+  IeltsReadingPassageFigure,
   IeltsReadingQuestion,
   IeltsReadingQuestionGroup,
   IeltsReadingTestDetail,
@@ -185,17 +186,12 @@ interface CompletionTable {
   rows: string[][];
 }
 
-interface EmbeddedPassageFigure {
-  id: string;
-  title: string;
+interface EmbeddedPassageTableFallback {
   headers: [string, string];
   rows: [string, string][];
-  caption: string;
 }
 
-const visualSymbolsFig2: EmbeddedPassageFigure = {
-  id: 'visual-symbols-fig-2',
-  title: 'Fig. 2',
+const visualSymbolsFig2Fallback: EmbeddedPassageTableFallback = {
   headers: ['Words associated with circle/square', 'Agreement among subjects (%)'],
   rows: [
     ['SOFT-HARD', '100'],
@@ -219,7 +215,6 @@ const visualSymbolsFig2: EmbeddedPassageFigure = {
     ['PLANT-ANIMAL', '53'],
     ['DEEP-SHALLOW', '51'],
   ],
-  caption: 'Subjects were asked which word in each pair fits best with a circle and which with a square. These percentages show the level of consensus among sighted subjects.',
 };
 
 interface CompletionInputContext {
@@ -518,20 +513,79 @@ function isPassagePartHeading(value: string) {
   return /^Part\s+\d+$/i.test(value.trim());
 }
 
-function getEmbeddedFigureAfterParagraph(passage: IeltsReadingPassage, paragraph: string): EmbeddedPassageFigure | null {
-  if (passage.title !== 'Visual Symbols and the Blind') return null;
-  if (!/\(See Fig\. 2\.\)/.test(paragraph)) return null;
-  return visualSymbolsFig2;
+function makeLegacyPassageFigure(
+  figureKey: string,
+  title: string,
+  caption: string,
+  fallback: EmbeddedPassageTableFallback,
+): IeltsReadingPassageFigure {
+  return {
+    id: `legacy-${figureKey}`,
+    figureKey,
+    title,
+    caption,
+    imageUrl: '',
+    storagePath: '',
+    pdfPage: null,
+    anchorText: '',
+    sortOrder: 0,
+    fallback,
+  };
 }
 
-function EmbeddedPassageFigureBlock({ figure }: { figure: EmbeddedPassageFigure }) {
+function figureMatchesParagraph(figure: IeltsReadingPassageFigure, paragraph: string) {
+  if (figure.anchorText && paragraph.includes(figure.anchorText)) return true;
+  if (figure.title && new RegExp(`\\b${figure.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(paragraph)) return true;
+  return false;
+}
+
+function getEmbeddedFiguresAfterParagraph(passage: IeltsReadingPassage, paragraph: string): IeltsReadingPassageFigure[] {
+  const figures = passage.figures.filter((figure) => figureMatchesParagraph(figure, paragraph));
+  if (figures.length > 0) return figures;
+
+  if (passage.title !== 'Visual Symbols and the Blind') return [];
+  if (!/\(See Fig\. 2\.\)/.test(paragraph)) return [];
+
+  return [
+    makeLegacyPassageFigure(
+      'fig-2',
+      'Fig. 2',
+      'Subjects were asked which word in each pair fits best with a circle and which with a square. These percentages show the level of consensus among sighted subjects.',
+      visualSymbolsFig2Fallback,
+    ),
+  ];
+}
+
+function EmbeddedPassageFigureBlock({ figure }: { figure: IeltsReadingPassageFigure }) {
+  const imageAlt = figure.caption ? `${figure.title}: ${figure.caption}` : figure.title;
+  const imageMaxWidth = figure.figureKey === 'fig-1' ? 'max-w-[240px]' : 'max-w-[520px]';
+  const fallback = figure.fallback.headers && figure.fallback.rows
+    ? { headers: figure.fallback.headers, rows: figure.fallback.rows }
+    : null;
+
+  if (figure.imageUrl) {
+    return (
+      <figure className="my-8 flex justify-center">
+        <img
+          src={figure.imageUrl}
+          alt={imageAlt}
+          loading="lazy"
+          className={cx('h-auto w-full rounded-lg border border-[#e2e8f2] bg-white object-contain', imageMaxWidth)}
+        />
+        {figure.caption && <figcaption className="sr-only">{imageAlt}</figcaption>}
+      </figure>
+    );
+  }
+
+  if (!fallback) return null;
+
   return (
-    <figure className="my-8 overflow-hidden rounded-[18px] border border-[#dfe5ef] bg-white font-sans shadow-[0_16px_36px_rgba(31,31,34,0.06)]">
+    <figure className="my-8 overflow-hidden rounded-[18px] border border-[#dfe5ef] bg-white font-sans">
       <div className="overflow-x-auto">
         <table className="min-w-[520px] w-full border-collapse text-left">
           <thead>
             <tr>
-              {figure.headers.map((header) => (
+              {fallback.headers.map((header) => (
                 <th
                   key={header}
                   className="border-b border-[#dfe5ef] bg-[#f3f6fb] px-4 py-3 text-[0.72rem] font-black uppercase tracking-[0.08em] text-text-primary"
@@ -542,7 +596,7 @@ function EmbeddedPassageFigureBlock({ figure }: { figure: EmbeddedPassageFigure 
             </tr>
           </thead>
           <tbody>
-            {figure.rows.map(([label, value]) => (
+            {fallback.rows.map(([label, value]) => (
               <tr key={label} className="border-b border-[#edf1f7] last:border-b-0">
                 <td className="px-4 py-2.5 text-sm font-black tracking-[0.02em] text-[#25252a]">{label}</td>
                 <td className="px-4 py-2.5 text-sm font-black text-[#25252a]">{value}</td>
@@ -1813,27 +1867,27 @@ export function IeltsReadingTestView() {
               }}
               disabled={isLockedByTimeout || isSubmitting}
               className={cx(
-                'inline-flex h-16 shrink-0 items-center gap-3 rounded-full px-5 text-sm font-black shadow-[0_14px_30px_rgba(31,45,75,0.08)] transition-all disabled:cursor-not-allowed disabled:opacity-60',
+                'inline-flex h-16 min-w-[178px] shrink-0 items-center justify-between gap-4 rounded-full border px-5 text-sm font-black transition-colors disabled:cursor-not-allowed disabled:opacity-60',
                 practiceMode
-                  ? 'bg-apple-blue text-white'
-                  : 'bg-white text-text-secondary hover:bg-[#f4f6fb] hover:text-text-primary',
+                  ? 'border-apple-blue bg-apple-blue text-white'
+                  : 'border-[#dfe6f2] bg-white text-text-secondary hover:border-apple-blue/25 hover:text-text-primary',
               )}
             >
+              <span className="whitespace-nowrap">练习模式</span>
               <span
                 className={cx(
-                  'relative h-7 w-12 rounded-full transition-colors',
+                  'relative h-8 w-14 shrink-0 rounded-full transition-colors',
                   practiceMode ? 'bg-white/25' : 'bg-[#e8edf7]',
                 )}
                 aria-hidden="true"
               >
                 <span
                   className={cx(
-                    'absolute top-1 h-5 w-5 rounded-full bg-white shadow-[0_4px_10px_rgba(14,26,56,0.18)] transition-transform',
-                    practiceMode ? 'translate-x-6' : 'translate-x-1',
+                    'absolute left-1 top-1 h-6 w-6 rounded-full bg-white transition-transform',
+                    practiceMode ? 'translate-x-6' : 'translate-x-0',
                   )}
                 />
               </span>
-              练习模式
             </button>
             <div
               className={cx(
@@ -1875,10 +1929,10 @@ export function IeltsReadingTestView() {
                     setPane('passage');
                   }}
                   className={cx(
-                    'inline-flex h-14 min-w-[190px] shrink-0 items-center justify-center gap-3 rounded-[16px] px-5 text-base font-black transition-all',
+                    'inline-flex h-14 min-w-[190px] shrink-0 items-center justify-center gap-3 rounded-[16px] border px-5 text-base font-black transition-colors',
                     selectedPassage === passage.number
-                      ? 'bg-apple-blue text-white shadow-[0_14px_26px_rgba(0,122,255,0.22)]'
-                      : 'bg-white text-text-primary shadow-[0_12px_24px_rgba(31,45,75,0.07)]',
+                      ? 'border-apple-blue bg-apple-blue text-white'
+                      : 'border-[#dfe6f2] bg-white text-text-primary hover:border-apple-blue/25',
                   )}
                 >
                   Passage {passage.number}
@@ -1932,10 +1986,10 @@ export function IeltsReadingTestView() {
                   onClick={() => setReadingMode(tool.key)}
                   disabled={inputsLocked}
                   className={cx(
-                    'inline-flex h-12 items-center gap-2 rounded-[16px] px-4 text-sm font-black transition-all disabled:cursor-not-allowed disabled:opacity-50',
+                    'inline-flex h-12 items-center gap-2 rounded-[16px] border px-4 text-sm font-black transition-colors disabled:cursor-not-allowed disabled:opacity-50',
                     readingMode === tool.key
-                      ? 'bg-apple-blue/10 text-apple-blue'
-                      : 'bg-white text-text-secondary shadow-[0_12px_24px_rgba(31,45,75,0.05)] hover:bg-[#f4f6fb] hover:text-text-primary',
+                      ? 'border-apple-blue/20 bg-apple-blue/10 text-apple-blue'
+                      : 'border-[#dfe6f2] bg-white text-text-secondary hover:border-apple-blue/25 hover:bg-[#f4f6fb] hover:text-text-primary',
                   )}
                 >
                   <Icon className="h-4 w-4" />
@@ -2037,7 +2091,7 @@ export function IeltsReadingTestView() {
                   >
                     {getPassageParagraphs(selectedPassageData.body).map((paragraph, index) => {
                       const isPartHeading = isPassagePartHeading(paragraph);
-                      const figure = getEmbeddedFigureAfterParagraph(selectedPassageData, paragraph);
+                      const figures = getEmbeddedFiguresAfterParagraph(selectedPassageData, paragraph);
 
                       return (
                         <Fragment key={`${selectedPassageData.id}-${index}`}>
@@ -2062,7 +2116,9 @@ export function IeltsReadingTestView() {
                               onWordClick: openPopover,
                             })}
                           </p>
-                          {figure && <EmbeddedPassageFigureBlock figure={figure} />}
+                          {figures.map((figure) => (
+                            <EmbeddedPassageFigureBlock key={figure.id} figure={figure} />
+                          ))}
                         </Fragment>
                       );
                     })}

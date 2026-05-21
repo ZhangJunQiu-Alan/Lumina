@@ -203,6 +203,26 @@ CREATE TABLE IF NOT EXISTS ielts_reading_passages (
   CHECK (word_count >= 0)
 );
 
+CREATE TABLE IF NOT EXISTS ielts_reading_passage_figures (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  passage_id    UUID NOT NULL REFERENCES ielts_reading_passages(id) ON DELETE CASCADE,
+  figure_key    TEXT NOT NULL,
+  title         TEXT NOT NULL,
+  caption       TEXT NOT NULL DEFAULT '',
+  image_url     TEXT,
+  storage_path  TEXT,
+  pdf_page      INTEGER,
+  crop_json     JSONB NOT NULL DEFAULT '{}'::jsonb,
+  anchor_text   TEXT,
+  fallback_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(passage_id, figure_key),
+  CHECK (figure_key <> ''),
+  CHECK (title <> ''),
+  CHECK (pdf_page IS NULL OR pdf_page > 0)
+);
+
 CREATE TABLE IF NOT EXISTS ielts_reading_question_groups (
   id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   passage_id           UUID NOT NULL REFERENCES ielts_reading_passages(id) ON DELETE CASCADE,
@@ -287,6 +307,8 @@ CREATE INDEX IF NOT EXISTS ielts_reading_tests_book_idx
   ON ielts_reading_tests (book_id, test_number);
 CREATE INDEX IF NOT EXISTS ielts_reading_passages_test_idx
   ON ielts_reading_passages (test_id, passage_number);
+CREATE INDEX IF NOT EXISTS ielts_reading_figures_passage_idx
+  ON ielts_reading_passage_figures (passage_id, sort_order);
 CREATE INDEX IF NOT EXISTS ielts_reading_groups_passage_idx
   ON ielts_reading_question_groups (passage_id, sort_order);
 CREATE INDEX IF NOT EXISTS ielts_reading_questions_test_idx
@@ -378,6 +400,7 @@ ALTER TABLE generated_articles     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ielts_reading_books    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ielts_reading_tests    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ielts_reading_passages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ielts_reading_passage_figures ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ielts_reading_question_groups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ielts_reading_questions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ielts_reading_attempts ENABLE ROW LEVEL SECURITY;
@@ -482,6 +505,8 @@ CREATE POLICY "ielts_reading_tests_authenticated_select" ON ielts_reading_tests
   FOR SELECT USING (auth.uid() IS NOT NULL);
 CREATE POLICY "ielts_reading_passages_authenticated_select" ON ielts_reading_passages
   FOR SELECT USING (auth.uid() IS NOT NULL);
+CREATE POLICY "ielts_reading_figures_authenticated_select" ON ielts_reading_passage_figures
+  FOR SELECT USING (auth.uid() IS NOT NULL);
 CREATE POLICY "ielts_reading_question_groups_authenticated_select" ON ielts_reading_question_groups
   FOR SELECT USING (auth.uid() IS NOT NULL);
 CREATE POLICY "ielts_reading_questions_authenticated_select" ON ielts_reading_questions
@@ -509,6 +534,12 @@ CREATE POLICY "ielts_reading_responses_owner_insert" ON ielts_reading_responses
       WHERE attempts.id = ielts_reading_responses.attempt_id
         AND attempts.user_id = auth.uid()::text
     )
+  );
+
+CREATE POLICY "ielts_reading_figure_objects_authenticated_select" ON storage.objects
+  FOR SELECT USING (
+    bucket_id = 'ielts-reading-figures'
+    AND auth.uid() IS NOT NULL
   );
 
 CREATE POLICY "user_saved_words_owner_select" ON user_saved_words
