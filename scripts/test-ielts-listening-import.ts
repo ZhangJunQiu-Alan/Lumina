@@ -4,6 +4,7 @@ import { access, readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
+const privateRawFixtureDir = 'content/ielts-reading/raw';
 
 async function fileExists(path: string) {
   try {
@@ -27,6 +28,11 @@ type ImportReport = {
   };
   errors: string[];
 };
+
+if (!(await fileExists(privateRawFixtureDir))) {
+  console.log(`Skipping IELTS listening import tests: missing private fixtures at ${privateRawFixtureDir}`);
+  process.exit(0);
+}
 
 async function assertListeningImport(bookNumber: number, maxFallbackHotspots: number) {
   const args = [
