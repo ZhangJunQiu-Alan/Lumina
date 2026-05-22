@@ -80,15 +80,16 @@ export async function getOrCreateAudio(word: string, locale: 'uk' | 'us'): Promi
     .select(`id, ${col}`)
     .eq('word', normalizedWord)
     .maybeSingle();
+  const row = data as { id?: string | null; audio_uk_url?: string | null; audio_us_url?: string | null } | null;
 
-  if (data?.[col]) {
-    const url = data[col] as string;
+  if (row?.[col]) {
+    const url = row[col];
     urlCache.set(cacheKey, url);
     return url;
   }
 
   // 3. Fallback: Generate & Upload
-  return uploadAndSave(word, data?.id ?? null, locale);
+  return uploadAndSave(word, row?.id ?? null, locale);
 }
 
 /** Batch-generate UK + US audio for a list of words.

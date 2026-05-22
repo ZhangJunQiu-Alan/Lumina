@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from './api';
-import { AI_CONTENT_FEATURES_ENABLED } from './aiFeatures';
 
 export type MemoryState = 'new' | 'fuzzy' | 'slow_recall' | 'stable_recall' | 'mastered';
 export type EnrichmentLevel = 'lite' | 'full';
@@ -37,11 +36,13 @@ interface CachedLookup {
   data: WordLookupResult | null;
   fetchedAt: number;
   failedUntil?: number;
+  missingUntil?: number;
 }
 
 type WordLookupListener = () => void;
 
 const FAILURE_CACHE_MS = 30 * 60 * 1000;
+const MISSING_CACHE_MS = 30 * 60 * 1000;
 const memoryCache = new Map<string, CachedLookup>();
 const canonicalWordByLookupKey = new Map<string, string>();
 const lookupKeysByCanonicalWord = new Map<string, Set<string>>();
@@ -94,12 +95,14 @@ export function subscribeWordLookup(listener: WordLookupListener) {
 }
 
 export async function lookupWord(word: string): Promise<WordLookupResult | null> {
-  if (!AI_CONTENT_FEATURES_ENABLED) return null;
-
   const key = normalizeLookupKey(word);
   if (!key) return null;
 
   const cached = memoryCache.get(key);
+  if (cached?.missingUntil && Date.now() < cached.missingUntil) {
+    return null;
+  }
+
   if (cached?.failedUntil && Date.now() < cached.failedUntil) {
     return null;
   }
@@ -124,8 +127,21 @@ export async function lookupWord(word: string): Promise<WordLookupResult | null>
         throw new Error(body.error ?? `HTTP ${response.status}`);
       }
 
-      const { data } = await response.json() as { data: WordLookupResult };
-      memoryCache.set(key, { data, fetchedAt: Date.now() });
+      const { data, missing } = await response.json() as {
+        data: WordLookupResult | null;
+        missing?: boolean;
+      };
+      const fetchedAt = Date.now();
+      if (!data) {
+        memoryCache.set(key, {
+          data: null,
+          fetchedAt,
+          missingUntil: missing !== false ? fetchedAt + MISSING_CACHE_MS : undefined,
+        });
+        return null;
+      }
+
+      memoryCache.set(key, { data, fetchedAt });
       rememberCanonicalLookup(key, data.vocabulary_item.word);
       return data;
     })
@@ -192,6 +208,8 @@ export function clearWordLookupCache() {
 
 export function useWordLookup(word: string | null) {
   const [data, setData] = useState<WordLookupResult | null | undefined>(undefined);
+  const [missing, setMissing] = useState(false);
+  const [error, setError] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => subscribeWordLookup(() => {
@@ -203,13 +221,8 @@ export function useWordLookup(word: string | null) {
 
     if (!word) {
       setData(undefined);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    if (!AI_CONTENT_FEATURES_ENABLED) {
-      setData(null);
+      setMissing(false);
+      setError(false);
       return () => {
         cancelled = true;
       };
@@ -217,24 +230,44 @@ export function useWordLookup(word: string | null) {
 
     const key = normalizeLookupKey(word);
     const cached = memoryCache.get(key);
+    const now = Date.now();
     if (cached?.data) {
       setData(cached.data);
+      setMissing(false);
+      setError(false);
       return () => {
         cancelled = true;
       };
     }
 
-    if (cached?.failedUntil && Date.now() < cached.failedUntil) {
+    if (cached?.missingUntil && now < cached.missingUntil) {
       setData(null);
+      setMissing(true);
+      setError(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (cached?.failedUntil && now < cached.failedUntil) {
+      setData(null);
+      setMissing(false);
+      setError(true);
       return () => {
         cancelled = true;
       };
     }
 
     setData(undefined);
+    setMissing(false);
+    setError(false);
     lookupWord(word).then((result) => {
       if (!cancelled) {
+        const latest = memoryCache.get(key);
+        const latestNow = Date.now();
         setData(result);
+        setMissing(Boolean(latest?.missingUntil && latestNow < latest.missingUntil));
+        setError(Boolean(latest?.failedUntil && latestNow < latest.failedUntil));
       }
     });
 
@@ -245,6 +278,8 @@ export function useWordLookup(word: string | null) {
 
   return {
     data,
+    missing,
+    error,
     loading: data === undefined,
   };
 }

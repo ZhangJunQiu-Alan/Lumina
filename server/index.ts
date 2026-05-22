@@ -56,7 +56,6 @@ const AI_FEATURE_PATHS = new Set([
   '/api/vocab/enrich',
   '/api/vocab/lite-enrich',
   '/api/vocab/lemmatize',
-  '/api/vocab/lookup',
   '/api/vocab/full-enrich',
   '/api/vocab/article',
 ]);
@@ -203,7 +202,7 @@ app.post('/api/vocab/lookup', requireAuth, async (req: AuthenticatedRequest, res
   const userId = req.authUserId!;
   try {
     const data = await lookupWordForPopover(userId, word);
-    res.json({ data });
+    res.json(data ? { data } : { data: null, missing: true });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     logger.error('API Error: /api/vocab/lookup', e, { endpoint: '/api/vocab/lookup', user_id: userId, word });
@@ -317,12 +316,14 @@ app.post('/api/review/batch-attempt', requireAuth, async (req: AuthenticatedRequ
 // GET /api/review/due
 app.get('/api/review/due', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.authUserId!;
+  const timeZone = typeof req.query.timezone === 'string' ? req.query.timezone : null;
+
   try {
-    const words = await fetchDueReviewWords(userId);
+    const words = await fetchDueReviewWords(userId, { timeZone });
     res.json({ data: words });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/review/due', e, { endpoint: '/api/review/due', user_id: userId });
+    logger.error('API Error: /api/review/due', e, { endpoint: '/api/review/due', user_id: userId, timezone: timeZone });
     res.status(500).json({ error: message });
   }
 });

@@ -24,8 +24,13 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return (payload as ReviewApiEnvelope<T>).data;
 }
 
-export async function fetchDueReviewWords(): Promise<ReviewWord[]> {
-  const response = await apiFetch('/api/review/due');
+function resolveBrowserTimeZone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+}
+
+export async function fetchDueReviewWords(timeZone = resolveBrowserTimeZone()): Promise<ReviewWord[]> {
+  const search = new URLSearchParams({ timezone: timeZone });
+  const response = await apiFetch(`/api/review/due?${search.toString()}`);
   return parseResponse<ReviewWord[]>(response);
 }
 

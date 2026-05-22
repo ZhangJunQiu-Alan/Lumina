@@ -1,12 +1,16 @@
 import { supabaseAdmin } from './supabase.ts';
 import {
   intervalForState,
+  MAX_DAILY_REVIEW_WORDS,
   MemoryState,
   normalizeElapsedMs,
+  planReviewBacklogRedistribution,
+  ReviewBacklogRescheduleUpdate,
   resolveReviewState,
   resolveRound2State,
   ReviewAttemptSource,
   ReviewResultType,
+  ReviewScheduleRow,
   sortDueReviewRows,
   toNextReviewAt,
   toResultType,
@@ -126,6 +130,12 @@ interface DueReviewRow {
   last_result: ReviewResultType | null;
   last_assessed_at: string | null;
   vocabulary_items: VocabularyItemRow | VocabularyItemRow[];
+}
+
+type ReviewScheduleStateRow = ReviewScheduleRow;
+
+interface FutureReviewStateRow {
+  next_review_at: string | null;
 }
 
 function buildWord(row: DueReviewRow) {
@@ -389,8 +399,113 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
   };
 }
 
-export async function fetchDueReviewWords(userId: string) {
-  const nowIso = new Date().toISOString();
+const REVIEW_SCHEDULE_SELECT = 'vocabulary_item_id, memory_state, next_review_at, last_assessed_at';
+
+function groupBacklogUpdatesByDate(updates: ReviewBacklogRescheduleUpdate[]) {
+  const grouped = new Map<string, string[]>();
+
+  for (const update of updates) {
+    const ids = grouped.get(update.nextReviewAt) ?? [];
+    ids.push(update.vocabularyItemId);
+    grouped.set(update.nextReviewAt, ids);
+  }
+
+  return grouped;
+}
+
+async function applyBacklogRescheduleUpdates(
+  userId: string,
+  updates: ReviewBacklogRescheduleUpdate[],
+) {
+  for (const [nextReviewAt, vocabularyItemIds] of groupBacklogUpdatesByDate(updates)) {
+    const { error } = await supabaseAdmin
+      .from('review_states')
+      .update({ next_review_at: nextReviewAt })
+      .eq('user_id', userId)
+      .in('vocabulary_item_id', vocabularyItemIds);
+
+    if (error) {
+      throw new Error(`review backlog reschedule failed: ${error.message}`);
+    }
+  }
+}
+
+export async function redistributeDueReviewBacklog(
+  userId: string,
+  options: {
+    now?: Date;
+    timeZone?: string | null;
+  } = {},
+) {
+  const now = options.now ?? new Date();
+  const nowIso = now.toISOString();
+
+  const dueResult = await supabaseAdmin
+    .from('review_states')
+    .select(REVIEW_SCHEDULE_SELECT)
+    .eq('user_id', userId)
+    .not('next_review_at', 'is', null)
+    .neq('memory_state', 'mastered')
+    .lte('next_review_at', nowIso);
+
+  if (dueResult.error) {
+    throw new Error(`due review schedule query failed: ${dueResult.error.message}`);
+  }
+
+  const dueRows = (dueResult.data ?? []) as ReviewScheduleStateRow[];
+  if (dueRows.length <= MAX_DAILY_REVIEW_WORDS) {
+    return {
+      activeDueCount: dueRows.length,
+      rescheduledCount: 0,
+    };
+  }
+
+  const futureResult = await supabaseAdmin
+    .from('review_states')
+    .select('next_review_at')
+    .eq('user_id', userId)
+    .not('next_review_at', 'is', null)
+    .neq('memory_state', 'mastered')
+    .gt('next_review_at', nowIso);
+
+  if (futureResult.error) {
+    throw new Error(`future review schedule query failed: ${futureResult.error.message}`);
+  }
+
+  const plan = planReviewBacklogRedistribution(
+    dueRows,
+    (futureResult.data ?? []) as FutureReviewStateRow[],
+    {
+      now,
+      timeZone: options.timeZone,
+      dailyLimit: MAX_DAILY_REVIEW_WORDS,
+    },
+  );
+
+  if (plan.updates.length > 0) {
+    await applyBacklogRescheduleUpdates(userId, plan.updates);
+  }
+
+  return {
+    activeDueCount: plan.activeRows.length,
+    rescheduledCount: plan.updates.length,
+  };
+}
+
+export async function fetchDueReviewWords(
+  userId: string,
+  options: {
+    timeZone?: string | null;
+  } = {},
+) {
+  const now = new Date();
+  const nowIso = now.toISOString();
+
+  await redistributeDueReviewBacklog(userId, {
+    now,
+    timeZone: options.timeZone,
+  });
+
   const richSelect = `
       vocabulary_item_id,
       memory_state,

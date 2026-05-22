@@ -389,16 +389,32 @@ async function lookupReviewState(userId: string, vocabularyItemId: string): Prom
   return ((data as ReviewStateRow | null)?.memory_state ?? null) as MemoryState | null;
 }
 
-export async function lookupWordForPopover(userId: string, word: string): Promise<WordLookupResult> {
+async function recordVocabularyLookupMiss(userId: string, word: string) {
+  const { error } = await supabaseAdmin.rpc('record_vocabulary_lookup_miss', {
+    p_word: word,
+    p_user_id: userId,
+    p_source: 'reading_popup',
+  });
+
+  if (error) {
+    throw new Error(`vocabulary_lookup_misses record failed: ${error.message}`);
+  }
+}
+
+export async function lookupWordForPopover(userId: string, word: string): Promise<WordLookupResult | null> {
   const normalizedWord = sanitizeLookupWord(word);
   if (!normalizedWord) {
     throw new Error('Missing word');
   }
 
-  await ensureLiteVocabularyEntry(normalizedWord, 'reading_popup');
   const item = await resolveExistingVocabularyItem(normalizedWord);
   if (!item) {
-    throw new Error(`Vocabulary item not found after lookup: ${normalizedWord}`);
+    try {
+      await recordVocabularyLookupMiss(userId, normalizedWord);
+    } catch (error) {
+      logger.error('Vocabulary lookup miss record failed', error, { user_id: userId, word: normalizedWord });
+    }
+    return null;
   }
 
   const [senses, rawInUserLibrary, srsState] = await Promise.all([

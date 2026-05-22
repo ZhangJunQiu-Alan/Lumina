@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import {
   FAST_RECALL_MS,
+  MAX_DAILY_REVIEW_WORDS,
+  planReviewBacklogRedistribution,
   resolveReviewState,
   resolveRound2State,
   sortDueReviewRows,
   toNextReviewAt,
+  toReviewDateKey,
   toResultType,
 } from '../server/review-domain.js';
 
@@ -84,6 +87,50 @@ function run() {
     sorted.map((item) => item.id),
     ['oldest-due', 'fuzzy', 'slow', 'stable-early', 'stable-late'],
   );
+
+  const overdueRows = Array.from({ length: 250 }, (_, index) => ({
+    vocabulary_item_id: `word-${index}`,
+    memory_state: index % 3 === 0 ? 'fuzzy' : index % 3 === 1 ? 'slow_recall' : 'stable_recall',
+    next_review_at: '2026-04-10T08:00:00.000Z',
+    last_assessed_at: `2026-04-09T${String(index % 24).padStart(2, '0')}:00:00.000Z`,
+  } as const));
+
+  const backlogPlan = planReviewBacklogRedistribution(overdueRows, [], {
+    now: BASE_TIME,
+    timeZone: 'UTC',
+  });
+
+  assert.equal(backlogPlan.activeRows.length, MAX_DAILY_REVIEW_WORDS);
+  assert.equal(backlogPlan.rescheduledRows.length, 150);
+  assert.equal(backlogPlan.updates.length, 150);
+
+  const rescheduledCounts = backlogPlan.updates.reduce((counts, update) => {
+    const dateKey = toReviewDateKey(new Date(update.nextReviewAt), 'UTC');
+    counts.set(dateKey, (counts.get(dateKey) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>());
+
+  assert.equal(rescheduledCounts.get('2026-04-16'), MAX_DAILY_REVIEW_WORDS);
+  assert.equal(rescheduledCounts.get('2026-04-17'), 50);
+
+  const crowdedPlan = planReviewBacklogRedistribution(
+    overdueRows.slice(0, 130),
+    Array.from({ length: 80 }, () => ({ next_review_at: '2026-04-16T12:00:00.000Z' })),
+    {
+      now: BASE_TIME,
+      timeZone: 'UTC',
+    },
+  );
+
+  const crowdedCounts = crowdedPlan.updates.reduce((counts, update) => {
+    const dateKey = toReviewDateKey(new Date(update.nextReviewAt), 'UTC');
+    counts.set(dateKey, (counts.get(dateKey) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>());
+
+  assert.equal(crowdedPlan.activeRows.length, MAX_DAILY_REVIEW_WORDS);
+  assert.equal(crowdedCounts.get('2026-04-16'), 20);
+  assert.equal(crowdedCounts.get('2026-04-17'), 10);
 
   console.log('Review domain checks passed.');
 }

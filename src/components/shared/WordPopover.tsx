@@ -107,61 +107,45 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
   const { saveWord, removeWord } = useSavedWords();
   const { preferences } = useLearningPreferences();
   const accent = preferences.defaultPronunciationLocale;
-  const { data, loading } = useWordLookup(word);
+  const { data, loading, missing, error } = useWordLookup(word);
   const senses = groupSenses(data);
   const srsBadge = data?.srs_state ? SRS_BADGE_CONFIG[data.srs_state] : null;
   const canMutateLibrary = Boolean(data && !data.srs_state);
   const lookupAudioUrl = accent === 'uk'
     ? data?.vocabulary_item.audio_uk_url ?? null
     : data?.vocabulary_item.audio_us_url ?? null;
-  const playableWord = data?.vocabulary_item.word ?? word;
+  const playableWord = data?.vocabulary_item.word ?? '';
 
   const [position, setPosition] = useState<PopoverPosition | null>(() => calculatePosition(anchor, null));
   const [actionError, setActionError] = useState('');
   const [isMutating, setIsMutating] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
-  const [resolvedAudioUrl, setResolvedAudioUrl] = useState<string | null>(
-    () => lookupAudioUrl ?? getCachedWordAudioUrl(word, accent),
-  );
+  const [resolvedAudioUrl, setResolvedAudioUrl] = useState<string | null>(null);
 
-  // Eagerly fetch the Google TTS URL the moment the popover opens — keep it
-  // in flight in parallel with the lookup so the speaker button is responsive.
   useEffect(() => {
+    if (!data || !playableWord) {
+      setResolvedAudioUrl(null);
+      return;
+    }
+
     if (lookupAudioUrl) {
-      primeWordAudioUrl(word, accent, lookupAudioUrl);
+      primeWordAudioUrl(playableWord, accent, lookupAudioUrl);
       setResolvedAudioUrl(lookupAudioUrl);
       return;
     }
 
+    const cachedUrl = getCachedWordAudioUrl(playableWord, accent);
+    setResolvedAudioUrl(cachedUrl);
+    if (cachedUrl) return;
+
     let cancelled = false;
-    void fetchWordAudioUrl(word, accent).then((url) => {
+    void fetchWordAudioUrl(playableWord, accent).then((url) => {
       if (cancelled || !url) return;
       setResolvedAudioUrl((current) => current ?? url);
     });
 
     return () => { cancelled = true; };
-  }, [accent, lookupAudioUrl, word]);
-
-  // Once the lookup resolves to a canonical word that differs from the click
-  // target, prefetch its audio too (e.g. clicked "running" → canonical "run").
-  useEffect(() => {
-    const canonicalWord = data?.vocabulary_item.word;
-    if (!canonicalWord || canonicalWord.toLowerCase() === word.toLowerCase()) return;
-
-    if (lookupAudioUrl) {
-      primeWordAudioUrl(canonicalWord, accent, lookupAudioUrl);
-      setResolvedAudioUrl((current) => current ?? lookupAudioUrl);
-      return;
-    }
-
-    let cancelled = false;
-    void fetchWordAudioUrl(canonicalWord, accent).then((url) => {
-      if (cancelled || !url) return;
-      setResolvedAudioUrl((current) => current ?? url);
-    });
-
-    return () => { cancelled = true; };
-  }, [accent, data?.vocabulary_item.word, lookupAudioUrl, word]);
+  }, [accent, data, lookupAudioUrl, playableWord]);
 
   const haltActiveAudio = useCallback(() => {
     if (audioRef.current) {
@@ -409,8 +393,12 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
         </div>
       ) : (
         <div className="space-y-3">
-          <p className="text-base font-black text-text-primary">暂时无法查询这个词</p>
-          <p className="text-sm leading-6 text-text-secondary">可以稍后再试。</p>
+          <p className="text-base font-black text-text-primary">
+            {missing ? '词库暂未收录' : '暂时无法查询这个词'}
+          </p>
+          <p className="text-sm leading-6 text-text-secondary">
+            {missing && !error ? '已记录到待补充列表，后续统一补充。' : '可以稍后再试。'}
+          </p>
         </div>
       )}
     </motion.div>

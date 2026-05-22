@@ -6,6 +6,7 @@ import {
   type OfficialStudyMode,
 } from '../officialLibraryLite.ts';
 import type { OfficialLibraryId } from '../types.ts';
+import { redistributeDueReviewBacklog } from './review.ts';
 
 type OrbitDayStatus = 'gap' | 'ordinary' | 'perfect' | 'shielded';
 type LearningRoundType = 'round1' | 'round2' | 'round3' | 'article';
@@ -982,8 +983,11 @@ async function fetchDailyRoutineProgress(userId: string, localDate: string) {
 
 export async function getHomeOverview(userId: string, requestedTimeZone: string | null | undefined) {
   const timeZone = normalizeTimeZone(requestedTimeZone);
-  const nowIso = new Date().toISOString();
-  const todayKey = toRoutineDateKey(new Date(), timeZone);
+  const now = new Date();
+  await redistributeDueReviewBacklog(userId, { now, timeZone });
+
+  const nowIso = now.toISOString();
+  const todayKey = toRoutineDateKey(now, timeZone);
 
   const [
     reviewEvents,

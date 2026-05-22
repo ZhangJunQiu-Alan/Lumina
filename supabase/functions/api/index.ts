@@ -45,7 +45,6 @@ const AI_FEATURE_PATHS = new Set([
   '/api/vocab/enrich',
   '/api/vocab/lite-enrich',
   '/api/vocab/lemmatize',
-  '/api/vocab/lookup',
   '/api/vocab/full-enrich',
   '/api/vocab/article',
 ]);
@@ -241,7 +240,7 @@ Deno.serve(async (request) => {
       try {
         const data = await lookupWordForPopover(auth.userId, word);
         status = 200;
-        return jsonResponse(request, { data }, status);
+        return jsonResponse(request, data ? { data } : { data: null, missing: true }, status);
       } catch (error) {
         status = statusFromEnrichmentError(error);
         logger.error('API Error: /api/vocab/lookup', error, { endpoint: '/api/vocab/lookup', user_id: auth.userId, word });
@@ -335,13 +334,14 @@ Deno.serve(async (request) => {
     if (method === 'GET' && path === '/api/review/due') {
       const auth = await requireUser(request);
       if (auth.response) return auth.response;
+      const timezone = url.searchParams.get('timezone');
       try {
-        const data = await fetchDueReviewWords(auth.userId);
+        const data = await fetchDueReviewWords(auth.userId, { timeZone: timezone });
         status = 200;
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = 500;
-        logger.error('API Error: /api/review/due', error, { endpoint: '/api/review/due', user_id: auth.userId });
+        logger.error('API Error: /api/review/due', error, { endpoint: '/api/review/due', user_id: auth.userId, timezone });
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
