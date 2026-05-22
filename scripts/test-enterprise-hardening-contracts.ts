@@ -118,6 +118,26 @@ assertIncludes(
   'exclusive learning library keying',
 );
 
+const exclusiveLearningTriggerMigration = read('supabase/migrations/20260522030000_enforce_exclusive_learning_group_trigger.sql');
+for (const sql of [
+  'CREATE OR REPLACE FUNCTION public.learning_group_library_key',
+  'CREATE OR REPLACE FUNCTION public.discard_conflicting_active_learning_groups',
+  'CREATE OR REPLACE FUNCTION public.enforce_exclusive_active_learning_library',
+  'CREATE TRIGGER enforce_exclusive_active_learning_library_insert',
+  'BEFORE INSERT ON public.learning_groups',
+  'DELETE FROM public.review_events',
+  'DELETE FROM public.review_states',
+  'DELETE FROM public.learning_groups',
+  'latest_active_group',
+]) {
+  assertIncludes(exclusiveLearningTriggerMigration, sql, 'exclusive learning trigger migration');
+}
+assertIncludes(
+  exclusiveLearningTriggerMigration,
+  "public.learning_group_library_key(source_type, library_id) <> v_target_library_key",
+  'exclusive learning trigger keying',
+);
+
 const importFlow = read('src/lib/importFlow.ts');
 const directVocabularyWrites = /\.(?:from)\('(?:vocabulary_(?:items|senses|item_forms|morphology_parts|relations)|confused_words)'\)\s*\n\s*\.(?:insert|upsert|delete|update)/g;
 assert.equal(
