@@ -209,7 +209,16 @@ export function SavedWordsPanel({
 
   const totalPages = Math.max(Math.ceil(filteredWords.length / PAGE_SIZE), 1);
   const clampedPage = Math.min(page, totalPages);
-  const pageWords = filteredWords.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE);
+  const pageWords = useMemo(
+    () => filteredWords.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE),
+    [clampedPage, filteredWords],
+  );
+  const selectablePageIds = useMemo(
+    () => pageWords
+      .filter((entry) => !entry.isInActiveLearningGroup)
+      .map((entry) => entry.vocabularyItemId),
+    [pageWords],
+  );
 
   useEffect(() => {
     setPage(1);
@@ -224,6 +233,12 @@ export function SavedWordsPanel({
   const selectedCount = selectedIds.size;
   const sequentialCanStart = availableWords.length >= GROUP_SIZE;
   const manualCanStart = selectedCount === GROUP_SIZE;
+  const allSelectablePageWordsSelected = selectablePageIds.length > 0
+    && selectablePageIds.every((id) => selectedIds.has(id));
+  const canTogglePageSelection = studyMode === 'manual'
+    && selectablePageIds.length > 0
+    && (allSelectablePageWordsSelected || selectedCount < GROUP_SIZE);
+  const pageSelectionLabel = allSelectablePageWordsSelected ? '取消本页' : '全选本页';
 
   const createGroupFromIds = useCallback(async (vocabularyItemIds: string[]) => {
     if (vocabularyItemIds.length !== GROUP_SIZE) {
@@ -301,6 +316,27 @@ export function SavedWordsPanel({
       } else if (next.size < GROUP_SIZE) {
         next.add(entry.vocabularyItemId);
       }
+      return next;
+    });
+  };
+
+  const handleToggleCurrentPage = () => {
+    if (studyMode !== 'manual' || selectablePageIds.length === 0) return;
+
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      const pageFullySelected = selectablePageIds.every((id) => next.has(id));
+
+      if (pageFullySelected) {
+        selectablePageIds.forEach((id) => next.delete(id));
+        return next;
+      }
+
+      for (const id of selectablePageIds) {
+        if (next.size >= GROUP_SIZE) break;
+        next.add(id);
+      }
+
       return next;
     });
   };
@@ -467,6 +503,19 @@ export function SavedWordsPanel({
                   placeholder="搜索单词或释义"
                 />
               </label>
+
+              {studyMode === 'manual' && (
+                <button
+                  type="button"
+                  onClick={handleToggleCurrentPage}
+                  disabled={!canTogglePageSelection}
+                  className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-[18px] bg-white px-4 text-sm font-black text-text-primary shadow-[0_12px_28px_rgba(0,0,0,0.05)] transition-colors hover:text-apple-blue disabled:cursor-not-allowed disabled:opacity-55 sm:min-w-[112px]"
+                  aria-label={allSelectablePageWordsSelected ? '取消选择本页单词' : '全选本页单词'}
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  {pageSelectionLabel}
+                </button>
+              )}
 
               <button
                 type="button"

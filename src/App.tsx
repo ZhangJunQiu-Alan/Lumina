@@ -650,7 +650,7 @@ export default function App() {
     }
 
     if (stats.routineCard.ctaMode === 'continue_learning') {
-      const targetGroupId = stats.routineCard.boundLearningGroupId ?? stats.resumeCandidate?.groupId;
+      const targetGroupId = stats.routineCard.boundLearningGroupId;
       if (targetGroupId) {
         await openLearningGroup(targetGroupId);
         return;
@@ -974,7 +974,7 @@ export default function App() {
     }
 
     const resumeGroupId = stats.routineCard.ctaMode === 'continue_learning'
-      ? stats.routineCard.boundLearningGroupId ?? stats.resumeCandidate?.groupId ?? null
+      ? stats.routineCard.boundLearningGroupId
       : null;
 
     if (!user || activeWords.length > 0 || isStartingSession || !resumeGroupId) {
@@ -994,7 +994,6 @@ export default function App() {
     openLearningGroup,
     stats.routineCard.boundLearningGroupId,
     stats.routineCard.ctaMode,
-    stats.resumeCandidate,
     user,
   ]);
 
