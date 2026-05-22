@@ -1,9 +1,18 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
+
+async function fileExists(path: string) {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 type ImportReport = {
   summary: {
@@ -20,15 +29,24 @@ type ImportReport = {
 };
 
 async function assertListeningImport(bookNumber: number, maxFallbackHotspots: number) {
-  await execFileAsync('node', [
+  const args = [
     '--import',
     'tsx',
-    '--env-file=.env',
     'scripts/import-ielts-listening.ts',
     '--book',
     String(bookNumber),
     '--dry-run',
-  ], {
+  ];
+  if (await fileExists('.env')) {
+    args.splice(2, 0, '--env-file=.env');
+  }
+
+  await execFileAsync('node', args, {
+    env: {
+      ...process.env,
+      SUPABASE_URL: process.env.SUPABASE_URL ?? 'https://example.supabase.co',
+      SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'test-service-role-key',
+    },
     maxBuffer: 20 * 1024 * 1024,
   });
 
