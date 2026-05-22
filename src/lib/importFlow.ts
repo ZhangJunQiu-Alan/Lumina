@@ -377,54 +377,30 @@ export async function createLearningGroupFromVocabularyEntries(
     throw new Error(formatDuplicateWordsMessage(batch.duplicateWords));
   }
 
-  const { data: group, error: groupError } = await supabase
-    .from('learning_groups')
-    .insert({
-      user_id: userId,
-      group_name: options.groupName ?? `Custom · ${new Date().toLocaleDateString()}`,
-      source_type: options.groupSourceType ?? 'custom',
-      library_id: options.libraryId ?? null,
-    })
-    .select('id')
-    .single();
-
-  if (groupError) {
-    throw new Error(`learning_groups: ${groupError.message}`);
+  const sourceType = options.groupSourceType ?? 'custom';
+  if (sourceType === 'system' && !options.libraryId) {
+    throw new Error('系统词库缺少 libraryId。');
   }
 
-  const groupWords = entries
-    .map((entry, index) => ({
-      learning_group_id: group.id,
-      vocabulary_item_id: entry.id,
-      sequence_no: index,
-    }));
-  const { error: linkError } = await supabase.from('learning_group_words').insert(groupWords);
-  if (linkError) {
-    throw new Error(`learning_group_words: ${linkError.message}`);
+  const groupName = options.groupName ?? `Custom · ${new Date().toLocaleDateString()}`;
+  const { data: groupId, error } = await supabase.rpc('create_learning_group_exclusive', {
+    p_user_id: userId,
+    p_group_name: groupName,
+    p_source_type: sourceType,
+    p_library_id: options.libraryId ?? null,
+    p_vocabulary_item_ids: entries.map((entry) => entry.id),
+  });
+
+  if (error) {
+    throw new Error(`create_learning_group_exclusive: ${error.message}`);
   }
 
-  const reviewRows = entries.map((entry) => ({
-    user_id: userId,
-    vocabulary_item_id: entry.id,
-    memory_state: 'new',
-    interval_days: null,
-    next_review_at: null,
-    graduated_at: null,
-  }));
-
-  // Insert a fresh review_state only for words that don't have one yet.
-  // Existing rows must be left alone — overwriting them would wipe SR
-  // progress when a learned word is reused in a new learning group.
-  const { error: reviewError } = await supabase
-    .from('review_states')
-    .upsert(reviewRows, { onConflict: 'user_id,vocabulary_item_id', ignoreDuplicates: true });
-
-  if (reviewError) {
-    throw new Error(`review_states: ${reviewError.message}`);
+  if (!groupId) {
+    throw new Error('create_learning_group_exclusive: missing group id');
   }
 
   return {
-    groupId: group.id as string,
+    groupId: groupId as string,
     words: entries.map(toWord),
   };
 }

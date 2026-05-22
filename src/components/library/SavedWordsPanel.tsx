@@ -245,7 +245,7 @@ export function SavedWordsPanel({
       throw new Error(`需要刚好 ${GROUP_SIZE} 个可用词才能开始一组。`);
     }
 
-    const activeWordIds = await fetchActiveLearningGroupWordIds(userId);
+    const activeWordIds = await fetchActiveLearningGroupWordIds(userId, { sourceType: 'custom' });
     const availableIds = vocabularyItemIds.filter((id) => !activeWordIds.has(id));
     if (availableIds.length !== GROUP_SIZE) {
       throw new Error('有些词刚刚已经进入学习组，请刷新后再试。');

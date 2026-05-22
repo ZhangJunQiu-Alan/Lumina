@@ -16,6 +16,11 @@ interface SharedWordRow {
   vocabulary_item_id: string;
 }
 
+interface ActiveLearningGroupWordOptions {
+  sourceType?: 'custom' | 'system';
+  libraryId?: OfficialLibraryId | null;
+}
+
 type SavedWordSource = 'import' | 'reading_popup' | 'manual' | 'migration';
 
 interface SavedWordRow {
@@ -180,13 +185,26 @@ function asArray<T>(value: T | T[] | null | undefined): T[] {
   return Array.isArray(value) ? value : [value];
 }
 
-export async function fetchActiveLearningGroupWordIds(userId: string): Promise<Set<string>> {
-  const { data: activeGroups, error: groupError } = await supabase
+export async function fetchActiveLearningGroupWordIds(
+  userId: string,
+  options: ActiveLearningGroupWordOptions = {},
+): Promise<Set<string>> {
+  let query = supabase
     .from('learning_groups')
     .select('id')
     .eq('user_id', userId)
     .is('completed_at', null)
     .or('status.is.null,status.neq.completed');
+
+  if (options.sourceType) {
+    query = query.eq('source_type', options.sourceType);
+  }
+
+  if (options.sourceType === 'system' && options.libraryId) {
+    query = query.eq('library_id', options.libraryId);
+  }
+
+  const { data: activeGroups, error: groupError } = await query;
 
   if (groupError) {
     throw new Error(groupError.message);
@@ -231,7 +249,7 @@ export async function fetchSavedWords(userId: string): Promise<SavedWordEntry[]>
       `)
       .eq('user_id', userId)
       .order('saved_at', { ascending: true }),
-    fetchActiveLearningGroupWordIds(userId),
+    fetchActiveLearningGroupWordIds(userId, { sourceType: 'custom' }),
   ]);
 
   if (savedResult.error) {

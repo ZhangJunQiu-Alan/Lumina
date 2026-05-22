@@ -93,6 +93,31 @@ const listeningFunction = migration.slice(
 assertIncludes(listeningFunction, 'INSERT INTO public.ielts_listening_attempts', 'listening transactional RPC');
 assertIncludes(listeningFunction, 'INSERT INTO public.ielts_listening_responses', 'listening transactional RPC');
 
+const exclusiveLearningMigration = read('supabase/migrations/20260522020000_exclusive_learning_library.sql');
+for (const sql of [
+  'CREATE OR REPLACE FUNCTION public.create_learning_group_exclusive',
+  'PERFORM pg_advisory_xact_lock',
+  'DELETE FROM public.review_events',
+  'DELETE FROM public.review_states',
+  'DELETE FROM public.learning_groups',
+  'INSERT INTO public.learning_groups',
+  'INSERT INTO public.learning_group_words',
+  'INSERT INTO public.review_states',
+  'GRANT EXECUTE ON FUNCTION public.create_learning_group_exclusive',
+]) {
+  assertIncludes(exclusiveLearningMigration, sql, 'exclusive learning library migration');
+}
+assertIncludes(
+  exclusiveLearningMigration,
+  "WHEN source_type = 'system' THEN 'official:'",
+  'exclusive learning library keying',
+);
+assertIncludes(
+  exclusiveLearningMigration,
+  "ELSE 'custom'",
+  'exclusive learning library keying',
+);
+
 const importFlow = read('src/lib/importFlow.ts');
 const directVocabularyWrites = /\.(?:from)\('(?:vocabulary_(?:items|senses|item_forms|morphology_parts|relations)|confused_words)'\)\s*\n\s*\.(?:insert|upsert|delete|update)/g;
 assert.equal(
@@ -101,6 +126,24 @@ assert.equal(
   'import flow must not directly write shared vocabulary tables',
 );
 assertIncludes(importFlow, "'/api/vocab/persist'", 'import flow');
+assertIncludes(importFlow, "rpc('create_learning_group_exclusive'", 'learning group creation');
+assert.equal(
+  /\.from\('learning_groups'\)[\s\S]{0,300}\.insert\(/.test(importFlow),
+  false,
+  'learning group creation must use transactional RPC',
+);
+assert.equal(
+  /\.from\('learning_group_words'\)[\s\S]{0,300}\.insert\(/.test(importFlow),
+  false,
+  'learning group words creation must use transactional RPC',
+);
+
+const savedWordsPanel = read('src/components/library/SavedWordsPanel.tsx');
+assertIncludes(
+  savedWordsPanel,
+  "fetchActiveLearningGroupWordIds(userId, { sourceType: 'custom' })",
+  'saved words active group guard',
+);
 
 const readingSubmit = extractFunction(read('src/lib/ieltsReadingApi.ts'), 'submitIeltsReadingAttempt');
 assertIncludes(readingSubmit, "'/api/ielts/reading/attempts'", 'reading submit path');
