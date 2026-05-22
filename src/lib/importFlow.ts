@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { apiFetch } from './api';
 import { prepareVocabularyItemsForSavedWords } from './savedWordsReviewState';
 import { EnrichedWord, toWord, type OfficialLibraryId, Word } from '../types';
 import { analyzeWordBatch, formatDuplicateWordsMessage, normalizeWordKey, sanitizeWordInput } from '../../shared/wordBatch';
@@ -344,205 +345,21 @@ export async function persistEnrichedVocabularyEntries(
     throw new Error(formatDuplicateWordsMessage(batch.duplicateWords));
   }
 
-  const { data: existingItems, error: existingItemsError } = await supabase
-    .from('vocabulary_items')
-    .select('word, source_type')
-    .in('word', batch.normalizedWords);
-
-  if (existingItemsError) {
-    throw new Error(`vocabulary_items existing lookup failed: ${existingItemsError.message}`);
-  }
-
-  const existingSourceTypeByWord = new Map(
-    ((existingItems ?? []) as Array<{ word: string; source_type: string | null }>)
-      .map((row) => [row.word, row.source_type]),
-  );
-
-  const items = preparedEnriched.map((entry) => {
-    const normalizedWord = normalizeWordKey(entry.word);
-
-    return {
-      word: normalizedWord,
-      ipa_uk: entry.ipa_uk,
-      ipa_us: entry.ipa_us,
-      primary_meaning_zh: entry.primary_meaning_zh,
-      ner_label: entry.ner_label,
-      morphology_summary_zh: entry.morphology.summary_zh,
-      memory_tip: entry.memory_tip,
-      source_type: existingSourceTypeByWord.get(normalizedWord) ?? options.sourceType ?? 'custom',
-      enrichment_level: 'full',
-    };
+  const response = await apiFetch('/api/vocab/persist', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      entries: preparedEnriched,
+      sourceType: options.sourceType ?? 'custom',
+    }),
   });
 
-  const { data: insertedItems, error: itemsError } = await supabase
-    .from('vocabulary_items')
-    .upsert(items, { onConflict: 'word' })
-    .select('id, word');
-
-  if (itemsError) {
-    throw new Error(`vocabulary_items: ${itemsError.message}`);
+  const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+  if (!response.ok) {
+    throw new Error((payload as { error?: string }).error ?? `HTTP ${response.status}`);
   }
 
-  const wordIdMap = new Map(
-    insertedItems!.map((row: { id: string; word: string }) => [row.word, row.id]),
-  );
-
-  await Promise.all(preparedEnriched.map(async (entry) => {
-    const vocabId = wordIdMap.get(normalizeWordKey(entry.word));
-    if (!vocabId) return;
-    const confusions = entry.confusions.length > 0
-      ? entry.confusions
-      : entry.confused_word
-        ? [{ word: entry.confused_word, difference_zh: entry.confused_diff_zh ?? '' }]
-        : [];
-
-    const { error: deleteSenseError } = await supabase
-      .from('vocabulary_senses')
-      .delete()
-      .eq('vocabulary_item_id', vocabId);
-    if (deleteSenseError) {
-      throw new Error(`senses cleanup [${entry.word}]: ${deleteSenseError.message}`);
-    }
-
-    if (entry.senses.length > 0) {
-      const { error } = await supabase.from('vocabulary_senses').insert(
-        entry.senses.map((sense) => ({
-          vocabulary_item_id: vocabId,
-          pos: sense.pos,
-          meaning_zh: sense.meaning_zh,
-          example_sentence: sense.example_sentence,
-          example_translation_zh: sense.example_translation_zh,
-        })),
-      );
-      if (error) {
-        throw new Error(`senses [${entry.word}]: ${error.message}`);
-      }
-    }
-
-    const { error: deleteMorphologyError } = await supabase
-      .from('vocabulary_morphology_parts')
-      .delete()
-      .eq('vocabulary_item_id', vocabId);
-    if (deleteMorphologyError) {
-      throw new Error(`morphology cleanup [${entry.word}]: ${deleteMorphologyError.message}`);
-    }
-
-    if (entry.morphology.parts.length > 0) {
-      const { error } = await supabase.from('vocabulary_morphology_parts').insert(
-        entry.morphology.parts.map((part, index) => ({
-          vocabulary_item_id: vocabId,
-          part_text: part.text,
-          part_kind: part.kind,
-          meaning_zh: part.meaning_zh,
-          note_zh: part.note_zh,
-          sort_order: index,
-        })),
-      );
-      if (error) {
-        throw new Error(`morphology [${entry.word}]: ${error.message}`);
-      }
-    }
-
-    const { error: deleteRelationError } = await supabase
-      .from('vocabulary_relations')
-      .delete()
-      .eq('vocabulary_item_id', vocabId);
-    if (deleteRelationError) {
-      throw new Error(`relations cleanup [${entry.word}]: ${deleteRelationError.message}`);
-    }
-
-    const relationRows = [
-      ...entry.derived_words.map((relation, index) => ({
-        vocabulary_item_id: vocabId,
-        relation_type: 'derived',
-        related_word: relation.word,
-        meaning_zh: relation.meaning_zh,
-        note_zh: relation.note_zh,
-        sort_order: index,
-      })),
-      ...entry.synonyms.map((relation, index) => ({
-        vocabulary_item_id: vocabId,
-        relation_type: 'synonym',
-        related_word: relation.word,
-        meaning_zh: relation.meaning_zh,
-        note_zh: relation.note_zh,
-        sort_order: index,
-      })),
-      ...entry.antonyms.map((relation, index) => ({
-        vocabulary_item_id: vocabId,
-        relation_type: 'antonym',
-        related_word: relation.word,
-        meaning_zh: relation.meaning_zh,
-        note_zh: relation.note_zh,
-        sort_order: index,
-      })),
-    ];
-
-    if (relationRows.length > 0) {
-      const { error } = await supabase.from('vocabulary_relations').insert(relationRows);
-      if (error) {
-        throw new Error(`relations [${entry.word}]: ${error.message}`);
-      }
-    }
-
-    const { error: deleteConfusedError } = await supabase
-      .from('confused_words')
-      .delete()
-      .eq('vocabulary_item_id', vocabId);
-    if (deleteConfusedError) {
-      throw new Error(`confused_words cleanup [${entry.word}]: ${deleteConfusedError.message}`);
-    }
-
-    if (confusions.length > 0) {
-      const { error } = await supabase.from('confused_words').insert(
-        confusions.map((item, index) => ({
-          vocabulary_item_id: vocabId,
-          confused_word: item.word,
-          difference_note_zh: item.difference_zh,
-          sort_order: index,
-        })),
-      );
-      if (error) {
-        throw new Error(`confused_words [${entry.word}]: ${error.message}`);
-      }
-    }
-
-    // forms are GLOBAL UNIQUE(form), so we don't DELETE existing rows for this
-    // vocabulary_item — first-write-wins across the whole table. Just upsert and
-    // skip duplicates.
-    const baseKey = normalizeWordKey(entry.word);
-    const formRows = Array.from(
-      new Set(
-        (entry.forms ?? [])
-          .map((form) => normalizeWordKey(form))
-          .filter((form) => form && form !== baseKey),
-      ),
-    ).map((form) => ({ vocabulary_item_id: vocabId, form }));
-
-    if (formRows.length > 0) {
-      const { error } = await supabase
-        .from('vocabulary_item_forms')
-        .upsert(formRows, { onConflict: 'form', ignoreDuplicates: true });
-      if (error) {
-        throw new Error(`vocabulary_item_forms [${entry.word}]: ${error.message}`);
-      }
-    }
-  }));
-
-  const persistedEntries = await loadVocabularyEntriesByNormalizedWords(batch.words);
-  const entryByKey = new Map(
-    persistedEntries.map((entry) => [normalizeWordKey(entry.word), entry]),
-  );
-
-  return batch.words.map((word) => {
-    const entry = entryByKey.get(normalizeWordKey(word));
-
-    if (!entry) {
-      throw new Error(`词条写入后没有查回来：${word}`);
-    }
-
-    return entry;
-  });
+  return ((payload as { data?: PersistedVocabularyEntry[] }).data ?? []);
 }
 
 export async function createLearningGroupFromVocabularyEntries(

@@ -21,11 +21,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint
-        run: npm run lint
-
       - name: Type Check
-        run: npx tsc --noEmit
+        run: npm run lint
 
       - name: Build
         run: npm run build
@@ -33,14 +30,18 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
-      - name: Run Unit Tests
-        run: |
-          npx tsx scripts/test-review-rules.ts
-          npx tsx scripts/test-enrichment-normalization.ts
-          npx tsx scripts/test-learning-session.ts
-          npx tsx scripts/test-official-library.ts
-          npx tsx scripts/test-word-batch.ts
+      - name: Run Core Tests
+        run: npm run test:core
         env:
           # Mock envs for script validation if needed
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      - name: Run IELTS Tests
+        run: npm run test:ielts
+
+      - name: Check Edge Function Types
+        run: npm run check:edge
+
+      - name: Audit Dependencies
+        run: npm run check:audit

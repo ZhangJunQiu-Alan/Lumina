@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { logger } from '../_shared/server/logger.ts';
 import {
   enrichWords,
@@ -17,11 +16,13 @@ import {
 } from '../_shared/server/library.ts';
 import { cleanupSavedLibrary } from '../_shared/server/savedLibraryCleanup.ts';
 import { getHomeOverview } from '../_shared/server/home.ts';
+import { submitIeltsListeningAttempt, submitIeltsReadingAttempt } from '../_shared/server/ieltsAttempts.ts';
 import { supabaseAdmin } from '../_shared/server/supabase.ts';
 import {
   ensureLiteVocabularyEntry,
   lemmatizeVocabularyWord,
   lookupWordForPopover,
+  persistFullVocabularyEntries,
   queueFullEnrichmentForWord,
   sanitizeLookupWord,
 } from '../_shared/server/vocab.ts';
@@ -41,6 +42,8 @@ const configuredOrigins = (Deno.env.get('LUMINA_APP_ORIGINS') ?? '')
 
 const allowedOrigins = new Set([...DEFAULT_ALLOWED_ORIGINS, ...configuredOrigins]);
 const aiContentFeaturesEnabled = (Deno.env.get('LUMINA_AI_FEATURES_ENABLED') ?? '').toLowerCase() === 'true';
+const requestIdHeader = 'X-Request-Id';
+const requestIds = new WeakMap<Request, string>();
 const AI_FEATURE_PATHS = new Set([
   '/api/vocab/enrich',
   '/api/vocab/lite-enrich',
@@ -49,13 +52,35 @@ const AI_FEATURE_PATHS = new Set([
   '/api/vocab/article',
 ]);
 
+function resolveRequestId(value: string | null) {
+  const trimmed = value?.trim();
+  return trimmed || crypto.randomUUID();
+}
+
+function getRequestId(request: Request) {
+  const existing = requestIds.get(request);
+  if (existing) return existing;
+
+  const requestId = resolveRequestId(request.headers.get(requestIdHeader));
+  requestIds.set(request, requestId);
+  return requestId;
+}
+
+function requestLogContext(request: Request, context: Record<string, unknown> = {}) {
+  return {
+    request_id: getRequestId(request),
+    ...context,
+  };
+}
+
 function corsHeaders(request: Request) {
   const origin = request.headers.get('Origin');
   const headers = new Headers({
     Vary: 'Origin',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Request-Id',
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   });
+  headers.set(requestIdHeader, getRequestId(request));
 
   if (origin && allowedOrigins.has(origin)) {
     headers.set('Access-Control-Allow-Origin', origin);
@@ -117,12 +142,12 @@ function readBearerToken(headerValue: string | null) {
 async function requireUser(request: Request) {
   const accessToken = readBearerToken(request.headers.get('Authorization'));
   if (!accessToken) {
-    return { response: errorResponse(request, 'Missing bearer token', 401) };
+    return { response: errorResponse(request, 'Missing bearer token', 401), status: 401 };
   }
 
   const { data, error } = await supabaseAdmin.auth.getUser(accessToken);
   if (error || !data.user) {
-    return { response: errorResponse(request, 'Invalid or expired token', 401) };
+    return { response: errorResponse(request, 'Invalid or expired token', 401), status: 401 };
   }
 
   return { userId: data.user.id };
@@ -139,6 +164,10 @@ function resolveGeminiSource(value: unknown, fallback: string) {
   return value.trim() || fallback;
 }
 
+function resolveVocabularySourceType(value: unknown) {
+  return value === 'system' ? 'system' : 'custom';
+}
+
 function statusFromEnrichmentError(error: unknown) {
   if (error instanceof EnrichmentResponseValidationError) return error.statusCode;
   if (error instanceof EnrichmentServiceUnavailableError) return error.statusCode;
@@ -147,6 +176,7 @@ function statusFromEnrichmentError(error: unknown) {
 
 Deno.serve(async (request) => {
   const start = Date.now();
+  const requestId = getRequestId(request);
   const url = new URL(request.url);
   const path = normalizePath(url);
   const method = request.method.toUpperCase();
@@ -188,7 +218,7 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = statusFromEnrichmentError(error);
-        logger.error('API Error: /api/vocab/enrich', error, { endpoint: '/api/vocab/enrich', source });
+        logger.error('API Error: /api/vocab/enrich', error, requestLogContext(request, { endpoint: '/api/vocab/enrich', source }));
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -206,7 +236,7 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = statusFromEnrichmentError(error);
-        logger.error('API Error: /api/vocab/lite-enrich', error, { endpoint: '/api/vocab/lite-enrich', word, source });
+        logger.error('API Error: /api/vocab/lite-enrich', error, requestLogContext(request, { endpoint: '/api/vocab/lite-enrich', word, source }));
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -224,14 +254,17 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = statusFromEnrichmentError(error);
-        logger.error('API Error: /api/vocab/lemmatize', error, { endpoint: '/api/vocab/lemmatize', word, source });
+        logger.error('API Error: /api/vocab/lemmatize', error, requestLogContext(request, { endpoint: '/api/vocab/lemmatize', word, source }));
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
 
     if (method === 'POST' && path === '/api/vocab/lookup') {
       const auth = await requireUser(request);
-      if (auth.response) return auth.response;
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
       const word = sanitizeLookupWord(body?.word);
       if (!word) {
         status = 400;
@@ -243,14 +276,17 @@ Deno.serve(async (request) => {
         return jsonResponse(request, data ? { data } : { data: null, missing: true }, status);
       } catch (error) {
         status = statusFromEnrichmentError(error);
-        logger.error('API Error: /api/vocab/lookup', error, { endpoint: '/api/vocab/lookup', user_id: auth.userId, word });
+        logger.error('API Error: /api/vocab/lookup', error, requestLogContext(request, { endpoint: '/api/vocab/lookup', user_id: auth.userId, word }));
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
 
     if (method === 'POST' && path === '/api/vocab/full-enrich') {
       const auth = await requireUser(request);
-      if (auth.response) return auth.response;
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
       const word = sanitizeLookupWord(body?.word);
       if (!word) {
         status = 400;
@@ -266,7 +302,34 @@ Deno.serve(async (request) => {
         return jsonResponse(request, result, status);
       } catch (error) {
         status = 500;
-        logger.error('API Error: /api/vocab/full-enrich', error, { endpoint: '/api/vocab/full-enrich', user_id: auth.userId, word });
+        logger.error('API Error: /api/vocab/full-enrich', error, requestLogContext(request, { endpoint: '/api/vocab/full-enrich', user_id: auth.userId, word }));
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    if (method === 'POST' && path === '/api/vocab/persist') {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      const sourceType = resolveVocabularySourceType(body?.sourceType);
+      if (!Array.isArray(body?.entries)) {
+        status = 400;
+        return errorResponse(request, 'Missing entries array', status);
+      }
+      try {
+        const data = await persistFullVocabularyEntries(body.entries, sourceType);
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error('API Error: /api/vocab/persist', error, requestLogContext(request, {
+          endpoint: '/api/vocab/persist',
+          user_id: auth.userId,
+          source_type: sourceType,
+          entry_count: body.entries.length,
+        }));
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -283,14 +346,17 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = 500;
-        logger.error('API Error: /api/vocab/article', error, { endpoint: '/api/vocab/article', word_count: cleaned.length });
+        logger.error('API Error: /api/vocab/article', error, requestLogContext(request, { endpoint: '/api/vocab/article', word_count: cleaned.length }));
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
 
     if (method === 'POST' && path === '/api/review/attempt') {
       const auth = await requireUser(request);
-      if (auth.response) return auth.response;
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
       if (!body?.vocabularyItemId || !body?.source || typeof body?.wasCorrect !== 'boolean') {
         status = 400;
         return errorResponse(request, 'Missing required attempt fields', status);
@@ -308,14 +374,17 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = 500;
-        logger.error('API Error: /api/review/attempt', error, { endpoint: '/api/review/attempt', user_id: auth.userId });
+        logger.error('API Error: /api/review/attempt', error, requestLogContext(request, { endpoint: '/api/review/attempt', user_id: auth.userId }));
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
 
     if (method === 'POST' && path === '/api/review/batch-attempt') {
       const auth = await requireUser(request);
-      if (auth.response) return auth.response;
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
       if (!Array.isArray(body?.attempts)) {
         status = 400;
         return errorResponse(request, 'Missing attempts array', status);
@@ -326,14 +395,63 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = 500;
-        logger.error('API Error: /api/review/batch-attempt', error, { endpoint: '/api/review/batch-attempt', user_id: auth.userId });
+        logger.error('API Error: /api/review/batch-attempt', error, requestLogContext(request, { endpoint: '/api/review/batch-attempt', user_id: auth.userId }));
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    if (method === 'POST' && path === '/api/ielts/reading/attempts') {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      const responseCount = Array.isArray(body?.responses) ? body.responses.length : 0;
+      try {
+        const data = await submitIeltsReadingAttempt(auth.userId, body);
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error('API Error: /api/ielts/reading/attempts', error, requestLogContext(request, {
+          endpoint: '/api/ielts/reading/attempts',
+          user_id: auth.userId,
+          test_id: body?.testId,
+          response_count: responseCount,
+        }));
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    if (method === 'POST' && path === '/api/ielts/listening/attempts') {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      const responseCount = Array.isArray(body?.responses) ? body.responses.length : 0;
+      try {
+        const data = await submitIeltsListeningAttempt(auth.userId, body);
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error('API Error: /api/ielts/listening/attempts', error, requestLogContext(request, {
+          endpoint: '/api/ielts/listening/attempts',
+          user_id: auth.userId,
+          test_id: body?.testId,
+          response_count: responseCount,
+        }));
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
 
     if (method === 'GET' && path === '/api/review/due') {
       const auth = await requireUser(request);
-      if (auth.response) return auth.response;
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
       const timezone = url.searchParams.get('timezone');
       try {
         const data = await fetchDueReviewWords(auth.userId, { timeZone: timezone });
@@ -348,7 +466,10 @@ Deno.serve(async (request) => {
 
     if (method === 'GET' && path === '/api/home/overview') {
       const auth = await requireUser(request);
-      if (auth.response) return auth.response;
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
       const timezone = url.searchParams.get('timezone');
       try {
         const data = await getHomeOverview(auth.userId, timezone);
@@ -364,7 +485,10 @@ Deno.serve(async (request) => {
     const officialDiscardMatch = /^\/api\/library\/official\/([^/]+)\/discard-active$/.exec(path);
     if (method === 'POST' && officialDiscardMatch) {
       const auth = await requireUser(request);
-      if (auth.response) return auth.response;
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
       const libraryId = decodeURIComponent(officialDiscardMatch[1]);
       if (!isOfficialLibraryId(libraryId)) {
         status = 400;
@@ -395,7 +519,10 @@ Deno.serve(async (request) => {
 
     if (method === 'POST' && path === '/api/library/saved-words') {
       const auth = await requireUser(request);
-      if (auth.response) return auth.response;
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
       const source = resolveSavedWordSource(body?.source);
       if (typeof body?.vocabularyItemId !== 'string' || body.vocabularyItemId.trim().length === 0) {
         status = 400;
@@ -423,7 +550,10 @@ Deno.serve(async (request) => {
 
     if (method === 'POST' && path === '/api/library/saved-words/cleanup') {
       const auth = await requireUser(request);
-      if (auth.response) return auth.response;
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
       try {
         const result = await cleanupSavedLibrary({ apply: true, userId: auth.userId, sampleLimit: 0 });
         status = 200;
@@ -444,7 +574,10 @@ Deno.serve(async (request) => {
     const savedWordDeleteMatch = /^\/api\/library\/saved-words\/([^/]+)$/.exec(path);
     if (method === 'DELETE' && savedWordDeleteMatch) {
       const auth = await requireUser(request);
-      if (auth.response) return auth.response;
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
       const vocabularyItemId = decodeURIComponent(savedWordDeleteMatch[1]);
       if (!vocabularyItemId) {
         status = 400;
@@ -468,7 +601,10 @@ Deno.serve(async (request) => {
     const groupDeleteMatch = /^\/api\/library\/groups\/([^/]+)$/.exec(path);
     if (method === 'DELETE' && groupDeleteMatch) {
       const auth = await requireUser(request);
-      if (auth.response) return auth.response;
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
       const groupId = decodeURIComponent(groupDeleteMatch[1]);
       if (!groupId) {
         status = 400;
@@ -545,10 +681,11 @@ Deno.serve(async (request) => {
     return errorResponse(request, 'Not found', status);
   } catch (error) {
     status = 500;
-    logger.error('Unhandled API Error', error, { endpoint: path, method });
+    logger.error('Unhandled API Error', error, requestLogContext(request, { endpoint: path, method }));
     return errorResponse(request, error instanceof Error ? error.message : String(error), status);
   } finally {
     logger.info(`${method} ${path} ${status} - ${Date.now() - start}ms`, {
+      request_id: requestId,
       method,
       url: path,
       status,

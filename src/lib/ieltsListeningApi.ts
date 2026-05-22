@@ -14,6 +14,7 @@ import type {
   IeltsListeningTestSummary,
 } from '../types';
 import { supabase } from './supabase';
+import { apiFetch } from './api';
 import {
   evaluateIeltsListeningAnswers,
   normalizeIeltsAnswerValue,
@@ -493,41 +494,33 @@ export async function submitIeltsListeningAttempt({
   const evaluation = evaluateIeltsListeningAnswers(questions, answers);
   const submittedAt = new Date().toISOString();
 
-  const { data: attempt, error: attemptError } = await supabase
-    .from('ielts_listening_attempts')
-    .insert({
-      user_id: userId,
-      test_id: test.id,
-      status: 'submitted',
-      started_at: startedAt,
-      submitted_at: submittedAt,
-      elapsed_seconds: elapsedSeconds,
+  const response = await apiFetch('/api/ielts/listening/attempts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      testId: test.id,
+      startedAt,
+      submittedAt,
+      elapsedSeconds,
       score: evaluation.score,
-      total_questions: evaluation.totalQuestions,
-    })
-    .select('id')
-    .single();
+      totalQuestions: evaluation.totalQuestions,
+      responses: evaluation.responses.map((result) => ({
+        questionId: result.questionId,
+        questionNumber: result.questionNumber,
+        response: normalizeIeltsAnswerValue(result.response),
+        correctAnswer: normalizeIeltsAnswerValue(result.correctAnswer),
+        isCorrect: result.isCorrect,
+      })),
+    }),
+  });
 
-  if (attemptError || !attempt) {
-    throw new Error(`ielts_listening_attempts insert failed: ${attemptError?.message ?? 'missing row'}`);
+  const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+  if (!response.ok) {
+    throw new Error((payload as { error?: string }).error ?? `HTTP ${response.status}`);
   }
 
-  const responseRows = evaluation.responses.map((response) => ({
-    attempt_id: attempt.id,
-    question_id: response.questionId,
-    question_number: response.questionNumber,
-    response_json: normalizeIeltsAnswerValue(response.response),
-    is_correct: response.isCorrect,
-    correct_answer_json: normalizeIeltsAnswerValue(response.correctAnswer),
-  }));
-
-  if (responseRows.length > 0) {
-    const { error: responseError } = await supabase
-      .from('ielts_listening_responses')
-      .insert(responseRows);
-
-    if (responseError) throw new Error(`ielts_listening_responses insert failed: ${responseError.message}`);
-  }
+  const attempt = (payload as { data?: { id?: string; submittedAt?: string } }).data;
+  if (!attempt?.id) throw new Error('ielts_listening_attempts insert failed: missing row');
 
   return {
     id: attempt.id,
@@ -538,7 +531,7 @@ export async function submitIeltsListeningAttempt({
     score: evaluation.score,
     totalQuestions: evaluation.totalQuestions,
     elapsedSeconds,
-    submittedAt,
+    submittedAt: attempt.submittedAt ?? submittedAt,
     responses: evaluation.responses as IeltsListeningResponseResult[],
   };
 }

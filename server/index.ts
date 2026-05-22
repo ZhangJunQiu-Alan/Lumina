@@ -1,5 +1,6 @@
 import 'dotenv/config';
-import express from 'express';
+import { randomUUID } from 'node:crypto';
+import express, { type Response } from 'express';
 import { logger } from './logger.js';
 import {
   enrichWords,
@@ -20,12 +21,15 @@ import {
 import { cleanupSavedLibrary } from './savedLibraryCleanup.js';
 import { requireAuth, type AuthenticatedRequest } from './auth.js';
 import { getHomeOverview } from './home.js';
+import { submitIeltsListeningAttempt, submitIeltsReadingAttempt } from './ieltsAttempts.js';
 import {
   ensureLiteVocabularyEntry,
   lemmatizeVocabularyWord,
   lookupWordForPopover,
+  persistFullVocabularyEntries,
   queueFullEnrichmentForWord,
   sanitizeLookupWord,
+  type VocabularySourceType,
 } from './vocab.js';
 import { isOfficialLibraryId } from '../src/lib/officialLibrary.js';
 import { analyzeWordBatch, formatDuplicateWordsMessage } from '../shared/wordBatch.js';
@@ -33,12 +37,31 @@ import { analyzeWordBatch, formatDuplicateWordsMessage } from '../shared/wordBat
 const app = express();
 app.use(express.json());
 
+const requestIdHeader = 'X-Request-Id';
+
+function resolveRequestId(value: string | undefined) {
+  const trimmed = value?.trim();
+  return trimmed || randomUUID();
+}
+
+function requestLogContext(res: Response, context: Record<string, unknown> = {}) {
+  return {
+    request_id: res.locals.requestId,
+    ...context,
+  };
+}
+
 // Request logging middleware
 app.use((req, res, next) => {
   const start = Date.now();
+  const requestId = resolveRequestId(req.header(requestIdHeader));
+  res.locals.requestId = requestId;
+  res.setHeader(requestIdHeader, requestId);
+
   res.on('finish', () => {
     const duration = Date.now() - start;
     logger.info(`${req.method} ${req.originalUrl} ${res.statusCode} - ${duration}ms`, {
+      request_id: requestId,
       method: req.method,
       url: req.originalUrl,
       status: res.statusCode,
@@ -64,7 +87,7 @@ app.use((req, res, next) => {
   const origin = req.header('Origin');
 
   res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
 
   if (!origin) {
@@ -114,6 +137,10 @@ function resolveGeminiSource(value: unknown, fallback: string) {
   return normalized || fallback;
 }
 
+function resolveVocabularySourceType(value: unknown): VocabularySourceType {
+  return value === 'system' ? 'system' : 'custom';
+}
+
 // POST /api/vocab/enrich
 app.post('/api/vocab/enrich', async (req, res) => {
   const { words } = req.body;
@@ -130,7 +157,7 @@ app.post('/api/vocab/enrich', async (req, res) => {
     res.json({ data });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/vocab/enrich', e, { endpoint: '/api/vocab/enrich', source });
+    logger.error('API Error: /api/vocab/enrich', e, requestLogContext(res, { endpoint: '/api/vocab/enrich', source }));
     
     if (e instanceof EnrichmentResponseValidationError) {
       return res.status(e.statusCode).json({ error: message });
@@ -155,7 +182,7 @@ app.post('/api/vocab/lite-enrich', async (req, res) => {
     res.json({ data });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/vocab/lite-enrich', e, { endpoint: '/api/vocab/lite-enrich', word, source });
+    logger.error('API Error: /api/vocab/lite-enrich', e, requestLogContext(res, { endpoint: '/api/vocab/lite-enrich', word, source }));
 
     if (e instanceof EnrichmentResponseValidationError) {
       return res.status(e.statusCode).json({ error: message });
@@ -180,7 +207,7 @@ app.post('/api/vocab/lemmatize', async (req, res) => {
     res.json({ data });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/vocab/lemmatize', e, { endpoint: '/api/vocab/lemmatize', word, source });
+    logger.error('API Error: /api/vocab/lemmatize', e, requestLogContext(res, { endpoint: '/api/vocab/lemmatize', word, source }));
 
     if (e instanceof EnrichmentResponseValidationError) {
       return res.status(e.statusCode).json({ error: message });
@@ -205,7 +232,7 @@ app.post('/api/vocab/lookup', requireAuth, async (req: AuthenticatedRequest, res
     res.json(data ? { data } : { data: null, missing: true });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/vocab/lookup', e, { endpoint: '/api/vocab/lookup', user_id: userId, word });
+    logger.error('API Error: /api/vocab/lookup', e, requestLogContext(res, { endpoint: '/api/vocab/lookup', user_id: userId, word }));
 
     if (e instanceof EnrichmentResponseValidationError) {
       return res.status(e.statusCode).json({ error: message });
@@ -234,7 +261,32 @@ app.post('/api/vocab/full-enrich', requireAuth, async (req: AuthenticatedRequest
     res.status(result.queued ? 202 : 200).json(result);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/vocab/full-enrich', e, { endpoint: '/api/vocab/full-enrich', user_id: userId, word });
+    logger.error('API Error: /api/vocab/full-enrich', e, requestLogContext(res, { endpoint: '/api/vocab/full-enrich', user_id: userId, word }));
+    res.status(500).json({ error: message });
+  }
+});
+
+// POST /api/vocab/persist
+app.post('/api/vocab/persist', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { entries } = req.body ?? {};
+  const sourceType = resolveVocabularySourceType(req.body?.sourceType);
+
+  if (!Array.isArray(entries)) {
+    return res.status(400).json({ error: 'Missing entries array' });
+  }
+
+  const userId = req.authUserId!;
+  try {
+    const data = await persistFullVocabularyEntries(entries, sourceType);
+    res.json({ data });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/vocab/persist', e, requestLogContext(res, {
+      endpoint: '/api/vocab/persist',
+      user_id: userId,
+      source_type: sourceType,
+      entry_count: entries.length,
+    }));
     res.status(500).json({ error: message });
   }
 });
@@ -255,10 +307,10 @@ app.post('/api/vocab/article', async (req, res) => {
     res.json({ data: article });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/vocab/article', e, {
+    logger.error('API Error: /api/vocab/article', e, requestLogContext(res, {
       endpoint: '/api/vocab/article',
       word_count: cleaned.length,
-    });
+    }));
     res.status(500).json({ error: message });
   }
 });
@@ -290,7 +342,7 @@ app.post('/api/review/attempt', requireAuth, async (req: AuthenticatedRequest, r
     res.json({ data: result });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/review/attempt', e, { endpoint: '/api/review/attempt', user_id: userId });
+    logger.error('API Error: /api/review/attempt', e, requestLogContext(res, { endpoint: '/api/review/attempt', user_id: userId }));
     res.status(500).json({ error: message });
   }
 });
@@ -308,7 +360,47 @@ app.post('/api/review/batch-attempt', requireAuth, async (req: AuthenticatedRequ
     res.json({ data: results });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/review/batch-attempt', e, { endpoint: '/api/review/batch-attempt', user_id: userId });
+    logger.error('API Error: /api/review/batch-attempt', e, requestLogContext(res, { endpoint: '/api/review/batch-attempt', user_id: userId }));
+    res.status(500).json({ error: message });
+  }
+});
+
+// POST /api/ielts/reading/attempts
+app.post('/api/ielts/reading/attempts', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.authUserId!;
+  const responseCount = Array.isArray(req.body?.responses) ? req.body.responses.length : 0;
+
+  try {
+    const data = await submitIeltsReadingAttempt(userId, req.body);
+    res.json({ data });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/ielts/reading/attempts', e, requestLogContext(res, {
+      endpoint: '/api/ielts/reading/attempts',
+      user_id: userId,
+      test_id: req.body?.testId,
+      response_count: responseCount,
+    }));
+    res.status(500).json({ error: message });
+  }
+});
+
+// POST /api/ielts/listening/attempts
+app.post('/api/ielts/listening/attempts', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.authUserId!;
+  const responseCount = Array.isArray(req.body?.responses) ? req.body.responses.length : 0;
+
+  try {
+    const data = await submitIeltsListeningAttempt(userId, req.body);
+    res.json({ data });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/ielts/listening/attempts', e, requestLogContext(res, {
+      endpoint: '/api/ielts/listening/attempts',
+      user_id: userId,
+      test_id: req.body?.testId,
+      response_count: responseCount,
+    }));
     res.status(500).json({ error: message });
   }
 });

@@ -21,6 +21,8 @@
     "import:ielts-reading-figures": "node --import tsx --env-file=.env scripts/import-ielts-reading-figures.ts",
     "import:ielts-listening": "node --import tsx --env-file=.env scripts/import-ielts-listening.ts",
     "lint": "tsc --noEmit",
+    "check:edge": "deno check supabase/functions/api/index.ts",
+    "check:audit": "npm audit --audit-level=moderate",
     "test:review": "tsx scripts/test-review-rules.ts",
     "test:cloze": "tsx scripts/test-cloze.ts",
     "test:enrichment": "tsx scripts/test-enrichment-normalization.ts",
@@ -28,9 +30,14 @@
     "test:session": "tsx scripts/test-learning-session.ts",
     "test:word-batch": "tsx scripts/test-word-batch.ts",
     "test:routine-date": "tsx scripts/test-routine-date.ts",
+    "test:official-library": "tsx scripts/test-official-library.ts",
+    "test:hardening": "tsx scripts/test-enterprise-hardening-contracts.ts",
     "test:ielts-reading": "tsx scripts/test-ielts-reading-scoring.ts",
     "test:ielts-reading-text": "tsx scripts/test-ielts-reading-text.ts",
-    "test:ielts-listening": "tsx scripts/test-ielts-listening-scoring.ts && tsx scripts/test-ielts-listening-import.ts"
+    "test:ielts-listening": "tsx scripts/test-ielts-listening-scoring.ts && tsx scripts/test-ielts-listening-import.ts",
+    "test:core": "npm run test:review && npm run test:cloze && npm run test:enrichment && npm run test:clickable-text && npm run test:session && npm run test:word-batch && npm run test:routine-date && npm run test:official-library && npm run test:hardening",
+    "test:ielts": "npm run test:ielts-reading && npm run test:ielts-reading-text && npm run test:ielts-listening",
+    "test:all": "npm run test:core && npm run test:ielts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
