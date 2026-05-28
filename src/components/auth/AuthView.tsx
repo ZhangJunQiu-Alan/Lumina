@@ -444,24 +444,26 @@ export const AuthView = () => {
   };
 
   return (
-    <main className="auth-page min-h-screen px-3 py-5 sm:px-4 md:px-8 md:py-8">
-      <div className="mx-auto grid min-h-[calc(100vh-2.5rem)] w-full max-w-5xl items-start gap-6 lg:grid-cols-2 lg:items-center">
+    <main className="auth-page h-svh overflow-hidden px-3 py-4 sm:px-4 md:px-8 md:py-6">
+      <div className="mx-auto grid h-full w-full max-w-5xl gap-6 lg:grid-cols-2 lg:items-stretch">
         <motion.aside
           initial={{ opacity: 0, x: -18 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.45 }}
-          className="auth-pass-panel w-full min-w-0"
+          className="auth-pass-panel flex h-full w-full min-w-0 flex-col"
         >
-          <LuminaLogo size={42} />
-          <IslandBadge tone="yellow" className="mt-6 md:mt-8">账号入口</IslandBadge>
-          <h1 className="mt-4 text-3xl font-black leading-tight tracking-tight text-text-primary sm:text-4xl md:mt-5 md:text-5xl">
+          <LuminaLogo size={38} />
+          <IslandBadge tone="yellow" className="mt-4 md:mt-5">账号入口</IslandBadge>
+          <h1 className="mt-3 text-3xl font-black leading-tight tracking-tight text-text-primary md:mt-4 md:text-4xl">
             {story.title}
           </h1>
-          <p className="mt-4 text-base font-bold leading-7 text-text-secondary md:mt-5 md:leading-8">
+          <p className="mt-3 text-sm font-bold leading-6 text-text-secondary md:mt-4">
             {story.body}
           </p>
 
-          <div className="auth-route-card mt-6 md:mt-9">
+          <div className="flex-1" />
+
+          <div className="auth-route-card">
             <div className="auth-route-card__line" />
             {story.items.map((item, index) => (
               <div key={item} className="auth-route-stop">
@@ -471,7 +473,7 @@ export const AuthView = () => {
             ))}
           </div>
 
-          <div className="mt-6 grid gap-3 sm:grid-cols-3 md:mt-8 lg:grid-cols-1 xl:grid-cols-3">
+          <div className="mt-4 grid gap-2.5 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
             {[
               { icon: BookOpen, label: '词库' },
               { icon: History, label: '复习' },
@@ -492,9 +494,9 @@ export const AuthView = () => {
           initial={{ opacity: 0, x: 18 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.45, delay: 0.04 }}
-          className="w-full min-w-0"
+          className="flex h-full w-full min-w-0 flex-col"
         >
-          <IslandPanel as="div" variant="elevated" className="auth-form-panel w-full max-w-full p-5 md:p-8">
+          <IslandPanel as="div" variant="elevated" className="auth-form-panel flex h-full w-full max-w-full flex-col p-5 md:p-7">
             <div className="auth-tab-switcher">
               {([
                 { id: 'login', label: '登录' },
@@ -514,19 +516,19 @@ export const AuthView = () => {
             <AnimatePresence mode="wait">
               <motion.div
                 key={mode}
-                initial={{ opacity: 0, y: 18 }}
+                initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -18 }}
+                exit={{ opacity: 0, y: -14 }}
                 transition={{ duration: 0.22 }}
-                className="mt-8"
+                className="mt-5 flex min-h-0 flex-1 flex-col overflow-y-auto"
               >
                 {title.kicker && (
                   <p className="text-[11px] font-black uppercase tracking-[0.24em] text-apple-blue">{title.kicker}</p>
                 )}
-                <h2 className={`${title.kicker ? 'mt-3' : ''} text-3xl font-black leading-tight tracking-tight text-text-primary md:text-4xl`}>
+                <h2 className={`${title.kicker ? 'mt-2' : ''} text-2xl font-black leading-tight tracking-tight text-text-primary md:text-3xl`}>
                   {title.heading}
                 </h2>
-                {title.body && <p className="mt-4 text-sm font-semibold leading-7 text-text-secondary">{title.body}</p>}
+                {title.body && <p className="mt-2 text-sm font-semibold leading-6 text-text-secondary">{title.body}</p>}
 
                 {(mode === 'login' || mode === 'register') && (isGoogleAuthEnabled ? (
                   <>
@@ -535,7 +537,7 @@ export const AuthView = () => {
                       disabled={isAuthLoading || isGoogleSubmitting}
                       aria-busy={isGoogleSubmitting}
                       onClick={() => { void handleGoogle(); }}
-                      className="mt-7 flex w-full items-center justify-center gap-2.5 rounded-[22px] bg-[#2c1c0e] px-6 py-[14px] text-sm font-black tracking-wide text-[#fff8e8] shadow-[0_3px_0_0_#180e06,0_12px_24px_rgba(44,28,14,0.18)] transition-all hover:-translate-y-0.5 active:translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
+                      className="mt-5 flex w-full items-center justify-center gap-2.5 rounded-[22px] bg-[#2c1c0e] px-6 py-[13px] text-sm font-black tracking-wide text-[#fff8e8] shadow-[0_3px_0_0_#180e06,0_12px_24px_rgba(44,28,14,0.18)] transition-all hover:-translate-y-0.5 active:translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       <Chrome className="h-[18px] w-[18px] opacity-90" />
                       {isGoogleSubmitting ? '正在跳到 Google...' : '用 Google 登录'}
@@ -548,7 +550,7 @@ export const AuthView = () => {
                   </div>
                 ))}
 
-                <form onSubmit={handleSubmit} className="mt-7 space-y-4">
+                <form onSubmit={handleSubmit} className="mt-5 space-y-3">
                   {mode === 'register' && (
                     <AuthField
                       icon={UserRound}
@@ -701,12 +703,12 @@ export const AuthView = () => {
                   }}
                   tone="neutral"
                   block
-                  className="mt-6"
+                  className="mt-3"
                 >
                   {mode === 'forgot' || mode === 'reset' ? '回到登录' : '返回首页'}
                 </IslandButton>
 
-                <p className="mt-5 text-center text-xs leading-6 text-text-secondary">
+                <p className="mt-4 pb-2 text-center text-xs leading-5 text-text-secondary">
                   继续使用即表示你同意
                   {' '}
                   <Link to="/terms" className="font-bold text-text-primary underline decoration-black/20 underline-offset-4">
