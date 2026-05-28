@@ -73,6 +73,36 @@ assert.deepEqual(incompleteResult.summary, {
   unansweredCount: 2,
   accuracyPercent: 33,
 });
+
+const anyOrderResult = evaluateIeltsReadingAnswers(
+  [
+    { ...baseQuestion, id: 'q33', groupId: 'group-any-order', number: 33, answer: ['A', 'C', 'F'], type: 'multiple_choice_multi' },
+    { ...baseQuestion, id: 'q34', groupId: 'group-any-order', number: 34, answer: ['A', 'C', 'F'], type: 'multiple_choice_multi' },
+    { ...baseQuestion, id: 'q35', groupId: 'group-any-order', number: 35, answer: ['A', 'C', 'F'], type: 'multiple_choice_multi' },
+  ],
+  {
+    33: 'F',
+    34: 'A',
+    35: 'C',
+  },
+);
+
+assert.equal(anyOrderResult.score, 3);
+
+const duplicateAnyOrderResult = evaluateIeltsReadingAnswers(
+  [
+    { ...baseQuestion, id: 'q33', groupId: 'group-any-order', number: 33, answer: ['A', 'C', 'F'], type: 'multiple_choice_multi' },
+    { ...baseQuestion, id: 'q34', groupId: 'group-any-order', number: 34, answer: ['A', 'C', 'F'], type: 'multiple_choice_multi' },
+    { ...baseQuestion, id: 'q35', groupId: 'group-any-order', number: 35, answer: ['A', 'C', 'F'], type: 'multiple_choice_multi' },
+  ],
+  {
+    33: 'A',
+    34: 'A',
+    35: 'C',
+  },
+);
+
+assert.equal(duplicateAnyOrderResult.score, 2);
 assert.deepEqual(
   summarizeIeltsReadingResult([
     { response: ['a'], isCorrect: true },

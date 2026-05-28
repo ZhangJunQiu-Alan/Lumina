@@ -1177,6 +1177,7 @@ function QuestionInput({
 }) {
   const response = normalizeIeltsAnswerValue(value);
   const options = normalizeOptions(question.options.length > 0 ? question.options : group.options);
+  const isGroupedMultiChoice = question.type === 'multiple_choice_multi' && group.questions.length > 1;
 
   if (question.type === 'true_false_not_given' || question.type === 'yes_no_not_given') {
     const choices = question.type === 'true_false_not_given'
@@ -1195,6 +1196,26 @@ function QuestionInput({
             className={trueFalseChoiceClass(choice, response[0] === choice.toLowerCase())}
           >
             {choice}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  if (isGroupedMultiChoice && options.length > 0) {
+    return (
+      <div className="grid gap-2">
+        {options.map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            onClick={() => {
+              if (!disabled) onChange(option.key);
+            }}
+            disabled={disabled}
+            className={cx(optionButtonClass(response[0] === option.key.toLowerCase()), 'w-full justify-start text-left', disabled && 'cursor-not-allowed opacity-60')}
+          >
+            {option.key}. {option.text}
           </button>
         ))}
       </div>

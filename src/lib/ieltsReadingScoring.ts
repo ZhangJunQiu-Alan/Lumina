@@ -98,6 +98,18 @@ function matchesMultiAnswer(response: string[], correctAnswers: string[]): boole
   return unmatched.length === 0;
 }
 
+function uniqueAnswers(values: string[]): string[] {
+  return values.reduce<string[]>((unique, value) => (
+    unique.some((existing) => valuesMatch(existing, value)) ? unique : [...unique, value]
+  ), []);
+}
+
+function sharedAlternativeGroupKey(question: IeltsReadingQuestion, correctAnswer: string[]): string | null {
+  const uniqueCorrect = uniqueAnswers(correctAnswer);
+  if (uniqueCorrect.length <= 1) return null;
+  return `${question.groupId}:${uniqueCorrect.map((value) => normalizeIeltsAnswerText(value)).sort().join('|')}`;
+}
+
 export function isIeltsQuestionCorrect(
   question: Pick<IeltsReadingQuestion, 'type' | 'answer'>,
   responseValue: IeltsReadingAnswerValue,
@@ -129,6 +141,29 @@ export function evaluateIeltsReadingAnswers(
       isCorrect,
     };
   });
+  const sharedAlternativeGroups = new Map<string, number[]>();
+  responses.forEach((response, index) => {
+    const key = sharedAlternativeGroupKey(questions[index], response.correctAnswer);
+    if (!key) return;
+    sharedAlternativeGroups.set(key, [...(sharedAlternativeGroups.get(key) ?? []), index]);
+  });
+
+  for (const indexes of sharedAlternativeGroups.values()) {
+    if (indexes.length < 2) continue;
+    const correctOptions = uniqueAnswers(responses[indexes[0]].correctAnswer);
+    if (correctOptions.length !== indexes.length) continue;
+
+    const remaining = [...correctOptions];
+    for (const index of indexes) responses[index].isCorrect = false;
+    for (const index of indexes.sort((left, right) => questions[left].number - questions[right].number)) {
+      const response = responses[index].response;
+      if (response.length !== 1) continue;
+      const matchedIndex = remaining.findIndex((correct) => valuesMatch(response[0], correct));
+      if (matchedIndex < 0) continue;
+      responses[index].isCorrect = true;
+      remaining.splice(matchedIndex, 1);
+    }
+  }
 
   return {
     score: responses.filter((response) => response.isCorrect).length,
