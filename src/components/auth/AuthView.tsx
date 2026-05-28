@@ -445,7 +445,7 @@ export const AuthView = () => {
 
   return (
     <main className="auth-page min-h-screen px-3 py-5 sm:px-4 md:px-8 md:py-8">
-      <div className="mx-auto grid min-h-[calc(100vh-2.5rem)] w-full max-w-6xl items-start gap-5 lg:grid-cols-[0.88fr_1.12fr] lg:items-center">
+      <div className="mx-auto grid min-h-[calc(100vh-2.5rem)] w-full max-w-5xl items-start gap-6 lg:grid-cols-2 lg:items-center">
         <motion.aside
           initial={{ opacity: 0, x: -18 }}
           animate={{ opacity: 1, x: 0 }}

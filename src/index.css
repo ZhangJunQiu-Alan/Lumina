@@ -494,7 +494,11 @@
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  overflow: visible;
+  overflow: hidden;
+  border-radius: 40px 48px 44px 52px / 52px 42px 50px 40px !important;
+  box-shadow:
+    0 6px 0 rgba(189, 174, 160, 0.78),
+    0 26px 62px rgba(107, 92, 67, 0.16) !important;
 }
 
 .auth-tab-switcher {
