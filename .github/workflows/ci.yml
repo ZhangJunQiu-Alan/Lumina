@@ -30,6 +30,9 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
+      - name: Check production API gateway
+        run: npm run check:production-api-base
+
       - name: Run Core Tests
         run: npm run test:core
         env:

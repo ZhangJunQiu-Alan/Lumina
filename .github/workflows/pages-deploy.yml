@@ -32,7 +32,7 @@ jobs:
           VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
         run: |
           missing=()
-          for name in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN VITE_SUPABASE_URL VITE_SUPABASE_PUBLISHABLE_KEY VITE_API_BASE_URL; do
+          for name in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN VITE_SUPABASE_URL VITE_SUPABASE_PUBLISHABLE_KEY; do
             if [ -z "${!name}" ]; then
               missing+=("$name")
             fi
@@ -71,6 +71,10 @@ jobs:
           VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
           VITE_GOOGLE_AUTH_ENABLED: ${{ vars.VITE_GOOGLE_AUTH_ENABLED }}
         run: npm run build
+
+      - name: Check production API gateway
+        if: steps.preflight.outputs.skip_deploy != 'true'
+        run: npm run check:production-api-base
 
       - name: Deploy to Cloudflare Pages
         if: steps.preflight.outputs.skip_deploy != 'true'

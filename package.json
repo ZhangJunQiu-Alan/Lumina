@@ -21,6 +21,7 @@
     "import:ielts-reading-figures": "node --import tsx --env-file=.env scripts/import-ielts-reading-figures.ts",
     "import:ielts-listening": "node --import tsx --env-file=.env scripts/import-ielts-listening.ts",
     "lint": "tsc --noEmit",
+    "check:production-api-base": "node scripts/check-production-api-base.mjs",
     "check:edge": "deno check supabase/functions/api/index.ts",
     "check:audit": "npm audit --audit-level=moderate",
     "test:review": "tsx scripts/test-review-rules.ts",
