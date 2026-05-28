@@ -1,5 +1,6 @@
 import { supabaseAdmin } from './supabase.ts';
 import {
+  FIRST_MEMORY_STATE,
   intervalForState,
   MAX_DAILY_REVIEW_WORDS,
   MemoryState,
@@ -23,6 +24,13 @@ export interface ReviewAttemptInput {
   source: ReviewAttemptSource;
   wasCorrect: boolean;
   elapsedMs: number;
+  timestamp?: number;
+}
+
+export interface MarkVocabularyUnknownInput {
+  userId: string;
+  vocabularyItemId: string;
+  learningGroupId?: string | null;
   timestamp?: number;
 }
 
@@ -394,6 +402,104 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
       source: input.source,
       result,
       graduated,
+      nextReviewAt,
+    },
+  };
+}
+
+export async function markVocabularyUnknown(input: MarkVocabularyUnknownInput): Promise<ReviewAttemptResponse> {
+  const now = input.timestamp ? new Date(input.timestamp) : new Date();
+  const assessedAt = now.toISOString();
+  const source: ReviewAttemptSource = 'review';
+  const result: ReviewResultType = 'wrong';
+
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from('review_states')
+    .select('user_id, vocabulary_item_id, memory_state, review_count, lapse_count, last_reviewed_at, next_review_at, ease_factor, graduated_at, last_assessed_at')
+    .eq('user_id', input.userId)
+    .eq('vocabulary_item_id', input.vocabularyItemId)
+    .maybeSingle<ReviewStateRow & { last_assessed_at: string | null }>();
+
+  if (existingError) {
+    throw new Error(`review_states lookup failed: ${existingError.message}`);
+  }
+
+  const lastAssessedAt = existing?.last_assessed_at ? new Date(existing.last_assessed_at).getTime() : null;
+  const incomingAssessedAt = now.getTime();
+
+  if (existing?.last_assessed_at && lastAssessedAt !== null && lastAssessedAt > incomingAssessedAt) {
+    const currentState = existing.memory_state;
+    return {
+      memoryState: currentState,
+      nextReviewAt: existing.next_review_at,
+      graduated: false,
+      ignored: true,
+      transition: {
+        from: currentState,
+        to: currentState,
+        source,
+        result,
+        graduated: false,
+        nextReviewAt: existing.next_review_at,
+      },
+    };
+  }
+
+  const currentState = existing?.memory_state ?? null;
+  const nextState = FIRST_MEMORY_STATE;
+  const nextReviewAt = toNextReviewAt(nextState, now);
+
+  const { error: upsertError } = await supabaseAdmin
+    .from('review_states')
+    .upsert({
+      user_id: input.userId,
+      vocabulary_item_id: input.vocabularyItemId,
+      ease_factor: existing?.ease_factor ?? 2.5,
+      interval_days: intervalForState(nextState),
+      last_reviewed_at: assessedAt,
+      next_review_at: nextReviewAt,
+      review_count: (existing?.review_count ?? 0) + 1,
+      lapse_count: (existing?.lapse_count ?? 0) + 1,
+      memory_state: nextState,
+      last_result: result,
+      last_elapsed_ms: 0,
+      last_assessed_at: assessedAt,
+      graduated_at: null,
+    }, { onConflict: 'user_id,vocabulary_item_id' });
+
+  if (upsertError) {
+    throw new Error(`review_states unknown mark failed: ${upsertError.message}`);
+  }
+
+  const { error: eventError } = await supabaseAdmin
+    .from('review_events')
+    .insert({
+      user_id: input.userId,
+      vocabulary_item_id: input.vocabularyItemId,
+      learning_group_id: input.learningGroupId ?? null,
+      source,
+      was_correct: false,
+      elapsed_ms: 0,
+      previous_state: currentState,
+      next_state: nextState,
+      next_review_at: nextReviewAt,
+      created_at: assessedAt,
+    });
+
+  if (eventError) {
+    throw new Error(`review_events unknown mark failed: ${eventError.message}`);
+  }
+
+  return {
+    memoryState: nextState,
+    nextReviewAt,
+    graduated: false,
+    transition: {
+      from: currentState,
+      to: nextState,
+      source,
+      result,
+      graduated: false,
       nextReviewAt,
     },
   };

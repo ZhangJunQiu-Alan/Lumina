@@ -34,7 +34,7 @@ export function LuminaWordmark({ className = '' }: LuminaWordmarkProps) {
       viewBox="0 0 420 96"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className={`h-7 w-auto overflow-visible text-[#102544] ${className}`.trim()}
+      className={`h-7 w-auto overflow-visible text-[#725d42] ${className}`.trim()}
     >
       <g stroke="currentColor" strokeWidth="11.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M22 18V84H70" />
@@ -47,7 +47,7 @@ export function LuminaWordmark({ className = '' }: LuminaWordmarkProps) {
       </g>
       <path
         d="M242 4C244.2 13.7 248.3 17.8 258 20C248.3 22.2 244.2 26.3 242 36C239.8 26.3 235.7 22.2 226 20C235.7 17.8 239.8 13.7 242 4Z"
-        fill="#F7BE54"
+        fill="#FFCC00"
       />
     </svg>
   );
@@ -63,7 +63,7 @@ export function LuminaLogo({
 }: LuminaLogoProps) {
   return (
     <div className={`inline-flex items-center gap-3.5 ${className}`.trim()}>
-      <LuminaMark size={size} className={`shrink-0 drop-shadow-[0_8px_18px_rgba(0,122,255,0.12)] ${markClassName}`.trim()} />
+      <LuminaMark size={size} className={`shrink-0 drop-shadow-[0_8px_14px_rgba(114,93,66,0.18)] ${markClassName}`.trim()} />
       {showWordmark && (
         <LuminaWordmark className={`${wordmarkClassName} ${textClassName}`.trim()} />
       )}

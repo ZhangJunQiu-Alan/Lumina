@@ -1,6 +1,7 @@
 export type MemoryState = 'new' | 'fuzzy' | 'slow_recall' | 'stable_recall' | 'mastered';
 export type ReviewAttemptSource = 'round2' | 'review';
 export type ReviewResultType = 'wrong' | 'slow_correct' | 'fast_correct';
+export const FIRST_MEMORY_STATE: MemoryState = 'fuzzy';
 
 export interface SortableDueReviewRow {
   memory_state: MemoryState;

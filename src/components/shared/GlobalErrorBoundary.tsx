@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { AlertCircle, RefreshCcw, Home } from 'lucide-react';
+import { IslandButton } from './AnimalPrimitives';
 
 interface Props {
   children: ReactNode;
@@ -44,7 +45,7 @@ export class GlobalErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-[#F5F5F7] px-6 py-20 flex items-center justify-center">
+        <div className="min-h-screen px-6 py-20 flex items-center justify-center">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -54,10 +55,9 @@ export class GlobalErrorBoundary extends Component<Props, State> {
               <AlertCircle className="w-8 h-8 text-apple-red" />
             </div>
             
-            <h1 className="text-3xl font-black text-text-primary tracking-tight">这页刚刚断开了</h1>
+            <h1 className="text-3xl font-black text-text-primary tracking-tight">这页刚才出错了</h1>
             <p className="mt-4 text-text-secondary leading-7">
-              刚才出了点意外，可能是网络波动，也可能是页面状态没有接稳。
-              别担心，你的学习进度通常已经自动写回了。
+              页面遇到错误。学习进度通常会自动保存，可以刷新后再试。
             </p>
 
             {process.env.NODE_ENV === 'development' && this.state.error && (
@@ -67,20 +67,22 @@ export class GlobalErrorBoundary extends Component<Props, State> {
             )}
 
             <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
-              <button
+              <IslandButton
                 onClick={this.handleReset}
-                className="flex items-center justify-center gap-2 px-8 py-4 bg-apple-blue text-white font-black rounded-2xl shadow-xl shadow-apple-blue/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                tone="mint"
+                size="large"
+                icon={<RefreshCcw className="w-5 h-5" />}
               >
-                <RefreshCcw className="w-5 h-5" />
                 刷新后重试
-              </button>
-              <button
+              </IslandButton>
+              <IslandButton
                 onClick={this.handleGoHome}
-                className="flex items-center justify-center gap-2 px-8 py-4 bg-white/80 text-text-primary font-black rounded-2xl border border-black/5 hover:bg-white transition-all"
+                tone="neutral"
+                size="large"
+                icon={<Home className="w-5 h-5" />}
               >
-                <Home className="w-5 h-5" />
-                回到今天路线
-              </button>
+                回到首页
+              </IslandButton>
             </div>
           </motion.div>
         </div>

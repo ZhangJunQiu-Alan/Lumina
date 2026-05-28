@@ -100,7 +100,7 @@ function CompletionProgressRing({
           cy="66"
           r={radius}
           fill="none"
-          stroke="rgba(0,122,255,0.13)"
+          stroke="rgba(25,200,185,0.13)"
           strokeWidth="12"
         />
         <motion.circle
@@ -166,8 +166,8 @@ function SwitchOfficialModeDialog({
             <AlertTriangle className="h-6 w-6" />
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">切换官方路径模式</p>
-            <h3 className="mt-3 text-2xl font-black text-text-primary">要放弃上一组并切换吗？</h3>
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">切换学习顺序</p>
+            <h3 className="mt-3 text-2xl font-black text-text-primary">切换前要放弃未完成的一组吗？</h3>
             <p className="mt-3 text-sm leading-7 text-text-secondary">
               当前是{officialStudyModeLabel[currentMode]}学习，切到{officialStudyModeLabel[nextMode]}后，
               上一组未完成进度会被丢掉。已经实际学过的词会保留为模糊状态进入复习计划，没学过的词会回到官方词池。
@@ -191,7 +191,7 @@ function SwitchOfficialModeDialog({
             type="button"
             onClick={onConfirm}
             disabled={isConfirming}
-            className="inline-flex items-center gap-2 rounded-[22px] bg-apple-red px-5 py-3 text-sm font-black text-white shadow-[0_18px_34px_rgba(255,59,48,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:scale-100"
+            className="inline-flex items-center gap-2 rounded-[22px] bg-apple-red px-5 py-3 text-sm font-black text-white shadow-[0_18px_34px_rgba(224,90,90,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:scale-100"
           >
             {isConfirming && <Loader2 className="h-4 w-4 animate-spin" />}
             确认切换到{officialStudyModeLabel[nextMode]}
@@ -253,7 +253,7 @@ export function OfficialLibraryPanel({
     groupCountForNaming = existingGroupCount,
   ) => {
     if (!user) {
-      setErrorMsg('先登录，再把官方词库接进系统。');
+      setErrorMsg('先登录，再添加官方词库。');
       setStage('error');
       return;
     }
@@ -422,11 +422,11 @@ export function OfficialLibraryPanel({
           exit={{ opacity: 0, y: -12 }}
           className="relative w-full overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.84),rgba(240,246,255,0.72))] p-5 sm:p-7 jelly-shadow"
         >
-          <div className="pointer-events-none absolute -right-12 top-0 h-44 w-44 rounded-full bg-apple-blue/10 blur-3xl" />
-          <div className="pointer-events-none absolute bottom-0 left-0 h-36 w-36 rounded-full bg-apple-teal/10 blur-3xl" />
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-[linear-gradient(180deg,rgba(255,249,230,0.72),transparent)]" />
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-[linear-gradient(180deg,transparent,rgba(130,213,187,0.12))]" />
           <div className="relative space-y-5 sm:space-y-6">
             <div className="flex items-center gap-3 sm:gap-4">
-              <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[24px] bg-white text-apple-blue shadow-[0_14px_30px_rgba(0,122,255,0.10)] sm:h-16 sm:w-16">
+              <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[24px] bg-white text-apple-blue shadow-[0_14px_30px_rgba(25,200,185,0.10)] sm:h-16 sm:w-16">
                 <LibraryIcon className="h-6 w-6 sm:h-8 sm:w-8" />
               </div>
               <h3 className="min-w-0 truncate text-[1.2rem] font-black leading-tight text-text-primary sm:text-2xl">
@@ -441,7 +441,7 @@ export function OfficialLibraryPanel({
                   onClick={() => { void onOpenDetail(); }}
                   className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/88 px-3 py-1.5 text-[11px] font-bold text-text-secondary shadow-[0_8px_20px_rgba(0,0,0,0.05)] transition-colors hover:text-text-primary sm:px-4 sm:py-2 sm:text-sm"
                 >
-                  看这条路径
+                  查看词库
                   <ArrowRight className="h-3 w-3 sm:h-4 sm:w-4" />
                 </button>
               )}
@@ -467,7 +467,7 @@ export function OfficialLibraryPanel({
                       disabled={actionDisabled}
                       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-colors sm:px-4 sm:text-sm ${
                         active
-                          ? 'bg-apple-blue text-white shadow-[0_8px_16px_rgba(0,122,255,0.24)]'
+                          ? 'bg-apple-blue text-white shadow-[0_8px_16px_rgba(25,200,185,0.24)]'
                           : 'text-text-secondary hover:text-text-primary'
                       } ${actionDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
                     >
@@ -490,7 +490,7 @@ export function OfficialLibraryPanel({
                   void handleStartOfficial();
                 }}
                 disabled={actionDisabled}
-                className="inline-flex h-14 min-w-[118px] flex-1 items-center justify-center gap-2 rounded-[18px] bg-apple-blue px-4 text-sm font-black text-white shadow-[0_16px_34px_rgba(0,122,255,0.25)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 sm:h-16 sm:min-w-[146px] sm:flex-none sm:rounded-[22px] sm:text-base"
+                className="inline-flex h-14 min-w-[118px] flex-1 items-center justify-center gap-2 rounded-[18px] bg-apple-blue px-4 text-sm font-black text-white shadow-[0_16px_34px_rgba(25,200,185,0.25)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 sm:h-16 sm:min-w-[146px] sm:flex-none sm:rounded-[22px] sm:text-base"
               >
                 {ctaButtonLabel}
                 {!actionDisabled && <ArrowRight className="h-4 w-4" />}
@@ -536,12 +536,12 @@ export function OfficialLibraryPanel({
             <Loader2 className="h-10 w-10 animate-spin text-apple-blue" />
             <div>
               <p className="text-xl font-black text-text-primary">
-                {stage === 'resuming' ? '正在把你接回上次那一组…' : '这批官方词正在整理中…'}
+                {stage === 'resuming' ? '正在打开上次那一组…' : '这批官方词正在整理中…'}
               </p>
               <p className="mt-1 text-sm text-text-secondary">
                 {stage === 'resuming'
                   ? '会直接回到上次那一轮、那个词位。'
-                  : '先看系统里有没有，缺的再补齐；准备好就直接开始。'}
+                  : '先检查已有词条，缺的再补齐；准备好就直接开始。'}
               </p>
             </div>
           </div>

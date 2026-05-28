@@ -1,4 +1,4 @@
-import { enrichWordLite, enrichWords, type GeminiWordResult, type LiteEnrichResult } from './gemini.ts';
+import { enrichWordLite, enrichWords, enrichWordsLite, type GeminiWordResult, type LiteEnrichResult } from './gemini.ts';
 import { logger } from './logger.ts';
 import type { MemoryState } from './review-domain.ts';
 import { supabaseAdmin } from './supabase.ts';
@@ -537,15 +537,23 @@ export async function lemmatizeVocabularyWord(
     throw new Error('Missing word');
   }
 
-  const existingFormItem = await fetchVocabularyItemByForm(normalizedRequestedWord);
-  if (existingFormItem) {
-    return toLiteVocabularyResult(existingFormItem);
+  const existingItem = await resolveExistingVocabularyItem(normalizedRequestedWord);
+  if (existingItem) {
+    return toLiteVocabularyResult(existingItem);
   }
 
   const liteResult = await enrichWordLite(normalizedRequestedWord, {
     source,
     enrichmentType: 'lite',
   });
+
+  return persistLiteVocabularyResult(normalizedRequestedWord, liteResult);
+}
+
+async function persistLiteVocabularyResult(
+  normalizedRequestedWord: string,
+  liteResult: LiteEnrichResult,
+): Promise<LiteVocabularyResult> {
   const canonicalWord = normalizeWordKey(liteResult.word || normalizedRequestedWord);
   const requestedForm = normalizedRequestedWord !== canonicalWord ? normalizedRequestedWord : '';
   const forms = [...liteResult.forms, requestedForm].filter(Boolean);
@@ -585,6 +593,55 @@ export async function lemmatizeVocabularyWord(
 
   await insertVocabularyForms(item.id, canonicalWord, forms);
   return toLiteVocabularyResult(item);
+}
+
+export async function lemmatizeVocabularyWords(
+  words: string[],
+  source = 'import_lemmatize',
+): Promise<LiteVocabularyResult[]> {
+  const normalizedWords = words.map(sanitizeLookupWord).filter(Boolean);
+  if (normalizedWords.length === 0) return [];
+
+  const results = new Array<LiteVocabularyResult>(normalizedWords.length);
+  const missing: Array<{ word: string; index: number }> = [];
+
+  for (let index = 0; index < normalizedWords.length; index += 1) {
+    const word = normalizedWords[index];
+    const existingItem = await resolveExistingVocabularyItem(word);
+    if (existingItem) {
+      results[index] = await toLiteVocabularyResult(existingItem);
+      continue;
+    }
+
+    missing.push({ word, index });
+  }
+
+  if (missing.length > 0) {
+    const uniqueMissingWords = Array.from(new Set(missing.map((item) => item.word)));
+    const liteResults = await enrichWordsLite(uniqueMissingWords, {
+      source,
+      enrichmentType: 'lite',
+    });
+    const liteResultByWord = new Map(
+      uniqueMissingWords.map((word, index) => [word, liteResults[index]]),
+    );
+    const persistedResultByWord = new Map<string, LiteVocabularyResult>();
+
+    for (const item of missing) {
+      let persisted = persistedResultByWord.get(item.word);
+      if (!persisted) {
+        const liteResult = liteResultByWord.get(item.word);
+        if (!liteResult) {
+          throw new Error(`Missing lite enrichment result for ${item.word}`);
+        }
+        persisted = await persistLiteVocabularyResult(item.word, liteResult);
+        persistedResultByWord.set(item.word, persisted);
+      }
+      results[item.index] = persisted;
+    }
+  }
+
+  return results;
 }
 
 async function lookupSavedWord(userId: string, vocabularyItemId: string) {

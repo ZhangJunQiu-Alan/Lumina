@@ -1,6 +1,7 @@
 import { motion } from 'motion/react';
 import { ArrowRight, CheckCircle2, Trophy } from 'lucide-react';
 import { MemoryState, ReviewSummaryItem } from '../../types';
+import { IslandButton } from '../shared/AnimalPrimitives';
 
 interface ReviewResultsViewProps {
   items: ReviewSummaryItem[];
@@ -58,9 +59,9 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
         <div className="flex items-center justify-between gap-6">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">状态更新</p>
-            <h2 className="mt-2 text-3xl font-black">这一轮已经判完了</h2>
+            <h2 className="mt-2 text-3xl font-black">这一轮完成了</h2>
             <p className="mt-3 text-sm text-text-secondary">
-              一共过了 {items.length} 个词 · 记忆更牢固了 {upgradedCount} 个 · 稳定确认 {confirmedCount} 个 · 还要再见 {downgradedCount} 个 · 掌握 {graduatedCount} 个
+              一共过了 {items.length} 个词 · 升级 {upgradedCount} 个 · 稳定确认 {confirmedCount} 个 · 需要再复习 {downgradedCount} 个 · 掌握 {graduatedCount} 个
             </p>
           </div>
           <div className="w-16 h-16 rounded-2xl bg-apple-green/10 text-apple-green flex items-center justify-center">
@@ -92,7 +93,7 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
             ) : (
               <div className="flex items-center gap-3 text-sm font-bold">
                 <span className="rounded-full bg-black/5 px-3 py-1 text-text-secondary">
-                  {item.transition.from ? memoryStateLabel[item.transition.from] : '刚接进系统'}
+                  {item.transition.from ? memoryStateLabel[item.transition.from] : '刚加入'}
                 </span>
                 <ArrowRight className="w-4 h-4 text-text-secondary" />
                 <span className={`rounded-full px-3 py-1 ${
@@ -108,14 +109,16 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
         ))}
       </div>
 
-      <button
-        type="button"
+      <IslandButton
+        htmlType="button"
         onClick={onBackHome}
-        className="w-full py-5 bg-apple-blue text-white font-black text-lg rounded-2xl flex items-center justify-center gap-3 hover:scale-[1.01] active:scale-[0.99] transition-all jelly-shadow"
+        block
+        tone="mint"
+        size="large"
+        icon={<CheckCircle2 className="w-5 h-5" />}
       >
-        <CheckCircle2 className="w-5 h-5" />
         回首页看今天下一步
-      </button>
+      </IslandButton>
     </motion.div>
   );
 };

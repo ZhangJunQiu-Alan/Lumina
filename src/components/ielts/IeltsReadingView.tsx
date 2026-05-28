@@ -701,7 +701,7 @@ function optionButtonClass(active: boolean) {
   return cx(
     'min-h-11 rounded-2xl border px-4 py-3 text-sm font-black transition-all',
     active
-      ? 'border-apple-blue bg-apple-blue text-white shadow-[0_10px_20px_rgba(0,122,255,0.18)]'
+      ? 'border-apple-blue bg-apple-blue text-white shadow-[0_10px_20px_rgba(25,200,185,0.18)]'
       : 'border-black/8 bg-white/80 text-text-secondary hover:border-apple-blue/30 hover:text-text-primary',
   );
 }
@@ -953,7 +953,7 @@ function SubmitConfirmDialog({
             type="button"
             onClick={onConfirm}
             disabled={isSubmitting}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-apple-blue px-5 py-3 text-sm font-black text-white shadow-[0_16px_34px_rgba(0,122,255,0.22)] disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-apple-blue px-5 py-3 text-sm font-black text-white shadow-[0_16px_34px_rgba(25,200,185,0.22)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
             确认提交
@@ -1024,7 +1024,7 @@ function AnnotationNoteDialog({
           <button
             type="button"
             onClick={() => onSave(note.trim())}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-apple-blue px-5 py-3 text-sm font-black text-white shadow-[0_16px_34px_rgba(0,122,255,0.22)]"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-apple-blue px-5 py-3 text-sm font-black text-white shadow-[0_16px_34px_rgba(25,200,185,0.22)]"
           >
             <StickyNote className="h-4 w-4" />
             保存笔记
@@ -1081,7 +1081,7 @@ export function IeltsReadingHomeView() {
     <div className="mx-auto w-full max-w-7xl space-y-7">
       <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
         <div className="flex items-start gap-4">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] bg-apple-blue/12 text-apple-blue shadow-[0_16px_32px_rgba(0,122,255,0.12)]">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] bg-apple-blue/12 text-apple-blue shadow-[0_16px_32px_rgba(25,200,185,0.12)]">
             <BookOpenCheck className="h-7 w-7" />
           </div>
           <div className="min-w-0">
@@ -1139,7 +1139,7 @@ export function IeltsReadingHomeView() {
                     key={test.id}
                     type="button"
                     onClick={() => navigate(`/app/ielts-reading/test/${test.id}`)}
-                    className="rounded-[22px] bg-apple-blue px-4 py-4 text-left text-white shadow-[0_16px_34px_rgba(0,122,255,0.20)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
+                    className="rounded-[22px] bg-apple-blue px-4 py-4 text-left text-white shadow-[0_16px_34px_rgba(25,200,185,0.20)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
                   >
                     <p className="text-xs font-bold text-white/70">Test</p>
                     <p className="text-2xl font-black">{test.testNumber}</p>
@@ -1908,7 +1908,7 @@ export function IeltsReadingTestView() {
               type="button"
               onClick={handleSubmitClick}
               disabled={isSubmitting}
-              className="inline-flex h-16 shrink-0 items-center justify-center gap-2 rounded-[18px] bg-apple-blue px-8 text-base font-black text-white shadow-[0_18px_34px_rgba(0,122,255,0.26)] transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-16 shrink-0 items-center justify-center gap-2 rounded-[18px] bg-apple-blue px-8 text-base font-black text-white shadow-[0_18px_34px_rgba(25,200,185,0.26)] transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
               {isSubmitting ? '提交中' : isLockedByTimeout ? '重新提交' : '交卷'}
@@ -2158,7 +2158,7 @@ export function IeltsReadingTestView() {
                             className={cx(
                               'relative flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[7px] border text-xs font-black transition-all',
                               answered
-                                ? 'border-apple-blue bg-apple-blue text-white shadow-[0_12px_22px_rgba(0,122,255,0.18)]'
+                                ? 'border-apple-blue bg-apple-blue text-white shadow-[0_12px_22px_rgba(25,200,185,0.18)]'
                                 : 'border-[#e3e8f2] bg-white text-text-secondary hover:border-apple-blue/40 hover:text-text-primary',
                               activeQuestionNumber === question.number && 'ring-2 ring-apple-blue ring-offset-2 ring-offset-white',
                             )}

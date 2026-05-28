@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { BookOpenCheck, CheckCircle2, Clock3, Sparkles, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { IslandButton, IslandIconButton, IslandModalShell } from './AnimalPrimitives';
 
 const VERSION_KEY = 'lumina_whatsnew_2026_05_16_ielts_reading'; // Bump this key to show the modal again in future updates
 
@@ -37,22 +38,23 @@ export function WhatsNewModal() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+            className="absolute inset-0 bg-[#3d3028]/28"
             onClick={handleClose}
           />
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="relative w-full max-w-sm rounded-[32px] glass-elevated p-8 shadow-2xl"
+            className="relative w-full max-w-sm"
           >
-            <button
+            <IslandModalShell className="p-8">
+            <IslandIconButton
               onClick={handleClose}
               aria-label="关闭更新弹窗"
-              className="absolute right-6 top-6 rounded-full bg-black/5 p-2 text-text-secondary transition-colors hover:bg-black/10 hover:text-text-primary"
+              className="absolute right-6 top-6 h-10 w-10 rounded-full"
             >
               <X className="h-5 w-5" />
-            </button>
+            </IslandIconButton>
 
             <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-apple-blue/10 text-apple-blue">
               <Sparkles className="h-6 w-6" />
@@ -99,12 +101,15 @@ export function WhatsNewModal() {
               </div>
             </div>
 
-            <button
+            <IslandButton
               onClick={handleExploreIeltsReading}
-              className="w-full rounded-2xl bg-apple-blue py-3.5 text-sm font-bold text-white transition-transform active:scale-95 shadow-md shadow-apple-blue/20"
+              tone="mint"
+              block
+              size="large"
             >
               去练雅思阅读
-            </button>
+            </IslandButton>
+            </IslandModalShell>
           </motion.div>
         </div>
       )}

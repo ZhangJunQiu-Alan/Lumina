@@ -6,7 +6,7 @@ interface SkeletonProps {
 }
 
 /**
- * High-fidelity Apple-style Skeleton component
+ * Animal-Island skeleton component
  * Features:
  * - Soft shimmer effect
  * - Subtle breath pulse

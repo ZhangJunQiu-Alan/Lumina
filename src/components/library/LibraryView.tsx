@@ -72,7 +72,7 @@ import { isCoreLearningComplete, isCoreLearningRound, isReinforcementRound } fro
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
-import { AI_CONTENT_FEATURES_ENABLED } from '../../lib/aiFeatures';
+import { PERSONAL_VOCAB_IMPORT_ENABLED } from '../../lib/aiFeatures';
 
 interface LearningGroupRow {
   id: string;
@@ -181,7 +181,7 @@ function resolveGroupActionLabel(group: LibraryGroupSummary) {
   }
 
   if (isCoreLearningRound(group.sessionRound)) {
-    return '接上这一组';
+    return '继续这一组';
   }
 
   return '回看这组';
@@ -907,7 +907,7 @@ function DeleteGroupDialog({
           </div>
           <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">移出个人材料</p>
-            <h3 className="mt-3 text-2xl font-black text-text-primary">确认把这组材料移出系统？</h3>
+            <h3 className="mt-3 text-2xl font-black text-text-primary">确认移出这组材料？</h3>
             <p className="mt-3 text-sm leading-7 text-text-secondary">
               删除后，这组词会从你的个人材料里移除；如果这些词没有出现在其他词组里，对应的复习状态也会一起清掉。
             </p>
@@ -936,7 +936,7 @@ function DeleteGroupDialog({
             type="button"
             onClick={onConfirm}
             disabled={isDeleting}
-            className="inline-flex items-center gap-2 rounded-[22px] bg-apple-red px-5 py-3 text-sm font-black text-white shadow-[0_18px_34px_rgba(255,59,48,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:scale-100"
+            className="inline-flex items-center gap-2 rounded-[22px] bg-apple-red px-5 py-3 text-sm font-black text-white shadow-[0_18px_34px_rgba(224,90,90,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:scale-100"
           >
             {isDeleting && <Loader2 className="h-4 w-4 animate-spin" />}
             确认移出
@@ -1145,13 +1145,13 @@ export const LibraryView = ({
     <div className="mx-auto w-full max-w-6xl space-y-6 px-0 lg:space-y-7">
       <header className="space-y-6">
         <div className="flex items-start gap-4">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] bg-apple-green/12 text-apple-green shadow-[0_16px_32px_rgba(52,199,89,0.12)]">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] bg-apple-green/12 text-apple-green shadow-[0_16px_32px_rgba(111,186,44,0.12)]">
             <BookOpen className="h-7 w-7" />
           </div>
           <div className="min-w-0 pt-1">
             <h2 className="text-3xl font-black tracking-tight text-text-primary sm:text-4xl">我的词库</h2>
             <p className="mt-2 text-sm leading-7 text-text-secondary">
-              官方词库和个人收藏的词会先放在这里，按 30 个一组开始学习吧~
+              官方词库和自己保存的词会放在这里。凑够 30 个可用词，就能开始一组。
             </p>
           </div>
         </div>
@@ -1161,7 +1161,7 @@ export const LibraryView = ({
             <div className="flex items-center gap-2">
               {([
                 { key: 'personal', label: '个人词库' },
-                { key: 'system', label: '系统词库' },
+                { key: 'system', label: '官方词库' },
               ] as const).map((tab) => {
                 const selected = activeTab === tab.key;
                 return (
@@ -1186,11 +1186,11 @@ export const LibraryView = ({
               })}
             </div>
 
-            {activeTab === 'personal' && AI_CONTENT_FEATURES_ENABLED && (
+            {activeTab === 'personal' && PERSONAL_VOCAB_IMPORT_ENABLED && (
               <button
                 type="button"
                 onClick={() => navigate('/app/import')}
-                className="mb-3 inline-flex h-10 w-fit items-center justify-center gap-2 rounded-[16px] bg-apple-blue px-4 text-sm font-black text-white shadow-[0_14px_28px_rgba(0,122,255,0.18)] transition-transform active:scale-[0.98]"
+                className="mb-3 inline-flex h-10 w-fit items-center justify-center gap-2 rounded-[16px] bg-apple-blue px-4 text-sm font-black text-white shadow-[0_14px_28px_rgba(25,200,185,0.18)] transition-transform active:scale-[0.98]"
               >
                 <PlusCircle className="h-4 w-4" />
                 导入
@@ -1340,7 +1340,7 @@ export const OfficialLibraryDetailView = ({
   );
 
   if (isLoading) {
-    return <LibraryLoading message="正在展开这条系统路径" />;
+    return <LibraryLoading message="正在打开官方词库" />;
   }
 
   if (errorMsg) {
@@ -1357,7 +1357,7 @@ export const OfficialLibraryDetailView = ({
             className="inline-flex items-center gap-2 rounded-full bg-white/78 px-4 py-2 text-sm font-bold text-text-secondary shadow-[0_10px_24px_rgba(0,0,0,0.05)] transition-colors hover:text-text-primary"
           >
             <ArrowLeft className="h-4 w-4" />
-            记忆地图 / 系统路径 / {definition.title}
+            词库 / 官方词库 / {definition.title}
           </button>
         </div>
 
@@ -1373,9 +1373,9 @@ export const OfficialLibraryDetailView = ({
         {words.length === 0 ? (
           <div className="glass rounded-[32px] p-12 text-center jelly-shadow">
             <BookOpen className="mx-auto h-10 w-10 text-text-secondary/50" />
-            <p className="mt-4 text-2xl font-black text-text-primary">{definition.title} 这条路径还没开始</p>
+            <p className="mt-4 text-2xl font-black text-text-primary">{definition.title} 还没有开始</p>
             <p className="mt-3 text-sm leading-7 text-text-secondary">
-              点上面的开始下一批，系统会从第一批开始把官方词汇发到这里。
+              点上方按钮，会从第一批官方词开始生成学习组。
             </p>
           </div>
         ) : (
@@ -1515,7 +1515,7 @@ export const LibraryGroupDetailView = ({
   );
 
   if (isLoading) {
-    return <LibraryLoading message="正在展开这组状态" />;
+    return <LibraryLoading message="正在打开这组材料" />;
   }
 
   if (errorMsg) {
@@ -1535,7 +1535,7 @@ export const LibraryGroupDetailView = ({
           onClick={() => navigate('/app/library')}
           className="mt-8 rounded-[24px] bg-apple-blue px-6 py-4 text-base font-black text-white"
         >
-          回到记忆地图
+          回到词库
         </button>
       </div>
     );
@@ -1546,7 +1546,7 @@ export const LibraryGroupDetailView = ({
     return <Navigate to={`/app/library/official/${group.libraryId || 'ielts-vocab'}`} replace />;
   }
 
-  const groupSectionLabel = isSystemGroup ? '系统路径' : '我的词库';
+  const groupSectionLabel = isSystemGroup ? '官方词库' : '我的词库';
   const groupHelperLabel = isSystemGroup ? '官方词库' : '我的词库';
 
   const handleDeleteGroup = async () => {
@@ -1583,11 +1583,11 @@ export const LibraryGroupDetailView = ({
               className="inline-flex items-center gap-2 rounded-full bg-white/78 px-4 py-2 text-sm font-bold text-text-secondary shadow-[0_10px_24px_rgba(0,0,0,0.05)] transition-colors hover:text-text-primary"
             >
               <ArrowLeft className="h-4 w-4" />
-              记忆地图 / {groupSectionLabel}
+              词库 / {groupSectionLabel}
             </button>
 
             <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">
-              记忆地图 / {groupSectionLabel} / {formatMonthDay(group.createdAt)}
+              词库 / {groupSectionLabel} / {formatMonthDay(group.createdAt)}
             </p>
             <h2 className="mt-3 text-4xl font-black tracking-tight text-text-primary">{group.title}</h2>
 
@@ -1612,7 +1612,7 @@ export const LibraryGroupDetailView = ({
               type="button"
               onClick={() => { void onStartLearningGroup?.(group.id); }}
               disabled={words.length === 0 || isStartingLearningGroup}
-              className="inline-flex items-center gap-2 rounded-full bg-apple-blue px-5 py-3 text-sm font-black text-white shadow-[0_18px_34px_rgba(0,122,255,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
+              className="inline-flex items-center gap-2 rounded-full bg-apple-blue px-5 py-3 text-sm font-black text-white shadow-[0_18px_34px_rgba(25,200,185,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
             >
               {isStartingLearningGroup ? (
                 <>
@@ -1645,11 +1645,11 @@ export const LibraryGroupDetailView = ({
 
         {words.length === 0 ? (
           <div className="glass rounded-[32px] p-12 text-center jelly-shadow">
-            <p className="text-2xl font-black text-text-primary">这组材料还没展开出来</p>
+            <p className="text-2xl font-black text-text-primary">这组材料还没有词</p>
             <p className="mt-3 text-sm leading-7 text-text-secondary">
               {isSystemGroup
-                ? '稍后再回来看看，正常情况下这里会出现系统路径里的那些词。'
-                : '稍后再回来看看，正常情况下这里会出现你接进来的那些词。'}
+                ? '稍后再回来看看。正常情况下，这里会出现官方词库里的词。'
+                : '稍后再回来看看。正常情况下，这里会出现你保存的词。'}
             </p>
           </div>
         ) : (

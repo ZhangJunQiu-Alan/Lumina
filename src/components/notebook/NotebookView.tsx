@@ -234,8 +234,7 @@ export function NotebookView() {
           <div>
             <h1 className="text-3xl font-black text-text-primary">生词本</h1>
             <p className="mt-2 text-sm leading-7 text-text-secondary max-w-2xl">
-              这里记录了你学习过、但还没进入稳定记忆阶段的词。
-              系统会自动按照复习时间排序，帮你集中攻克这些难点。
+              这里记录学过但还没稳定的词，并按下次复习时间排序。
             </p>
           </div>
         </div>
@@ -253,7 +252,7 @@ export function NotebookView() {
           </div>
           <h2 className="mt-8 text-2xl font-black text-text-primary">生词本是空的</h2>
           <p className="mt-4 text-sm leading-7 text-text-secondary max-w-md mx-auto">
-            太棒了！你目前所有的词都已经达到稳定状态，或者你还没有开始学习新的词库。
+            目前没有待巩固的词。开始学习新词后，需要复习的词会出现在这里。
           </p>
         </div>
       ) : (

@@ -211,7 +211,7 @@ export function IeltsListeningHomeView() {
     <div className="mx-auto w-full max-w-7xl space-y-7">
       <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
         <div className="flex items-start gap-4">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] bg-apple-orange/12 text-apple-orange shadow-[0_16px_32px_rgba(255,149,0,0.14)]">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] bg-apple-orange/12 text-apple-orange shadow-[0_16px_32px_rgba(245,195,28,0.14)]">
             <Headphones className="h-7 w-7" />
           </div>
           <div className="min-w-0">
@@ -267,7 +267,7 @@ export function IeltsListeningHomeView() {
                     key={test.id}
                     type="button"
                     onClick={() => navigate(`/app/ielts-listening/test/${test.id}`)}
-                    className="rounded-[22px] bg-apple-orange px-4 py-4 text-left text-white shadow-[0_16px_34px_rgba(255,149,0,0.20)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
+                    className="rounded-[22px] bg-apple-orange px-4 py-4 text-left text-white shadow-[0_16px_34px_rgba(245,195,28,0.20)] transition-transform hover:scale-[1.01] active:scale-[0.99]"
                   >
                     <p className="text-xs font-bold text-white/75">Test</p>
                     <p className="text-2xl font-black">{test.testNumber}</p>
@@ -324,7 +324,7 @@ function QuestionInput({
               className={cx(
                 'min-h-11 rounded-2xl px-3 py-2 text-left text-sm font-black transition-all',
                 selected
-                  ? 'bg-apple-orange text-white shadow-[0_12px_22px_rgba(255,149,0,0.18)]'
+                  ? 'bg-apple-orange text-white shadow-[0_12px_22px_rgba(245,195,28,0.18)]'
                   : 'bg-[#f3f5fa] text-text-secondary hover:bg-white',
                 disabled && 'cursor-not-allowed opacity-70',
               )}
@@ -365,10 +365,10 @@ function getResponseStatus(response?: IeltsListeningResponseResult): 'neutral' |
 }
 
 function getPaperControlClass(status: ReturnType<typeof getResponseStatus>, answered: boolean) {
-  if (status === 'correct') return 'border-apple-green bg-apple-green/95 text-white shadow-[0_10px_22px_rgba(52,199,89,0.22)]';
-  if (status === 'wrong') return 'border-apple-red bg-apple-red/95 text-white shadow-[0_10px_22px_rgba(255,59,48,0.20)]';
-  if (status === 'unanswered') return 'border-apple-red bg-white text-apple-red shadow-[0_10px_22px_rgba(255,59,48,0.12)]';
-  if (answered) return 'border-apple-orange bg-white text-text-primary shadow-[0_10px_22px_rgba(255,149,0,0.16)]';
+  if (status === 'correct') return 'border-apple-green bg-apple-green/95 text-white shadow-[0_10px_22px_rgba(111,186,44,0.22)]';
+  if (status === 'wrong') return 'border-apple-red bg-apple-red/95 text-white shadow-[0_10px_22px_rgba(224,90,90,0.20)]';
+  if (status === 'unanswered') return 'border-apple-red bg-white text-apple-red shadow-[0_10px_22px_rgba(224,90,90,0.12)]';
+  if (answered) return 'border-apple-orange bg-white text-text-primary shadow-[0_10px_22px_rgba(245,195,28,0.16)]';
   return 'border-apple-orange/45 bg-white/92 text-text-primary shadow-[0_8px_18px_rgba(31,45,75,0.12)]';
 }
 
@@ -843,7 +843,7 @@ export function IeltsListeningTestView() {
               <button
                 type="button"
                 onClick={handleReset}
-                className="inline-flex h-16 shrink-0 items-center gap-3 rounded-[18px] bg-apple-orange px-6 text-base font-black text-white shadow-[0_16px_34px_rgba(255,149,0,0.24)]"
+                className="inline-flex h-16 shrink-0 items-center gap-3 rounded-[18px] bg-apple-orange px-6 text-base font-black text-white shadow-[0_16px_34px_rgba(245,195,28,0.24)]"
               >
                 <RotateCcw className="h-5 w-5" />
                 再练一次
@@ -853,7 +853,7 @@ export function IeltsListeningTestView() {
                 type="button"
                 onClick={() => { void submitAttempt(); }}
                 disabled={isSubmitting}
-                className="inline-flex h-16 shrink-0 items-center gap-3 rounded-[18px] bg-apple-orange px-6 text-base font-black text-white shadow-[0_16px_34px_rgba(255,149,0,0.24)] disabled:opacity-70"
+                className="inline-flex h-16 shrink-0 items-center gap-3 rounded-[18px] bg-apple-orange px-6 text-base font-black text-white shadow-[0_16px_34px_rgba(245,195,28,0.24)] disabled:opacity-70"
               >
                 {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
                 交卷

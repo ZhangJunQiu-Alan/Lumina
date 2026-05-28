@@ -140,7 +140,7 @@ export const PronunciationControls = ({
   <div className="flex flex-wrap items-center gap-2 sm:gap-3">
     <span
       className={cx(
-        'rounded-xl sm:rounded-2xl bg-apple-blue px-3 py-1.5 sm:px-4 sm:py-2 font-black tracking-tight text-white shadow-[0_12px_30px_rgba(0,122,255,0.18)]',
+        'rounded-xl sm:rounded-2xl bg-apple-blue px-3 py-1.5 sm:px-4 sm:py-2 font-black tracking-tight text-white shadow-[0_12px_30px_rgba(25,200,185,0.18)]',
         size === 'small' ? 'text-[13px] sm:text-[14px]' : 'text-base sm:text-lg',
       )}
     >
@@ -155,7 +155,7 @@ export const PronunciationControls = ({
           'flex items-center gap-1.5 rounded-xl sm:rounded-2xl px-2.5 py-1.5 sm:px-3 sm:py-2 font-black tracking-wide transition-all',
           size === 'small' ? 'text-[8px] sm:text-[10px]' : 'text-[10px] sm:text-xs',
           audioLocale === loc
-            ? 'bg-apple-blue text-white shadow-[0_10px_24px_rgba(0,122,255,0.16)]'
+            ? 'bg-apple-blue text-white shadow-[0_10px_24px_rgba(25,200,185,0.16)]'
             : 'bg-apple-blue/10 text-apple-blue hover:bg-apple-blue/15',
         )}
       >

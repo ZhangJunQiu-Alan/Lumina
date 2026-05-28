@@ -7,6 +7,7 @@ import { AuthView } from './components/auth/AuthView';
 import { LuminaLogo } from './components/brand/LuminaLogo';
 import { LandingView } from './components/landing/LandingView';
 import { PrivacyView, TermsView } from './components/legal/LegalView';
+import { IslandPanel } from './components/shared/AnimalPrimitives';
 import { useAuth } from './contexts/AuthContext';
 
 function FullscreenLoader({ message }: { message: string }) {
@@ -16,18 +17,20 @@ function FullscreenLoader({ message }: { message: string }) {
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          className="glass flex w-full max-w-xl flex-col items-center gap-5 rounded-apple-lg p-12 text-center jelly-shadow"
+          className="w-full max-w-xl"
         >
-          <Loader2 className="h-10 w-10 animate-spin text-apple-blue" />
-          <div>
-            <LuminaLogo
-              size={22}
-              className="justify-center"
-              markClassName="h-6 w-6"
-              wordmarkClassName="h-4.5"
-            />
-            <p className="mt-3 text-2xl font-black text-text-primary">{message}</p>
-          </div>
+          <IslandPanel as="div" variant="elevated" className="flex flex-col items-center gap-5 p-12 text-center jelly-shadow">
+            <Loader2 className="h-10 w-10 animate-spin text-apple-blue" />
+            <div>
+              <LuminaLogo
+                size={22}
+                className="justify-center"
+                markClassName="h-6 w-6"
+                wordmarkClassName="h-4.5"
+              />
+              <p className="mt-3 text-2xl font-black text-text-primary">{message}</p>
+            </div>
+          </IslandPanel>
         </motion.div>
       </div>
     </div>
@@ -39,7 +42,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   if (isAuthLoading) {
-    return <FullscreenLoader message="正在把你的学习轨迹接回来" />;
+    return <FullscreenLoader message="正在同步学习进度" />;
   }
 
   if (!isAuthenticated) {
@@ -55,7 +58,7 @@ function PublicOnlyAuthRoute() {
   const location = useLocation();
 
   if (isAuthLoading) {
-    return <FullscreenLoader message="正在确认你该从哪里接上" />;
+    return <FullscreenLoader message="正在确认登录状态" />;
   }
 
   if (isAuthenticated && !isPasswordRecovery) {

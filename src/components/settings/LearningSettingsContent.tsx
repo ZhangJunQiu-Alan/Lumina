@@ -89,7 +89,7 @@ function SegmentedOptionGroup<T extends string | number>({
               disabled
                 ? 'cursor-not-allowed border-white/60 bg-white/38 text-text-secondary/45'
                 : active
-                ? 'border-apple-blue bg-apple-blue text-white shadow-[0_18px_34px_rgba(0,122,255,0.25)]'
+                ? 'border-apple-blue bg-apple-blue text-white shadow-[0_18px_34px_rgba(25,200,185,0.25)]'
                 : 'border-white/80 bg-white/78 text-text-primary shadow-[0_10px_24px_rgba(14,26,56,0.06)] hover:-translate-y-0.5 hover:bg-white'
             }`}
           >
@@ -114,7 +114,7 @@ function ToggleControl({
       onClick={() => onChange(!checked)}
       className={`inline-flex h-[58px] w-full items-center justify-between rounded-[18px] border px-4 transition-all ${
         checked
-          ? 'border-apple-blue bg-apple-blue text-white shadow-[0_18px_34px_rgba(0,122,255,0.25)]'
+          ? 'border-apple-blue bg-apple-blue text-white shadow-[0_18px_34px_rgba(25,200,185,0.25)]'
           : 'border-white/80 bg-white/78 text-text-secondary shadow-[0_10px_24px_rgba(14,26,56,0.06)]'
       }`}
     >
@@ -146,7 +146,7 @@ function SettingItem({
   return (
     <section className={`space-y-4 ${disabled ? 'opacity-65' : ''}`}>
       <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] bg-apple-blue/10 text-apple-blue shadow-[0_10px_24px_rgba(0,122,255,0.10)]">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] bg-apple-blue/10 text-apple-blue shadow-[0_10px_24px_rgba(25,200,185,0.10)]">
           <Icon className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
@@ -260,8 +260,8 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
     return (
       <div className="glass mx-auto max-w-3xl rounded-[34px] p-16 text-center shadow-[0_28px_64px_rgba(14,26,56,0.08)]">
         <Loader2 className="mx-auto h-10 w-10 animate-spin text-apple-blue" />
-        <p className="mt-5 text-2xl font-black text-text-primary">正在把你的学习节奏接回来</p>
-        <p className="mt-2 text-sm text-text-secondary">默认读音、自动连播和纠错停留都会跟着账号走。</p>
+        <p className="mt-5 text-2xl font-black text-text-primary">正在读取学习设置</p>
+        <p className="mt-2 text-sm text-text-secondary">默认读音、自动连播和反馈时长会保存在账号里。</p>
       </div>
     );
   }
@@ -269,11 +269,11 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
   return (
     <div className={`w-full max-w-3xl mx-auto space-y-8 ${className}`}>
       {loadError && (
-        <div className="rounded-[22px] border border-apple-red/15 bg-apple-red/8 px-4 py-3 text-apple-red shadow-[0_14px_30px_rgba(255,59,48,0.08)]">
+        <div className="rounded-[22px] border border-apple-red/15 bg-apple-red/8 px-4 py-3 text-apple-red shadow-[0_14px_30px_rgba(224,90,90,0.08)]">
           <div className="flex items-start gap-3">
             <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
             <div>
-              <p className="text-sm font-black">学习节奏暂时没接上</p>
+              <p className="text-sm font-black">学习设置暂时没读到</p>
               <p className="mt-1 text-sm leading-6">{loadError}</p>
             </div>
           </div>
@@ -316,7 +316,7 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
 
       <SettingItem
         icon={Repeat2}
-        title="自动开口"
+        title="自动朗读"
         description="进入新词时自动朗读"
         feedback={feedbackByKey.autoPlayEnabled}
         control={(
@@ -425,7 +425,7 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
 
       <SettingItem
         icon={BookOpen}
-        title="第三轮"
+        title="第三轮练习"
         description="完成第二轮后继续强化"
         feedback={feedbackByKey.reinforcementRound3Enabled}
         control={(

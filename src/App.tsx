@@ -48,12 +48,13 @@ import {
   markRoutineStepCompleted,
 } from './lib/dailyRoutineApi';
 import { cx } from './components/shared/LearningUI';
+import { IslandButton, IslandIconButton } from './components/shared/AnimalPrimitives';
 import { LibrarySkeleton } from './components/shared/Skeleton';
 import { useDeferredLoading } from './hooks/useDeferredLoading';
 import { fetchHomeOverview, resolveBrowserTimeZone } from './lib/homeApi';
 import { startNextOfficialBatch } from './lib/officialLibraryStart';
 import { toRoutineDateKey } from './lib/routineDate';
-import { AI_CONTENT_FEATURES_ENABLED } from './lib/aiFeatures';
+import { AI_CONTENT_FEATURES_ENABLED, PERSONAL_VOCAB_IMPORT_ENABLED } from './lib/aiFeatures';
 
 // --- Lazy loaded views ---
 const HomeView = lazy(() => import('./components/home/HomeView').then(m => ({ default: m.HomeView })));
@@ -94,9 +95,11 @@ interface ArticleGenerationJob {
 function AmbientBackground() {
   return (
     <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-apple-blue/8 blur-[120px] animate-fluid" />
-      <div className="absolute top-[20%] right-[-5%] w-[35%] h-[35%] rounded-full bg-apple-orange/6 blur-[100px] animate-fluid" style={{ animationDelay: '-5s' }} />
-      <div className="absolute bottom-[-10%] left-[15%] w-[45%] h-[45%] rounded-full bg-apple-teal/6 blur-[130px] animate-fluid" style={{ animationDelay: '-10s' }} />
+      <div className="absolute inset-x-0 top-0 h-64 bg-[linear-gradient(180deg,rgba(125,195,149,0.20),rgba(248,248,240,0))]" />
+      <div className="absolute left-[-2rem] top-24 h-48 w-32 rotate-[-10deg] rounded-[70%_35%_70%_35%] border-2 border-apple-green/20 bg-apple-green/8 animate-fluid" />
+      <div className="absolute right-[-1rem] top-36 h-40 w-28 rotate-[18deg] rounded-[35%_70%_35%_70%] border-2 border-apple-teal/20 bg-apple-teal/10 animate-fluid" style={{ animationDelay: '-8s' }} />
+      <div className="absolute bottom-0 left-0 right-0 h-28 bg-[linear-gradient(180deg,rgba(248,248,240,0),rgba(111,186,44,0.11))]" />
+      <div className="absolute inset-0 opacity-[0.16] [background-image:radial-gradient(circle_at_1px_1px,#725d42_1px,transparent_0)] [background-size:32px_32px]" />
     </div>
   );
 }
@@ -226,8 +229,8 @@ function buildEmptyStats(): UserStats {
     resumeCandidate: null,
     routineCard: {
       state: 'not_started',
-      title: '开始新的学习旅程',
-      subtitle: '从 Round 1 开始今天的主线任务',
+      title: '开始今天的学习',
+      subtitle: '先完成第一轮，再进入复习',
       ctaLabel: '开始学习',
       ctaMode: 'start_learning',
       boundLearningGroupId: null,
@@ -944,7 +947,7 @@ export default function App() {
   }, [isSessionSettingsOpen]);
 
   const sessionSettingsButton = isSessionRoute ? (
-    <button
+    <IslandIconButton
       type="button"
       data-session-settings-toggle
       aria-label={isSessionSettingsOpen ? '关闭学习节奏设置' : '打开学习节奏设置'}
@@ -955,12 +958,12 @@ export default function App() {
         setIsSessionSettingsOpen((prev) => !prev);
       }}
       className={cx(
-        'flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border border-white/80 bg-white/84 text-apple-blue shadow-[0_14px_34px_rgba(0,122,255,0.16)] backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:bg-white active:scale-95',
-        isSessionSettingsOpen && 'bg-apple-blue text-white shadow-[0_16px_34px_rgba(0,122,255,0.26)]',
+        'h-11 w-11 shrink-0 text-apple-blue',
+        isSessionSettingsOpen && 'bg-apple-blue text-white',
       )}
     >
       <Settings className="h-5 w-5" strokeWidth={2.6} />
-    </button>
+    </IslandIconButton>
   ) : null;
 
   useEffect(() => {
@@ -1000,14 +1003,15 @@ export default function App() {
   const sessionEmptyState = (
     <div className="glass mx-auto max-w-3xl rounded-apple-lg p-16 text-center shadow-xl">
       <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">这里还没有内容</p>
-      <h2 className="mt-4 text-3xl font-black text-text-primary">先回首页，从今天该做的开始。</h2>
-      <button
-        type="button"
+      <h2 className="mt-4 text-3xl font-black text-text-primary">回到首页，查看今天的学习安排。</h2>
+      <IslandButton
         onClick={() => navigate('/app/home')}
-        className="mt-8 rounded-2xl bg-apple-blue px-6 py-4 text-base font-black text-white"
+        className="mt-8"
+        tone="mint"
+        size="large"
       >
-        回首页看看
-      </button>
+        回到首页
+      </IslandButton>
     </div>
   );
 
@@ -1058,7 +1062,7 @@ export default function App() {
               <div className="mx-auto mb-4 flex w-full max-w-6xl items-start gap-3 rounded-[28px] border border-apple-red/15 bg-apple-red/8 px-5 py-4 text-apple-red shadow-xl">
                 <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-black">没能开始这组学习</p>
+                  <p className="text-sm font-black">这组学习没有开始</p>
                   <p className="mt-1 text-sm leading-6">{sessionStartError}</p>
                 </div>
                 <button
@@ -1122,7 +1126,7 @@ export default function App() {
                       />
                     )}
                   />
-                  <Route path="import" element={AI_CONTENT_FEATURES_ENABLED ? <ImportView /> : <Navigate to="/app/library" replace />} />
+                  <Route path="import" element={PERSONAL_VOCAB_IMPORT_ENABLED ? <ImportView /> : <Navigate to="/app/library" replace />} />
                   <Route path="ielts" element={<IeltsHomeView />} />
                   <Route path="ielts-reading" element={<IeltsReadingHomeView />} />
                   <Route path="ielts-reading/test/:testId" element={<IeltsReadingTestView />} />
@@ -1142,7 +1146,7 @@ export default function App() {
                             >
                               <AlertCircle className="h-10 w-10 text-apple-red" />
                               <div>
-                                <p className="font-black text-xl text-text-primary">文章生成失败</p>
+                                <p className="font-black text-xl text-text-primary">文章暂时没有生成</p>
                                 <p className="mt-2 text-sm font-bold text-text-secondary">{articleGenerationError}</p>
                               </div>
                               <button
@@ -1151,7 +1155,7 @@ export default function App() {
                                 className="flex items-center justify-center gap-2 rounded-2xl bg-apple-blue px-6 py-3.5 text-sm font-black text-white shadow-lg shadow-apple-blue/20 transition-transform active:scale-95"
                               >
                                 <RefreshCw className="h-4 w-4" />
-                                重新生成
+                                再试一次
                               </button>
                             </motion.div>
                           ) : (
@@ -1161,7 +1165,7 @@ export default function App() {
                               className="glass p-16 rounded-apple-lg shadow-2xl flex flex-col items-center gap-6"
                             >
                               <Loader2 className="w-10 h-10 text-apple-green animate-spin" />
-                              <p className="font-black text-xl">正在生成收尾文章，失败后会自动重试 3 次</p>
+                              <p className="font-black text-xl">正在准备收尾文章，失败后会自动重试 3 次</p>
                             </motion.div>
                           )
                         ) : (

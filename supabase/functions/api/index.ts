@@ -5,7 +5,7 @@ import {
   EnrichmentServiceUnavailableError,
   generateArticle,
 } from '../_shared/server/gemini.ts';
-import { fetchDueReviewWords, recordBatchReviewAttempts, recordReviewAttempt } from '../_shared/server/review.ts';
+import { fetchDueReviewWords, markVocabularyUnknown, recordBatchReviewAttempts, recordReviewAttempt } from '../_shared/server/review.ts';
 import { batchGenerateAudio, getOrCreateAudio } from '../_shared/server/audio.ts';
 import { ExampleAudioValidationError, getOrCreateExampleAudio } from '../_shared/server/exampleAudio.ts';
 import {
@@ -21,6 +21,7 @@ import { supabaseAdmin } from '../_shared/server/supabase.ts';
 import {
   ensureLiteVocabularyEntry,
   lemmatizeVocabularyWord,
+  lemmatizeVocabularyWords,
   lookupWordForPopover,
   persistFullVocabularyEntries,
   queueFullEnrichmentForWord,
@@ -48,6 +49,7 @@ const AI_FEATURE_PATHS = new Set([
   '/api/vocab/enrich',
   '/api/vocab/lite-enrich',
   '/api/vocab/lemmatize',
+  '/api/vocab/lemmatize-batch',
   '/api/vocab/full-enrich',
   '/api/vocab/article',
 ]);
@@ -307,6 +309,30 @@ Deno.serve(async (request) => {
       }
     }
 
+    if (method === 'POST' && path === '/api/vocab/lemmatize-batch') {
+      const words = Array.isArray(body?.words)
+        ? body.words.map(sanitizeLookupWord).filter(Boolean)
+        : [];
+      const source = resolveGeminiSource(body?.source, 'import_lemmatize');
+      if (words.length === 0) {
+        status = 400;
+        return errorResponse(request, 'Missing words array', status);
+      }
+      try {
+        const data = await lemmatizeVocabularyWords(words, source);
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = statusFromEnrichmentError(error);
+        logger.error('API Error: /api/vocab/lemmatize-batch', error, requestLogContext(request, {
+          endpoint: '/api/vocab/lemmatize-batch',
+          word_count: words.length,
+          source,
+        }));
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
     if (method === 'POST' && path === '/api/vocab/persist') {
       const auth = await requireUser(request);
       if (auth.response) {
@@ -396,6 +422,32 @@ Deno.serve(async (request) => {
       } catch (error) {
         status = 500;
         logger.error('API Error: /api/review/batch-attempt', error, requestLogContext(request, { endpoint: '/api/review/batch-attempt', user_id: auth.userId }));
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    if (method === 'POST' && path === '/api/review/unknown') {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      if (!body?.vocabularyItemId) {
+        status = 400;
+        return errorResponse(request, 'Missing vocabularyItemId', status);
+      }
+      try {
+        const data = await markVocabularyUnknown({
+          userId: auth.userId,
+          vocabularyItemId: body.vocabularyItemId,
+          learningGroupId: body.learningGroupId,
+          timestamp: Number(body.timestamp) || undefined,
+        });
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error('API Error: /api/review/unknown', error, requestLogContext(request, { endpoint: '/api/review/unknown', user_id: auth.userId }));
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }

@@ -8,7 +8,7 @@ import {
   EnrichmentServiceUnavailableError,
   generateArticle,
 } from './gemini.js';
-import { fetchDueReviewWords, recordReviewAttempt, recordBatchReviewAttempts } from './review.js';
+import { fetchDueReviewWords, markVocabularyUnknown, recordReviewAttempt, recordBatchReviewAttempts } from './review.js';
 import { getOrCreateAudio, batchGenerateAudio } from './audio.js';
 import { ExampleAudioValidationError, getOrCreateExampleAudio } from './exampleAudio.js';
 import {
@@ -25,6 +25,7 @@ import { submitIeltsListeningAttempt, submitIeltsReadingAttempt } from './ieltsA
 import {
   ensureLiteVocabularyEntry,
   lemmatizeVocabularyWord,
+  lemmatizeVocabularyWords,
   lookupWordForPopover,
   persistFullVocabularyEntries,
   queueFullEnrichmentForWord,
@@ -79,6 +80,7 @@ const AI_FEATURE_PATHS = new Set([
   '/api/vocab/enrich',
   '/api/vocab/lite-enrich',
   '/api/vocab/lemmatize',
+  '/api/vocab/lemmatize-batch',
   '/api/vocab/full-enrich',
   '/api/vocab/article',
 ]);
@@ -208,6 +210,37 @@ app.post('/api/vocab/lemmatize', async (req, res) => {
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     logger.error('API Error: /api/vocab/lemmatize', e, requestLogContext(res, { endpoint: '/api/vocab/lemmatize', word, source }));
+
+    if (e instanceof EnrichmentResponseValidationError) {
+      return res.status(e.statusCode).json({ error: message });
+    }
+    if (e instanceof EnrichmentServiceUnavailableError) {
+      return res.status(e.statusCode).json({ error: message });
+    }
+    res.status(500).json({ error: message });
+  }
+});
+
+// POST /api/vocab/lemmatize-batch
+app.post('/api/vocab/lemmatize-batch', async (req, res) => {
+  const words = Array.isArray(req.body?.words)
+    ? req.body.words.map(sanitizeLookupWord).filter(Boolean)
+    : [];
+  const source = resolveGeminiSource(req.body?.source, 'import_lemmatize');
+  if (words.length === 0) {
+    return res.status(400).json({ error: 'Missing words array' });
+  }
+
+  try {
+    const data = await lemmatizeVocabularyWords(words, source);
+    res.json({ data });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/vocab/lemmatize-batch', e, requestLogContext(res, {
+      endpoint: '/api/vocab/lemmatize-batch',
+      word_count: words.length,
+      source,
+    }));
 
     if (e instanceof EnrichmentResponseValidationError) {
       return res.status(e.statusCode).json({ error: message });
@@ -361,6 +394,29 @@ app.post('/api/review/batch-attempt', requireAuth, async (req: AuthenticatedRequ
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     logger.error('API Error: /api/review/batch-attempt', e, requestLogContext(res, { endpoint: '/api/review/batch-attempt', user_id: userId }));
+    res.status(500).json({ error: message });
+  }
+});
+
+// POST /api/review/unknown
+app.post('/api/review/unknown', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { vocabularyItemId, learningGroupId, timestamp } = req.body;
+  if (!vocabularyItemId) {
+    return res.status(400).json({ error: 'Missing vocabularyItemId' });
+  }
+
+  const userId = req.authUserId!;
+  try {
+    const result = await markVocabularyUnknown({
+      userId,
+      vocabularyItemId,
+      learningGroupId,
+      timestamp: Number(timestamp) || undefined,
+    });
+    res.json({ data: result });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/review/unknown', e, requestLogContext(res, { endpoint: '/api/review/unknown', user_id: userId }));
     res.status(500).json({ error: message });
   }
 });

@@ -435,7 +435,7 @@ export function SavedWordsPanel({
             <div>
               <h3 className="text-2xl font-black text-text-primary">我的词库</h3>
               <p className="mt-2 text-sm leading-7 text-text-secondary">
-                官方词库和个人收藏的词会先放在这里，按 30 个一组开始学习吧~
+                官方词库和自己保存的词会放在这里。凑够 30 个可用词，就能开始一组。
               </p>
             </div>
           </div>
@@ -461,7 +461,7 @@ export function SavedWordsPanel({
           <BookOpen className="mx-auto h-10 w-10 text-text-secondary/50" />
           <p className="mt-4 text-2xl font-black text-text-primary">我的词库还是空的</p>
           <p className="mt-3 text-sm leading-7 text-text-secondary">
-            从官方词库或已保存的学习组开始，这里会变成你的统一词池。
+            可以先从官方词库开始，也可以导入自己的单词。
           </p>
         </div>
       ) : (
@@ -521,7 +521,7 @@ export function SavedWordsPanel({
                 type="button"
                 onClick={() => { void primaryAction.onClick(); }}
                 disabled={primaryAction.disabled || isCreatingGroup}
-                className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-[18px] bg-apple-blue px-5 text-sm font-black text-white shadow-[0_18px_34px_rgba(0,122,255,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:scale-100 sm:min-w-[176px]"
+                className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-[18px] bg-apple-blue px-5 text-sm font-black text-white shadow-[0_18px_34px_rgba(25,200,185,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:scale-100 sm:min-w-[176px]"
               >
                 {isCreatingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                 {primaryAction.label}
@@ -533,7 +533,7 @@ export function SavedWordsPanel({
             <div className="mt-4 flex flex-col gap-3 rounded-[24px] bg-apple-green/8 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 font-bold text-apple-green">
                 <Sparkles className="h-4 w-4" />
-                已掌握 {masteredCount} 个词，可以一键从词库中清掉
+                已掌握 {masteredCount} 个词，可以从词库移除
               </div>
               {confirmingClearMastered ? (
                 <div className="flex items-center gap-2">
@@ -563,7 +563,7 @@ export function SavedWordsPanel({
                   className="inline-flex items-center justify-center gap-1.5 rounded-full bg-white/82 px-3 py-1.5 text-xs font-black text-apple-green shadow-sm transition-colors hover:text-apple-green/80"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
-                  一键清理已掌握
+                  清理已掌握
                 </button>
               )}
             </div>
@@ -644,7 +644,7 @@ export function SavedWordsPanel({
                           </span>
                           {AI_CONTENT_FEATURES_ENABLED && entry.enrichmentLevel === 'lite' && (
                             <span className="rounded-full bg-apple-orange/10 px-2.5 py-0.5 text-[11px] font-bold text-apple-orange">
-                              生成中
+                              补全中
                             </span>
                           )}
                           {entry.isInActiveLearningGroup && (

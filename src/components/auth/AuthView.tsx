@@ -2,18 +2,24 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 're
 import { AnimatePresence, motion } from 'motion/react';
 import {
   ArrowRight,
+  BookOpen,
   Chrome,
   Eye,
   EyeOff,
+  History,
   Lock,
   Mail,
   ShieldCheck,
+  Sparkles,
   UserRound,
+  type LucideIcon,
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { isGoogleAuthEnabled } from '../../lib/authFeatures';
 import { formatAuthErrorFeedback } from '../../lib/authErrors';
+import { LuminaLogo } from '../brand/LuminaLogo';
+import { IslandBadge, IslandButton, IslandIconButton, IslandPanel } from '../shared/AnimalPrimitives';
 
 type AuthMode = 'login' | 'register' | 'forgot' | 'reset';
 
@@ -40,26 +46,51 @@ const defaultFormState: FormState = {
 
 const authModeCopy: Record<AuthMode, AuthModeCopy> = {
   login: {
-    kicker: '接上进度',
-    heading: '登录一下，把上次那一段接回来。',
-    body: '账号一接上，词库、复习安排和学习进度都会跟着回来，不用重新找感觉。',
-    cta: '用邮箱接上',
+    kicker: '回到进度',
+    heading: '登录后，继续上次停下的词。',
+    body: '词库、复习安排、学习偏好和未完成内容都会保存在账号里。',
+    cta: '用邮箱登录',
   },
   register: {
-    kicker: '建立轨迹',
-    heading: '先建一个账号，让这条词汇轨迹留下来。',
-    body: '从这次开始，系统会记住你学过什么、卡在哪，以及下次该从哪里继续。',
-    cta: '创建并进入系统',
+    kicker: '保存学习状态',
+    heading: '创建账号，保存从第一组词开始的进度。',
+    body: '之后的复习时间、错误记录和偏好设置都会跟着这个账号。',
+    cta: '创建账号',
   },
   forgot: {
-    heading: '输入已注册邮箱，重置你的密码。',
+    kicker: '找回入口',
+    heading: '输入邮箱，我们把重置链接发给你。',
+    body: '如果这个邮箱已经注册，重置邮件会在几分钟内送达。',
     cta: '发送重置邮件',
   },
   reset: {
     kicker: '重设密码',
     heading: '设置一个新的登录密码。',
-    body: '新密码保存后，这个重置链接就会失效，你可以直接回到学习系统。',
-    cta: '更新密码并进入系统',
+    body: '保存后这个重置链接会失效，你可以继续今天的学习。',
+    cta: '更新密码并继续',
+  },
+};
+
+const storyCopy: Record<AuthMode, { title: string; body: string; items: string[] }> = {
+  login: {
+    title: '你的学习进度还在。',
+    body: '登录后，今日到期复习、未完成学习和偏好设置都会重新排好。',
+    items: ['继续未完成学习', '同步今日复习队列', '保留发音与播放偏好'],
+  },
+  register: {
+    title: '先保存进度，再开始学习。',
+    body: '账号用来保存见过的词、复习时间和设备偏好。',
+    items: ['保存第一组学习记录', '建立个人复习节奏', '跨设备继续学习'],
+  },
+  forgot: {
+    title: '不用重新开始。',
+    body: '重置密码只会更新登录方式，你的词库、状态和复习安排仍然保留。',
+    items: ['发送安全重置链接', '保留原有学习数据', '完成后回到登录入口'],
+  },
+  reset: {
+    title: '换个新密码，进度不变。',
+    body: '新密码保存后，你可以继续使用原来的学习进度。',
+    items: ['确认两次新密码', '保存后链接失效', '继续原有学习进度'],
   },
 };
 
@@ -76,7 +107,7 @@ function getPasswordStrength(password: string) {
   if (!password) {
     return {
       score: 0,
-      label: '先输入一个新密码',
+      label: '等待输入',
       detail: '建议至少 12 位，混合大小写、数字或符号。',
       colorClass: 'bg-black/10',
       textClass: 'text-text-secondary',
@@ -121,7 +152,7 @@ function normalizeOAuthError(message: string) {
 
   if (!normalized) return null;
   if (normalized.includes('redirect_uri_mismatch')) {
-    return 'Google 入口这次没接上。你可以先改用邮箱进入；如果这个问题一直出现，再联系支持处理。';
+    return 'Google 登录这次没有成功。你可以先用邮箱登录；如果这个问题一直出现，再联系支持处理。';
   }
   if (normalized.includes('provider is not enabled')) {
     return 'Google 入口暂时还没恢复，你可以先用邮箱进入。';
@@ -160,7 +191,7 @@ function AuthField({
   trailing,
   autoComplete,
 }: {
-  icon: typeof Mail;
+  icon: LucideIcon;
   label: string;
   type: string;
   value: string;
@@ -171,9 +202,9 @@ function AuthField({
 }) {
   return (
     <label className="block">
-      <span className="text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">{label}</span>
-      <div className="mt-3 flex items-center gap-3 rounded-[26px] border border-white/60 bg-white/72 px-4 py-4 shadow-[0_12px_35px_rgba(0,0,0,0.04)] backdrop-blur-xl transition-colors focus-within:border-apple-blue/40">
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-apple-blue/10 text-apple-blue">
+      <span className="text-[11px] font-black uppercase tracking-[0.22em] text-text-secondary">{label}</span>
+      <div className="auth-field-shell">
+        <div className="auth-field-icon">
           <Icon className="h-4 w-4" />
         </div>
         <input
@@ -181,7 +212,7 @@ function AuthField({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
-          className="min-w-0 flex-1 bg-transparent text-base font-semibold text-text-primary outline-none placeholder:font-medium placeholder:text-text-secondary"
+          className="min-w-0 flex-1 bg-transparent text-base font-bold text-text-primary outline-none placeholder:font-semibold placeholder:text-text-secondary"
           autoComplete={autoComplete}
         />
         {trailing}
@@ -224,6 +255,9 @@ export const AuthView = () => {
   );
   const passwordStrength = useMemo(() => getPasswordStrength(form.password), [form.password]);
   const showPasswordStrength = mode === 'register' || mode === 'reset';
+  const title = authModeCopy[mode];
+  const story = storyCopy[mode];
+
   useEffect(() => {
     const nextMode = searchParams.get('mode');
     if (nextMode === 'login' || nextMode === 'register' || nextMode === 'forgot' || nextMode === 'reset') {
@@ -259,7 +293,11 @@ export const AuthView = () => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const title = authModeCopy[mode];
+  const switchMode = (nextMode: AuthMode) => {
+    setMode(nextMode);
+    setFeedback(null);
+    setPendingConfirmationEmail(null);
+  };
 
   const handleGoogle = async () => {
     setFeedback(null);
@@ -269,7 +307,7 @@ export const AuthView = () => {
     } catch (error) {
       setFeedback({
         type: 'error',
-        text: error instanceof Error ? error.message : 'Google 入口这次没接上。你可以再试一次，或者先用邮箱进入。',
+        text: error instanceof Error ? error.message : 'Google 登录这次没有成功。你可以再试一次，或者先用邮箱登录。',
       });
       setIsGoogleSubmitting(false);
     }
@@ -387,12 +425,12 @@ export const AuthView = () => {
           password: form.password,
         });
 
-        if (result.requiresEmailConfirmation) {
-          setPendingConfirmationEmail(email);
-          setFeedback({
-            type: 'success',
-            text: '账号已经建好。去邮箱点一下确认链接，再回来接上进度。',
-          });
+      if (result.requiresEmailConfirmation) {
+        setPendingConfirmationEmail(email);
+        setFeedback({
+          type: 'success',
+          text: '账号已创建。请到邮箱确认后再回来继续。',
+        });
         }
       }
     } catch (error) {
@@ -406,246 +444,287 @@ export const AuthView = () => {
   };
 
   return (
-    <div className="min-h-screen px-6 py-6">
-      <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-3xl items-start">
-        <motion.section
-          initial={{ opacity: 0, x: 18 }}
+    <main className="auth-page min-h-screen px-3 py-5 sm:px-4 md:px-8 md:py-8">
+      <div className="mx-auto grid min-h-[calc(100vh-2.5rem)] w-full max-w-6xl items-start gap-5 lg:grid-cols-[0.88fr_1.12fr] lg:items-center">
+        <motion.aside
+          initial={{ opacity: 0, x: -18 }}
           animate={{ opacity: 1, x: 0 }}
-          className="glass w-full rounded-[36px] p-6 md:p-8 jelly-shadow"
+          transition={{ duration: 0.45 }}
+          className="auth-pass-panel w-full min-w-0"
         >
-          <div className="flex items-center justify-between gap-3 rounded-[28px] border border-white/60 bg-white/55 p-2 shadow-[0_16px_30px_rgba(0,0,0,0.04)] backdrop-blur-xl">
-            {([
-              { id: 'login', label: '登录' },
-              { id: 'register', label: '注册' },
-            ] as const).map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => {
-                  setMode(tab.id);
-                  setFeedback(null);
-                  setPendingConfirmationEmail(null);
-                }}
-                className={`flex-1 rounded-[22px] px-4 py-3 text-sm font-black transition-all ${
-                  mode === tab.id
-                    ? 'bg-apple-blue text-white shadow-[0_16px_30px_rgba(0,122,255,0.24)]'
-                    : 'text-text-secondary hover:bg-white/70'
-                }`}
-              >
-                {tab.label}
-              </button>
+          <LuminaLogo size={42} />
+          <IslandBadge tone="yellow" className="mt-6 md:mt-8">账号入口</IslandBadge>
+          <h1 className="mt-4 text-3xl font-black leading-tight tracking-tight text-text-primary sm:text-4xl md:mt-5 md:text-5xl">
+            {story.title}
+          </h1>
+          <p className="mt-4 text-base font-bold leading-7 text-text-secondary md:mt-5 md:leading-8">
+            {story.body}
+          </p>
+
+          <div className="auth-route-card mt-6 md:mt-9">
+            <div className="auth-route-card__line" />
+            {story.items.map((item, index) => (
+              <div key={item} className="auth-route-stop">
+                <span className="auth-route-stop__pin">{index + 1}</span>
+                <span>{item}</span>
+              </div>
             ))}
           </div>
 
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={mode}
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -18 }}
-              transition={{ duration: 0.22 }}
-              className="mt-8"
-            >
-              {title.kicker && (
-                <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-apple-blue">{title.kicker}</p>
-              )}
-              <h2 className={`${title.kicker ? 'mt-3' : ''} text-4xl font-black leading-tight tracking-tight text-text-primary`}>
-                {title.heading}
-              </h2>
-              {title.body && <p className="mt-4 text-sm leading-7 text-text-secondary">{title.body}</p>}
-
-              {(mode === 'login' || mode === 'register') && (isGoogleAuthEnabled ? (
-                <button
-                  type="button"
-                  disabled={isAuthLoading || isGoogleSubmitting}
-                  onClick={() => { void handleGoogle(); }}
-                  className="mt-8 flex w-full items-center justify-center gap-3 rounded-[30px] bg-[#111827] px-6 py-5 text-base font-black text-white shadow-[0_22px_40px_rgba(17,24,39,0.24)] transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  <Chrome className="h-5 w-5" />
-                  {isGoogleSubmitting ? '正在跳到 Google…' : '用 Google 接上'}
-                </button>
-              ) : (
-                <div className="mt-8 rounded-[28px] border border-[#D6B36A]/30 bg-[#FFF6DF] px-5 py-4 text-sm font-medium leading-7 text-[#8A5A14]">
-                  当前先开放邮箱进入。Google 入口恢复后，会自动回到这里。
+          <div className="mt-6 grid gap-3 sm:grid-cols-3 md:mt-8 lg:grid-cols-1 xl:grid-cols-3">
+            {[
+              { icon: BookOpen, label: '词库' },
+              { icon: History, label: '复习' },
+              { icon: Sparkles, label: '偏好' },
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <div key={item.label} className="auth-mini-token">
+                  <Icon className="h-4 w-4" />
+                  <span>{item.label}</span>
                 </div>
+              );
+            })}
+          </div>
+        </motion.aside>
+
+        <motion.section
+          initial={{ opacity: 0, x: 18 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.45, delay: 0.04 }}
+          className="w-full min-w-0"
+        >
+          <IslandPanel as="div" variant="elevated" className="auth-form-panel w-full max-w-full p-5 md:p-8">
+            <div className="auth-tab-switcher">
+              {([
+                { id: 'login', label: '登录' },
+                { id: 'register', label: '注册' },
+              ] as const).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => switchMode(tab.id)}
+                  className={`auth-tab-button ${mode === tab.id ? 'auth-tab-button--active' : ''}`}
+                >
+                  {tab.label}
+                </button>
               ))}
+            </div>
 
-              <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-                {mode === 'register' && (
-                  <AuthField
-                    icon={UserRound}
-                    label="显示名字"
-                    type="text"
-                    value={form.fullName}
-                    onChange={(value) => updateField('fullName', value)}
-                    placeholder="例如：Alex Chen"
-                    autoComplete="name"
-                  />
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={mode}
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -18 }}
+                transition={{ duration: 0.22 }}
+                className="mt-8"
+              >
+                {title.kicker && (
+                  <p className="text-[11px] font-black uppercase tracking-[0.24em] text-apple-blue">{title.kicker}</p>
                 )}
+                <h2 className={`${title.kicker ? 'mt-3' : ''} text-3xl font-black leading-tight tracking-tight text-text-primary md:text-4xl`}>
+                  {title.heading}
+                </h2>
+                {title.body && <p className="mt-4 text-sm font-semibold leading-7 text-text-secondary">{title.body}</p>}
 
-                {mode !== 'reset' && (
-                  <AuthField
-                    icon={Mail}
-                    label="邮箱"
-                    type="email"
-                    value={form.email}
-                    onChange={(value) => updateField('email', value)}
-                    placeholder="you@example.com"
-                    autoComplete="email"
-                  />
-                )}
-
-                {mode !== 'forgot' && (
+                {(mode === 'login' || mode === 'register') && (isGoogleAuthEnabled ? (
                   <>
-                    <AuthField
-                      icon={Lock}
-                      label={mode === 'reset' ? '新密码' : '密码'}
-                      type={showPassword ? 'text' : 'password'}
-                      value={form.password}
-                      onChange={(value) => updateField('password', value)}
-                      placeholder="输入一个至少 8 位的密码"
-                      autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                      trailing={(
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword((prev) => !prev)}
-                          className="flex h-10 w-10 items-center justify-center rounded-2xl text-text-secondary transition-colors hover:bg-black/5 hover:text-text-primary"
-                          aria-label={showPassword ? '隐藏密码' : '显示密码'}
-                        >
-                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </button>
-                      )}
-                    />
-
-                    {showPasswordStrength && (
-                      <div className="rounded-[24px] border border-white/60 bg-white/58 px-4 py-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className={`text-xs font-black ${passwordStrength.textClass}`}>
-                            密码强度：{passwordStrength.label}
-                          </p>
-                          <p className="text-[11px] font-bold text-text-secondary">{Math.min(passwordStrength.score, 5)}/5</p>
-                        </div>
-                        <div className="mt-3 grid grid-cols-5 gap-1.5">
-                          {Array.from({ length: 5 }, (_, index) => (
-                            <div
-                              key={index}
-                              className={`h-1.5 rounded-full ${
-                                index < passwordStrength.score ? passwordStrength.colorClass : 'bg-black/10'
-                              }`}
-                            />
-                          ))}
-                        </div>
-                        <p className="mt-3 text-xs font-medium leading-6 text-text-secondary">{passwordStrength.detail}</p>
-                      </div>
-                    )}
-
-                    {mode === 'login' && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMode('forgot');
-                          setFeedback(null);
-                        }}
-                        className="-mt-2 text-sm font-black text-apple-blue transition-colors hover:text-apple-indigo"
-                      >
-                        忘记密码？
-                      </button>
-                    )}
-                  </>
-                )}
-
-                {(mode === 'register' || mode === 'reset') && (
-                  <AuthField
-                    icon={ShieldCheck}
-                    label={mode === 'reset' ? '确认新密码' : '确认密码'}
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    value={form.confirmPassword}
-                    onChange={(value) => updateField('confirmPassword', value)}
-                    placeholder="再输入一次密码"
-                    autoComplete="new-password"
-                    trailing={(
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmPassword((prev) => !prev)}
-                        className="flex h-10 w-10 items-center justify-center rounded-2xl text-text-secondary transition-colors hover:bg-black/5 hover:text-text-primary"
-                        aria-label={showConfirmPassword ? '隐藏确认密码' : '显示确认密码'}
-                      >
-                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    )}
-                  />
-                )}
-
-                {feedback && (
-                  <div
-                    className={`rounded-[26px] px-4 py-4 text-sm font-medium ${
-                      feedback.type === 'success'
-                        ? 'bg-apple-green/10 text-apple-green'
-                        : 'bg-apple-red/10 text-apple-red'
-                    }`}
-                  >
-                    {feedback.text}
-                  </div>
-                )}
-
-                {pendingConfirmationEmail && mode === 'register' && (
-                  <div className="rounded-[26px] border border-apple-green/18 bg-apple-green/8 px-4 py-4 text-sm leading-7 text-text-secondary">
-                    <p className="font-bold text-text-primary">没收到确认邮件？</p>
-                    <p className="mt-1">我们会重新发到 {pendingConfirmationEmail}，短时间内频繁发送可能会被限制。</p>
                     <button
                       type="button"
-                      onClick={() => { void handleResendConfirmation(); }}
-                      disabled={isResendingConfirmation}
-                      className="mt-3 rounded-2xl bg-white/80 px-4 py-2 text-xs font-black text-apple-green shadow-sm transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={isAuthLoading || isGoogleSubmitting}
+                      aria-busy={isGoogleSubmitting}
+                      onClick={() => { void handleGoogle(); }}
+                      className="mt-7 flex w-full items-center justify-center gap-2.5 rounded-[22px] bg-[#2c1c0e] px-6 py-[14px] text-sm font-black tracking-wide text-[#fff8e8] shadow-[0_3px_0_0_#180e06,0_12px_24px_rgba(44,28,14,0.18)] transition-all hover:-translate-y-0.5 active:translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
                     >
-                      {isResendingConfirmation ? '正在重发…' : '重发确认邮件'}
+                      <Chrome className="h-[18px] w-[18px] opacity-90" />
+                      {isGoogleSubmitting ? '正在跳到 Google...' : '用 Google 登录'}
                     </button>
+                    <div className="auth-divider">或用邮箱</div>
+                  </>
+                ) : (
+                  <div className="mt-8 rounded-[20px] border border-[#ead99d] bg-[#fff9e8] px-5 py-4 text-sm font-bold leading-7 text-[#8a5a14]">
+                    当前只能使用邮箱登录。Google 入口恢复后会显示在这里。
                   </div>
-                )}
+                ))}
 
-                <button
-                  type="submit"
-                  disabled={isFormSubmitting}
-                  className="group flex w-full items-center justify-center gap-3 rounded-[30px] bg-apple-blue px-6 py-5 text-base font-black text-white shadow-[0_22px_40px_rgba(0,122,255,0.28)] transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
+                <form onSubmit={handleSubmit} className="mt-7 space-y-4">
+                  {mode === 'register' && (
+                    <AuthField
+                      icon={UserRound}
+                      label="显示名字"
+                      type="text"
+                      value={form.fullName}
+                      onChange={(value) => updateField('fullName', value)}
+                      placeholder="例如：Alex Chen"
+                      autoComplete="name"
+                    />
+                  )}
+
+                  {mode !== 'reset' && (
+                    <AuthField
+                      icon={Mail}
+                      label="邮箱"
+                      type="email"
+                      value={form.email}
+                      onChange={(value) => updateField('email', value)}
+                      placeholder="you@example.com"
+                      autoComplete="email"
+                    />
+                  )}
+
+                  {mode !== 'forgot' && (
+                    <>
+                      <AuthField
+                        icon={Lock}
+                        label={mode === 'reset' ? '新密码' : '密码'}
+                        type={showPassword ? 'text' : 'password'}
+                        value={form.password}
+                        onChange={(value) => updateField('password', value)}
+                        placeholder="输入一个至少 8 位的密码"
+                        autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                        trailing={(
+                          <IslandIconButton
+                            type="button"
+                            onClick={() => setShowPassword((prev) => !prev)}
+                            className="h-10 w-10 border-0 bg-transparent shadow-none hover:shadow-none"
+                            aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                          >
+                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </IslandIconButton>
+                        )}
+                      />
+
+                      {showPasswordStrength && (
+                        <div className="rounded-[18px] border border-[#e0d4bc]/80 bg-[#faf8f2] px-4 py-3.5">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className={`text-[11px] font-black uppercase tracking-[0.12em] ${passwordStrength.textClass}`}>
+                              {passwordStrength.label}
+                            </p>
+                            <p className="text-[11px] font-bold text-text-secondary/60">{Math.min(passwordStrength.score, 5)} / 5</p>
+                          </div>
+                          <div className="mt-2.5 grid grid-cols-5 gap-1">
+                            {Array.from({ length: 5 }, (_, index) => (
+                              <div
+                                key={index}
+                                className={`h-1 rounded-full transition-colors duration-300 ${
+                                  index < passwordStrength.score ? passwordStrength.colorClass : 'bg-black/8'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <p className="mt-2.5 text-[11px] font-semibold leading-5 text-text-secondary">{passwordStrength.detail}</p>
+                        </div>
+                      )}
+
+                      {mode === 'login' && (
+                        <button
+                          type="button"
+                          onClick={() => switchMode('forgot')}
+                          className="-mt-1 text-xs font-black text-[#19c8b9] transition-colors hover:text-[#0fada0]"
+                        >
+                          忘记密码？
+                        </button>
+                      )}
+                    </>
+                  )}
+
+                  {(mode === 'register' || mode === 'reset') && (
+                    <AuthField
+                      icon={ShieldCheck}
+                      label={mode === 'reset' ? '确认新密码' : '确认密码'}
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={form.confirmPassword}
+                      onChange={(value) => updateField('confirmPassword', value)}
+                      placeholder="再输入一次密码"
+                      autoComplete="new-password"
+                      trailing={(
+                        <IslandIconButton
+                          type="button"
+                          onClick={() => setShowConfirmPassword((prev) => !prev)}
+                          className="h-10 w-10 border-0 bg-transparent shadow-none hover:shadow-none"
+                          aria-label={showConfirmPassword ? '隐藏确认密码' : '显示确认密码'}
+                        >
+                          {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </IslandIconButton>
+                      )}
+                    />
+                  )}
+
+                  {feedback && (
+                    <div
+                      className={`rounded-[18px] border px-4 py-3.5 text-sm font-bold leading-6 ${
+                        feedback.type === 'success'
+                          ? 'border-apple-green/20 bg-apple-green/8 text-apple-green'
+                          : 'border-apple-red/18 bg-apple-red/8 text-apple-red'
+                      }`}
+                    >
+                      {feedback.text}
+                    </div>
+                  )}
+
+                  {pendingConfirmationEmail && mode === 'register' && (
+                    <div className="rounded-[26px] border-2 border-apple-green/18 bg-apple-green/8 px-4 py-4 text-sm leading-7 text-text-secondary">
+                      <p className="font-black text-text-primary">没收到确认邮件？</p>
+                      <p className="mt-1 font-semibold">我们会重新发到 {pendingConfirmationEmail}，短时间内频繁发送可能会被限制。</p>
+                      <button
+                        type="button"
+                        onClick={() => { void handleResendConfirmation(); }}
+                        disabled={isResendingConfirmation}
+                        className="mt-3 rounded-2xl bg-white/80 px-4 py-2 text-xs font-black text-apple-green shadow-sm transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isResendingConfirmation ? '正在重发...' : '重发确认邮件'}
+                      </button>
+                    </div>
+                  )}
+
+                  <IslandButton
+                    htmlType="submit"
+                    disabled={isFormSubmitting}
+                    block
+                    tone="mint"
+                    size="large"
+                    icon={<ArrowRight className="h-5 w-5" />}
+                  >
+                    {isFormSubmitting ? '正在接入...' : title.cta}
+                  </IslandButton>
+                </form>
+
+                <IslandButton
+                  htmlType="button"
+                  onClick={() => {
+                    if (mode === 'forgot' || mode === 'reset') {
+                      switchMode('login');
+                      return;
+                    }
+                    navigate('/');
+                  }}
+                  tone="neutral"
+                  block
+                  className="mt-6"
                 >
-                  {isFormSubmitting ? '正在接入…' : title.cta}
-                  <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1.5" />
-                </button>
-              </form>
+                  {mode === 'forgot' || mode === 'reset' ? '回到登录' : '返回首页'}
+                </IslandButton>
 
-              <button
-                type="button"
-                onClick={() => {
-                  if (mode === 'forgot' || mode === 'reset') {
-                    setMode('login');
-                    setFeedback(null);
-                    return;
-                  }
-                  navigate('/');
-                }}
-                className="mt-6 w-full rounded-[24px] border border-white/65 bg-white/70 px-5 py-4 text-sm font-black text-text-secondary transition-colors hover:bg-white"
-              >
-                {mode === 'forgot' || mode === 'reset' ? '回到登录' : '先回首页看看'}
-              </button>
-
-              <p className="mt-5 text-center text-xs leading-6 text-text-secondary">
-                继续使用即表示你同意
-                {' '}
-                <Link to="/terms" className="font-bold text-text-primary underline decoration-black/20 underline-offset-4">
-                  服务条款
-                </Link>
-                {' '}
-                和
-                {' '}
-                <Link to="/privacy" className="font-bold text-text-primary underline decoration-black/20 underline-offset-4">
-                  隐私政策
-                </Link>
-                。
-              </p>
-            </motion.div>
-          </AnimatePresence>
+                <p className="mt-5 text-center text-xs leading-6 text-text-secondary">
+                  继续使用即表示你同意
+                  {' '}
+                  <Link to="/terms" className="font-bold text-text-primary underline decoration-black/20 underline-offset-4">
+                    服务条款
+                  </Link>
+                  {' '}
+                  和
+                  {' '}
+                  <Link to="/privacy" className="font-bold text-text-primary underline decoration-black/20 underline-offset-4">
+                    隐私政策
+                  </Link>
+                  。
+                </p>
+              </motion.div>
+            </AnimatePresence>
+          </IslandPanel>
         </motion.section>
       </div>
-    </div>
+    </main>
   );
 };

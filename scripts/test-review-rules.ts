@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   FAST_RECALL_MS,
+  FIRST_MEMORY_STATE,
   MAX_DAILY_REVIEW_WORDS,
   planReviewBacklogRedistribution,
   resolveReviewState,
@@ -29,6 +30,7 @@ function run() {
   assert.equal(toResultType(true, FAST_RECALL_MS + 1), 'slow_correct');
 
   assert.equal(resolveRound2State('new', 'wrong'), 'fuzzy');
+  assert.equal(FIRST_MEMORY_STATE, 'fuzzy');
   expectIsoDay(toNextReviewAt('fuzzy', BASE_TIME), addDays(1));
 
   assert.equal(resolveRound2State('new', 'slow_correct'), 'slow_recall');

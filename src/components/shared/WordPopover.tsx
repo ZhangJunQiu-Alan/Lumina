@@ -7,6 +7,7 @@ import { cancelBrowserSpeech, isBrowserSpeechSupported, speakTextViaBrowser } fr
 import { fetchWordAudioUrl, getCachedWordAudioUrl, primeWordAudioUrl } from '../../lib/wordAudio';
 import { type MemoryState, useWordLookup, type WordLookupResult } from '../../lib/wordLookup';
 import { cx } from './LearningUI';
+import { IslandIconButton } from './AnimalPrimitives';
 
 interface WordPopoverProps {
   word: string;
@@ -303,7 +304,7 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
       exit={{ opacity: 0, scale: 0.98, y: 4 }}
       transition={{ duration: 0.16, ease: 'easeOut' }}
       style={{ top: position.top, left: position.left, width: POPOVER_WIDTH }}
-      className="fixed z-[80] overflow-hidden rounded-[22px] border border-white/80 bg-white/95 p-4 text-left shadow-[0_24px_70px_rgba(14,26,56,0.18)] backdrop-blur-xl"
+      className="fixed z-[80] overflow-hidden rounded-[26px] border-2 border-[#d8cdb9] bg-[#fffdf3] p-4 text-left shadow-[0_5px_0_0_#d4c9b4,0_24px_70px_rgba(61,52,40,0.18)]"
       role="dialog"
       aria-label={`${word} 释义`}
     >
@@ -337,14 +338,14 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
             <p className="mt-0.5 text-xs font-bold text-text-secondary">来自 {word}</p>
           )}
         </div>
-        <button
+        <IslandIconButton
           type="button"
           onClick={onClose}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-secondary transition-colors hover:bg-black/5 hover:text-text-primary"
+          className="h-8 w-8 shrink-0 rounded-full"
           aria-label="关闭查词浮窗"
         >
           <X className="h-4 w-4" />
-        </button>
+        </IslandIconButton>
       </div>
 
       {loading ? (
@@ -373,7 +374,7 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
                 'flex min-h-11 w-full items-center justify-center gap-2 rounded-[16px] px-4 py-2.5 text-sm font-black transition-all active:scale-[0.98] disabled:cursor-wait disabled:opacity-70',
                 data.in_user_library
                   ? 'bg-apple-red/8 text-apple-red hover:bg-apple-red/12'
-                  : 'bg-apple-blue text-white shadow-[0_12px_30px_rgba(0,122,255,0.22)] hover:bg-apple-blue/90',
+                  : 'bg-apple-blue text-white shadow-[0_12px_30px_rgba(25,200,185,0.22)] hover:bg-apple-blue/90',
               )}
             >
               {isMutating ? (

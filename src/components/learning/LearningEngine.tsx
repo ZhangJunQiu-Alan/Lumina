@@ -29,6 +29,7 @@ import { ClickableText, type WordClickHandler } from '../shared/ClickableText';
 import { buildClozePrompt, type ClozePrompt } from '../../lib/cloze';
 import { Round2ClozePrompt } from './Round2ClozePrompt';
 import { attemptBuffer } from '../../lib/attemptBuffer';
+import { markReviewWordUnknown } from '../../lib/reviewApi';
 
 // --- Sub-components for Round 1 ---
 
@@ -956,6 +957,7 @@ export const LearningEngine = ({
       setIsWrong(false);
       setLastWrongInput(null);
       setShowAnswer(false);
+      setSubmitError('');
     } else {
       // 学习一轮结束，强制触发一次同步
       void attemptBuffer.flush();
@@ -1069,6 +1071,7 @@ export const LearningEngine = ({
     if (isViewingHistory) return;
 
     if (!showAnswer) {
+      setSubmitError('');
       setShowAnswer(true);
       return;
     }
@@ -1076,6 +1079,35 @@ export const LearningEngine = ({
     markCurrentQueueIndexPassed();
     nextWord();
   }, [isViewingHistory, markCurrentQueueIndexPassed, showAnswer, nextWord]);
+
+  const handleRound3Unknown = useCallback(async () => {
+    if (isViewingHistory || !showAnswer || isSubmittingAttempt) return;
+
+    setIsSubmittingAttempt(true);
+    setSubmitError('');
+
+    try {
+      await markReviewWordUnknown({
+        vocabularyItemId: currentWord.id,
+        learningGroupId: initialSession?.groupId,
+        timestamp: Date.now(),
+      });
+      markCurrentQueueIndexPassed();
+      nextWord();
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsSubmittingAttempt(false);
+    }
+  }, [
+    currentWord.id,
+    initialSession?.groupId,
+    isSubmittingAttempt,
+    isViewingHistory,
+    markCurrentQueueIndexPassed,
+    nextWord,
+    showAnswer,
+  ]);
 
   const validateCurrentInput = useCallback(async () => {
     // 防止重复提交
@@ -1293,7 +1325,7 @@ export const LearningEngine = ({
           className={cx(
             'flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-black tracking-[0.14em] transition-all',
             audioLocale === loc
-              ? 'bg-apple-blue text-white shadow-[0_12px_24px_rgba(0,122,255,0.18)]'
+              ? 'bg-apple-blue text-white shadow-[0_12px_24px_rgba(25,200,185,0.18)]'
               : 'bg-apple-blue/10 text-apple-blue hover:bg-apple-blue/15',
           )}
         >
@@ -1317,7 +1349,7 @@ export const LearningEngine = ({
       type="button"
       onClick={() => { void validateCurrentInput(); }}
       disabled={actionDisabled}
-      className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-apple-blue px-5 py-3.5 text-base font-black text-white shadow-[0_18px_40px_rgba(0,122,255,0.22)] transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 sm:w-auto sm:min-w-[220px]"
+      className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-apple-blue px-5 py-3.5 text-base font-black text-white shadow-[0_18px_40px_rgba(25,200,185,0.22)] transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 sm:w-auto sm:min-w-[220px]"
     >
       {isSubmittingAttempt ? (
         <>
@@ -1457,16 +1489,33 @@ export const LearningEngine = ({
 
         {renderProgressBar(displayProgressIndex, initialUniqueCount)}
 
-        <div className="w-full max-w-3xl px-4 pb-4 sm:pb-8">
-          <button
-            type="button"
-            onClick={handleRound3PrimaryAction}
-            disabled={isViewingHistory}
-            className="w-full py-4 bg-apple-blue text-white font-bold rounded-2xl flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
-          >
-            {isViewingHistory ? '回看中' : showAnswer ? '继续下一个词' : '展开释义'}
-            <ChevronRight className="w-5 h-5" />
-          </button>
+        <div className="w-full max-w-3xl space-y-3 px-4 pb-4 sm:pb-8">
+          {submitErrorBanner}
+          <div className={cx(
+            'grid gap-3',
+            showAnswer && !isViewingHistory ? 'sm:grid-cols-[minmax(0,0.72fr)_minmax(0,1fr)]' : 'grid-cols-1',
+          )}>
+            {showAnswer && !isViewingHistory && (
+              <button
+                type="button"
+                onClick={() => { void handleRound3Unknown(); }}
+                disabled={isSubmittingAttempt}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl border border-apple-red/20 bg-apple-red/10 px-5 py-4 font-bold text-apple-red transition-all hover:scale-[1.01] hover:bg-apple-red/15 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+              >
+                {isSubmittingAttempt ? <Loader2 className="h-5 w-5 animate-spin" /> : <XCircle className="h-5 w-5" />}
+                不认识
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleRound3PrimaryAction}
+              disabled={isViewingHistory || isSubmittingAttempt}
+              className="w-full py-4 bg-apple-blue text-white font-bold rounded-2xl flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+            >
+              {isViewingHistory ? '回看中' : isSubmittingAttempt ? '正在写回…' : showAnswer ? '继续下一个词' : '展开释义'}
+              {isSubmittingAttempt ? <Loader2 className="w-5 h-5 animate-spin" /> : <ChevronRight className="w-5 h-5" />}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -1617,7 +1666,7 @@ export const LearningEngine = ({
                             type="button"
                             onClick={() => { void validateCurrentInput(); }}
                             disabled={actionDisabled}
-                            className="flex h-full min-h-[50px] w-full items-center justify-center rounded-[22px] bg-apple-blue text-white shadow-[0_14px_32px_rgba(0,122,255,0.25)] transition-all active:scale-[0.96] disabled:opacity-50"
+                            className="flex h-full min-h-[50px] w-full items-center justify-center rounded-[22px] bg-apple-blue text-white shadow-[0_14px_32px_rgba(25,200,185,0.25)] transition-all active:scale-[0.96] disabled:opacity-50"
                           >
                             <ChevronRight className="h-6 w-6" strokeWidth={3} />
                           </button>

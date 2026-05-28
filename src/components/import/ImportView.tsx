@@ -23,7 +23,6 @@ type LoadingStep = 'lemmatizing' | 'fetching' | 'enriching' | 'merging';
 
 const MANUAL_BATCH_SIZE = 30;
 const MANUAL_DRAFT_KEY = 'manual_vocab_import_draft';
-const IMPORT_LEMMATIZE_CONCURRENCY = 4;
 
 const LOADING_STEP_COPY: Record<LoadingStep, { title: string; detail: string }> = {
   lemmatizing: {
@@ -32,11 +31,11 @@ const LOADING_STEP_COPY: Record<LoadingStep, { title: string; detail: string }> 
   },
   fetching: {
     title: '正在检索已有词库',
-    detail: '先把能直接复用的词挑出来，省下 AI 时间。',
+    detail: '先找已经整理过的词，避免重复处理。',
   },
   enriching: {
-    title: '让 AI 补齐剩下的词',
-    detail: '释义、例句、构词和关系会一起补齐，通常 10~30 秒。',
+    title: '正在补齐剩下的词',
+    detail: '释义、例句、构词和关系会一起补齐，通常需要 10 到 30 秒。',
   },
   merging: {
     title: '整理成可学顺序',
@@ -55,35 +54,11 @@ interface LiteVocabularyResult {
   word: string;
 }
 
-async function mapWithConcurrency<T, U>(
-  items: T[],
-  concurrency: number,
-  worker: (item: T) => Promise<U>,
-): Promise<U[]> {
-  const results: U[] = new Array(items.length);
-  let cursor = 0;
-  const workerCount = Math.min(Math.max(concurrency, 1), items.length);
-
-  await Promise.all(
-    Array.from({ length: workerCount }, async () => {
-      while (cursor < items.length) {
-        const index = cursor;
-        cursor += 1;
-        const item = items[index];
-        if (item === undefined) break;
-        results[index] = await worker(item);
-      }
-    }),
-  );
-
-  return results;
-}
-
-async function lemmatizeImportWord(word: string, signal: AbortSignal): Promise<string> {
-  const res = await apiFetch('/api/vocab/lemmatize', {
+async function lemmatizeImportWords(words: string[], signal: AbortSignal): Promise<string[]> {
+  const res = await apiFetch('/api/vocab/lemmatize-batch', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ word, source: 'import_lemmatize' }),
+    body: JSON.stringify({ words, source: 'import_lemmatize' }),
     signal,
     requiresAuth: false,
   });
@@ -93,19 +68,11 @@ async function lemmatizeImportWord(word: string, signal: AbortSignal): Promise<s
     throw new Error(err.error ?? `HTTP ${res.status}`);
   }
 
-  const { data } = await res.json() as { data?: LiteVocabularyResult };
-  return normalizeWordKey(data?.word ?? word) || normalizeWordKey(word);
-}
-
-async function lemmatizeImportWords(words: string[], signal: AbortSignal): Promise<string[]> {
-  const entries = await mapWithConcurrency(
-    words,
-    IMPORT_LEMMATIZE_CONCURRENCY,
-    async (word) => ({
-      word,
-      canonicalWord: await lemmatizeImportWord(word, signal),
-    }),
-  );
+  const { data } = await res.json() as { data?: LiteVocabularyResult[] };
+  const entries = words.map((word, index) => ({
+    word,
+    canonicalWord: normalizeWordKey(data?.[index]?.word ?? word) || normalizeWordKey(word),
+  }));
 
   return collapseCanonicalWordBatch(entries).words;
 }
@@ -329,7 +296,7 @@ export const ImportView = () => {
             </div>
             <h2 className="mb-2 text-2xl font-black">把一组外部词汇保存到词库</h2>
             <p className="mb-6 text-sm text-text-secondary">
-              逗号或换行都可以。先整理成完整词条，再从我的词库里按 30 个一组开始学习。
+              逗号或换行都可以。先整理成完整词条，再按 30 个一组开始学习。
             </p>
 
             <textarea
@@ -345,7 +312,7 @@ export const ImportView = () => {
             <div className="mb-6 flex items-center justify-between px-1">
               <span className="text-xs text-text-secondary">当前识别到 {wordCount} 个词</span>
               {wordCount > MANUAL_BATCH_SIZE && (
-                <span className="text-xs font-bold text-apple-red">这次会先接前 30 个</span>
+                  <span className="text-xs font-bold text-apple-red">这次会先取前 30 个</span>
               )}
             </div>
 
@@ -364,7 +331,7 @@ export const ImportView = () => {
               disabled={wordCount === 0}
               className="w-full rounded-2xl bg-apple-blue py-4 font-bold text-white transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              先整理成可学状态
+              整理并预览
             </button>
           </motion.div>
         )}
@@ -374,7 +341,7 @@ export const ImportView = () => {
           const currentStepIndex = stepOrder.indexOf(loadingStep);
           const activeCopy = LOADING_STEP_COPY[loadingStep];
           const activeTitle = loadingStep === 'enriching' && loadingMissingCount > 0
-            ? `让 AI 补齐 ${loadingMissingCount} 个新词`
+            ? `正在补齐 ${loadingMissingCount} 个新词`
             : activeCopy.title;
 
           return (
@@ -421,7 +388,7 @@ export const ImportView = () => {
                       </span>
                       <span className="text-sm font-bold">
                         {step === 'enriching' && loadingMissingCount > 0 && (isActive || isDone)
-                          ? `让 AI 补齐 ${loadingMissingCount} 个新词`
+                          ? `正在补齐 ${loadingMissingCount} 个新词`
                           : copy.title}
                       </span>
                     </li>
@@ -449,13 +416,13 @@ export const ImportView = () => {
             className="space-y-4"
           >
             <div className="mb-2 flex items-center justify-between px-1">
-              <h2 className="text-2xl font-black">这组词已经可以进入系统了</h2>
+              <h2 className="text-2xl font-black">这组词可以保存了</h2>
               <button
                 type="button"
                 onClick={handleBackToInput}
                 className="text-sm text-text-secondary transition-colors hover:text-text-primary"
               >
-                ← 回去改一下
+                返回修改
               </button>
             </div>
 

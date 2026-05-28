@@ -4,6 +4,7 @@ import { BookOpen, CheckCircle2, Languages } from 'lucide-react';
 import type { ArticleSentence, Word } from '../../types';
 import { useWordPopover } from '../../contexts/WordPopoverContext';
 import { ClickableText } from '../shared/ClickableText';
+import { IslandButton } from '../shared/AnimalPrimitives';
 
 interface ArticleViewProps {
   sentences: ArticleSentence[];
@@ -53,14 +54,15 @@ export const ArticleView = ({ sentences, words, onFinish }: ArticleViewProps) =>
                 <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">把这一组放回语境里</p>
               </div>
             </div>
-            <button
-              type="button"
+            <IslandButton
+              htmlType="button"
               onClick={onFinish}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-apple-blue px-6 py-4 font-black text-white shadow-xl shadow-apple-blue/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
+              tone="mint"
+              size="large"
+              icon={<CheckCircle2 className="h-5 w-5" />}
             >
-              <CheckCircle2 className="h-5 w-5" />
-              这段读完了，回到今天路线
-            </button>
+              这段读完了，回到今日学习
+            </IslandButton>
           </div>
 
           <div className="space-y-6 text-lg font-medium leading-[1.85] text-gray-800 selection:bg-apple-blue/10 sm:text-xl">
@@ -94,15 +96,16 @@ export const ArticleView = ({ sentences, words, onFinish }: ArticleViewProps) =>
 
         <aside className="sticky top-3 z-20 order-first xl:order-last xl:top-6">
           <div className="glass flex items-center gap-3 rounded-[24px] p-2 shadow-[0_18px_42px_rgba(14,26,56,0.08)] xl:flex-col xl:items-stretch xl:p-3">
-            <button
-              type="button"
+            <IslandButton
+              htmlType="button"
               onClick={handleRevealNext}
               disabled={allTranslated || sentences.length === 0}
-              className="inline-flex min-h-14 flex-1 items-center justify-center gap-2 rounded-[18px] border border-apple-blue/15 bg-apple-blue px-4 py-3 text-sm font-black text-white shadow-[0_14px_32px_rgba(0,122,255,0.22)] transition-all hover:scale-[1.01] hover:bg-apple-blue/90 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-apple-blue/35 disabled:shadow-none disabled:hover:scale-100 xl:w-full xl:flex-none"
+              className="min-h-14 flex-1 xl:w-full xl:flex-none"
+              tone="mint"
+              icon={<Languages className="h-5 w-5 shrink-0" />}
             >
-              <Languages className="h-5 w-5 shrink-0" />
               <span className="truncate">{translateButtonLabel}</span>
-            </button>
+            </IslandButton>
             <div className="hidden h-px w-full bg-black/6 xl:block" />
             <div className="shrink-0 rounded-[16px] bg-white/65 px-3 py-2 text-center text-xs font-black text-text-secondary xl:w-full">
               {revealedProgressLabel}
