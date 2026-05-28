@@ -323,8 +323,9 @@ export const LandingView = () => {
               className="landing-hero-copy"
             >
               <h1>
-                在 Lumina,
-                <span>英语学习像探索一样自然</span>
+                <span>在 Lumina,</span>
+                <span>英语学习像探索一样</span>
+                <span>自然</span>
               </h1>
               <p className="landing-hero-lede">
                 记得牢、练得多、用得上。从词汇记忆到应试训练，Lumina 帮你把学习变成一条清晰可见的成长路线。

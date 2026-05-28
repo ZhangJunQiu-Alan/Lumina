@@ -19,7 +19,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { isGoogleAuthEnabled } from '../../lib/authFeatures';
 import { formatAuthErrorFeedback } from '../../lib/authErrors';
 import { LuminaLogo } from '../brand/LuminaLogo';
-import { IslandBadge, IslandButton, IslandIconButton, IslandPanel } from '../shared/AnimalPrimitives';
+import { IslandButton, IslandIconButton, IslandPanel } from '../shared/AnimalPrimitives';
 
 type AuthMode = 'login' | 'register' | 'forgot' | 'reset';
 
@@ -46,53 +46,84 @@ const defaultFormState: FormState = {
 
 const authModeCopy: Record<AuthMode, AuthModeCopy> = {
   login: {
-    kicker: '回到进度',
-    heading: '登录后，继续上次停下的词。',
-    body: '词库、复习安排、学习偏好和未完成内容都会保存在账号里。',
+    kicker: '继续学习',
+    heading: '让今天的学习接上昨天。',
+    body: '登录后，Lumina 会同步你的词库、到期复习、未完成学习和设备偏好。',
     cta: '用邮箱登录',
   },
   register: {
-    kicker: '保存学习状态',
-    heading: '创建账号，保存从第一组词开始的进度。',
-    body: '之后的复习时间、错误记录和偏好设置都会跟着这个账号。',
+    kicker: '保存进度',
+    heading: '创建账号，把第一组词变成长期进度。',
+    body: '从第一次学习开始记录复习间隔、错词来源和播放偏好，换设备也能继续。',
     cta: '创建账号',
   },
   forgot: {
-    kicker: '找回入口',
-    heading: '输入邮箱，我们把重置链接发给你。',
-    body: '如果这个邮箱已经注册，重置邮件会在几分钟内送达。',
+    kicker: '找回账号',
+    heading: '先找回密码，不用重新开始。',
+    body: '输入注册邮箱。若账号存在，我们会发送一封安全重置邮件。',
     cta: '发送重置邮件',
   },
   reset: {
     kicker: '重设密码',
-    heading: '设置一个新的登录密码。',
-    body: '保存后这个重置链接会失效，你可以继续今天的学习。',
+    heading: '换一个新密码，进度保持不变。',
+    body: '保存后重置链接会失效，你可以继续回到原来的词库和复习安排。',
     cta: '更新密码并继续',
   },
 };
 
-const storyCopy: Record<AuthMode, { title: string; body: string; items: string[] }> = {
+const storyCopy: Record<AuthMode, { title: string; body: string; items: string[]; focus: string }> = {
   login: {
-    title: '你的学习进度还在。',
-    body: '登录后，今日到期复习、未完成学习和偏好设置都会重新排好。',
-    items: ['继续未完成学习', '同步今日复习队列', '保留发音与播放偏好'],
+    title: '让今天的学习接上昨天。',
+    body: 'Lumina 会把你上次停下的词、今日到期复习和学习偏好放回同一个入口。',
+    items: ['读取未完成学习', '同步今日复习队列', '保留发音与播放偏好'],
+    focus: '继续上次停下的词',
   },
   register: {
-    title: '先保存进度，再开始学习。',
-    body: '账号用来保存见过的词、复习时间和设备偏好。',
+    title: '先保存进度，再开始第一组词。',
+    body: '账号会记录见过的词、复习间隔、错题来源和设备偏好，让学习不再从零开始。',
     items: ['保存第一组学习记录', '建立个人复习节奏', '跨设备继续学习'],
+    focus: '从第一组词开始记录',
   },
   forgot: {
     title: '不用重新开始。',
     body: '重置密码只会更新登录方式，你的词库、状态和复习安排仍然保留。',
     items: ['发送安全重置链接', '保留原有学习数据', '完成后回到登录入口'],
+    focus: '找回账号入口',
   },
   reset: {
     title: '换个新密码，进度不变。',
     body: '新密码保存后，你可以继续使用原来的学习进度。',
     items: ['确认两次新密码', '保存后链接失效', '继续原有学习进度'],
+    focus: '更新登录方式',
   },
 };
+
+const authProgressStats = [
+  { label: '今日复习', value: '48', note: '到期词' },
+  { label: '继续学习', value: '12', note: '未完成' },
+  { label: '长期掌握', value: '1,286', note: '已稳定' },
+];
+
+const authBenefitTiles: Array<{ icon: LucideIcon; title: string; text: string; tone: 'mint' | 'yellow' | 'blue' }> = [
+  {
+    icon: BookOpen,
+    title: '词库不丢',
+    text: '官方词库、自定义词和保存词统一跟随账号。',
+    tone: 'mint',
+  },
+  {
+    icon: History,
+    title: '复习不断',
+    text: '每天先看到最该复习的内容，减少临时翻找。',
+    tone: 'yellow',
+  },
+  {
+    icon: Sparkles,
+    title: '偏好保留',
+    text: '播放速度、发音和练习设置会自动恢复。',
+    tone: 'blue',
+  },
+];
 
 function getPasswordStrength(password: string) {
   const checks = [
@@ -444,26 +475,54 @@ export const AuthView = () => {
   };
 
   return (
-    <main className="auth-page h-svh overflow-hidden px-3 py-4 sm:px-4 md:px-8 md:py-6">
-      <div className="mx-auto grid h-full w-full max-w-5xl gap-6 lg:grid-cols-2 lg:items-stretch">
+    <main className="auth-page min-h-svh overflow-x-hidden px-4 py-5 sm:px-6 md:py-7 lg:px-8">
+      <div className="auth-shell mx-auto grid w-full max-w-5xl gap-5 lg:grid-cols-[minmax(0,0.82fr)_minmax(430px,0.88fr)] lg:items-stretch">
         <motion.aside
           initial={{ opacity: 0, x: -18 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.45 }}
-          className="auth-pass-panel flex h-full w-full min-w-0 flex-col"
+          className="auth-story-panel"
         >
-          <LuminaLogo size={38} />
-          <IslandBadge tone="yellow" className="mt-4 md:mt-5">账号入口</IslandBadge>
-          <h1 className="mt-3 text-3xl font-black leading-tight tracking-tight text-text-primary md:mt-4 md:text-4xl">
-            {story.title}
-          </h1>
-          <p className="mt-3 text-sm font-bold leading-6 text-text-secondary md:mt-4">
-            {story.body}
-          </p>
+          <div className="auth-story-header">
+            <LuminaLogo size={42} wordmarkClassName="auth-wordmark" />
+            <span>账号入口</span>
+          </div>
 
-          <div className="flex-1" />
+          <div className="auth-story-copy">
+            <h1>{story.title}</h1>
+            <p>{story.body}</p>
+          </div>
 
-          <div className="auth-route-card">
+          <section className="auth-status-card" aria-label="学习状态预览">
+            <div className="auth-status-card__header">
+              <div>
+                <span>今日学习状态</span>
+                <strong>{story.focus}</strong>
+              </div>
+              <span className="auth-status-pill">已保存</span>
+            </div>
+
+            <div className="auth-stat-grid">
+              {authProgressStats.map((item) => (
+                <div key={item.label} className="auth-stat-item">
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                  <em>{item.note}</em>
+                </div>
+              ))}
+            </div>
+
+            <div className="auth-next-step">
+              <span>下一步</span>
+              <p>先处理到期复习，再回到上次未完成的学习内容。</p>
+            </div>
+          </section>
+
+          <section className="auth-route-card" aria-label="账号同步内容">
+            <div className="auth-route-card__header">
+              <span>进度同步</span>
+              <strong>{mode === 'register' ? '从第一组词开始记录' : '从上次位置继续'}</strong>
+            </div>
             <div className="auth-route-card__line" />
             {story.items.map((item, index) => (
               <div key={item} className="auth-route-stop">
@@ -471,20 +530,21 @@ export const AuthView = () => {
                 <span>{item}</span>
               </div>
             ))}
-          </div>
+          </section>
 
-          <div className="mt-4 grid gap-2.5 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-            {[
-              { icon: BookOpen, label: '词库' },
-              { icon: History, label: '复习' },
-              { icon: Sparkles, label: '偏好' },
-            ].map((item) => {
+          <div className="auth-benefit-grid">
+            {authBenefitTiles.map((item) => {
               const Icon = item.icon;
               return (
-                <div key={item.label} className="auth-mini-token">
-                  <Icon className="h-4 w-4" />
-                  <span>{item.label}</span>
-                </div>
+                <article key={item.title} className={`auth-benefit-card auth-benefit-card--${item.tone}`}>
+                  <span className="auth-benefit-card__icon">
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h2>{item.title}</h2>
+                    <p>{item.text}</p>
+                  </div>
+                </article>
               );
             })}
           </div>
@@ -494,10 +554,10 @@ export const AuthView = () => {
           initial={{ opacity: 0, x: 18 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.45, delay: 0.04 }}
-          className="flex h-full w-full min-w-0 flex-col"
+          className="auth-form-stage"
         >
-          <IslandPanel as="div" variant="elevated" className="auth-form-panel flex h-full w-full max-w-full flex-col p-5 md:p-7">
-            <div className="auth-tab-switcher">
+          <IslandPanel as="div" variant="elevated" className="auth-form-panel">
+            <div className="auth-tab-switcher" role="tablist" aria-label="账号操作">
               {([
                 { id: 'login', label: '登录' },
                 { id: 'register', label: '注册' },
@@ -505,6 +565,8 @@ export const AuthView = () => {
                 <button
                   key={tab.id}
                   type="button"
+                  role="tab"
+                  aria-selected={mode === tab.id}
                   onClick={() => switchMode(tab.id)}
                   className={`auth-tab-button ${mode === tab.id ? 'auth-tab-button--active' : ''}`}
                 >
@@ -520,15 +582,15 @@ export const AuthView = () => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -14 }}
                 transition={{ duration: 0.22 }}
-                className="mt-5 flex min-h-0 flex-1 flex-col overflow-y-auto"
+                className="auth-form-content"
               >
                 {title.kicker && (
-                  <p className="text-[11px] font-black uppercase tracking-[0.24em] text-apple-blue">{title.kicker}</p>
+                  <p className="auth-form-kicker">{title.kicker}</p>
                 )}
-                <h2 className={`${title.kicker ? 'mt-2' : ''} text-2xl font-black leading-tight tracking-tight text-text-primary md:text-3xl`}>
+                <h2 className="auth-form-title">
                   {title.heading}
                 </h2>
-                {title.body && <p className="mt-2 text-sm font-semibold leading-6 text-text-secondary">{title.body}</p>}
+                {title.body && <p className="auth-form-body">{title.body}</p>}
 
                 {(mode === 'login' || mode === 'register') && (isGoogleAuthEnabled ? (
                   <>
@@ -537,7 +599,7 @@ export const AuthView = () => {
                       disabled={isAuthLoading || isGoogleSubmitting}
                       aria-busy={isGoogleSubmitting}
                       onClick={() => { void handleGoogle(); }}
-                      className="mt-5 flex w-full items-center justify-center gap-2.5 rounded-[22px] bg-[#2c1c0e] px-6 py-[13px] text-sm font-black tracking-wide text-[#fff8e8] shadow-[0_3px_0_0_#180e06,0_12px_24px_rgba(44,28,14,0.18)] transition-all hover:-translate-y-0.5 active:translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
+                      className="auth-google-button"
                     >
                       <Chrome className="h-[18px] w-[18px] opacity-90" />
                       {isGoogleSubmitting ? '正在跳到 Google...' : '用 Google 登录'}
@@ -545,12 +607,12 @@ export const AuthView = () => {
                     <div className="auth-divider">或用邮箱</div>
                   </>
                 ) : (
-                  <div className="mt-8 rounded-[20px] border border-[#ead99d] bg-[#fff9e8] px-5 py-4 text-sm font-bold leading-7 text-[#8a5a14]">
+                  <div className="auth-google-disabled">
                     当前只能使用邮箱登录。Google 入口恢复后会显示在这里。
                   </div>
                 ))}
 
-                <form onSubmit={handleSubmit} className="mt-5 space-y-3">
+                <form onSubmit={handleSubmit} className="auth-form-fields">
                   {mode === 'register' && (
                     <AuthField
                       icon={UserRound}
@@ -598,24 +660,24 @@ export const AuthView = () => {
                       />
 
                       {showPasswordStrength && (
-                        <div className="rounded-[18px] border border-[#e0d4bc]/80 bg-[#faf8f2] px-4 py-3.5">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className={`text-[11px] font-black uppercase tracking-[0.12em] ${passwordStrength.textClass}`}>
+                        <div className="auth-password-meter">
+                          <div className="auth-password-meter__header">
+                            <p className={passwordStrength.textClass}>
                               {passwordStrength.label}
                             </p>
-                            <p className="text-[11px] font-bold text-text-secondary/60">{Math.min(passwordStrength.score, 5)} / 5</p>
+                            <p>{Math.min(passwordStrength.score, 5)} / 5</p>
                           </div>
-                          <div className="mt-2.5 grid grid-cols-5 gap-1">
+                          <div className="auth-password-meter__bars">
                             {Array.from({ length: 5 }, (_, index) => (
                               <div
                                 key={index}
-                                className={`h-1 rounded-full transition-colors duration-300 ${
-                                  index < passwordStrength.score ? passwordStrength.colorClass : 'bg-black/8'
+                                className={`${
+                                  index < passwordStrength.score ? passwordStrength.colorClass : 'auth-password-meter__bar-empty'
                                 }`}
                               />
                             ))}
                           </div>
-                          <p className="mt-2.5 text-[11px] font-semibold leading-5 text-text-secondary">{passwordStrength.detail}</p>
+                          <p className="auth-password-meter__detail">{passwordStrength.detail}</p>
                         </div>
                       )}
 
@@ -623,7 +685,7 @@ export const AuthView = () => {
                         <button
                           type="button"
                           onClick={() => switchMode('forgot')}
-                          className="-mt-1 text-xs font-black text-[#19c8b9] transition-colors hover:text-[#0fada0]"
+                          className="auth-forgot-button"
                         >
                           忘记密码？
                         </button>
@@ -655,25 +717,21 @@ export const AuthView = () => {
 
                   {feedback && (
                     <div
-                      className={`rounded-[18px] border px-4 py-3.5 text-sm font-bold leading-6 ${
-                        feedback.type === 'success'
-                          ? 'border-apple-green/20 bg-apple-green/8 text-apple-green'
-                          : 'border-apple-red/18 bg-apple-red/8 text-apple-red'
-                      }`}
+                      className={`auth-feedback auth-feedback--${feedback.type}`}
                     >
                       {feedback.text}
                     </div>
                   )}
 
                   {pendingConfirmationEmail && mode === 'register' && (
-                    <div className="rounded-[26px] border-2 border-apple-green/18 bg-apple-green/8 px-4 py-4 text-sm leading-7 text-text-secondary">
-                      <p className="font-black text-text-primary">没收到确认邮件？</p>
-                      <p className="mt-1 font-semibold">我们会重新发到 {pendingConfirmationEmail}，短时间内频繁发送可能会被限制。</p>
+                    <div className="auth-confirmation-card">
+                      <p>没收到确认邮件？</p>
+                      <span>我们会重新发到 {pendingConfirmationEmail}，短时间内频繁发送可能会被限制。</span>
                       <button
                         type="button"
                         onClick={() => { void handleResendConfirmation(); }}
                         disabled={isResendingConfirmation}
-                        className="mt-3 rounded-2xl bg-white/80 px-4 py-2 text-xs font-black text-apple-green shadow-sm transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                        className="auth-resend-button"
                       >
                         {isResendingConfirmation ? '正在重发...' : '重发确认邮件'}
                       </button>
@@ -703,21 +761,21 @@ export const AuthView = () => {
                   }}
                   tone="neutral"
                   block
-                  className="mt-3"
+                  className="auth-secondary-button"
                 >
                   {mode === 'forgot' || mode === 'reset' ? '回到登录' : '返回首页'}
                 </IslandButton>
 
-                <p className="mt-4 pb-2 text-center text-xs leading-5 text-text-secondary">
+                <p className="auth-legal-copy">
                   继续使用即表示你同意
                   {' '}
-                  <Link to="/terms" className="font-bold text-text-primary underline decoration-black/20 underline-offset-4">
+                  <Link to="/terms">
                     服务条款
                   </Link>
                   {' '}
                   和
                   {' '}
-                  <Link to="/privacy" className="font-bold text-text-primary underline decoration-black/20 underline-offset-4">
+                  <Link to="/privacy">
                     隐私政策
                   </Link>
                   。
