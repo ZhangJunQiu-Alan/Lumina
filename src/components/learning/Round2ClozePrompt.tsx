@@ -29,7 +29,7 @@ function renderBlankedSentence(
       nodes.push(
         <span
           key={`blank-${i}`}
-          className="mx-1.5 inline-flex items-baseline gap-1.5 align-baseline rounded-md bg-apple-blue/10 px-3 py-1 text-apple-blue/80"
+          className="mx-1.5 inline-flex items-baseline gap-1.5 align-baseline rounded-md bg-[#eaf2ff] px-3 py-1 text-[#2563eb]"
           aria-label="blank"
         >
           {renderSlots(expectedForm, inputValue)}
@@ -87,7 +87,7 @@ export const Round2ClozePrompt = ({
     </p>
 
     <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-      <span className="rounded-full bg-apple-blue/12 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-apple-blue">
+      <span className="rounded-full bg-[#eaf2ff] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-[#2563eb]">
         {prompt.formLabel}
       </span>
       {onPlaySentence && (
@@ -100,7 +100,7 @@ export const Round2ClozePrompt = ({
           disabled={!canPlaySentenceAudio}
           aria-label={isSentencePlaying ? '停止朗读完整例句' : '播放完整例句'}
           title={isSentencePlaying ? '停止朗读完整例句' : '播放完整例句'}
-          className="inline-flex items-center gap-1.5 rounded-full bg-apple-blue/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-apple-blue transition-colors hover:bg-apple-blue/15 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-apple-blue/10"
+          className="inline-flex items-center gap-1.5 rounded-full bg-[#eaf2ff] px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-[#2563eb] transition-colors hover:bg-[#dbeafe] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#eaf2ff]"
         >
           {isSentencePlaying
             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />

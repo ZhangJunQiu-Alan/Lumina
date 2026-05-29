@@ -7,6 +7,7 @@ import React, { useState, useRef, useEffect, useCallback, Suspense, lazy } from 
 import { motion } from 'motion/react';
 import {
   AlertCircle,
+  ArrowLeft,
   Loader2,
   RefreshCw,
   Settings,
@@ -253,6 +254,7 @@ export default function App() {
   const mainScrollRef = useRef<HTMLElement | null>(null);
   const activeLearningGroupIdRef = useRef<string | null>(null);
   const sessionAutoRestoreRef = useRef<string | null>(null);
+  const lastNonSessionAppPathRef = useRef('/app/home');
   const articleGenerationRef = useRef<ArticleGenerationJob | null>(null);
   const articleGenerationRunIdRef = useRef(0);
   const activeWordsRef = useRef<Word[]>([]);
@@ -281,6 +283,13 @@ export default function App() {
   useEffect(() => {
     activeWordsRef.current = activeWords;
   }, [activeWords]);
+
+  useEffect(() => {
+    if (!isSessionRoute && location.pathname.startsWith('/app')) {
+      lastNonSessionAppPathRef.current = `${location.pathname}${location.search}${location.hash}`;
+    }
+  }, [isSessionRoute, location.hash, location.pathname, location.search]);
+
   useEffect(() => {
     userIdRef.current = user?.id ?? null;
   }, [user?.id]);
@@ -958,12 +967,28 @@ export default function App() {
         setIsSessionSettingsOpen((prev) => !prev);
       }}
       className={cx(
-        'h-11 w-11 shrink-0 text-apple-blue',
+        '!h-6 !w-6 shrink-0 !rounded-lg !shadow-none text-apple-blue hover:!translate-y-0 hover:!shadow-none active:!translate-y-0 active:!shadow-none',
         isSessionSettingsOpen && 'bg-apple-blue text-white',
       )}
     >
-      <Settings className="h-5 w-5" strokeWidth={2.6} />
+      <Settings className="h-3.5 w-3.5" strokeWidth={2.6} />
     </IslandIconButton>
+  ) : null;
+
+  const sessionBackButton = isSessionRoute ? (
+    <button
+      type="button"
+      data-session-back-button
+      aria-label="返回"
+      title="返回"
+      onClick={() => {
+        setIsSessionSettingsOpen(false);
+        navigate(lastNonSessionAppPathRef.current || '/app/home');
+      }}
+      className="inline-flex h-7 w-7 items-center justify-center rounded-xl border border-white/80 bg-white/80 text-[#4f46e5] shadow-[0_6px_14px_rgba(79,70,229,0.14)] backdrop-blur-xl transition-all active:scale-95"
+    >
+      <ArrowLeft className="h-4 w-4" strokeWidth={2.8} />
+    </button>
   ) : null;
 
   useEffect(() => {
@@ -1024,6 +1049,7 @@ export default function App() {
             <Sidebar
               activePath={activeNavPath}
               onNavigate={(to) => navigate(to)}
+              hideOnMobile={isSessionRoute}
             />
           )}
           <WhatsNewModal />
@@ -1034,7 +1060,7 @@ export default function App() {
               onPointerDownCapture={(event) => {
                 if (!isSessionRoute || !isSessionSettingsOpen) return;
                 const target = event.target as HTMLElement;
-                if (target.closest('[data-session-settings-toggle]')) return;
+                if (target.closest('[data-session-settings-toggle], [data-session-back-button]')) return;
                 setIsSessionSettingsOpen(false);
                 event.preventDefault();
                 event.stopPropagation();
@@ -1042,7 +1068,7 @@ export default function App() {
               className={cx(
                 'h-full overflow-y-auto relative z-10',
                 isSessionRoute
-                  ? 'session-main px-4 py-6 pb-22 md:px-6 md:py-7 lg:pb-7 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10'
+                  ? 'session-main px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:px-6 md:pt-7 md:pb-7 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10'
                   : isIeltsTestRoute
                     ? 'px-0 py-0'
                   : isHomeRoute
@@ -1181,6 +1207,7 @@ export default function App() {
                             initialSession={activeSessionSeed}
                             onComplete={handleRoundComplete}
                             onSessionChange={handleLearningSessionChange}
+                            sessionLeadingAction={sessionBackButton}
                             sessionActions={sessionSettingsButton}
                           />
                         </React.Fragment>

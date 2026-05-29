@@ -1,4 +1,4 @@
-import { motion, useMotionValue, useSpring } from 'motion/react';
+import { motion } from 'motion/react';
 import { Icon as IslandIcon, type IconName } from 'animal-island-ui';
 import {
   BookOpen,
@@ -22,49 +22,6 @@ interface HomeViewProps {
 
 function cx(...parts: Array<string | false | undefined>) {
   return parts.filter(Boolean).join(' ');
-}
-
-function MagneticButton({ 
-  children, 
-  onClick, 
-  disabled, 
-  className 
-}: { 
-  children: React.ReactNode; 
-  onClick: () => void; 
-  disabled?: boolean;
-  className?: string;
-}) {
-  const x = useMotionValue(0);
-  const y = useMotionValue(0);
-  const springX = useSpring(x, { stiffness: 150, damping: 15 });
-  const springY = useSpring(y, { stiffness: 150, damping: 15 });
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    x.set((e.clientX - centerX) * 0.35);
-    y.set((e.clientY - centerY) * 0.35);
-  };
-
-  const handleMouseLeave = () => {
-    x.set(0);
-    y.set(0);
-  };
-
-  return (
-    <motion.button
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-      style={{ x: springX, y: springY }}
-      onClick={onClick}
-      disabled={disabled}
-      className={className}
-    >
-      {children}
-    </motion.button>
-  );
 }
 
 function OrbitMetric({
@@ -414,13 +371,13 @@ export const HomeView = ({ stats, onSelectOrbitDate, onStart, isLoading = false 
             ))}
           </div>
 
-          <MagneticButton
+          <button
             onClick={onStart}
             disabled={isLoading}
             className="home-cta relative mt-5 flex w-full items-center justify-center overflow-hidden rounded-[26px] border-2 border-[#ffcc00] bg-[#ffcc00] py-3.5 text-[16px] font-black text-[#3d2f1c] shadow-[0_6px_0_0_#e0b800] transition-all hover:brightness-105 active:translate-y-1 active:shadow-[0_2px_0_0_#e0b800] disabled:opacity-50 sm:py-4 sm:text-[18px] xl:mt-10 xl:rounded-[30px] xl:py-6 xl:text-[22px]"
           >
             {isLoading ? '准备中...' : routineCard.ctaLabel}
-          </MagneticButton>
+          </button>
         </motion.section>
       </main>
     </motion.div>

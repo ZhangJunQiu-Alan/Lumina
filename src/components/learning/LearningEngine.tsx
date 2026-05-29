@@ -56,7 +56,7 @@ const getRelationDetailText = (item: { meaningZh?: string; noteZh?: string }) =>
 );
 
 const round1RelationWordClassName = 'text-base sm:text-[18px] font-black text-text-primary [overflow-wrap:anywhere]';
-const round1RelationDetailClassName = 'mt-1.5 text-sm sm:text-[16px] leading-relaxed text-text-secondary [overflow-wrap:anywhere]';
+const round1RelationDetailClassName = 'mt-1.5 text-[13px] sm:text-[15px] leading-relaxed text-text-secondary [overflow-wrap:anywhere]';
 
 const getRound1ExampleItems = (word: Word) => (
   word.senses
@@ -142,8 +142,10 @@ const Round1LookupText = ({
   text,
   targetWords,
   onWordClick,
+  targetClassName,
 }: {
   text: string;
+  targetClassName?: string;
 } & Round1LookupProps) => (
   onWordClick ? (
     <ClickableText
@@ -151,6 +153,7 @@ const Round1LookupText = ({
       targetWords={targetWords}
       onWordClick={onWordClick}
       stopPropagation
+      targetClassName={targetClassName}
     />
   ) : (
     <>{text}</>
@@ -160,11 +163,7 @@ const Round1LookupText = ({
 const Round1MorphologyCard = ({ word, targetWords, onWordClick }: { word: Word } & Round1LookupProps) => {
   const morphologySummary = trimDisplayText(word.morphology.summaryZh);
   const derivedWords = getRound1WordItems(word.derivedWords);
-  const title = morphologySummary && derivedWords.length > 0
-    ? '构词拆解 / 派生词'
-    : morphologySummary
-      ? '构词拆解'
-      : '派生词';
+  const title = '单词拆解';
 
   if (!morphologySummary && derivedWords.length === 0) return null;
 
@@ -172,9 +171,11 @@ const Round1MorphologyCard = ({ word, targetWords, onWordClick }: { word: Word }
     <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-4 sm:p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
       <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.24em] text-text-secondary">{title}</p>
       {morphologySummary && (
-        <p className="mt-3 text-[15px] sm:text-base leading-7 text-text-primary">
-          <Round1LookupText text={morphologySummary} targetWords={targetWords} onWordClick={onWordClick} />
-        </p>
+        <div className="mt-2 rounded-[16px] border border-white/85 bg-white/75 px-3 py-2 sm:mt-3 sm:rounded-[18px] sm:px-4 sm:py-3">
+          <p className="text-sm sm:text-[15px] leading-7 text-text-primary">
+            <Round1LookupText text={morphologySummary} targetWords={targetWords} onWordClick={onWordClick} />
+          </p>
+        </div>
       )}
 
       {derivedWords.length > 0 && (
@@ -194,7 +195,7 @@ const Round1MorphologyCard = ({ word, targetWords, onWordClick }: { word: Word }
                     <Round1LookupText text={itemWord} targetWords={targetWords} onWordClick={onWordClick} />
                   </p>
                   {detailText && (
-                    <p className="mt-1.5 text-sm sm:text-[16px] leading-relaxed text-text-secondary">
+                    <p className="mt-1.5 text-[13px] sm:text-[15px] leading-relaxed text-text-secondary">
                       <Round1LookupText
                         text={detailText}
                         targetWords={targetWords}
@@ -305,32 +306,37 @@ const Round1ConfusingCard = ({
   onPlayExample: (sentence: string, key: string) => void;
 } & Round1LookupProps) => {
   const confusingPairs = getRound1WordItems(word.confusingPairs);
+  const confusingPairsWithDifference = confusingPairs.filter((pair) => hasDisplayText(pair.difference));
   const exampleItems = getRound1ExampleItems(word);
+  const currentWordKey = word.word.trim().toLowerCase();
 
-  if (confusingPairs.length === 0 && exampleItems.length === 0) return null;
+  if (confusingPairsWithDifference.length === 0 && exampleItems.length === 0) return null;
 
   return (
     <section className="h-full rounded-[24px] border border-white/80 bg-white/60 p-4 sm:p-5 shadow-[0_14px_32px_rgba(14,26,56,0.05)] backdrop-blur-xl">
       <div className="space-y-4 sm:space-y-5">
-        {confusingPairs.length > 0 && (
+        {confusingPairsWithDifference.length > 0 && (
           <div>
             <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.24em] text-text-secondary">易混词义对比</p>
-            <div className="mt-3 sm:mt-4 space-y-2">
-              {confusingPairs.map((pair, index) => {
+            <div className="mt-2 sm:mt-3 space-y-2">
+              {confusingPairsWithDifference.map((pair, index) => {
                 const pairWord = trimDisplayText(pair.word);
                 const difference = trimDisplayText(pair.difference);
+                const comparisonWords = new Set([currentWordKey, pairWord.toLowerCase()].filter(Boolean));
 
                 return (
                   <div
                     key={`${word.id}-confusion-${pairWord}-${index}`}
                     className="rounded-[16px] sm:rounded-[18px] border border-white/85 bg-white/75 px-3 py-2 sm:px-4 sm:py-3"
                   >
-                    <p className="text-lg sm:text-[24px] font-black tracking-tight text-text-primary">
-                      <Round1LookupText text={pairWord} targetWords={targetWords} onWordClick={onWordClick} />
-                    </p>
                     {difference && (
-                      <p className="mt-1.5 text-sm sm:text-[18px] leading-relaxed text-text-secondary">
-                        <Round1LookupText text={difference} targetWords={targetWords} onWordClick={onWordClick} />
+                      <p className="text-[13px] sm:text-[16px] leading-relaxed text-text-secondary">
+                        <Round1LookupText
+                          text={difference}
+                          targetWords={comparisonWords}
+                          onWordClick={onWordClick}
+                          targetClassName="bg-transparent text-lg font-black text-text-primary hover:bg-[#eaf2ff] sm:text-xl"
+                        />
                       </p>
                     )}
                   </div>
@@ -341,7 +347,7 @@ const Round1ConfusingCard = ({
         )}
 
         {exampleItems.length > 0 && (
-          <div className={cx(confusingPairs.length > 0 && 'border-t border-black/6 pt-4 sm:pt-5')}>
+          <div className={cx(confusingPairsWithDifference.length > 0 && 'border-t border-black/6 pt-4 sm:pt-5')}>
             <p className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.22em] text-text-secondary">例句</p>
             <div className="mt-2">
               <ExampleSentenceList
@@ -363,9 +369,9 @@ const Round1ConfusingCard = ({
 };
 
 const Round1MemoryTipCard = ({ memoryTip, targetWords, onWordClick }: { memoryTip: string } & Round1LookupProps) => (
-  <aside className="flex min-h-[92px] rounded-[18px] border border-apple-blue/15 bg-apple-blue/5 px-4 py-3 sm:px-5 sm:py-4 lg:min-h-[88px] lg:max-h-[132px] lg:w-full lg:max-w-[430px] lg:self-start lg:overflow-y-auto">
+  <aside className="flex min-h-[92px] rounded-[18px] border border-[#4f46e5]/15 bg-[#eef2ff] px-4 py-3 sm:px-5 sm:py-4 lg:min-h-[88px] lg:max-h-[132px] lg:w-full lg:max-w-[430px] lg:self-start lg:overflow-y-auto">
     <div className="my-auto min-w-0">
-      <p className="text-[11px] sm:text-[12px] font-bold uppercase tracking-[0.22em] text-apple-blue">
+      <p className="text-[11px] sm:text-[12px] font-bold uppercase tracking-[0.22em] text-[#4f46e5]">
         记忆锦囊
       </p>
       <p className="mt-1.5 text-[13px] sm:text-sm leading-6 text-text-primary">
@@ -379,21 +385,35 @@ const InputSessionShell = ({
   type,
   currentIndex,
   queueLength,
+  sessionLeadingAction,
   sessionActions,
   main,
 }: {
   type: RoundType;
   currentIndex: number;
   queueLength: number;
+  sessionLeadingAction?: React.ReactNode;
   sessionActions?: React.ReactNode;
   main: React.ReactNode;
 }) => (
   <div className="input-session-shell mx-auto flex h-full min-h-0 w-full max-w-[1400px] flex-col gap-3 sm:gap-4">
-    <header className="flex shrink-0 items-center justify-between gap-2">
-      <RoundIndicator type={type} className="min-w-0 flex-1" />
-      <div className="flex shrink-0 items-center justify-end gap-2">
+    <header className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[3.5rem_minmax(0,1fr)_3.5rem] sm:gap-3">
+      <div className="flex min-w-0 items-center gap-2">
+        {sessionLeadingAction && (
+          <div className="shrink-0 lg:hidden">
+            {sessionLeadingAction}
+          </div>
+        )}
+        <RoundIndicator type={type} className="min-w-0" showConnector={false} />
+      </div>
+      <SessionProgress
+        currentIndex={currentIndex}
+        queueLength={queueLength}
+        type={type}
+        className="min-w-0 justify-self-stretch"
+      />
+      <div className="flex shrink-0 items-center justify-end">
         {sessionActions}
-        <SessionProgress currentIndex={currentIndex} queueLength={queueLength} />
       </div>
     </header>
 
@@ -417,11 +437,11 @@ function renderProgressBar(currentIndex: number, queueLength: number) {
       </div>
       <div className="relative h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-black/5">
         <div
-          className="absolute inset-y-0 left-0 rounded-full bg-apple-blue/30 transition-all"
+          className="absolute inset-y-0 left-0 rounded-full bg-[#0ea5e9]/30 transition-all"
           style={{ width: `${completedRatio * 100}%` }}
         />
         <div
-          className="absolute inset-y-0 left-0 rounded-full bg-apple-blue transition-all"
+          className="absolute inset-y-0 left-0 rounded-full bg-[#0ea5e9] transition-all"
           style={{ width: `${currentRatio * 100}%` }}
         />
       </div>
@@ -452,6 +472,7 @@ export const LearningEngine = ({
   initialSession,
   onComplete,
   onSessionChange,
+  sessionLeadingAction,
   sessionActions,
 }: {
   type: RoundType;
@@ -464,6 +485,7 @@ export const LearningEngine = ({
     queueWordIds: string[];
     passedQueueIndices: number[];
   }) => void;
+  sessionLeadingAction?: React.ReactNode;
   sessionActions?: React.ReactNode;
 }) => {
   const { preferences } = useLearningPreferences();
@@ -1251,7 +1273,8 @@ export const LearningEngine = ({
     );
   }
 
-  const isCorrect = stripDiacritics(inputValue.trim().toLowerCase()) === stripDiacritics(expectedInput);
+  const isCorrect = inputValue.trim().length > 0
+    && stripDiacritics(inputValue.trim().toLowerCase()) === stripDiacritics(expectedInput);
   const primaryPos = viewedWord.pos_tags[0] ?? '未标注';
   const actionDisabled = isViewingHistory || isSubmittingAttempt || ((type === 'round2' || type === 'review') && showAnswer);
   const actionLabel = (type === 'round2' || type === 'review') && showAnswer
@@ -1259,7 +1282,8 @@ export const LearningEngine = ({
     : type === 'round1'
       ? '确认这一词'
       : '提交这次判断';
-  const allowLiveCorrectTint = type === 'round1';
+  const allowLiveCorrectTint = type === 'round1' || type === 'round2';
+  const inputIsCorrect = !isWrong && allowLiveCorrectTint && isCorrect;
   const contentAreaClassName = 'flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7 sm:py-7 lg:px-8 lg:py-7';
   const inputDockClassName = 'shrink-0 border-t border-black/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(247,249,253,0.92))] px-4 py-4 shadow-[0_-18px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl sm:px-7 sm:py-5 lg:px-8';
   const round1InputDockClassName = 'shrink-0 border-t border-black/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.76),rgba(247,249,253,0.94))] px-4 pt-2 pb-3 shadow-[0_-18px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl sm:px-7 sm:pt-3 sm:pb-4 lg:px-8';
@@ -1274,8 +1298,9 @@ export const LearningEngine = ({
     <form onSubmit={handleSubmit} className="w-full">
       <div
         className={cx(
-          'rounded-[22px] border border-white/80 bg-white/60 px-4 shadow-[0_12px_32px_rgba(14,26,56,0.06)] backdrop-blur-xl sm:px-5',
+          'rounded-[22px] border border-white/80 bg-white/60 px-4 shadow-[0_12px_32px_rgba(14,26,56,0.06)] backdrop-blur-xl transition-[background-color,border-color,box-shadow] duration-200 sm:px-5',
           type === 'round1' ? 'py-2 sm:py-3' : 'py-3.5 sm:py-5',
+          inputIsCorrect && 'border-[#22C55E]/35 bg-[#ECFDF5]/80 shadow-[0_12px_32px_rgba(34,197,94,0.12)]',
         )}
       >
         <input
@@ -1285,9 +1310,9 @@ export const LearningEngine = ({
           onChange={handleInput}
           disabled={isSubmittingAttempt || isViewingHistory}
           className={cx(
-            'w-full bg-transparent text-center font-black outline-none transition-colors caret-gray-800 placeholder:text-text-secondary/35',
-            type === 'round1' ? 'text-2xl sm:text-4xl' : 'text-3xl sm:text-5xl',
-            isWrong ? 'text-apple-red' : allowLiveCorrectTint && isCorrect ? 'text-[#10B981]' : 'text-text-primary',
+            'w-full bg-transparent text-center font-black leading-none outline-none transition-colors duration-200 caret-gray-800 placeholder:text-text-secondary/35 focus-visible:!outline-none',
+            type === 'round1' ? 'text-4xl sm:text-6xl' : 'text-5xl sm:text-7xl',
+            isWrong ? 'text-apple-red' : inputIsCorrect ? 'text-[#16A34A] caret-[#16A34A]' : 'text-text-primary',
           )}
           autoFocus
           autoComplete="off"
@@ -1325,8 +1350,12 @@ export const LearningEngine = ({
           className={cx(
             'flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-black tracking-[0.14em] transition-all',
             audioLocale === loc
-              ? 'bg-apple-blue text-white shadow-[0_12px_24px_rgba(25,200,185,0.18)]'
-              : 'bg-apple-blue/10 text-apple-blue hover:bg-apple-blue/15',
+              ? type === 'round2'
+                ? 'bg-[#2563eb] text-white shadow-[0_12px_24px_rgba(37,99,235,0.18)]'
+                : 'bg-apple-blue text-white shadow-[0_12px_24px_rgba(25,200,185,0.18)]'
+              : type === 'round2'
+                ? 'bg-[#eaf2ff] text-[#2563eb] hover:bg-[#dbeafe]'
+                : 'bg-apple-blue/10 text-apple-blue hover:bg-apple-blue/15',
           )}
         >
           {activePronunciationLocale === loc
@@ -1349,7 +1378,12 @@ export const LearningEngine = ({
       type="button"
       onClick={() => { void validateCurrentInput(); }}
       disabled={actionDisabled}
-      className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-apple-blue px-5 py-3.5 text-base font-black text-white shadow-[0_18px_40px_rgba(25,200,185,0.22)] transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 sm:w-auto sm:min-w-[220px]"
+      className={cx(
+        'flex w-full items-center justify-center gap-2 rounded-[20px] px-5 py-3.5 text-base font-black text-white transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 sm:w-auto sm:min-w-[220px]',
+        type === 'round2'
+          ? 'bg-[#2563eb] shadow-[0_18px_40px_rgba(37,99,235,0.22)] hover:bg-[#1d4ed8]'
+          : 'bg-apple-blue shadow-[0_18px_40px_rgba(25,200,185,0.22)]',
+      )}
     >
       {isSubmittingAttempt ? (
         <>
@@ -1398,6 +1432,11 @@ export const LearningEngine = ({
     return (
       <div className="w-full max-w-4xl mx-auto flex h-full min-h-0 flex-col items-center">
         <div className="flex w-full max-w-3xl items-center gap-2">
+          {sessionLeadingAction && (
+            <div className="shrink-0 lg:hidden">
+              {sessionLeadingAction}
+            </div>
+          )}
           <RoundIndicator type={type} className="min-w-0 flex-1" />
           {sessionActions}
         </div>
@@ -1417,7 +1456,7 @@ export const LearningEngine = ({
               animate={{ y: 0, opacity: 1 }}
               className="flex items-center gap-2 mb-8"
             >
-              <span className="bg-apple-teal text-white px-4 py-1 rounded-lg text-sm font-bold shadow-sm">
+              <span className="bg-[#0ea5e9] text-white px-4 py-1 rounded-lg text-sm font-bold shadow-[0_8px_18px_rgba(14,165,233,0.18)]">
                 {displayedPhonetic}
               </span>
               {(['uk', 'us'] as const).map(loc => (
@@ -1427,8 +1466,8 @@ export const LearningEngine = ({
                   onClick={() => { setAudioLocale(loc); void playAudioSequence(viewedWord, loc, 1, 0); }}
                   className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold transition-all ${
                     audioLocale === loc
-                      ? 'bg-apple-teal text-white shadow-sm'
-                      : 'bg-apple-teal/10 text-apple-teal hover:bg-apple-teal/20'
+                      ? 'bg-[#0ea5e9] text-white shadow-[0_8px_18px_rgba(14,165,233,0.16)]'
+                      : 'bg-[#e0f2fe] text-[#0284c7] hover:bg-[#bae6fd]'
                   }`}
                 >
                   {activePronunciationLocale === loc
@@ -1510,7 +1549,7 @@ export const LearningEngine = ({
               type="button"
               onClick={handleRound3PrimaryAction}
               disabled={isViewingHistory || isSubmittingAttempt}
-              className="w-full py-4 bg-apple-blue text-white font-bold rounded-2xl flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+              className="w-full py-4 bg-[#0ea5e9] text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-[0_16px_34px_rgba(14,165,233,0.22)] hover:scale-[1.01] hover:bg-[#0284c7] active:scale-[0.99] transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 disabled:hover:bg-[#0ea5e9]"
             >
               {isViewingHistory ? '回看中' : isSubmittingAttempt ? '正在写回…' : showAnswer ? '继续下一个词' : '展开释义'}
               {isSubmittingAttempt ? <Loader2 className="w-5 h-5 animate-spin" /> : <ChevronRight className="w-5 h-5" />}
@@ -1526,9 +1565,10 @@ export const LearningEngine = ({
       type={type}
       currentIndex={displayProgressIndex}
       queueLength={initialUniqueCount}
+      sessionLeadingAction={sessionLeadingAction}
       sessionActions={sessionActions}
       main={(
-        <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)] items-stretch gap-2 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-3">
+        <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)] items-stretch gap-2 sm:grid-cols-[3.5rem_minmax(0,1fr)_3.5rem] sm:gap-3">
           <div className="hidden items-center sm:flex">
             {leftNavigationButton}
           </div>
@@ -1571,7 +1611,7 @@ export const LearningEngine = ({
                           : 'lg:flex-row lg:items-start lg:gap-6',
                       )}>
                         <div className={cx('min-w-0', round1MemoryTip ? '2xl:flex-shrink-0' : 'lg:flex-shrink-0')}>
-                          <p className="max-w-full text-[clamp(1.44rem,8vw,3.36rem)] font-black leading-tight tracking-tight text-text-primary [overflow-wrap:anywhere]">
+                          <p className="max-w-full text-[clamp(1.296rem,7.2vw,3.024rem)] font-black leading-tight tracking-tight text-text-primary [overflow-wrap:anywhere]">
                             <Round1LookupText
                               text={viewedWord.word}
                               targetWords={lookupTargetWords}
@@ -1583,7 +1623,7 @@ export const LearningEngine = ({
                               {viewedWord.ner_entities.map((entity, index) => (
                                 <span
                                   key={`${viewedWord.id}-ner-${index}`}
-                                  className="rounded-full bg-apple-indigo/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-apple-indigo"
+                                  className="rounded-full bg-[#eef2ff] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[#4f46e5]"
                                 >
                                   专有名词 · {entity.label}
                                 </span>
@@ -1666,7 +1706,7 @@ export const LearningEngine = ({
                             type="button"
                             onClick={() => { void validateCurrentInput(); }}
                             disabled={actionDisabled}
-                            className="flex h-full min-h-[50px] w-full items-center justify-center rounded-[22px] bg-apple-blue text-white shadow-[0_14px_32px_rgba(25,200,185,0.25)] transition-all active:scale-[0.96] disabled:opacity-50"
+                            className="flex h-full min-h-[50px] w-full items-center justify-center rounded-[22px] bg-[#4f46e5] text-white shadow-[0_14px_32px_rgba(79,70,229,0.22)] transition-all hover:bg-[#4338ca] active:scale-[0.96] disabled:opacity-50 disabled:hover:bg-[#4f46e5]"
                           >
                             <ChevronRight className="h-6 w-6" strokeWidth={3} />
                           </button>
@@ -1717,7 +1757,14 @@ export const LearningEngine = ({
                           {primaryPos}
                         </span>
                       </div>
-                      <div className="mt-7 inline-flex items-baseline gap-1.5 rounded-md bg-apple-blue/10 px-4 py-2 text-2xl text-apple-blue/80 md:text-3xl">
+                      <div
+                        className={cx(
+                          'mt-7 inline-flex items-baseline gap-1.5 rounded-md px-4 py-2 text-2xl md:text-3xl',
+                          type === 'round2'
+                            ? 'bg-[#eaf2ff] text-[#2563eb]'
+                            : 'bg-apple-blue/10 text-apple-blue/80',
+                        )}
+                      >
                         {Array.from({ length: viewedExpectedInput.length }, (_, i) => (
                           <span key={i} className="inline-block min-w-[0.9ch] text-center font-mono">
                             {displayedInputValue[i] ?? '_'}

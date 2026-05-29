@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loader2, Volume2 } from 'lucide-react';
+import { Loader2, Sparkles, Volume2 } from 'lucide-react';
 import { PronunciationLocale, RoundType, Word } from '../../types';
 
 export function cx(...classes: Array<string | false | null | undefined>) {
@@ -82,27 +82,35 @@ export const WordSenseList = ({
   );
 };
 
-export const RoundIndicator = ({ type, className }: { type: RoundType; className?: string }) => {
+export const RoundIndicator = ({
+  type,
+  className,
+  showConnector = true,
+}: {
+  type: RoundType;
+  className?: string;
+  showConnector?: boolean;
+}) => {
   const labels: Record<RoundType, string> = {
     review: '先处理到期复习',
-    round1: '第一轮：先对上词形和意思',
-    round2: '第二轮：在语境里想起来',
-    round3: '第三轮：先判断，再确认',
+    round1: '记忆',
+    round2: '听写',
+    round3: '回忆',
     article: '最后用短文收口',
   };
   const colors: Record<RoundType, string> = {
     review: 'bg-apple-red',
-    round1: 'bg-apple-indigo',
-    round2: 'bg-apple-blue',
-    round3: 'bg-apple-teal',
+    round1: 'bg-[#4f46e5]',
+    round2: 'bg-[#2563eb]',
+    round3: 'bg-[#0ea5e9]',
     article: 'bg-apple-green',
   };
   return (
     <div className={cx('flex min-w-0 items-center gap-2 sm:gap-3', className)}>
-      <div className={`min-w-0 max-w-[36vw] truncate whitespace-nowrap px-3 py-1 sm:max-w-none sm:px-4 sm:py-1.5 ${colors[type]} text-white text-[9px] sm:text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg`}>
+      <div className={`inline-flex h-6 min-w-0 max-w-[36vw] items-center truncate whitespace-nowrap px-3 sm:max-w-none ${colors[type]} text-white text-[9px] font-black uppercase tracking-widest rounded-full shadow-lg`}>
         {labels[type]}
       </div>
-      <div className="h-px flex-1 bg-black/5" />
+      {showConnector && <div className="h-px flex-1 bg-black/5" />}
     </div>
   );
 };
@@ -110,19 +118,65 @@ export const RoundIndicator = ({ type, className }: { type: RoundType; className
 export const SessionProgress = ({
   currentIndex,
   queueLength,
+  type = 'round1',
+  className,
 }: {
   currentIndex: number;
   queueLength: number;
-}) => (
-  <div className="flex shrink-0 items-baseline gap-2 whitespace-nowrap rounded-full border border-white/70 bg-white/70 px-3 py-1.5 shadow-[0_14px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl sm:gap-3 sm:px-4 sm:py-2">
-    <div className="text-xs font-black tracking-[0.16em] text-text-primary sm:text-sm">
-      {String(currentIndex + 1).padStart(2, '0')} / {String(queueLength).padStart(2, '0')}
+  type?: RoundType;
+  className?: string;
+}) => {
+  const safeLength = Math.max(queueLength, 1);
+  const displayIndex = queueLength > 0 ? Math.min(currentIndex + 1, queueLength) : 0;
+  const progress = Math.min(Math.max(displayIndex / safeLength, 0), 1);
+  const progressPercent = progress * 100;
+  const isComplete = queueLength > 0 && displayIndex >= queueLength;
+  const fillColors: Record<RoundType, string> = {
+    review: 'from-apple-red/70 to-apple-red',
+    round1: 'from-[#8b5cf6] via-[#6366f1] to-[#4f46e5]',
+    round2: 'from-[#60a5fa] via-[#3b82f6] to-[#2563eb]',
+    round3: 'from-[#67e8f9] via-[#38bdf8] to-[#0ea5e9]',
+    article: 'from-apple-green/70 to-apple-green',
+  };
+
+  return (
+    <div
+      className={cx(
+        'relative h-6 w-full',
+        className,
+      )}
+      role="progressbar"
+      aria-label={`这一轮进度 ${displayIndex} / ${queueLength}`}
+      aria-valuemin={0}
+      aria-valuemax={queueLength}
+      aria-valuenow={displayIndex}
+    >
+      <div className="absolute inset-0 overflow-hidden rounded-full bg-[#cfd7e2] shadow-inner">
+        <div
+          className={cx(
+            'absolute inset-y-0 left-0 rounded-full bg-gradient-to-r shadow-[0_0_10px_rgba(79,70,229,0.35)] transition-all duration-500 ease-out',
+            fillColors[type],
+          )}
+          style={{
+            width: `${progressPercent}%`,
+            minWidth: progressPercent > 0 ? '1.5rem' : undefined,
+          }}
+        />
+        <div className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-black/6" />
+      </div>
+      <div
+        className={cx(
+          'absolute right-0 top-0 flex h-6 w-6 items-center justify-center rounded-full border-2 transition-colors duration-300',
+          isComplete
+            ? 'border-[#f0b64c] bg-[#fff8df] text-[#d78918] shadow-[0_6px_14px_rgba(215,137,24,0.18)]'
+            : 'border-[#9aa3af] bg-[#f4f6f8] text-[#5f6873] shadow-[0_4px_10px_rgba(63,70,82,0.12)]',
+        )}
+      >
+        <Sparkles className="h-3.5 w-3.5" strokeWidth={2.6} />
+      </div>
     </div>
-    <span className="text-[9px] font-bold uppercase tracking-[0.22em] text-text-secondary sm:text-[10px]">
-      这一轮进度
-    </span>
-  </div>
-);
+  );
+};
 
 export const PronunciationControls = ({
   phonetic,
@@ -140,8 +194,10 @@ export const PronunciationControls = ({
   <div className="flex flex-wrap items-center gap-2 sm:gap-3">
     <span
       className={cx(
-        'rounded-xl sm:rounded-2xl bg-apple-blue px-3 py-1.5 sm:px-4 sm:py-2 font-black tracking-tight text-white shadow-[0_12px_30px_rgba(25,200,185,0.18)]',
-        size === 'small' ? 'text-[13px] sm:text-[14px]' : 'text-base sm:text-lg',
+        'rounded-xl sm:rounded-2xl bg-[#4f46e5] font-black tracking-tight text-white shadow-[0_12px_30px_rgba(79,70,229,0.18)]',
+        size === 'small'
+          ? 'px-2.5 py-1 sm:px-3.5 sm:py-1.5 text-[12px] sm:text-[13px]'
+          : 'px-3 py-1.5 sm:px-4 sm:py-2 text-base sm:text-lg',
       )}
     >
       {phonetic || '暂无音标'}
@@ -152,16 +208,18 @@ export const PronunciationControls = ({
         type="button"
         onClick={() => onPlay(loc)}
         className={cx(
-          'flex items-center gap-1.5 rounded-xl sm:rounded-2xl px-2.5 py-1.5 sm:px-3 sm:py-2 font-black tracking-wide transition-all',
-          size === 'small' ? 'text-[8px] sm:text-[10px]' : 'text-[10px] sm:text-xs',
+          'flex items-center gap-1.5 rounded-xl sm:rounded-2xl font-black tracking-wide transition-all',
+          size === 'small'
+            ? 'px-2 py-1 sm:px-2.5 sm:py-1.5 text-[7px] sm:text-[9px]'
+            : 'px-2.5 py-1.5 sm:px-3 sm:py-2 text-[10px] sm:text-xs',
           audioLocale === loc
-            ? 'bg-apple-blue text-white shadow-[0_10px_24px_rgba(25,200,185,0.16)]'
-            : 'bg-apple-blue/10 text-apple-blue hover:bg-apple-blue/15',
+            ? 'bg-[#4f46e5] text-white shadow-[0_10px_24px_rgba(79,70,229,0.16)]'
+            : 'bg-[#eef2ff] text-[#4f46e5] hover:bg-[#e0e7ff]',
         )}
       >
         {activePronunciationLocale === loc
-          ? <Loader2 className="h-3 w-3 sm:h-3.5 sm:w-3.5 animate-spin" />
-          : <Volume2 className="h-3 w-3 sm:h-3.5 sm:w-3.5" />}
+          ? <Loader2 className={cx('animate-spin', size === 'small' ? 'h-2.5 w-2.5 sm:h-3 sm:w-3' : 'h-3 w-3 sm:h-3.5 sm:w-3.5')} />
+          : <Volume2 className={size === 'small' ? 'h-2.5 w-2.5 sm:h-3 sm:w-3' : 'h-3 w-3 sm:h-3.5 sm:w-3.5'} />}
         {loc.toUpperCase()}
       </button>
     ))}

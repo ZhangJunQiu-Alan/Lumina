@@ -1896,17 +1896,6 @@ select:focus-visible {
     0 5px 0 rgba(189, 174, 160, 0.22);
 }
 
-.home-cta::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 18% 50%, rgba(255, 253, 243, 0.38) 0 5px, transparent 6px),
-    repeating-linear-gradient(-12deg, rgba(255, 255, 255, 0.18) 0 12px, transparent 12px 24px);
-  opacity: 0.52;
-}
-
 @media (min-width: 1024px) and (max-height: 980px) {
   .home-header {
     margin-bottom: 1.25rem;

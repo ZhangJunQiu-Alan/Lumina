@@ -13,11 +13,18 @@ export interface ClickableTextProps {
   targetWords?: ReadonlySet<string>;
   onWordClick: WordClickHandler;
   stopPropagation?: boolean;
+  targetClassName?: string;
 }
 
 export type WordClickHandler = (word: string, anchor: HTMLElement) => void;
 
-export function ClickableText({ text, targetWords, onWordClick, stopPropagation = false }: ClickableTextProps) {
+export function ClickableText({
+  text,
+  targetWords,
+  onWordClick,
+  stopPropagation = false,
+  targetClassName,
+}: ClickableTextProps) {
   return (
     <>
       {tokenizeClickableText(text).map((token, index): ReactNode => {
@@ -33,7 +40,7 @@ export function ClickableText({ text, targetWords, onWordClick, stopPropagation 
             className={cx(
               'rounded px-0.5 py-0.5 cursor-pointer transition-colors',
               isTarget
-                ? 'bg-apple-blue/10 text-apple-blue font-bold hover:bg-apple-blue/20'
+                ? targetClassName ?? 'bg-[#eaf2ff] hover:bg-[#dbeafe]'
                 : 'hover:bg-apple-blue/10',
             )}
             data-clickable-word={token.normalized}

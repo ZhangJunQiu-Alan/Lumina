@@ -12,14 +12,15 @@ const NAV_ITEMS = [
 interface SidebarProps {
   activePath: string;
   onNavigate: (path: string) => void;
+  hideOnMobile?: boolean;
 }
 
-export const Sidebar = ({ activePath, onNavigate }: SidebarProps) => {
+export const Sidebar = ({ activePath, onNavigate, hideOnMobile = false }: SidebarProps) => {
   return (
     <motion.aside
       initial={{ x: -100, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
-      className="fixed bottom-0 left-0 right-0 z-50 flex h-20 w-full flex-row items-center justify-around rounded-t-[34px] border-t-2 border-[#d8cdb9] bg-[#fffdf3]/95 px-6 pb-safe shadow-[0_-5px_0_0_rgba(189,174,160,0.55),0_-14px_34px_rgba(107,92,67,0.16)] lg:bottom-6 lg:left-6 lg:top-6 lg:h-auto lg:w-20 lg:flex-col lg:justify-start lg:gap-8 lg:rounded-[34px] lg:border-2 lg:px-0 lg:py-8 lg:pb-8"
+      className={`fixed bottom-0 left-0 right-0 z-50 h-20 w-full flex-row items-center justify-around rounded-t-[34px] border-t-2 border-[#d8cdb9] bg-[#fffdf3]/95 px-6 pb-safe shadow-[0_-5px_0_0_rgba(189,174,160,0.55),0_-14px_34px_rgba(107,92,67,0.16)] lg:bottom-6 lg:left-6 lg:top-6 lg:h-auto lg:w-20 lg:flex-col lg:justify-start lg:gap-8 lg:rounded-[34px] lg:border-2 lg:px-0 lg:py-8 lg:pb-8 ${hideOnMobile ? 'hidden lg:flex' : 'flex'}`}
     >
       {NAV_ITEMS.map((item) => (
         <button
