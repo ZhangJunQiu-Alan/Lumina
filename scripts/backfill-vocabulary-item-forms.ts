@@ -85,9 +85,7 @@ async function fetchVocabularyItemIdsWithForms(): Promise<Set<string>> {
   return set;
 }
 
-async function insertFormsRows(
-  rows: Array<{ vocabulary_item_id: string; form: string }>,
-): Promise<number> {
+async function insertFormsRows(rows: Array<{ vocabulary_item_id: string; form: string }>): Promise<number> {
   if (rows.length === 0) return 0;
   const { error, data } = await supabaseAdmin
     .from('vocabulary_item_forms')
@@ -105,10 +103,7 @@ async function main() {
   const startedAt = Date.now();
 
   console.log('🔍 Surveying current state...');
-  const [allItems, idsWithForms] = await Promise.all([
-    fetchAllVocabularyItems(),
-    fetchVocabularyItemIdsWithForms(),
-  ]);
+  const [allItems, idsWithForms] = await Promise.all([fetchAllVocabularyItems(), fetchVocabularyItemIdsWithForms()]);
   console.log(`   vocabulary_items total: ${allItems.length}`);
   console.log(`   already has forms:      ${idsWithForms.size}`);
 

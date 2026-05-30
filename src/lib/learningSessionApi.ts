@@ -150,12 +150,9 @@ function isMissingRound1ConfirmedColumnError(error: { message?: string } | null 
 
 function isMissingRichVocabularySchemaError(error: { message?: string } | null | undefined) {
   const message = error?.message ?? '';
-  return [
-    'morphology_summary_zh',
-    'vocabulary_morphology_parts',
-    'vocabulary_relations',
-    'sort_order',
-  ].some((part) => message.includes(part));
+  return ['morphology_summary_zh', 'vocabulary_morphology_parts', 'vocabulary_relations', 'sort_order'].some((part) =>
+    message.includes(part),
+  );
 }
 
 function hasLearningSessionColumns(row: LearningGroupLookupRow): row is LearningGroupSessionRow {
@@ -171,10 +168,7 @@ function resolveGroupTitle(row: Pick<LearningGroupSessionRow, 'group_name'>) {
   return row.group_name?.trim() || '这组词';
 }
 
-function mapMorphology(
-  summary: string | null,
-  parts: VocabularyMorphologyPartRow[],
-): WordMorphology {
+function mapMorphology(summary: string | null, parts: VocabularyMorphologyPartRow[]): WordMorphology {
   return toWordMorphology({
     summary_zh: summary ?? '',
     parts: [...parts]
@@ -188,10 +182,7 @@ function mapMorphology(
   });
 }
 
-function mapRelations(
-  rows: VocabularyRelationRow[],
-  type: 'derived' | 'synonym' | 'antonym',
-): EnrichedWordRelation[] {
+function mapRelations(rows: VocabularyRelationRow[], type: 'derived' | 'synonym' | 'antonym'): EnrichedWordRelation[] {
   return [...rows]
     .filter((relation) => relation.relation_type === type)
     .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
@@ -226,12 +217,8 @@ function mapGroupWord(row: LearningGroupWordRow): Word | null {
     phonetic: vocabularyItem.ipa_uk ?? '',
     ipa_uk: vocabularyItem.ipa_uk ?? '',
     ipa_us: vocabularyItem.ipa_us ?? '',
-    pos_tags: vocabularyItem.vocabulary_senses
-      .map((sense) => sense.pos ?? '')
-      .filter(Boolean),
-    ner_entities: vocabularyItem.ner_label
-      ? [{ label: vocabularyItem.ner_label, text: vocabularyItem.word }]
-      : [],
+    pos_tags: vocabularyItem.vocabulary_senses.map((sense) => sense.pos ?? '').filter(Boolean),
+    ner_entities: vocabularyItem.ner_label ? [{ label: vocabularyItem.ner_label, text: vocabularyItem.word }] : [],
     chinese_definition: vocabularyItem.primary_meaning_zh ?? '',
     senses: vocabularyItem.vocabulary_senses.map((sense) => ({
       pos: sense.pos ?? '',
@@ -239,13 +226,8 @@ function mapGroupWord(row: LearningGroupWordRow): Word | null {
       example_sentence: sense.example_sentence ?? '',
       example_translation_zh: sense.example_translation_zh ?? '',
     })),
-    example_sentences: vocabularyItem.vocabulary_senses
-      .map((sense) => sense.example_sentence ?? '')
-      .filter(Boolean),
-    morphology: mapMorphology(
-      vocabularyItem.morphology_summary_zh,
-      vocabularyItem.vocabulary_morphology_parts ?? [],
-    ),
+    example_sentences: vocabularyItem.vocabulary_senses.map((sense) => sense.example_sentence ?? '').filter(Boolean),
+    morphology: mapMorphology(vocabularyItem.morphology_summary_zh, vocabularyItem.vocabulary_morphology_parts ?? []),
     derivedWords: toWordRelations(mapRelations(vocabularyItem.vocabulary_relations ?? [], 'derived')),
     synonyms: toWordRelations(mapRelations(vocabularyItem.vocabulary_relations ?? [], 'synonym')),
     antonyms: toWordRelations(mapRelations(vocabularyItem.vocabulary_relations ?? [], 'antonym')),
@@ -270,35 +252,36 @@ function toPersistedLearningSession(
     return null;
   }
 
-  const normalizedSession = normalizePersistedLearningSession({
-    groupId: row.id,
-    round: row.session_round,
-    currentIndex: row.session_current_index ?? 0,
-    queueWordIds: normalizeSessionQueueWordIds(row.session_queue_word_ids),
-    passedQueueIndices: normalizeSessionPassedQueueIndices(
-      row.session_passed_queue_indices,
-      normalizeSessionQueueWordIds(row.session_queue_word_ids).length,
-      row.session_current_index ?? 0,
-    ),
-    round1ConfirmedWordIds: normalizeSessionRound1ConfirmedWordIds(
-      row.session_round1_confirmed_word_ids,
-    ),
-    lastActiveAt: row.session_last_active_at ?? row.created_at,
-    groupCompleted: isCoreLearningComplete({
-      status: row.status,
+  const normalizedSession = normalizePersistedLearningSession(
+    {
+      groupId: row.id,
+      round: row.session_round,
+      currentIndex: row.session_current_index ?? 0,
+      queueWordIds: normalizeSessionQueueWordIds(row.session_queue_word_ids),
+      passedQueueIndices: normalizeSessionPassedQueueIndices(
+        row.session_passed_queue_indices,
+        normalizeSessionQueueWordIds(row.session_queue_word_ids).length,
+        row.session_current_index ?? 0,
+      ),
+      round1ConfirmedWordIds: normalizeSessionRound1ConfirmedWordIds(row.session_round1_confirmed_word_ids),
+      lastActiveAt: row.session_last_active_at ?? row.created_at,
+      groupCompleted: isCoreLearningComplete({
+        status: row.status,
+        completedAt: row.completed_at,
+        sessionRound: row.session_round,
+      }),
       completedAt: row.completed_at,
-      sessionRound: row.session_round,
-    }),
-    completedAt: row.completed_at,
-    libraryId: resolveOfficialLibraryId(row.library_id, row.group_name, row.source_type),
-    officialMode: resolveOfficialLibraryId(row.library_id, row.group_name, row.source_type)
-      ? resolveOfficialStudyModeFromGroupName(
-          resolveOfficialLibraryId(row.library_id, row.group_name, row.source_type)!,
-          row.group_name,
-        )
-      : null,
-    article,
-  }, words);
+      libraryId: resolveOfficialLibraryId(row.library_id, row.group_name, row.source_type),
+      officialMode: resolveOfficialLibraryId(row.library_id, row.group_name, row.source_type)
+        ? resolveOfficialStudyModeFromGroupName(
+            resolveOfficialLibraryId(row.library_id, row.group_name, row.source_type)!,
+            row.group_name,
+          )
+        : null,
+      article,
+    },
+    words,
+  );
 
   return normalizedSession;
 }
@@ -324,9 +307,7 @@ function toResumeCandidate(row: LearningGroupLookupRow): ResumeCandidate | null 
       normalizeSessionQueueWordIds(row.session_queue_word_ids).length,
       row.session_current_index ?? 0,
     ),
-    round1ConfirmedWordIds: normalizeSessionRound1ConfirmedWordIds(
-      row.session_round1_confirmed_word_ids,
-    ),
+    round1ConfirmedWordIds: normalizeSessionRound1ConfirmedWordIds(row.session_round1_confirmed_word_ids),
     lastActiveAt: row.session_last_active_at ?? row.created_at,
     groupCompleted: isCoreLearningComplete({
       status: row.status,
@@ -361,7 +342,10 @@ function isReinforcementResumeCandidate(candidate: ResumeCandidate | null | unde
   return Boolean(candidate && isReinforcementRound(candidate.round) && candidate.groupCompleted);
 }
 
-function buildOfficialResumeTargets(rows: LearningGroupSessionRow[], libraryId: OfficialLibraryId): OfficialResumeTargets {
+function buildOfficialResumeTargets(
+  rows: LearningGroupSessionRow[],
+  libraryId: OfficialLibraryId,
+): OfficialResumeTargets {
   let active: ResumeCandidate | null = null;
   let reinforcement: ResumeCandidate | null = null;
 
@@ -392,13 +376,11 @@ function buildOfficialResumeTargets(rows: LearningGroupSessionRow[], libraryId: 
   return { active, reinforcement };
 }
 
-async function fetchLearningGroupRow(
-  userId: string,
-  groupId: string,
-): Promise<LearningGroupLookupRow | null> {
+async function fetchLearningGroupRow(userId: string, groupId: string): Promise<LearningGroupLookupRow | null> {
   const fullResult = await supabase
     .from('learning_groups')
-    .select(`
+    .select(
+      `
       id,
       group_name,
       source_type,
@@ -412,7 +394,8 @@ async function fetchLearningGroupRow(
       session_passed_queue_indices,
       session_round1_confirmed_word_ids,
       session_last_active_at
-    `)
+    `,
+    )
     .eq('id', groupId)
     .eq('user_id', userId)
     .maybeSingle();
@@ -424,7 +407,8 @@ async function fetchLearningGroupRow(
   if (isMissingPassedQueueIndicesColumnError(fullResult.error)) {
     const legacySessionResult = await supabase
       .from('learning_groups')
-      .select(`
+      .select(
+        `
         id,
         group_name,
         source_type,
@@ -436,7 +420,8 @@ async function fetchLearningGroupRow(
         session_current_index,
         session_queue_word_ids,
         session_last_active_at
-      `)
+      `,
+      )
       .eq('id', groupId)
       .eq('user_id', userId)
       .maybeSingle();
@@ -454,7 +439,8 @@ async function fetchLearningGroupRow(
 
   const fallbackResult = await supabase
     .from('learning_groups')
-    .select(`
+    .select(
+      `
       id,
       group_name,
       source_type,
@@ -462,7 +448,8 @@ async function fetchLearningGroupRow(
       created_at,
       status,
       completed_at
-    `)
+    `,
+    )
     .eq('id', groupId)
     .eq('user_id', userId)
     .maybeSingle();
@@ -480,7 +467,8 @@ async function fetchResumeCandidateBySource(
 ): Promise<ResumeCandidate | null> {
   const { data, error } = await supabase
     .from('learning_groups')
-    .select(`
+    .select(
+      `
       id,
       group_name,
       source_type,
@@ -494,7 +482,8 @@ async function fetchResumeCandidateBySource(
       session_passed_queue_indices,
       session_round1_confirmed_word_ids,
       session_last_active_at
-    `)
+    `,
+    )
     .eq('user_id', userId)
     .not('session_round', 'is', null)
     .order('session_last_active_at', { ascending: false })
@@ -505,7 +494,8 @@ async function fetchResumeCandidateBySource(
     if (isMissingPassedQueueIndicesColumnError(error)) {
       const legacyRows = await supabase
         .from('learning_groups')
-        .select(`
+        .select(
+          `
           id,
           group_name,
           source_type,
@@ -517,7 +507,8 @@ async function fetchResumeCandidateBySource(
           session_current_index,
           session_queue_word_ids,
           session_last_active_at
-        `)
+        `,
+        )
         .eq('user_id', userId)
         .not('session_round', 'is', null)
         .order('session_last_active_at', { ascending: false })
@@ -538,7 +529,7 @@ async function fetchResumeCandidateBySource(
     }
   }
 
-  const rows = ((rowsData ?? []) as LearningGroupSessionRow[]);
+  const rows = (rowsData ?? []) as LearningGroupSessionRow[];
   const match = rows
     .filter((row) => isResumeCandidateForLibrary(row, libraryId))
     .map(toResumeCandidate)
@@ -556,7 +547,8 @@ export async function fetchOfficialResumeTargets(
 ): Promise<OfficialResumeTargets> {
   const rows = await supabase
     .from('learning_groups')
-    .select(`
+    .select(
+      `
       id,
       group_name,
       source_type,
@@ -570,7 +562,8 @@ export async function fetchOfficialResumeTargets(
       session_passed_queue_indices,
       session_round1_confirmed_word_ids,
       session_last_active_at
-    `)
+    `,
+    )
     .eq('user_id', userId)
     .not('session_round', 'is', null)
     .order('session_last_active_at', { ascending: false })
@@ -580,7 +573,8 @@ export async function fetchOfficialResumeTargets(
     if (isMissingPassedQueueIndicesColumnError(rows.error)) {
       const legacyRows = await supabase
         .from('learning_groups')
-        .select(`
+        .select(
+          `
           id,
           group_name,
           source_type,
@@ -592,7 +586,8 @@ export async function fetchOfficialResumeTargets(
           session_current_index,
           session_queue_word_ids,
           session_last_active_at
-        `)
+        `,
+        )
         .eq('user_id', userId)
         .not('session_round', 'is', null)
         .order('session_last_active_at', { ascending: false })
@@ -621,7 +616,8 @@ export async function fetchOfficialResumeTargets(
 export async function fetchOfficialResumeCandidates(userId: string) {
   const rows = await supabase
     .from('learning_groups')
-    .select(`
+    .select(
+      `
       id,
       group_name,
       source_type,
@@ -635,7 +631,8 @@ export async function fetchOfficialResumeCandidates(userId: string) {
       session_passed_queue_indices,
       session_round1_confirmed_word_ids,
       session_last_active_at
-    `)
+    `,
+    )
     .eq('user_id', userId)
     .not('session_round', 'is', null)
     .order('session_last_active_at', { ascending: false })
@@ -645,7 +642,8 @@ export async function fetchOfficialResumeCandidates(userId: string) {
     if (isMissingPassedQueueIndicesColumnError(rows.error)) {
       const legacyRows = await supabase
         .from('learning_groups')
-        .select(`
+        .select(
+          `
           id,
           group_name,
           source_type,
@@ -657,7 +655,8 @@ export async function fetchOfficialResumeCandidates(userId: string) {
           session_current_index,
           session_queue_word_ids,
           session_last_active_at
-        `)
+        `,
+        )
         .eq('user_id', userId)
         .not('session_round', 'is', null)
         .order('session_last_active_at', { ascending: false })
@@ -677,19 +676,13 @@ export async function fetchOfficialResumeCandidates(userId: string) {
       }
 
       return Object.fromEntries(
-        OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [
-          definition.id,
-          { active: null, reinforcement: null },
-        ]),
+        OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [definition.id, { active: null, reinforcement: null }]),
       ) as Record<OfficialLibraryId, OfficialResumeTargets>;
     }
 
     if (isMissingLearningSessionColumnError(rows.error)) {
       return Object.fromEntries(
-        OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [
-          definition.id,
-          { active: null, reinforcement: null },
-        ]),
+        OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [definition.id, { active: null, reinforcement: null }]),
       ) as Record<OfficialLibraryId, OfficialResumeTargets>;
     }
 
@@ -825,17 +818,16 @@ export async function fetchLearningGroupSession(
     throw new Error(`review_events lookup failed: ${round2AttemptResult.error.message}`);
   }
 
-  const words = wordRows
-    .map(mapGroupWord)
-    .filter((word): word is Word => Boolean(word));
+  const words = wordRows.map(mapGroupWord).filter((word): word is Word => Boolean(word));
   const wordIds = words.map((word) => word.id);
-  const reviewStatesResult = wordIds.length > 0
-    ? await supabase
-        .from('review_states')
-        .select('vocabulary_item_id, memory_state')
-        .eq('user_id', userId)
-        .in('vocabulary_item_id', wordIds)
-    : { data: [], error: null };
+  const reviewStatesResult =
+    wordIds.length > 0
+      ? await supabase
+          .from('review_states')
+          .select('vocabulary_item_id, memory_state')
+          .eq('user_id', userId)
+          .in('vocabulary_item_id', wordIds)
+      : { data: [], error: null };
 
   if (reviewStatesResult.error) {
     throw new Error(`review_states lookup failed: ${reviewStatesResult.error.message}`);
@@ -948,9 +940,7 @@ export async function persistLearningGroupSession(userId: string, session: Persi
   }
 
   const staleSafeFilter = staleSafeSessionRoundFilter(session);
-  const completedAt = session.groupCompleted
-    ? session.completedAt ?? new Date().toISOString()
-    : null;
+  const completedAt = session.groupCompleted ? (session.completedAt ?? new Date().toISOString()) : null;
   let updateQuery = supabase
     .from('learning_groups')
     .update({
@@ -964,9 +954,7 @@ export async function persistLearningGroupSession(userId: string, session: Persi
         session.queueWordIds.length,
         session.currentIndex,
       ),
-      session_round1_confirmed_word_ids: normalizeSessionRound1ConfirmedWordIds(
-        session.round1ConfirmedWordIds,
-      ),
+      session_round1_confirmed_word_ids: normalizeSessionRound1ConfirmedWordIds(session.round1ConfirmedWordIds),
       session_last_active_at: session.lastActiveAt,
     })
     .eq('id', session.groupId)
@@ -1139,11 +1127,7 @@ export async function clearLearningGroupSession(
   }
 }
 
-export async function trimLearningGroupToWordIds(
-  userId: string,
-  groupId: string,
-  keepWordIds: string[],
-) {
+export async function trimLearningGroupToWordIds(userId: string, groupId: string, keepWordIds: string[]) {
   const keepSet = new Set(keepWordIds.filter(Boolean));
   const { data: groupWords, error: groupWordsError } = await supabase
     .from('learning_group_words')
@@ -1178,9 +1162,7 @@ export async function trimLearningGroupToWordIds(
   }
 
   const sharedWordIds = new Set(
-    ((sharedWords ?? []) as Array<{ vocabulary_item_id: string }>)
-      .map((row) => row.vocabulary_item_id)
-      .filter(Boolean),
+    ((sharedWords ?? []) as Array<{ vocabulary_item_id: string }>).map((row) => row.vocabulary_item_id).filter(Boolean),
   );
   const orphanWordIds = removeWordIds.filter((wordId) => !sharedWordIds.has(wordId));
 
@@ -1240,21 +1222,17 @@ export async function fetchGeneratedArticle(userId: string, groupId: string) {
   return data?.content ?? null;
 }
 
-export async function upsertGeneratedArticle(
-  userId: string,
-  groupId: string,
-  content: string,
-  targetWords: string[],
-) {
-  const { error } = await supabase
-    .from('generated_articles')
-    .upsert({
+export async function upsertGeneratedArticle(userId: string, groupId: string, content: string, targetWords: string[]) {
+  const { error } = await supabase.from('generated_articles').upsert(
+    {
       user_id: userId,
       learning_group_id: groupId,
       title: '文章巩固',
       content,
       target_words_json: targetWords,
-    }, { onConflict: 'learning_group_id' });
+    },
+    { onConflict: 'learning_group_id' },
+  );
 
   if (error) {
     throw new Error(`generated_articles upsert failed: ${error.message}`);

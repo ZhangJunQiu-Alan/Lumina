@@ -32,12 +32,12 @@ function isReadingDraftAnnotation(value: unknown): value is IeltsReadingDraftAnn
   if (!value || typeof value !== 'object') return false;
   const item = value as Partial<IeltsReadingDraftAnnotation>;
   return (
-    typeof item.id === 'string'
-    && typeof item.passageNumber === 'number'
-    && typeof item.paragraphIndex === 'number'
-    && typeof item.start === 'number'
-    && typeof item.end === 'number'
-    && item.end > item.start
+    typeof item.id === 'string' &&
+    typeof item.passageNumber === 'number' &&
+    typeof item.paragraphIndex === 'number' &&
+    typeof item.start === 'number' &&
+    typeof item.end === 'number' &&
+    item.end > item.start
   );
 }
 

@@ -24,8 +24,6 @@ import type {
   IeltsReadingAttemptResult,
   IeltsReadingAttemptSummary,
   IeltsReadingBookSummary,
-  IeltsReadingOption,
-  IeltsReadingPassage,
   IeltsReadingPassageFigure,
   IeltsReadingQuestion,
   IeltsReadingQuestionGroup,
@@ -51,294 +49,48 @@ import {
   type IeltsReadingAnswerMap,
   type IeltsReadingAnswerValue,
 } from '../../lib/ieltsReadingScoring';
-import { splitIeltsPassageParagraphs } from '../../lib/ieltsReadingText';
 import { preloadIeltsReadingPassageLookupResources } from '../../lib/ieltsReadingLookupPreload';
-import { coerceIeltsReadingDraft, type IeltsReadingDraft } from '../../lib/ieltsReadingDraft';
-
-const TEST_DURATION_SECONDS = 60 * 60;
-
-type ReadingPane = 'passage' | 'questions';
-type SubmitMode = 'manual' | 'timeout';
-type ReviewFilter = 'all' | 'wrong' | 'unanswered';
-type ReadingToolMode = 'highlight' | 'note' | 'clear' | 'lookup';
-type ReviewItem = {
-  question: IeltsReadingQuestion;
-  response: IeltsReadingAttemptResult['responses'][number] | undefined;
-  answered: boolean;
-  isCorrect: boolean;
-  isWrong: boolean;
-  isUnanswered: boolean;
-};
-
-const DEFAULT_READING_FONT_SIZE = 17;
-const MIN_READING_FONT_SIZE = 15;
-const MAX_READING_FONT_SIZE = 21;
-
-interface ReadingAnnotation {
-  id: string;
-  passageNumber: number;
-  paragraphIndex: number;
-  start: number;
-  end: number;
-  note?: string;
-}
-
-interface AnnotationSelection {
-  passageNumber: number;
-  paragraphIndex: number;
-  start: number;
-  end: number;
-  text: string;
-  annotationId?: string;
-  note?: string;
-}
-
-type ReadingDraft = IeltsReadingDraft;
-
-const questionTypeLabel: Record<IeltsReadingQuestionGroup['type'], string> = {
-  true_false_not_given: 'TRUE / FALSE / NOT GIVEN',
-  yes_no_not_given: 'YES / NO / NOT GIVEN',
-  multiple_choice_single: '单选',
-  multiple_choice_multi: '多选',
-  matching_headings: '匹配标题',
-  matching_information: '匹配信息',
-  matching_features: '匹配特征',
-  matching_sentence_endings: '匹配句尾',
-  summary_completion: '摘要填空',
-  note_completion: '笔记填空',
-  table_completion: '表格填空',
-  flow_chart_completion: '流程图填空',
-  sentence_completion: '句子填空',
-  short_answer: '简答',
-  diagram_label: '图表标注',
-  other: '题目',
-};
-
-function draftKey(userId: string, testId: string) {
-  return `lumina.ielts-reading-draft.v1.${userId}.${testId}`;
-}
-
-function readDraft(userId: string, testId: string): ReadingDraft | null {
-  if (typeof window === 'undefined') return null;
-  return coerceIeltsReadingDraft(window.localStorage.getItem(draftKey(userId, testId)), clampReadingFontSize);
-}
-
-function writeDraft(userId: string, testId: string, draft: ReadingDraft) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(draftKey(userId, testId), JSON.stringify(draft));
-}
-
-function clearDraft(userId: string, testId: string) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.removeItem(draftKey(userId, testId));
-}
-
-function isAnswered(value: IeltsReadingAnswerValue): boolean {
-  return normalizeIeltsAnswerValue(value).length > 0;
-}
-
-function normalizeOptions(options: IeltsReadingOption[]) {
-  return options.filter((option) => option.key.trim() && option.text.trim());
-}
-
-function normalizeQuestionText(value: string) {
-  return value.replace(/\s+/g, ' ').trim();
-}
-
-function deriveQuestionPromptFromGroup(group?: IeltsReadingQuestionGroup) {
-  if (!group?.instructions) return '';
-
-  let text = normalizeQuestionText(group.instructions)
-    .replace(/^Questions?\s+\d{1,2}(?:\s*(?:-|and)\s*\d{1,2})?\s*/i, '');
-
-  let previous = '';
-  while (previous !== text) {
-    previous = text;
-    text = text
-      .replace(/^Choose\s+[^.?!]*[.?!]\s*/i, '')
-      .replace(/^Write your answers?\s+[^.?!]*[.?!]\s*/i, '');
-  }
-
-  const questionEnd = text.indexOf('?');
-  if (questionEnd >= 0) return text.slice(0, questionEnd + 1).trim();
-
-  const optionStart = /\s+[A-H]\s+(?=[A-Z0-9'"])/.exec(text)?.index ?? -1;
-  if (optionStart > 0) {
-    const candidate = text.slice(0, optionStart).trim();
-    if ((candidate.match(/[A-Za-z]+/g) ?? []).length >= 4) return candidate;
-  }
-
-  return '';
-}
-
-const completionQuestionTypes = new Set<IeltsReadingQuestionGroup['type']>([
-  'summary_completion',
-  'note_completion',
-  'table_completion',
-  'flow_chart_completion',
-  'sentence_completion',
-  'short_answer',
-  'diagram_label',
-]);
-
-interface CompletionTable {
-  header: string[];
-  rows: string[][];
-}
-
-interface EmbeddedPassageTableFallback {
-  headers: [string, string];
-  rows: [string, string][];
-}
-
-const visualSymbolsFig2Fallback: EmbeddedPassageTableFallback = {
-  headers: ['Words associated with circle/square', 'Agreement among subjects (%)'],
-  rows: [
-    ['SOFT-HARD', '100'],
-    ['MOTHER-FATHER', '94'],
-    ['HAPPY-SAD', '94'],
-    ['GOOD-EVIL', '89'],
-    ['LOVE-HATE', '89'],
-    ['ALIVE-DEAD', '87'],
-    ['BRIGHT-DARK', '87'],
-    ['LIGHT-HEAVY', '85'],
-    ['WARM-COLD', '81'],
-    ['SUMMER-WINTER', '81'],
-    ['WEAK-STRONG', '79'],
-    ['FAST-SLOW', '79'],
-    ['CAT-DOG', '74'],
-    ['SPRING-FALL', '74'],
-    ['QUIET-LOUD', '62'],
-    ['WALKING-STANDING', '62'],
-    ['ODD-EVEN', '57'],
-    ['FAR-NEAR', '53'],
-    ['PLANT-ANIMAL', '53'],
-    ['DEEP-SHALLOW', '51'],
-  ],
-};
-
-interface CompletionInputContext {
-  group: IeltsReadingQuestionGroup;
-  answers: IeltsReadingAnswerMap;
-  disabled: boolean;
-  activeQuestionNumber: number | null;
-  onAnswerChange: (questionNumber: number, value: IeltsReadingAnswerValue) => void;
-  onQuestionFocus: (questionNumber: number) => void;
-  registerQuestionRef: (questionNumber: number, node: HTMLElement | null) => void;
-}
-
-function isCompletionQuestionType(type: IeltsReadingQuestionGroup['type']) {
-  return completionQuestionTypes.has(type);
-}
-
-function getInstructionLines(value: string) {
-  return value.split(/\n+/).map((line) => line.trim()).filter(Boolean);
-}
-
-function parsePipeCompletionTable(lines: string[]): CompletionTable | null {
-  const tableRows = lines
-    .filter((line) => line.includes('|'))
-    .map((line) => line.split('|').map((cell) => cell.trim()))
-    .filter((row) => row.length >= 2 && row.some(Boolean));
-
-  if (tableRows.length < 2) return null;
-
-  const width = Math.max(...tableRows.map((row) => row.length));
-  const normalizedRows = tableRows.map((row) => Array.from({ length: width }, (_value, index) => row[index] ?? ''));
-  return {
-    header: normalizedRows[0],
-    rows: normalizedRows.slice(1),
-  };
-}
-
-function containsQuestionMarker(text: string, questionNumber: number) {
-  const escapedNumber = String(questionNumber);
-  return new RegExp(`(?:\\[${escapedNumber}\\]|(?:^|\\D)${escapedNumber})(?=\\s*(?:[_\\.]{2,}|…))`).test(text);
-}
-
-function normalizeQuestionMarker(text: string, questionNumber: number) {
-  const escapedNumber = String(questionNumber);
-  return text
-    .replace(new RegExp(`\\[${escapedNumber}\\]\\s*(?:[_\\.\\s]|…)*`, 'g'), '______')
-    .replace(new RegExp(`(^|\\D)${escapedNumber}\\s*(?:[_\\.\\s]|…){2,}`, 'g'), '$1______')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function deriveCompletionPromptFromInstructions(question: IeltsReadingQuestion, group?: IeltsReadingQuestionGroup) {
-  if (!group?.instructions || !isCompletionQuestionType(question.type)) return '';
-
-  const lines = getInstructionLines(group.instructions);
-  const table = parsePipeCompletionTable(lines);
-  const tableRow = table?.rows.find((row) => row.some((cell) => containsQuestionMarker(cell, question.number)));
-  if (tableRow) {
-    return tableRow.map((cell) => normalizeQuestionMarker(cell, question.number)).join(' | ');
-  }
-
-  const markerIndex = lines.findIndex((line) => containsQuestionMarker(line, question.number));
-  if (markerIndex < 0) return '';
-
-  const contextLines = [lines[markerIndex]];
-  for (let index = markerIndex + 1; index < Math.min(lines.length, markerIndex + 3); index += 1) {
-    const line = lines[index];
-    if (/^Questions?\s+\d/i.test(line) || containsQuestionMarker(line, question.number + 1)) break;
-    contextLines.push(line);
-  }
-
-  return normalizeQuestionMarker(contextLines.join(' '), question.number);
-}
-
-function getQuestionDisplayPrompt(question: IeltsReadingQuestion, group?: IeltsReadingQuestionGroup) {
-  return normalizeQuestionText(question.prompt)
-    || deriveCompletionPromptFromInstructions(question, group)
-    || deriveQuestionPromptFromGroup(group)
-    || (isCompletionQuestionType(question.type) ? `Question ${question.number}` : 'Write the correct answer.');
-}
-
-function hasCompletionTable(group: IeltsReadingQuestionGroup) {
-  return Boolean(parsePipeCompletionTable(getInstructionLines(group.instructions)));
-}
-
-function getRawAnswerText(value: IeltsReadingAnswerValue) {
-  if (Array.isArray(value)) return value.join(' ');
-  if (typeof value === 'string') return value;
-  return '';
-}
-
-function getAnswerPart(value: IeltsReadingAnswerValue, partIndex: number, partCount: number) {
-  const raw = getRawAnswerText(value);
-  if (partCount <= 1) return raw;
-  return raw.trim().split(/\s+/)[partIndex] ?? '';
-}
-
-function setAnswerPart(value: IeltsReadingAnswerValue, partIndex: number, partCount: number, nextPart: string) {
-  if (partCount <= 1) return nextPart;
-
-  const currentParts = getRawAnswerText(value).trim().split(/\s+/).filter(Boolean);
-  const nextParts = Array.from({ length: partCount }, (_item, index) => currentParts[index] ?? '');
-  nextParts[partIndex] = nextPart.trim();
-  return nextParts.filter(Boolean).join(' ');
-}
-
-function countCompletionInputs(value: string, context?: CompletionInputContext) {
-  const counts = new Map<number, number>();
-  if (!context) return counts;
-
-  const questionNumbers = new Set(context.group.questions.map((question) => question.number));
-  const markerRe = /\[(\d{1,2})\]\s*_{2,}|_{2,}/g;
-  let currentQuestionNumber: number | null = null;
-  let match: RegExpExecArray | null;
-
-  while ((match = markerRe.exec(value))) {
-    if (match[1]) {
-      currentQuestionNumber = Number.parseInt(match[1], 10);
-    }
-    if (!currentQuestionNumber || !questionNumbers.has(currentQuestionNumber)) continue;
-    counts.set(currentQuestionNumber, (counts.get(currentQuestionNumber) ?? 0) + 1);
-  }
-
-  return counts;
-}
+import {
+  clampReadingFontSize,
+  clearDraft,
+  countCompletionInputs,
+  countPassageAnswers,
+  createAnnotationId,
+  DEFAULT_READING_FONT_SIZE,
+  formatAnswerList,
+  getAnswerPart,
+  getEmbeddedFiguresAfterParagraph,
+  getInstructionLines,
+  getPassageParagraphs,
+  getQuestionDisplayPrompt,
+  getQuestionGroupRangeLabel,
+  getQuestionRangeLabel,
+  getRawAnswerText,
+  getUnansweredNumbers,
+  hasCompletionTable,
+  isAnswered,
+  isCompletionQuestionType,
+  isPassagePartHeading,
+  normalizeOptions,
+  optionButtonClass,
+  parsePipeCompletionTable,
+  questionTypeLabel,
+  rangesOverlap,
+  readArticleSelection,
+  readDraft,
+  setAnswerPart,
+  TEST_DURATION_SECONDS,
+  trueFalseChoiceClass,
+  writeDraft,
+  type AnnotationSelection,
+  type CompletionInputContext,
+  type ReadingAnnotation,
+  type ReadingPane,
+  type ReadingToolMode,
+  type ReviewFilter,
+  type ReviewItem,
+  type SubmitMode,
+} from './ieltsReadingHelpers';
 
 function renderCompletionCellContent(value: string, context?: CompletionInputContext) {
   const nodes: ReactNode[] = [];
@@ -360,10 +112,10 @@ function renderCompletionCellContent(value: string, context?: CompletionInputCon
     }
 
     const canRenderInput = Boolean(
-      context
-      && currentQuestionNumber
-      && questionNumbers.has(currentQuestionNumber)
-      && inputCounts.has(currentQuestionNumber),
+      context &&
+      currentQuestionNumber &&
+      questionNumbers.has(currentQuestionNumber) &&
+      inputCounts.has(currentQuestionNumber),
     );
 
     if (canRenderInput && context && currentQuestionNumber) {
@@ -410,7 +162,10 @@ function renderCompletionCellContent(value: string, context?: CompletionInputCon
     }
 
     nodes.push(
-      <span key={`${match[1] ?? 'blank'}-${match.index}`} className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <span
+        key={`${match[1] ?? 'blank'}-${match.index}`}
+        className="inline-flex items-center gap-1.5 whitespace-nowrap"
+      >
         {match[1] && (
           <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-[8px] bg-apple-blue/10 px-1.5 text-xs font-black text-apple-blue">
             {match[1]}
@@ -452,17 +207,18 @@ function CompletionSourceBlock({
   const table = parsePipeCompletionTable(lines);
   const instructionLines = lines.filter((line) => !line.includes('|'));
   if (instructionLines.length === 0 && !table) return null;
-  const inputContext = answers && onAnswerChange && onQuestionFocus && registerQuestionRef
-    ? {
-      group,
-      answers,
-      disabled,
-      activeQuestionNumber,
-      onAnswerChange,
-      onQuestionFocus,
-      registerQuestionRef,
-    }
-    : undefined;
+  const inputContext =
+    answers && onAnswerChange && onQuestionFocus && registerQuestionRef
+      ? {
+          group,
+          answers,
+          disabled,
+          activeQuestionNumber,
+          onAnswerChange,
+          onQuestionFocus,
+          registerQuestionRef,
+        }
+      : undefined;
 
   return (
     <div className="rounded-[24px] border border-[#e5ebf5] bg-white p-5">
@@ -509,59 +265,13 @@ function CompletionSourceBlock({
   );
 }
 
-function isPassagePartHeading(value: string) {
-  return /^Part\s+\d+$/i.test(value.trim());
-}
-
-function makeLegacyPassageFigure(
-  figureKey: string,
-  title: string,
-  caption: string,
-  fallback: EmbeddedPassageTableFallback,
-): IeltsReadingPassageFigure {
-  return {
-    id: `legacy-${figureKey}`,
-    figureKey,
-    title,
-    caption,
-    imageUrl: '',
-    storagePath: '',
-    pdfPage: null,
-    anchorText: '',
-    sortOrder: 0,
-    fallback,
-  };
-}
-
-function figureMatchesParagraph(figure: IeltsReadingPassageFigure, paragraph: string) {
-  if (figure.anchorText && paragraph.includes(figure.anchorText)) return true;
-  if (figure.title && new RegExp(`\\b${figure.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(paragraph)) return true;
-  return false;
-}
-
-function getEmbeddedFiguresAfterParagraph(passage: IeltsReadingPassage, paragraph: string): IeltsReadingPassageFigure[] {
-  const figures = passage.figures.filter((figure) => figureMatchesParagraph(figure, paragraph));
-  if (figures.length > 0) return figures;
-
-  if (passage.title !== 'Visual Symbols and the Blind') return [];
-  if (!/\(See Fig\. 2\.\)/.test(paragraph)) return [];
-
-  return [
-    makeLegacyPassageFigure(
-      'fig-2',
-      'Fig. 2',
-      'Subjects were asked which word in each pair fits best with a circle and which with a square. These percentages show the level of consensus among sighted subjects.',
-      visualSymbolsFig2Fallback,
-    ),
-  ];
-}
-
 function EmbeddedPassageFigureBlock({ figure }: { figure: IeltsReadingPassageFigure }) {
   const imageAlt = figure.caption ? `${figure.title}: ${figure.caption}` : figure.title;
   const imageMaxWidth = figure.figureKey === 'fig-1' ? 'max-w-[240px]' : 'max-w-[520px]';
-  const fallback = figure.fallback.headers && figure.fallback.rows
-    ? { headers: figure.fallback.headers, rows: figure.fallback.rows }
-    : null;
+  const fallback =
+    figure.fallback.headers && figure.fallback.rows
+      ? { headers: figure.fallback.headers, rows: figure.fallback.rows }
+      : null;
 
   if (figure.imageUrl) {
     return (
@@ -612,129 +322,9 @@ function EmbeddedPassageFigureBlock({ figure }: { figure: IeltsReadingPassageFig
   );
 }
 
-function getUnansweredNumbers(questions: IeltsReadingQuestion[], answers: IeltsReadingAnswerMap) {
-  return questions
-    .filter((question) => !isAnswered(answers[question.number]))
-    .map((question) => question.number);
-}
-
-function clampReadingFontSize(value: unknown): number {
-  const numericValue = typeof value === 'number' ? value : DEFAULT_READING_FONT_SIZE;
-  return Math.min(MAX_READING_FONT_SIZE, Math.max(MIN_READING_FONT_SIZE, Math.round(numericValue)));
-}
-
-function getPassageParagraphs(body: string): string[] {
-  return splitIeltsPassageParagraphs(body);
-}
-
-function getQuestionRangeLabel(passage: IeltsReadingPassage) {
-  const numbers = passage.groups.flatMap((group) => group.questions.map((question) => question.number));
-  if (numbers.length === 0) return '';
-  return `${Math.min(...numbers)}-${Math.max(...numbers)}`;
-}
-
-function getQuestionGroupRangeLabel(group: IeltsReadingQuestionGroup) {
-  const start = group.rangeStart ?? group.questions[0]?.number;
-  const end = group.rangeEnd ?? group.questions[group.questions.length - 1]?.number ?? start;
-  if (!start) return 'Questions';
-  return start === end ? `Question ${start}` : `Questions ${start}-${end}`;
-}
-
-function countPassageAnswers(passage: IeltsReadingPassage, answers: IeltsReadingAnswerMap) {
-  const passageQuestions = passage.groups.flatMap((group) => group.questions);
-  return {
-    answered: passageQuestions.filter((question) => isAnswered(answers[question.number])).length,
-    total: passageQuestions.length,
-  };
-}
-
-function rangesOverlap(leftStart: number, leftEnd: number, rightStart: number, rightEnd: number) {
-  return leftStart < rightEnd && rightStart < leftEnd;
-}
-
-function createAnnotationId() {
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function getParagraphElement(node: Node | null): HTMLElement | null {
-  if (!node) return null;
-  const element = node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement;
-  return element?.closest<HTMLElement>('[data-ielts-paragraph]') ?? null;
-}
-
-function getTextOffsetWithin(element: HTMLElement, node: Node, offset: number) {
-  const range = document.createRange();
-  range.selectNodeContents(element);
-  range.setEnd(node, offset);
-  return range.toString().length;
-}
-
-function readArticleSelection(): AnnotationSelection | null {
-  if (typeof window === 'undefined') return null;
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
-
-  const range = selection.getRangeAt(0);
-  const startElement = getParagraphElement(range.startContainer);
-  const endElement = getParagraphElement(range.endContainer);
-  if (!startElement || !endElement || startElement !== endElement) return null;
-
-  const passageNumber = Number(startElement.dataset.passageNumber);
-  const paragraphIndex = Number(startElement.dataset.paragraphIndex);
-  if (!Number.isFinite(passageNumber) || !Number.isFinite(paragraphIndex)) return null;
-
-  const firstOffset = getTextOffsetWithin(startElement, range.startContainer, range.startOffset);
-  const secondOffset = getTextOffsetWithin(startElement, range.endContainer, range.endOffset);
-  const start = Math.min(firstOffset, secondOffset);
-  const end = Math.max(firstOffset, secondOffset);
-  const text = selection.toString().trim();
-  if (end <= start || !text) return null;
-
-  return { passageNumber, paragraphIndex, start, end, text };
-}
-
-function formatAnswerList(values: string[]) {
-  return values.length > 0 ? values.join(', ') : '未作答';
-}
-
-function optionButtonClass(active: boolean) {
-  return cx(
-    'min-h-11 rounded-2xl border px-4 py-3 text-sm font-black transition-all',
-    active
-      ? 'border-apple-blue bg-apple-blue text-white shadow-[0_10px_20px_rgba(25,200,185,0.18)]'
-      : 'border-black/8 bg-white/80 text-text-secondary hover:border-apple-blue/30 hover:text-text-primary',
-  );
-}
-
-function trueFalseChoiceClass(choice: string, active: boolean) {
-  const isNegative = choice === 'FALSE' || choice === 'NO';
-  const isNeutral = choice === 'NOT GIVEN';
-  return cx(
-    'flex h-11 items-center justify-center rounded-xl border text-[0.82rem] font-black uppercase tracking-[0.16em] transition-all disabled:cursor-not-allowed disabled:opacity-60',
-    active
-      ? cx(
-        'bg-white shadow-[0_8px_18px_rgba(14,26,56,0.06)]',
-        isNegative && 'border-apple-red text-apple-red',
-        isNeutral && 'border-[#8e8e93] text-[#74777f]',
-        !isNegative && !isNeutral && 'border-apple-green text-apple-green',
-      )
-      : 'border-transparent text-text-secondary hover:bg-white/70 hover:text-text-primary',
-  );
-}
-
-function renderLookupTextSegment(
-  text: string,
-  readingMode: ReadingToolMode,
-  onWordClick: WordClickHandler,
-) {
+function renderLookupTextSegment(text: string, readingMode: ReadingToolMode, onWordClick: WordClickHandler) {
   if (readingMode !== 'lookup') return text;
-  return (
-    <ClickableText
-      text={text}
-      onWordClick={onWordClick}
-      stopPropagation
-    />
-  );
+  return <ClickableText text={text} onWordClick={onWordClick} stopPropagation />;
 }
 
 function renderAnnotatedParagraph({
@@ -755,13 +345,14 @@ function renderAnnotatedParagraph({
   onWordClick: WordClickHandler;
 }) {
   const paragraphAnnotations = annotations
-    .filter((annotation) => (
-      annotation.passageNumber === passageNumber
-      && annotation.paragraphIndex === paragraphIndex
-      && annotation.start >= 0
-      && annotation.end <= text.length
-      && annotation.end > annotation.start
-    ))
+    .filter(
+      (annotation) =>
+        annotation.passageNumber === passageNumber &&
+        annotation.paragraphIndex === paragraphIndex &&
+        annotation.start >= 0 &&
+        annotation.end <= text.length &&
+        annotation.end > annotation.start,
+    )
     .sort((left, right) => left.start - right.start);
 
   const nodes: ReactNode[] = [];
@@ -782,7 +373,9 @@ function renderAnnotatedParagraph({
         key={annotation.id}
         className={cx(
           'relative rounded-[6px] px-0.5 transition-colors',
-          annotation.note ? 'bg-[#dcebff] underline decoration-apple-blue/50 decoration-2 underline-offset-4' : 'bg-[#ffe7a8]',
+          annotation.note
+            ? 'bg-[#dcebff] underline decoration-apple-blue/50 decoration-2 underline-offset-4'
+            : 'bg-[#ffe7a8]',
           readingMode === 'clear' && 'cursor-pointer ring-1 ring-apple-red/30',
           readingMode === 'note' && 'cursor-pointer ring-1 ring-apple-blue/30',
         )}
@@ -990,7 +583,9 @@ function AnnotationNoteDialog({
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-apple-blue">Reading Note</p>
-            <h3 id="ielts-note-title" className="mt-2 text-2xl font-black text-text-primary">添加笔记</h3>
+            <h3 id="ielts-note-title" className="mt-2 text-2xl font-black text-text-primary">
+              添加笔记
+            </h3>
           </div>
           <button
             type="button"
@@ -1109,7 +704,8 @@ export function IeltsReadingHomeView() {
           <FileText className="mx-auto h-10 w-10 text-text-secondary" />
           <h3 className="mt-4 text-2xl font-black text-text-primary">还没有导入真题 PDF</h3>
           <p className="mx-auto mt-3 max-w-2xl text-sm font-bold leading-7 text-text-secondary">
-            把 PDF 放到 `content/ielts-reading/raw/` 后运行 dry-run 导入脚本。校对通过后再 apply 到 Supabase，这里就会出现套题入口。
+            把 PDF 放到 `content/ielts-reading/raw/` 后运行 dry-run 导入脚本。校对通过后再 apply 到
+            Supabase，这里就会出现套题入口。
           </p>
         </section>
       ) : (
@@ -1125,9 +721,7 @@ export function IeltsReadingHomeView() {
                     Cambridge IELTS {book.bookNumber}
                   </p>
                   <h3 className="mt-2 text-2xl font-black text-text-primary">{book.title}</h3>
-                  {book.sourceLabel && (
-                    <p className="mt-2 text-xs font-bold text-text-secondary">{book.sourceLabel}</p>
-                  )}
+                  {book.sourceLabel && <p className="mt-2 text-xs font-bold text-text-secondary">{book.sourceLabel}</p>}
                 </div>
                 <div className="rounded-2xl bg-apple-green/10 px-3 py-2 text-sm font-black text-apple-green">
                   {book.tests.length} 套
@@ -1180,9 +774,8 @@ function QuestionInput({
   const isGroupedMultiChoice = question.type === 'multiple_choice_multi' && group.questions.length > 1;
 
   if (question.type === 'true_false_not_given' || question.type === 'yes_no_not_given') {
-    const choices = question.type === 'true_false_not_given'
-      ? ['TRUE', 'FALSE', 'NOT GIVEN']
-      : ['YES', 'NO', 'NOT GIVEN'];
+    const choices =
+      question.type === 'true_false_not_given' ? ['TRUE', 'FALSE', 'NOT GIVEN'] : ['YES', 'NO', 'NOT GIVEN'];
     return (
       <div className="grid grid-cols-3 gap-1 rounded-[18px] bg-[#f3f5fa] p-1">
         {choices.map((choice) => (
@@ -1213,7 +806,11 @@ function QuestionInput({
               if (!disabled) onChange(option.key);
             }}
             disabled={disabled}
-            className={cx(optionButtonClass(response[0] === option.key.toLowerCase()), 'w-full justify-start text-left', disabled && 'cursor-not-allowed opacity-60')}
+            className={cx(
+              optionButtonClass(response[0] === option.key.toLowerCase()),
+              'w-full justify-start text-left',
+              disabled && 'cursor-not-allowed opacity-60',
+            )}
           >
             {option.key}. {option.text}
           </button>
@@ -1239,7 +836,11 @@ function QuestionInput({
                 onChange(next);
               }}
               disabled={disabled}
-              className={cx(optionButtonClass(active), 'w-full justify-start text-left', disabled && 'cursor-not-allowed opacity-60')}
+              className={cx(
+                optionButtonClass(active),
+                'w-full justify-start text-left',
+                disabled && 'cursor-not-allowed opacity-60',
+              )}
             >
               {option.key}. {option.text}
             </button>
@@ -1260,7 +861,11 @@ function QuestionInput({
               if (!disabled) onChange(option.key);
             }}
             disabled={disabled}
-            className={cx(optionButtonClass(response[0] === option.key.toLowerCase()), 'w-full justify-start text-left', disabled && 'cursor-not-allowed opacity-60')}
+            className={cx(
+              optionButtonClass(response[0] === option.key.toLowerCase()),
+              'w-full justify-start text-left',
+              disabled && 'cursor-not-allowed opacity-60',
+            )}
           >
             {option.key}. {option.text}
           </button>
@@ -1337,17 +942,19 @@ function ResultPanel({
     return true;
   };
   const filteredReviewGroups = test.passages
-    .flatMap((passage) => passage.groups.map((group) => {
-      const allItems = group.questions
-        .map((question) => reviewItemByQuestionNumber.get(question.number))
-        .filter((item): item is ReviewItem => Boolean(item));
-      return {
-        passage,
-        group,
-        allItems,
-        items: allItems.filter(applyReviewFilter),
-      };
-    }))
+    .flatMap((passage) =>
+      passage.groups.map((group) => {
+        const allItems = group.questions
+          .map((question) => reviewItemByQuestionNumber.get(question.number))
+          .filter((item): item is ReviewItem => Boolean(item));
+        return {
+          passage,
+          group,
+          allItems,
+          items: allItems.filter(applyReviewFilter),
+        };
+      }),
+    )
     .filter((group) => group.items.length > 0);
 
   const scrollToReviewQuestion = (questionNumber: number) => {
@@ -1375,8 +982,12 @@ function ResultPanel({
             <p className="text-xs font-black uppercase tracking-[0.24em] text-text-secondary">
               Cambridge {result.bookNumber} · Test {result.testNumber}
             </p>
-            <h2 className="mt-3 text-3xl font-black text-text-primary">本次得分 {result.score} / {result.totalQuestions}</h2>
-            <p className="mt-2 text-sm font-bold text-text-secondary">用时 {formatElapsedTime(result.elapsedSeconds)}</p>
+            <h2 className="mt-3 text-3xl font-black text-text-primary">
+              本次得分 {result.score} / {result.totalQuestions}
+            </h2>
+            <p className="mt-2 text-sm font-bold text-text-secondary">
+              用时 {formatElapsedTime(result.elapsedSeconds)}
+            </p>
           </div>
           <button
             type="button"
@@ -1462,9 +1073,7 @@ function ResultPanel({
                     <p className="text-xs font-black uppercase tracking-[0.18em] text-apple-blue">
                       Passage {passage.number} · {questionTypeLabel[group.type]}
                     </p>
-                    <p className="mt-1 text-sm font-black text-text-primary">
-                      {getQuestionGroupRangeLabel(group)}
-                    </p>
+                    <p className="mt-1 text-sm font-black text-text-primary">{getQuestionGroupRangeLabel(group)}</p>
                   </div>
                   <div className="flex flex-wrap gap-2 text-xs font-black">
                     <span className="rounded-xl bg-apple-green/10 px-3 py-1.5 text-apple-green">
@@ -1486,19 +1095,28 @@ function ResultPanel({
                       }}
                       className={cx(
                         'grid gap-3 px-5 py-4 text-sm transition-all md:grid-cols-[minmax(0,1fr)_minmax(9rem,0.32fr)_minmax(9rem,0.32fr)_5rem] md:items-center',
-                        activeReviewNumber === question.number && 'bg-apple-blue/7 ring-1 ring-inset ring-apple-blue/20',
+                        activeReviewNumber === question.number &&
+                          'bg-apple-blue/7 ring-1 ring-inset ring-apple-blue/20',
                       )}
                     >
                       <p className="min-w-0 font-black leading-6 text-text-primary">
                         {question.number}. {getQuestionDisplayPrompt(question, groupByQuestionId.get(question.id))}
                       </p>
                       <div className="min-w-0 rounded-[16px] bg-black/[0.025] px-3 py-2">
-                        <p className="text-[0.68rem] font-black uppercase tracking-[0.14em] text-text-secondary">你的答案</p>
-                        <p className="mt-1 break-words font-bold text-text-primary">{formatAnswerList(response?.response ?? [])}</p>
+                        <p className="text-[0.68rem] font-black uppercase tracking-[0.14em] text-text-secondary">
+                          你的答案
+                        </p>
+                        <p className="mt-1 break-words font-bold text-text-primary">
+                          {formatAnswerList(response?.response ?? [])}
+                        </p>
                       </div>
                       <div className="min-w-0 rounded-[16px] bg-apple-green/10 px-3 py-2">
-                        <p className="text-[0.68rem] font-black uppercase tracking-[0.14em] text-apple-green">正确答案</p>
-                        <p className="mt-1 break-words font-bold text-text-primary">{formatAnswerList(response?.correctAnswer ?? question.answer)}</p>
+                        <p className="text-[0.68rem] font-black uppercase tracking-[0.14em] text-apple-green">
+                          正确答案
+                        </p>
+                        <p className="mt-1 break-words font-bold text-text-primary">
+                          {formatAnswerList(response?.correctAnswer ?? question.answer)}
+                        </p>
                       </div>
                       <span
                         className={cx(
@@ -1611,7 +1229,8 @@ export function IeltsReadingTestView() {
   }, [answers, annotations, flaggedNumbers, fontSize, practiceMode, result, selectedPassage, startedAt, testId, user]);
 
   const questions = useMemo(() => (test ? getIeltsReadingQuestions(test) : []), [test]);
-  const selectedPassageData = test?.passages.find((passage) => passage.number === selectedPassage) ?? test?.passages[0] ?? null;
+  const selectedPassageData =
+    test?.passages.find((passage) => passage.number === selectedPassage) ?? test?.passages[0] ?? null;
   const flaggedSet = useMemo(() => new Set(flaggedNumbers), [flaggedNumbers]);
   const elapsedSeconds = Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000));
   const remainingSeconds = Math.max(0, TEST_DURATION_SECONDS - elapsedSeconds);
@@ -1644,23 +1263,29 @@ export function IeltsReadingTestView() {
     void preloadIeltsReadingPassageLookupResources(selectedPassageData.body, pronunciationLocale);
   }, [practiceMode, pronunciationLocale, selectedPassageData]);
 
-  const setAnswer = useCallback((questionNumber: number, value: IeltsReadingAnswerValue) => {
-    if (inputsLocked) return;
-    setAnswers((current) => ({
-      ...current,
-      [questionNumber]: value,
-    }));
-  }, [inputsLocked]);
+  const setAnswer = useCallback(
+    (questionNumber: number, value: IeltsReadingAnswerValue) => {
+      if (inputsLocked) return;
+      setAnswers((current) => ({
+        ...current,
+        [questionNumber]: value,
+      }));
+    },
+    [inputsLocked],
+  );
 
-  const toggleFlag = useCallback((questionNumber: number) => {
-    if (inputsLocked) return;
-    setFlaggedNumbers((current) => {
-      if (current.includes(questionNumber)) {
-        return current.filter((number) => number !== questionNumber);
-      }
-      return [...current, questionNumber].sort((left, right) => left - right);
-    });
-  }, [inputsLocked]);
+  const toggleFlag = useCallback(
+    (questionNumber: number) => {
+      if (inputsLocked) return;
+      setFlaggedNumbers((current) => {
+        if (current.includes(questionNumber)) {
+          return current.filter((number) => number !== questionNumber);
+        }
+        return [...current, questionNumber].sort((left, right) => left - right);
+      });
+    },
+    [inputsLocked],
+  );
 
   const upsertAnnotation = useCallback((selection: AnnotationSelection, note?: string) => {
     const nextAnnotation: ReadingAnnotation = {
@@ -1672,35 +1297,40 @@ export function IeltsReadingTestView() {
       note: note || undefined,
     };
 
-    setAnnotations((current) => [
-      ...current.filter((annotation) => {
-        if (annotation.id === selection.annotationId) return false;
+    setAnnotations((current) =>
+      [
+        ...current.filter((annotation) => {
+          if (annotation.id === selection.annotationId) return false;
+          if (
+            annotation.passageNumber !== selection.passageNumber ||
+            annotation.paragraphIndex !== selection.paragraphIndex
+          ) {
+            return true;
+          }
+          return !rangesOverlap(annotation.start, annotation.end, selection.start, selection.end);
+        }),
+        nextAnnotation,
+      ].sort(
+        (left, right) =>
+          left.passageNumber - right.passageNumber ||
+          left.paragraphIndex - right.paragraphIndex ||
+          left.start - right.start,
+      ),
+    );
+  }, []);
+
+  const clearSelectedAnnotations = useCallback((selection: AnnotationSelection) => {
+    setAnnotations((current) =>
+      current.filter((annotation) => {
         if (
-          annotation.passageNumber !== selection.passageNumber
-          || annotation.paragraphIndex !== selection.paragraphIndex
+          annotation.passageNumber !== selection.passageNumber ||
+          annotation.paragraphIndex !== selection.paragraphIndex
         ) {
           return true;
         }
         return !rangesOverlap(annotation.start, annotation.end, selection.start, selection.end);
       }),
-      nextAnnotation,
-    ].sort((left, right) => (
-      left.passageNumber - right.passageNumber
-      || left.paragraphIndex - right.paragraphIndex
-      || left.start - right.start
-    )));
-  }, []);
-
-  const clearSelectedAnnotations = useCallback((selection: AnnotationSelection) => {
-    setAnnotations((current) => current.filter((annotation) => {
-      if (
-        annotation.passageNumber !== selection.passageNumber
-        || annotation.paragraphIndex !== selection.paragraphIndex
-      ) {
-        return true;
-      }
-      return !rangesOverlap(annotation.start, annotation.end, selection.start, selection.end);
-    }));
+    );
   }, []);
 
   const handleArticleSelection = useCallback(() => {
@@ -1725,68 +1355,77 @@ export function IeltsReadingTestView() {
     window.getSelection()?.removeAllRanges();
   }, [clearSelectedAnnotations, inputsLocked, readingMode, selectedPassage, upsertAnnotation]);
 
-  const handleAnnotationClick = useCallback((annotation: ReadingAnnotation) => {
-    if (inputsLocked) return;
-    if (readingMode === 'lookup') return;
-    if (readingMode === 'clear') {
-      setAnnotations((current) => current.filter((item) => item.id !== annotation.id));
-      return;
-    }
-    if (readingMode !== 'note' || !test) return;
-    const passage = test.passages.find((item) => item.number === annotation.passageNumber);
-    const paragraph = passage ? getPassageParagraphs(passage.body)[annotation.paragraphIndex] ?? '' : '';
-    setPendingNoteSelection({
-      passageNumber: annotation.passageNumber,
-      paragraphIndex: annotation.paragraphIndex,
-      start: annotation.start,
-      end: annotation.end,
-      text: paragraph.slice(annotation.start, annotation.end),
-      annotationId: annotation.id,
-      note: annotation.note,
-    });
-  }, [inputsLocked, readingMode, test]);
-
-  const handleSaveNote = useCallback((note: string) => {
-    if (!pendingNoteSelection) return;
-    upsertAnnotation(pendingNoteSelection, note);
-    setPendingNoteSelection(null);
-    window.getSelection()?.removeAllRanges();
-  }, [pendingNoteSelection, upsertAnnotation]);
-
-  const submitAttempt = useCallback(async (mode: SubmitMode) => {
-    if (!test || !testId || !user || isSubmitting) return;
-
-    setIsSubmitting(true);
-    setErrorMsg('');
-    if (mode === 'timeout') {
-      setIsLockedByTimeout(true);
-      setIsSubmitDialogOpen(false);
-    }
-
-    try {
-      const nextResult = await submitIeltsReadingAttempt({
-        userId: user.id,
-        test,
-        answers,
-        startedAt,
-        elapsedSeconds: mode === 'timeout' ? TEST_DURATION_SECONDS : submitElapsedSeconds,
+  const handleAnnotationClick = useCallback(
+    (annotation: ReadingAnnotation) => {
+      if (inputsLocked) return;
+      if (readingMode === 'lookup') return;
+      if (readingMode === 'clear') {
+        setAnnotations((current) => current.filter((item) => item.id !== annotation.id));
+        return;
+      }
+      if (readingMode !== 'note' || !test) return;
+      const passage = test.passages.find((item) => item.number === annotation.passageNumber);
+      const paragraph = passage ? (getPassageParagraphs(passage.body)[annotation.paragraphIndex] ?? '') : '';
+      setPendingNoteSelection({
+        passageNumber: annotation.passageNumber,
+        paragraphIndex: annotation.paragraphIndex,
+        start: annotation.start,
+        end: annotation.end,
+        text: paragraph.slice(annotation.start, annotation.end),
+        annotationId: annotation.id,
+        note: annotation.note,
       });
-      clearDraft(user.id, testId);
-      closePopover();
-      setResult(nextResult);
-      setIsSubmitDialogOpen(false);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (error) {
-      setErrorMsg(error instanceof Error ? error.message : String(error));
+    },
+    [inputsLocked, readingMode, test],
+  );
+
+  const handleSaveNote = useCallback(
+    (note: string) => {
+      if (!pendingNoteSelection) return;
+      upsertAnnotation(pendingNoteSelection, note);
+      setPendingNoteSelection(null);
+      window.getSelection()?.removeAllRanges();
+    },
+    [pendingNoteSelection, upsertAnnotation],
+  );
+
+  const submitAttempt = useCallback(
+    async (mode: SubmitMode) => {
+      if (!test || !testId || !user || isSubmitting) return;
+
+      setIsSubmitting(true);
+      setErrorMsg('');
       if (mode === 'timeout') {
         setIsLockedByTimeout(true);
-      } else {
         setIsSubmitDialogOpen(false);
       }
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [answers, closePopover, isSubmitting, startedAt, submitElapsedSeconds, test, testId, user]);
+
+      try {
+        const nextResult = await submitIeltsReadingAttempt({
+          userId: user.id,
+          test,
+          answers,
+          startedAt,
+          elapsedSeconds: mode === 'timeout' ? TEST_DURATION_SECONDS : submitElapsedSeconds,
+        });
+        clearDraft(user.id, testId);
+        closePopover();
+        setResult(nextResult);
+        setIsSubmitDialogOpen(false);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (error) {
+        setErrorMsg(error instanceof Error ? error.message : String(error));
+        if (mode === 'timeout') {
+          setIsLockedByTimeout(true);
+        } else {
+          setIsSubmitDialogOpen(false);
+        }
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [answers, closePopover, isSubmitting, startedAt, submitElapsedSeconds, test, testId, user],
+  );
 
   useEffect(() => {
     if (!test || practiceMode || result || isSubmitting || timeoutSubmitAttempted || remainingSeconds > 0) return;
@@ -1960,7 +1599,9 @@ export function IeltsReadingTestView() {
                   <span
                     className={cx(
                       'rounded-lg px-2 py-1 text-xs font-black',
-                      selectedPassage === passage.number ? 'bg-white/20 text-white' : 'bg-[#f1f3f8] text-text-secondary',
+                      selectedPassage === passage.number
+                        ? 'bg-white/20 text-white'
+                        : 'bg-[#f1f3f8] text-text-secondary',
                     )}
                   >
                     {counts.answered}/{counts.total}
@@ -1993,12 +1634,12 @@ export function IeltsReadingTestView() {
               </button>
             </div>
 
-            {([
+            {[
               { key: 'highlight' as const, label: '高亮', icon: Highlighter },
               { key: 'note' as const, label: '笔记', icon: StickyNote },
               { key: 'clear' as const, label: '清除', icon: Eraser },
               ...(practiceMode ? [{ key: 'lookup' as const, label: '查阅', icon: Search }] : []),
-            ]).map((tool) => {
+            ].map((tool) => {
               const Icon = tool.icon;
               return (
                 <button
@@ -2046,9 +1687,7 @@ export function IeltsReadingTestView() {
         </div>
 
         {errorMsg && (
-          <div className="rounded-[24px] bg-apple-red/10 px-5 py-4 text-sm font-bold text-apple-red">
-            {errorMsg}
-          </div>
+          <div className="rounded-[24px] bg-apple-red/10 px-5 py-4 text-sm font-bold text-apple-red">{errorMsg}</div>
         )}
 
         {isLockedByTimeout && !result && (
@@ -2065,7 +1704,9 @@ export function IeltsReadingTestView() {
             elapsedSeconds={submitElapsedSeconds}
             isSubmitting={isSubmitting}
             onCancel={() => setIsSubmitDialogOpen(false)}
-            onConfirm={() => { void submitAttempt('manual'); }}
+            onConfirm={() => {
+              void submitAttempt('manual');
+            }}
           />
         )}
 
@@ -2094,14 +1735,19 @@ export function IeltsReadingTestView() {
                       </h3>
                       <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm font-black tracking-[0.12em] text-text-secondary">
                         <span className="whitespace-nowrap">
-                          ≈ {selectedPassageData.wordCount || getPassageParagraphs(selectedPassageData.body).join(' ').split(/\s+/).length} 词
+                          ≈{' '}
+                          {selectedPassageData.wordCount ||
+                            getPassageParagraphs(selectedPassageData.body).join(' ').split(/\s+/).length}{' '}
+                          词
                         </span>
                         <span className="hidden h-1 w-1 rounded-full bg-[#c2c7d1] sm:inline-block" />
                         <span className="whitespace-nowrap">
                           建议 {selectedPassageData.number === 1 ? 18 : selectedPassageData.number === 2 ? 20 : 22} 分钟
                         </span>
                         <span className="hidden h-1 w-1 rounded-full bg-[#c2c7d1] sm:inline-block" />
-                        <span className="whitespace-nowrap">Questions {getQuestionRangeLabel(selectedPassageData)}</span>
+                        <span className="whitespace-nowrap">
+                          Questions {getQuestionRangeLabel(selectedPassageData)}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -2124,7 +1770,8 @@ export function IeltsReadingTestView() {
                               'selection:bg-apple-blue/20',
                               isPartHeading
                                 ? 'font-sans text-sm font-black uppercase tracking-[0.18em] text-text-secondary'
-                                : index === 0 && 'first-letter:float-left first-letter:mr-3 first-letter:text-[4.6em] first-letter:font-black first-letter:leading-[0.82]',
+                                : index === 0 &&
+                                    'first-letter:float-left first-letter:mr-3 first-letter:text-[4.6em] first-letter:font-black first-letter:leading-[0.82]',
                             )}
                           >
                             {renderAnnotatedParagraph({
@@ -2145,22 +1792,34 @@ export function IeltsReadingTestView() {
                     })}
                   </div>
 
-                  <div className="pt-6 text-sm font-black text-[#c2c7d1]">
-                    ↓ 向下滚动以继续阅读
-                  </div>
+                  <div className="pt-6 text-sm font-black text-[#c2c7d1]">↓ 向下滚动以继续阅读</div>
                 </article>
               )}
             </div>
           </section>
 
-          <aside className={cx('space-y-5 lg:sticky lg:top-6 lg:flex lg:max-h-[calc(100vh-3rem)] lg:flex-col lg:space-y-0 lg:gap-5 lg:overflow-hidden', pane !== 'questions' && 'hidden lg:block')}>
+          <aside
+            className={cx(
+              'space-y-5 lg:sticky lg:top-6 lg:flex lg:max-h-[calc(100vh-3rem)] lg:flex-col lg:space-y-0 lg:gap-5 lg:overflow-hidden',
+              pane !== 'questions' && 'hidden lg:block',
+            )}
+          >
             <div className="rounded-[28px] border border-[#e5ebf5] bg-white p-6">
               <div className="flex items-center justify-between gap-4">
                 <p className="text-sm font-black tracking-[0.16em] text-text-secondary">答题进度</p>
                 <div className="flex items-center gap-4 text-xs font-black text-text-secondary">
-                  <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-apple-blue" />已答</span>
-                  <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border border-[#dfe4ef]" />未答</span>
-                  <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-[#ff9500]" />标记</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-apple-blue" />
+                    已答
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full border border-[#dfe4ef]" />
+                    未答
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-[#ff9500]" />
+                    标记
+                  </span>
                 </div>
               </div>
 
@@ -2168,27 +1827,32 @@ export function IeltsReadingTestView() {
                 {selectedPassageData && (
                   <div key={selectedPassageData.id}>
                     <div className="flex flex-wrap gap-2.5">
-                      {selectedPassageData.groups.flatMap((group) => group.questions).map((question) => {
-                        const answered = isAnswered(answers[question.number]);
-                        const flagged = flaggedSet.has(question.number);
-                        return (
-                          <button
-                            key={question.id}
-                            type="button"
-                            onClick={() => scrollToQuestion(question)}
-                            className={cx(
-                              'relative flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[7px] border text-xs font-black transition-all',
-                              answered
-                                ? 'border-apple-blue bg-apple-blue text-white shadow-[0_12px_22px_rgba(25,200,185,0.18)]'
-                                : 'border-[#e3e8f2] bg-white text-text-secondary hover:border-apple-blue/40 hover:text-text-primary',
-                              activeQuestionNumber === question.number && 'ring-2 ring-apple-blue ring-offset-2 ring-offset-white',
-                            )}
-                          >
-                            {question.number}
-                            {flagged && <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[#ff9500]" />}
-                          </button>
-                        );
-                      })}
+                      {selectedPassageData.groups
+                        .flatMap((group) => group.questions)
+                        .map((question) => {
+                          const answered = isAnswered(answers[question.number]);
+                          const flagged = flaggedSet.has(question.number);
+                          return (
+                            <button
+                              key={question.id}
+                              type="button"
+                              onClick={() => scrollToQuestion(question)}
+                              className={cx(
+                                'relative flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[7px] border text-xs font-black transition-all',
+                                answered
+                                  ? 'border-apple-blue bg-apple-blue text-white shadow-[0_12px_22px_rgba(25,200,185,0.18)]'
+                                  : 'border-[#e3e8f2] bg-white text-text-secondary hover:border-apple-blue/40 hover:text-text-primary',
+                                activeQuestionNumber === question.number &&
+                                  'ring-2 ring-apple-blue ring-offset-2 ring-offset-white',
+                              )}
+                            >
+                              {question.number}
+                              {flagged && (
+                                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[#ff9500]" />
+                              )}
+                            </button>
+                          );
+                        })}
                     </div>
                   </div>
                 )}
@@ -2207,7 +1871,8 @@ export function IeltsReadingTestView() {
                             {questionTypeLabel[group.type]}
                           </p>
                           <p className="shrink-0 text-sm font-black tracking-[0.12em] text-text-primary">
-                            Questions {group.rangeStart ?? group.questions[0]?.number}-{group.rangeEnd ?? group.questions[group.questions.length - 1]?.number}
+                            Questions {group.rangeStart ?? group.questions[0]?.number}-
+                            {group.rangeEnd ?? group.questions[group.questions.length - 1]?.number}
                           </p>
                         </div>
 
@@ -2262,9 +1927,13 @@ export function IeltsReadingTestView() {
                                       aria-pressed={flagged}
                                       className={cx(
                                         'flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] transition-all disabled:cursor-not-allowed disabled:opacity-60',
-                                        flagged ? 'bg-[#fff0db] text-[#ff9500]' : 'bg-white text-[#c2c7d1] hover:bg-[#f4f6fb] hover:text-text-secondary',
+                                        flagged
+                                          ? 'bg-[#fff0db] text-[#ff9500]'
+                                          : 'bg-white text-[#c2c7d1] hover:bg-[#f4f6fb] hover:text-text-secondary',
                                       )}
-                                      aria-label={flagged ? `取消标记第 ${question.number} 题` : `标记第 ${question.number} 题`}
+                                      aria-label={
+                                        flagged ? `取消标记第 ${question.number} 题` : `标记第 ${question.number} 题`
+                                      }
                                     >
                                       <Flag className={cx('h-5 w-5', flagged && 'fill-current')} />
                                     </button>

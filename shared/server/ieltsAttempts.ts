@@ -40,9 +40,7 @@ function normalizeResponses(value: unknown): IeltsAttemptResponseInput[] {
   if (!Array.isArray(value)) return [];
 
   return value.map((item) => {
-    const record = item && typeof item === 'object' && !Array.isArray(item)
-      ? item as Record<string, unknown>
-      : {};
+    const record = item && typeof item === 'object' && !Array.isArray(item) ? (item as Record<string, unknown>) : {};
 
     return {
       questionId: typeof record.questionId === 'string' ? record.questionId : '',
@@ -55,9 +53,7 @@ function normalizeResponses(value: unknown): IeltsAttemptResponseInput[] {
 }
 
 function normalizeAttemptInput(userId: string, body: unknown): SubmitIeltsAttemptInput {
-  const record = body && typeof body === 'object' && !Array.isArray(body)
-    ? body as Record<string, unknown>
-    : {};
+  const record = body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
 
   return {
     userId,
@@ -79,12 +75,13 @@ function assertAttemptInput(input: SubmitIeltsAttemptInput) {
   if (!Array.isArray(input.responses)) throw new Error('Missing responses array');
 }
 
-async function submitIeltsAttempt(kind: IeltsAttemptKind, input: SubmitIeltsAttemptInput): Promise<SubmittedIeltsAttempt> {
+async function submitIeltsAttempt(
+  kind: IeltsAttemptKind,
+  input: SubmitIeltsAttemptInput,
+): Promise<SubmittedIeltsAttempt> {
   assertAttemptInput(input);
 
-  const rpcName = kind === 'reading'
-    ? 'submit_ielts_reading_attempt'
-    : 'submit_ielts_listening_attempt';
+  const rpcName = kind === 'reading' ? 'submit_ielts_reading_attempt' : 'submit_ielts_listening_attempt';
 
   const { data, error } = await supabaseAdmin.rpc(rpcName, {
     p_user_id: input.userId,

@@ -40,27 +40,26 @@ export function WordPopoverProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const value = useMemo(() => ({
-    openPopover,
-    closePopover,
-  }), [closePopover, openPopover]);
+  const value = useMemo(
+    () => ({
+      openPopover,
+      closePopover,
+    }),
+    [closePopover, openPopover],
+  );
 
   return (
     <WordPopoverContext.Provider value={value}>
       {children}
-      {typeof document !== 'undefined' && createPortal(
-        <AnimatePresence>
-          {popover && (
-            <WordPopover
-              key={popover.key}
-              word={popover.word}
-              anchor={popover.anchor}
-              onClose={closePopover}
-            />
-          )}
-        </AnimatePresence>,
-        document.body,
-      )}
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <AnimatePresence>
+            {popover && (
+              <WordPopover key={popover.key} word={popover.word} anchor={popover.anchor} onClose={closePopover} />
+            )}
+          </AnimatePresence>,
+          document.body,
+        )}
     </WordPopoverContext.Provider>
   );
 }

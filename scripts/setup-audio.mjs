@@ -7,16 +7,18 @@ import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'fs';
 
 const env = Object.fromEntries(
-  readFileSync('.env', 'utf8').split('\n')
-    .filter(l => l.includes('=') && !l.startsWith('#'))
-    .map(l => { const i = l.indexOf('='); return [l.slice(0, i).trim(), l.slice(i + 1).trim()]; })
+  readFileSync('.env', 'utf8')
+    .split('\n')
+    .filter((l) => l.includes('=') && !l.startsWith('#'))
+    .map((l) => {
+      const i = l.indexOf('=');
+      return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
+    }),
 );
 
-const supabase = createClient(
-  env.VITE_SUPABASE_URL,
-  env.SUPABASE_SERVICE_ROLE_KEY,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
+const supabase = createClient(env.VITE_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { autoRefreshToken: false, persistSession: false },
+});
 
 // ── 1. Create storage bucket ─────────────────────────────────────────────────
 console.log('\n① Creating word-audio bucket…');
@@ -44,17 +46,14 @@ ALTER TABLE vocabulary_items ADD COLUMN IF NOT EXISTS audio_us_url TEXT;
 // Try via Supabase Management API (requires a personal access token set as SUPABASE_ACCESS_TOKEN)
 const accessToken = env.SUPABASE_ACCESS_TOKEN;
 if (accessToken) {
-  const mgmtRes = await fetch(
-    `https://api.supabase.com/v1/projects/${projectRef}/database/query`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ query: migrationSql }),
-    }
-  );
+  const mgmtRes = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ query: migrationSql }),
+  });
   if (mgmtRes.ok) {
     console.log('   ✅ Columns added via Management API');
   } else {
@@ -63,7 +62,9 @@ if (accessToken) {
     printManualInstructions(migrationSql);
   }
 } else {
-  console.log('   ℹ️  SUPABASE_ACCESS_TOKEN not set — run the following SQL manually in Supabase Dashboard → SQL Editor:');
+  console.log(
+    '   ℹ️  SUPABASE_ACCESS_TOKEN not set — run the following SQL manually in Supabase Dashboard → SQL Editor:',
+  );
   printManualInstructions(migrationSql);
 }
 

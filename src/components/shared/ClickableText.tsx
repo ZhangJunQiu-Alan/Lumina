@@ -1,9 +1,5 @@
 import { Fragment, type ReactNode } from 'react';
-import {
-  tokenizeClickableText,
-  type TextToken,
-  type TokenKind,
-} from '../../lib/clickableTextTokenizer';
+import { tokenizeClickableText, type TextToken, type TokenKind } from '../../lib/clickableTextTokenizer';
 import { cx } from './LearningUI';
 
 export { tokenizeClickableText, type TextToken, type TokenKind };
@@ -39,9 +35,7 @@ export function ClickableText({
             key={`${index}-${token.text}`}
             className={cx(
               'rounded px-0.5 py-0.5 cursor-pointer transition-colors',
-              isTarget
-                ? targetClassName ?? 'bg-[#eaf2ff] hover:bg-[#dbeafe]'
-                : 'hover:bg-apple-blue/10',
+              isTarget ? (targetClassName ?? 'bg-[#eaf2ff] hover:bg-[#dbeafe]') : 'hover:bg-apple-blue/10',
             )}
             data-clickable-word={token.normalized}
             onClick={(event) => {

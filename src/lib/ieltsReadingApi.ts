@@ -200,10 +200,10 @@ function coercePairTable(value: JsonValue): Pick<IeltsReadingPassageFigure['fall
     : [];
   const rows = Array.isArray(record.rows)
     ? record.rows.flatMap((row) => {
-      if (!Array.isArray(row)) return [];
-      const cells = row.filter((item): item is string => typeof item === 'string').slice(0, 2);
-      return cells.length === 2 ? [[cells[0], cells[1]] as [string, string]] : [];
-    })
+        if (!Array.isArray(row)) return [];
+        const cells = row.filter((item): item is string => typeof item === 'string').slice(0, 2);
+        return cells.length === 2 ? [[cells[0], cells[1]] as [string, string]] : [];
+      })
     : [];
 
   return {
@@ -256,22 +256,24 @@ async function signPassageFigureUrls(passages: IeltsReadingPassage[]): Promise<I
   );
   if (figureEntries.length === 0) return passages;
 
-  const signedUrls = await Promise.all(figureEntries.map(async ({ figure }) => {
-    if (!figure.storagePath) return figure.imageUrl;
+  const signedUrls = await Promise.all(
+    figureEntries.map(async ({ figure }) => {
+      if (!figure.storagePath) return figure.imageUrl;
 
-    const { data, error } = await supabase.storage
-      .from(IELTS_READING_FIGURE_BUCKET)
-      .createSignedUrl(figure.storagePath, 6 * 60 * 60);
+      const { data, error } = await supabase.storage
+        .from(IELTS_READING_FIGURE_BUCKET)
+        .createSignedUrl(figure.storagePath, 6 * 60 * 60);
 
-    if (error || !data?.signedUrl) return figure.imageUrl;
-    return data.signedUrl;
-  }));
+      if (error || !data?.signedUrl) return figure.imageUrl;
+      return data.signedUrl;
+    }),
+  );
 
   return passages.map((passage, passageIndex) => ({
     ...passage,
     figures: passage.figures.map((figure, figureIndex) => {
-      const entryIndex = figureEntries.findIndex((entry) =>
-        entry.passageIndex === passageIndex && entry.figureIndex === figureIndex,
+      const entryIndex = figureEntries.findIndex(
+        (entry) => entry.passageIndex === passageIndex && entry.figureIndex === figureIndex,
       );
       return {
         ...figure,
@@ -285,13 +287,15 @@ function mapTestSummary(row: TestRow, fallbackBook?: BookRow): IeltsReadingTestS
   const book = asArray(row.ielts_reading_books)[0] ?? fallbackBook;
   const passages = asArray(row.ielts_reading_passages);
   const nestedQuestionCount = passages.reduce(
-    (count, passage) => count + asArray(passage.ielts_reading_question_groups)
-      .reduce((groupCount, group) => groupCount + asArray(group.ielts_reading_questions).length, 0),
+    (count, passage) =>
+      count +
+      asArray(passage.ielts_reading_question_groups).reduce(
+        (groupCount, group) => groupCount + asArray(group.ielts_reading_questions).length,
+        0,
+      ),
     0,
   );
-  const directQuestionCount = Array.isArray(row.ielts_reading_questions)
-    ? row.ielts_reading_questions.length
-    : 0;
+  const directQuestionCount = Array.isArray(row.ielts_reading_questions) ? row.ielts_reading_questions.length : 0;
 
   return {
     id: row.id,
@@ -308,7 +312,8 @@ function mapTestSummary(row: TestRow, fallbackBook?: BookRow): IeltsReadingTestS
 export async function fetchIeltsReadingBooks(): Promise<IeltsReadingBookSummary[]> {
   const { data, error } = await supabase
     .from('ielts_reading_books')
-    .select(`
+    .select(
+      `
       id,
       book_number,
       title,
@@ -320,7 +325,8 @@ export async function fetchIeltsReadingBooks(): Promise<IeltsReadingBookSummary[
         title,
         ielts_reading_passages ( id )
       )
-    `)
+    `,
+    )
     .order('book_number', { ascending: true });
 
   if (error) throw new Error(`ielts_reading_books lookup failed: ${error.message}`);
@@ -339,7 +345,8 @@ export async function fetchIeltsReadingBooks(): Promise<IeltsReadingBookSummary[
 export async function fetchIeltsReadingTestDetail(testId: string): Promise<IeltsReadingTestDetail | null> {
   const { data, error } = await supabase
     .from('ielts_reading_tests')
-    .select(`
+    .select(
+      `
       id,
       book_id,
       test_number,
@@ -394,7 +401,8 @@ export async function fetchIeltsReadingTestDetail(testId: string): Promise<Ielts
           )
         )
       )
-    `)
+    `,
+    )
     .eq('id', testId)
     .maybeSingle();
 
@@ -402,10 +410,12 @@ export async function fetchIeltsReadingTestDetail(testId: string): Promise<Ielts
   if (!data) return null;
 
   const row = data as TestRow;
-  const passages = await signPassageFigureUrls(asArray(row.ielts_reading_passages)
-    .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
-    .map(mapPassage)
-    .sort((left, right) => left.number - right.number));
+  const passages = await signPassageFigureUrls(
+    asArray(row.ielts_reading_passages)
+      .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
+      .map(mapPassage)
+      .sort((left, right) => left.number - right.number),
+  );
   const summary = mapTestSummary({ ...row, ielts_reading_passages: passages as unknown as PassageRow[] });
 
   return {
@@ -419,7 +429,8 @@ export async function fetchIeltsReadingTestDetail(testId: string): Promise<Ielts
 export async function fetchRecentIeltsReadingAttempts(userId: string): Promise<IeltsReadingAttemptSummary[]> {
   const { data, error } = await supabase
     .from('ielts_reading_attempts')
-    .select(`
+    .select(
+      `
       id,
       test_id,
       score,
@@ -437,7 +448,8 @@ export async function fetchRecentIeltsReadingAttempts(userId: string): Promise<I
           title
         )
       )
-    `)
+    `,
+    )
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(8);

@@ -35,10 +35,7 @@ const OCR_SPACING_REPAIRS: [RegExp, string][] = [
 ];
 
 function repairOcrSpacingArtifacts(value: string): string {
-  return OCR_SPACING_REPAIRS.reduce(
-    (text, [pattern, replacement]) => text.replace(pattern, replacement),
-    value,
-  );
+  return OCR_SPACING_REPAIRS.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), value);
 }
 
 function cleanInlineText(value: string): string {
@@ -70,10 +67,12 @@ function isLikelyHardWrappedBody(text: string, lines: string[]): boolean {
     return shortLineRatio >= 0.6 || averageLineLength <= 115;
   }
 
-  return separatorRatio < 0.25
-    && (shortLineRatio >= 0.65 || mediumLineRatio >= 0.72)
-    && longLineCount / lines.length <= 0.12
-    && averageLineLength <= 150;
+  return (
+    separatorRatio < 0.25 &&
+    (shortLineRatio >= 0.65 || mediumLineRatio >= 0.72) &&
+    longLineCount / lines.length <= 0.12 &&
+    averageLineLength <= 150
+  );
 }
 
 function getTypicalLineLength(lines: string[]): number {
@@ -93,7 +92,12 @@ function isStandaloneHeadingLine(line: string): boolean {
   return KNOWN_STANDALONE_HEADINGS.has(line) || /^Section\s+[A-H]$/i.test(line);
 }
 
-function shouldStartNewInferredParagraph(current: string, lastLine: string, nextLine: string, typicalLineLength: number): boolean {
+function shouldStartNewInferredParagraph(
+  current: string,
+  lastLine: string,
+  nextLine: string,
+  typicalLineLength: number,
+): boolean {
   if (current && (isStandaloneHeadingLine(lastLine) || isStandaloneHeadingLine(nextLine))) return true;
   if (!current || !SENTENCE_END_RE.test(lastLine) || !startsParagraphLine(nextLine)) return false;
 
@@ -113,11 +117,7 @@ function rebuildHardWrappedParagraphs(lines: string[]): string[] {
   for (const line of lines) {
     const startsSection = SECTION_START_RE.test(line);
     const shouldStartNewParagraph = Boolean(
-      current
-      && (
-        startsSection
-        || shouldStartNewInferredParagraph(current, lastLine, line, typicalLineLength)
-      ),
+      current && (startsSection || shouldStartNewInferredParagraph(current, lastLine, line, typicalLineLength)),
     );
 
     if (shouldStartNewParagraph) {
@@ -135,11 +135,13 @@ function rebuildHardWrappedParagraphs(lines: string[]): string[] {
 }
 
 function normalizeExistingParagraphs(text: string): string {
-  return repairOcrSpacingArtifacts(text
-    .split(/\n{2,}/)
-    .map((paragraph) => cleanInlineText(paragraph.replace(/\n+/g, ' ')))
-    .filter(Boolean)
-    .join('\n\n'));
+  return repairOcrSpacingArtifacts(
+    text
+      .split(/\n{2,}/)
+      .map((paragraph) => cleanInlineText(paragraph.replace(/\n+/g, ' ')))
+      .filter(Boolean)
+      .join('\n\n'),
+  );
 }
 
 export function normalizeIeltsPassageBody(value: string): string {
@@ -152,10 +154,7 @@ export function normalizeIeltsPassageBody(value: string): string {
 
   if (!text) return '';
 
-  const lines = text
-    .split(/\n+/)
-    .map(cleanInlineText)
-    .filter(Boolean);
+  const lines = text.split(/\n+/).map(cleanInlineText).filter(Boolean);
 
   if (lines.length === 0) return '';
 

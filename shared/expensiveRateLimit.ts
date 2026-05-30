@@ -90,9 +90,7 @@ function readRateLimitBucket(key: string, now: number, windowMs: number): RateLi
 
 /** Count non-empty string entries in an array; falls back to 1 for non-arrays. */
 export function countStringArray(value: unknown): number {
-  return Array.isArray(value)
-    ? value.filter((item) => typeof item === 'string' && item.trim()).length
-    : 1;
+  return Array.isArray(value) ? value.filter((item) => typeof item === 'string' && item.trim()).length : 1;
 }
 
 /**
@@ -118,7 +116,7 @@ export function consumeExpensiveRateLimit({
   const checks = [
     { scope: 'user', key: userId, multiplier: 1 },
     { scope: 'ip', key: ip, multiplier: IP_RATE_LIMIT_MULTIPLIER },
-  ].flatMap((subject) => (
+  ].flatMap((subject) =>
     (Object.keys(RATE_WINDOWS) as RateWindowName[]).map((windowName) => {
       const windowMs = RATE_WINDOWS[windowName];
       const limit = rateLimitFor(group, windowName) * subject.multiplier;
@@ -132,8 +130,8 @@ export function consumeExpensiveRateLimit({
         bucketKey,
         bucket,
       };
-    })
-  ));
+    }),
+  );
 
   const exceeded = checks.find((check) => check.bucket.count + normalizedWeight > check.limit);
   if (exceeded) {

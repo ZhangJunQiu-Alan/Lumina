@@ -21,14 +21,55 @@ function buildOfficialCounterPattern(prefix: string) {
 }
 
 const DEFINITIONS: OfficialLibraryDefinition[] = [
-  { id: 'ielts-vocab', groupPrefix: '雅思词汇真经 · ', groupPattern: buildOfficialGroupPattern('雅思词汇真经 · '), counterPattern: buildOfficialCounterPattern('雅思词汇真经 · '), legacyGroupPatterns: [/^雅思词汇真经 · (\d{4})-(\d{4})$/] },
-  { id: 'gre-zhenkao-v7', groupPrefix: 'GRE镇考机经词 7.0 · ', groupPattern: buildOfficialGroupPattern('GRE镇考机经词 7.0 · '), counterPattern: buildOfficialCounterPattern('GRE镇考机经词 7.0 · ') },
-  { id: 'cet4-vocab', groupPrefix: '四级大纲核心词汇 · ', groupPattern: buildOfficialGroupPattern('四级大纲核心词汇 · '), counterPattern: buildOfficialCounterPattern('四级大纲核心词汇 · ') },
-  { id: 'cet6-vocab', groupPrefix: '六级大纲核心词汇 · ', groupPattern: buildOfficialGroupPattern('六级大纲核心词汇 · '), counterPattern: buildOfficialCounterPattern('六级大纲核心词汇 · ') },
-  { id: 'npee-vocab', groupPrefix: '考研英语大纲词汇 · ', groupPattern: buildOfficialGroupPattern('考研英语大纲词汇 · '), counterPattern: buildOfficialCounterPattern('考研英语大纲词汇 · ') },
-  { id: 'gaokao-vocab', groupPrefix: '高考英语核心词汇 · ', groupPattern: buildOfficialGroupPattern('高考英语核心词汇 · '), counterPattern: buildOfficialCounterPattern('高考英语核心词汇 · ') },
-  { id: 'tem4-vocab', groupPrefix: '英语专业四级(TEM4) · ', groupPattern: buildOfficialGroupPattern('英语专业四级(TEM4) · '), counterPattern: buildOfficialCounterPattern('英语专业四级(TEM4) · ') },
-  { id: 'tem8-vocab', groupPrefix: '英语专业八级(TEM8) · ', groupPattern: buildOfficialGroupPattern('英语专业八级(TEM8) · '), counterPattern: buildOfficialCounterPattern('英语专业八级(TEM8) · ') },
+  {
+    id: 'ielts-vocab',
+    groupPrefix: '雅思词汇真经 · ',
+    groupPattern: buildOfficialGroupPattern('雅思词汇真经 · '),
+    counterPattern: buildOfficialCounterPattern('雅思词汇真经 · '),
+    legacyGroupPatterns: [/^雅思词汇真经 · (\d{4})-(\d{4})$/],
+  },
+  {
+    id: 'gre-zhenkao-v7',
+    groupPrefix: 'GRE镇考机经词 7.0 · ',
+    groupPattern: buildOfficialGroupPattern('GRE镇考机经词 7.0 · '),
+    counterPattern: buildOfficialCounterPattern('GRE镇考机经词 7.0 · '),
+  },
+  {
+    id: 'cet4-vocab',
+    groupPrefix: '四级大纲核心词汇 · ',
+    groupPattern: buildOfficialGroupPattern('四级大纲核心词汇 · '),
+    counterPattern: buildOfficialCounterPattern('四级大纲核心词汇 · '),
+  },
+  {
+    id: 'cet6-vocab',
+    groupPrefix: '六级大纲核心词汇 · ',
+    groupPattern: buildOfficialGroupPattern('六级大纲核心词汇 · '),
+    counterPattern: buildOfficialCounterPattern('六级大纲核心词汇 · '),
+  },
+  {
+    id: 'npee-vocab',
+    groupPrefix: '考研英语大纲词汇 · ',
+    groupPattern: buildOfficialGroupPattern('考研英语大纲词汇 · '),
+    counterPattern: buildOfficialCounterPattern('考研英语大纲词汇 · '),
+  },
+  {
+    id: 'gaokao-vocab',
+    groupPrefix: '高考英语核心词汇 · ',
+    groupPattern: buildOfficialGroupPattern('高考英语核心词汇 · '),
+    counterPattern: buildOfficialCounterPattern('高考英语核心词汇 · '),
+  },
+  {
+    id: 'tem4-vocab',
+    groupPrefix: '英语专业四级(TEM4) · ',
+    groupPattern: buildOfficialGroupPattern('英语专业四级(TEM4) · '),
+    counterPattern: buildOfficialCounterPattern('英语专业四级(TEM4) · '),
+  },
+  {
+    id: 'tem8-vocab',
+    groupPrefix: '英语专业八级(TEM8) · ',
+    groupPattern: buildOfficialGroupPattern('英语专业八级(TEM8) · '),
+    counterPattern: buildOfficialCounterPattern('英语专业八级(TEM8) · '),
+  },
 ];
 
 const byId = new Map(DEFINITIONS.map((definition) => [definition.id, definition]));

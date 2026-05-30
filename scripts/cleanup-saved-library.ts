@@ -28,7 +28,7 @@ function parseArgs(argv: string[]): CliOptions {
     sampleLimit: 10,
   };
 
-  for (let index = 0; index < argv.length;) {
+  for (let index = 0; index < argv.length; ) {
     const arg = argv[index];
 
     if (arg === '--dry-run') {
@@ -75,23 +75,28 @@ async function main() {
     sampleLimit: options.sampleLimit,
   });
 
-  console.log(JSON.stringify({
-    mode: result.mode,
-    targetUsers: result.usersInspected,
-    affectedUsers: result.affectedUsers,
-    savedWordsInspected: result.savedWordsInspected,
-    createdReviewStates: result.createdReviewStates,
-    removedSavedWords: result.removedSavedWords,
-    deletedCustomGroups: result.deletedCustomGroups,
-    missingReviewStateSavedWords: result.missingReviewStateSavedWords,
-    nonNewSavedWords: result.nonNewSavedWords,
-    userId: options.userId ?? null,
-    samples: result.samples,
-  }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        mode: result.mode,
+        targetUsers: result.usersInspected,
+        affectedUsers: result.affectedUsers,
+        savedWordsInspected: result.savedWordsInspected,
+        createdReviewStates: result.createdReviewStates,
+        removedSavedWords: result.removedSavedWords,
+        deletedCustomGroups: result.deletedCustomGroups,
+        missingReviewStateSavedWords: result.missingReviewStateSavedWords,
+        nonNewSavedWords: result.nonNewSavedWords,
+        userId: options.userId ?? null,
+        samples: result.samples,
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
 });
-

@@ -46,12 +46,18 @@ const q9To13Prompts = new Map<number, string>([
   [10, 'What was the most common response to the question about the importance of the rainforests?'],
   [11, 'What did most children give as the reason for the loss of the rainforests?'],
   [12, 'Why did most children think it important for the rainforests to be protected?'],
-  [13, 'Which of the responses is cited as unexpectedly uncommon, given the amount of time spent on the issue by the newspapers and television?'],
+  [
+    13,
+    'Which of the responses is cited as unexpectedly uncommon, given the amount of time spent on the issue by the newspapers and television?',
+  ],
 ]);
 
 const q9To13Options: Option[] = [
   { key: 'A', text: 'There is a complicated combination of reasons for the loss of the rainforests.' },
-  { key: 'B', text: 'The rainforests are being destroyed by the same things that are destroying the forests of Western Europe.' },
+  {
+    key: 'B',
+    text: 'The rainforests are being destroyed by the same things that are destroying the forests of Western Europe.',
+  },
   { key: 'C', text: 'Rainforests are located near the Equator.' },
   { key: 'D', text: 'Brazil is home to the rainforests.' },
   { key: 'E', text: 'Without rainforests some animals would have nowhere to live.' },
@@ -215,10 +221,7 @@ async function main() {
     const question = findQuestion(questions, questionNumber);
     await updateRow(
       `ielts_reading_questions Q${questionNumber} update failed`,
-      supabaseAdmin
-        .from('ielts_reading_questions')
-        .update({ answer_json: answer })
-        .eq('id', question.id),
+      supabaseAdmin.from('ielts_reading_questions').update({ answer_json: answer }).eq('id', question.id),
     );
   }
 
@@ -239,7 +242,8 @@ async function main() {
   }
 
   const repaired = await getTargetRows();
-  const q9To13OptionsApplied = repaired.q9To13Group.options_json?.map((option) => option.key).join('') === 'ABCDEFGHIJKLMNOP';
+  const q9To13OptionsApplied =
+    repaired.q9To13Group.options_json?.map((option) => option.key).join('') === 'ABCDEFGHIJKLMNOP';
   const passageClean = !/[~]econd|\br8%|\bro%/.test(repaired.passage.body);
 
   console.log(`passage clean: ${passageClean}`);

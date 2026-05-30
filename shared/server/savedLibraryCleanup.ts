@@ -73,9 +73,8 @@ function keyFor(userId: string, vocabularyItemId: string) {
 }
 
 function chunkRows<T>(rows: T[], chunkSize: number) {
-  return Array.from(
-    { length: Math.ceil(rows.length / chunkSize) },
-    (_, index) => rows.slice(index * chunkSize, (index + 1) * chunkSize),
+  return Array.from({ length: Math.ceil(rows.length / chunkSize) }, (_, index) =>
+    rows.slice(index * chunkSize, (index + 1) * chunkSize),
   );
 }
 
@@ -159,7 +158,8 @@ async function fetchAffectedPendingCustomGroups(nonNewSavedWords: SavedWordRow[]
     for (const chunk of chunkRows([...vocabularyItemIds], 100)) {
       const { data, error } = await supabaseAdmin
         .from('learning_group_words')
-        .select(`
+        .select(
+          `
           learning_group_id,
           vocabulary_item_id,
           learning_groups!inner (
@@ -170,7 +170,8 @@ async function fetchAffectedPendingCustomGroups(nonNewSavedWords: SavedWordRow[]
             completed_at,
             group_name
           )
-        `)
+        `,
+        )
         .eq('learning_groups.user_id', userId)
         .eq('learning_groups.source_type', 'custom')
         .in('vocabulary_item_id', chunk);
@@ -239,10 +240,7 @@ async function deleteSavedWords(rows: SavedWordRow[]) {
 
   for (const batch of chunkRows(rows, WRITE_BATCH_SIZE)) {
     const ids = batch.map((row) => row.id);
-    const { error, count } = await supabaseAdmin
-      .from('user_saved_words')
-      .delete({ count: 'exact' })
-      .in('id', ids);
+    const { error, count } = await supabaseAdmin.from('user_saved_words').delete({ count: 'exact' }).in('id', ids);
 
     if (error) {
       throw new Error(`user_saved_words cleanup delete failed: ${error.message}`);
@@ -258,10 +256,7 @@ async function deleteLearningGroups(groupIds: string[]) {
   let deleted = 0;
 
   for (const batch of chunkRows(groupIds, WRITE_BATCH_SIZE)) {
-    const { error, count } = await supabaseAdmin
-      .from('learning_groups')
-      .delete({ count: 'exact' })
-      .in('id', batch);
+    const { error, count } = await supabaseAdmin.from('learning_groups').delete({ count: 'exact' }).in('id', batch);
 
     if (error) {
       throw new Error(`learning_groups cleanup delete failed: ${error.message}`);

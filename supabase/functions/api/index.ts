@@ -5,7 +5,13 @@ import {
   EnrichmentServiceUnavailableError,
   generateArticle,
 } from '../../../shared/server/gemini.ts';
-import { fetchDueReviewWords, markVocabularyMastered, markVocabularyUnknown, recordBatchReviewAttempts, recordReviewAttempt } from '../../../shared/server/review.ts';
+import {
+  fetchDueReviewWords,
+  markVocabularyMastered,
+  markVocabularyUnknown,
+  recordBatchReviewAttempts,
+  recordReviewAttempt,
+} from '../../../shared/server/review.ts';
 import { batchGenerateAudio, getOrCreateAudio } from '../../../shared/server/audio.ts';
 import { ExampleAudioValidationError, getOrCreateExampleAudio } from '../../../shared/server/exampleAudio.ts';
 import {
@@ -65,9 +71,7 @@ const requestIds = new WeakMap<Request, string>();
 type ApiGateResult =
   | { userId: string; response?: undefined; status?: undefined }
   | { response: Response; status: number; userId?: undefined };
-type QuotaGateResult =
-  | { response?: undefined; status?: undefined }
-  | { response: Response; status: number };
+type QuotaGateResult = { response?: undefined; status?: undefined } | { response: Response; status: number };
 
 function resolveRequestId(value: string | null) {
   const trimmed = value?.trim();
@@ -131,9 +135,7 @@ function validateOrigin(request: Request) {
 
 function normalizePath(url: URL) {
   const marker = '/functions/v1/api';
-  const normalizeApiGatewayPath = (path: string) => (
-    path.startsWith('/api/api/') ? path.slice('/api'.length) : path
-  );
+  const normalizeApiGatewayPath = (path: string) => (path.startsWith('/api/api/') ? path.slice('/api'.length) : path);
 
   if (url.pathname === marker) return '/';
   if (url.pathname.startsWith(`${marker}/`)) {
@@ -158,24 +160,34 @@ function readBearerToken(headerValue: string | null) {
 
 function resolveClientIp(request: Request) {
   const forwardedFor = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
-  return request.headers.get('cf-connecting-ip')?.trim()
-    || forwardedFor
-    || request.headers.get('x-real-ip')?.trim()
-    || 'unknown';
+  return (
+    request.headers.get('cf-connecting-ip')?.trim() ||
+    forwardedFor ||
+    request.headers.get('x-real-ip')?.trim() ||
+    'unknown'
+  );
 }
 
 function rateLimitExceededResponse(request: Request, retryAfterSeconds: number) {
   const headers = corsHeaders(request);
   headers.set('Content-Type', 'application/json');
   headers.set('Retry-After', String(retryAfterSeconds));
-  return new Response(JSON.stringify({
-    error: 'Rate limit exceeded',
-    request_id: getRequestId(request),
-    retry_after_seconds: retryAfterSeconds,
-  }), { status: 429, headers });
+  return new Response(
+    JSON.stringify({
+      error: 'Rate limit exceeded',
+      request_id: getRequestId(request),
+      retry_after_seconds: retryAfterSeconds,
+    }),
+    { status: 429, headers },
+  );
 }
 
-function enforceExpensiveQuota(request: Request, userId: string, group: ExpensiveApiGroup, weight: number): QuotaGateResult {
+function enforceExpensiveQuota(
+  request: Request,
+  userId: string,
+  group: ExpensiveApiGroup,
+  weight: number,
+): QuotaGateResult {
   const result = consumeExpensiveRateLimit({
     group,
     userId,
@@ -185,21 +197,28 @@ function enforceExpensiveQuota(request: Request, userId: string, group: Expensiv
 
   if (!isRateLimitExceeded(result)) return {};
 
-  logger.warn('Expensive API rate limit exceeded', requestLogContext(request, {
-    user_id: userId,
-    group,
-    scope: result.scope,
-    window: result.window,
-    limit: result.limit,
-    weight: result.weight,
-  }));
+  logger.warn(
+    'Expensive API rate limit exceeded',
+    requestLogContext(request, {
+      user_id: userId,
+      group,
+      scope: result.scope,
+      window: result.window,
+      limit: result.limit,
+      weight: result.weight,
+    }),
+  );
   return {
     response: rateLimitExceededResponse(request, result.retryAfterSeconds),
     status: 429,
   };
 }
 
-async function requireExpensiveUser(request: Request, group: ExpensiveApiGroup, weight: number): Promise<ApiGateResult> {
+async function requireExpensiveUser(
+  request: Request,
+  group: ExpensiveApiGroup,
+  weight: number,
+): Promise<ApiGateResult> {
   const auth = await requireUser(request);
   if (auth.response) return auth;
 
@@ -292,7 +311,11 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = statusFromEnrichmentError(error);
-        logger.error('API Error: /api/vocab/enrich', error, requestLogContext(request, { endpoint: '/api/vocab/enrich', source }));
+        logger.error(
+          'API Error: /api/vocab/enrich',
+          error,
+          requestLogContext(request, { endpoint: '/api/vocab/enrich', source }),
+        );
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -315,7 +338,11 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = statusFromEnrichmentError(error);
-        logger.error('API Error: /api/vocab/lite-enrich', error, requestLogContext(request, { endpoint: '/api/vocab/lite-enrich', word, source }));
+        logger.error(
+          'API Error: /api/vocab/lite-enrich',
+          error,
+          requestLogContext(request, { endpoint: '/api/vocab/lite-enrich', word, source }),
+        );
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -338,7 +365,11 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = statusFromEnrichmentError(error);
-        logger.error('API Error: /api/vocab/lemmatize', error, requestLogContext(request, { endpoint: '/api/vocab/lemmatize', word, source }));
+        logger.error(
+          'API Error: /api/vocab/lemmatize',
+          error,
+          requestLogContext(request, { endpoint: '/api/vocab/lemmatize', word, source }),
+        );
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -360,7 +391,11 @@ Deno.serve(async (request) => {
         return jsonResponse(request, data ? { data } : { data: null, missing: true }, status);
       } catch (error) {
         status = statusFromEnrichmentError(error);
-        logger.error('API Error: /api/vocab/lookup', error, requestLogContext(request, { endpoint: '/api/vocab/lookup', user_id: auth.userId, word }));
+        logger.error(
+          'API Error: /api/vocab/lookup',
+          error,
+          requestLogContext(request, { endpoint: '/api/vocab/lookup', user_id: auth.userId, word }),
+        );
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -390,12 +425,16 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = 500;
-        logger.error('API Error: /api/vocab/report', error, requestLogContext(request, {
-          endpoint: '/api/vocab/report',
-          user_id: auth.userId,
-          vocabulary_item_id: body.vocabularyItemId,
-          issue_type: body.issueType,
-        }));
+        logger.error(
+          'API Error: /api/vocab/report',
+          error,
+          requestLogContext(request, {
+            endpoint: '/api/vocab/report',
+            user_id: auth.userId,
+            vocabulary_item_id: body.vocabularyItemId,
+            issue_type: body.issueType,
+          }),
+        );
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -421,7 +460,11 @@ Deno.serve(async (request) => {
         return jsonResponse(request, result, status);
       } catch (error) {
         status = 500;
-        logger.error('API Error: /api/vocab/full-enrich', error, requestLogContext(request, { endpoint: '/api/vocab/full-enrich', user_id: auth.userId, word }));
+        logger.error(
+          'API Error: /api/vocab/full-enrich',
+          error,
+          requestLogContext(request, { endpoint: '/api/vocab/full-enrich', user_id: auth.userId, word }),
+        );
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -432,9 +475,7 @@ Deno.serve(async (request) => {
         status = auth.status ?? 401;
         return auth.response;
       }
-      const words = Array.isArray(body?.words)
-        ? body.words.map(sanitizeLookupWord).filter(Boolean)
-        : [];
+      const words = Array.isArray(body?.words) ? body.words.map(sanitizeLookupWord).filter(Boolean) : [];
       const source = resolveGeminiSource(body?.source, 'import_lemmatize');
       if (words.length === 0) {
         status = 400;
@@ -446,11 +487,15 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = statusFromEnrichmentError(error);
-        logger.error('API Error: /api/vocab/lemmatize-batch', error, requestLogContext(request, {
-          endpoint: '/api/vocab/lemmatize-batch',
-          word_count: words.length,
-          source,
-        }));
+        logger.error(
+          'API Error: /api/vocab/lemmatize-batch',
+          error,
+          requestLogContext(request, {
+            endpoint: '/api/vocab/lemmatize-batch',
+            word_count: words.length,
+            source,
+          }),
+        );
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -472,12 +517,16 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = 500;
-        logger.error('API Error: /api/vocab/persist', error, requestLogContext(request, {
-          endpoint: '/api/vocab/persist',
-          user_id: auth.userId,
-          source_type: sourceType,
-          entry_count: body.entries.length,
-        }));
+        logger.error(
+          'API Error: /api/vocab/persist',
+          error,
+          requestLogContext(request, {
+            endpoint: '/api/vocab/persist',
+            user_id: auth.userId,
+            source_type: sourceType,
+            entry_count: body.entries.length,
+          }),
+        );
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -499,7 +548,11 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = 500;
-        logger.error('API Error: /api/vocab/article', error, requestLogContext(request, { endpoint: '/api/vocab/article', word_count: cleaned.length }));
+        logger.error(
+          'API Error: /api/vocab/article',
+          error,
+          requestLogContext(request, { endpoint: '/api/vocab/article', word_count: cleaned.length }),
+        );
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -510,7 +563,11 @@ Deno.serve(async (request) => {
         status = auth.status ?? 401;
         return auth.response;
       }
-      if (!body?.vocabularyItemId || (body.source !== 'round2' && body.source !== 'review') || typeof body?.wasCorrect !== 'boolean') {
+      if (
+        !body?.vocabularyItemId ||
+        (body.source !== 'round2' && body.source !== 'review') ||
+        typeof body?.wasCorrect !== 'boolean'
+      ) {
         status = 400;
         return errorResponse(request, 'Missing required attempt fields', status);
       }
@@ -527,7 +584,11 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = 500;
-        logger.error('API Error: /api/review/attempt', error, requestLogContext(request, { endpoint: '/api/review/attempt', user_id: auth.userId }));
+        logger.error(
+          'API Error: /api/review/attempt',
+          error,
+          requestLogContext(request, { endpoint: '/api/review/attempt', user_id: auth.userId }),
+        );
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -548,7 +609,11 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = 500;
-        logger.error('API Error: /api/review/batch-attempt', error, requestLogContext(request, { endpoint: '/api/review/batch-attempt', user_id: auth.userId }));
+        logger.error(
+          'API Error: /api/review/batch-attempt',
+          error,
+          requestLogContext(request, { endpoint: '/api/review/batch-attempt', user_id: auth.userId }),
+        );
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -574,7 +639,11 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = 500;
-        logger.error('API Error: /api/review/unknown', error, requestLogContext(request, { endpoint: '/api/review/unknown', user_id: auth.userId }));
+        logger.error(
+          'API Error: /api/review/unknown',
+          error,
+          requestLogContext(request, { endpoint: '/api/review/unknown', user_id: auth.userId }),
+        );
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -599,12 +668,16 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = 500;
-        logger.error('API Error: /api/review/mastered', error, requestLogContext(request, {
-          endpoint: '/api/review/mastered',
-          user_id: auth.userId,
-          vocabulary_item_id: body.vocabularyItemId,
-          learning_group_id: body.learningGroupId,
-        }));
+        logger.error(
+          'API Error: /api/review/mastered',
+          error,
+          requestLogContext(request, {
+            endpoint: '/api/review/mastered',
+            user_id: auth.userId,
+            vocabulary_item_id: body.vocabularyItemId,
+            learning_group_id: body.learningGroupId,
+          }),
+        );
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -622,12 +695,16 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = 500;
-        logger.error('API Error: /api/ielts/reading/attempts', error, requestLogContext(request, {
-          endpoint: '/api/ielts/reading/attempts',
-          user_id: auth.userId,
-          test_id: body?.testId,
-          response_count: responseCount,
-        }));
+        logger.error(
+          'API Error: /api/ielts/reading/attempts',
+          error,
+          requestLogContext(request, {
+            endpoint: '/api/ielts/reading/attempts',
+            user_id: auth.userId,
+            test_id: body?.testId,
+            response_count: responseCount,
+          }),
+        );
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -645,12 +722,16 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = 500;
-        logger.error('API Error: /api/ielts/listening/attempts', error, requestLogContext(request, {
-          endpoint: '/api/ielts/listening/attempts',
-          user_id: auth.userId,
-          test_id: body?.testId,
-          response_count: responseCount,
-        }));
+        logger.error(
+          'API Error: /api/ielts/listening/attempts',
+          error,
+          requestLogContext(request, {
+            endpoint: '/api/ielts/listening/attempts',
+            user_id: auth.userId,
+            test_id: body?.testId,
+            response_count: responseCount,
+          }),
+        );
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -668,7 +749,11 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = 500;
-        logger.error('API Error: /api/review/due', error, { endpoint: '/api/review/due', user_id: auth.userId, timezone });
+        logger.error('API Error: /api/review/due', error, {
+          endpoint: '/api/review/due',
+          user_id: auth.userId,
+          timezone,
+        });
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -686,7 +771,11 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data }, status);
       } catch (error) {
         status = 500;
-        logger.error('API Error: /api/home/overview', error, { endpoint: '/api/home/overview', user_id: auth.userId, timezone });
+        logger.error('API Error: /api/home/overview', error, {
+          endpoint: '/api/home/overview',
+          user_id: auth.userId,
+          timezone,
+        });
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -766,16 +855,23 @@ Deno.serve(async (request) => {
       try {
         const result = await cleanupSavedLibrary({ apply: true, userId: auth.userId, sampleLimit: 0 });
         status = 200;
-        return jsonResponse(request, {
-          data: {
-            removedSavedWords: result.removedSavedWords,
-            createdReviewStates: result.createdReviewStates,
-            deletedCustomGroups: result.deletedCustomGroups,
+        return jsonResponse(
+          request,
+          {
+            data: {
+              removedSavedWords: result.removedSavedWords,
+              createdReviewStates: result.createdReviewStates,
+              deletedCustomGroups: result.deletedCustomGroups,
+            },
           },
-        }, status);
+          status,
+        );
       } catch (error) {
         status = 500;
-        logger.error('API Error: /api/library/saved-words/cleanup', error, { endpoint: '/api/library/saved-words/cleanup', user_id: auth.userId });
+        logger.error('API Error: /api/library/saved-words/cleanup', error, {
+          endpoint: '/api/library/saved-words/cleanup',
+          user_id: auth.userId,
+        });
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -825,7 +921,10 @@ Deno.serve(async (request) => {
         return jsonResponse(request, { data: { success: true } }, status);
       } catch (error) {
         status = 500;
-        logger.error(`API Error: /api/library/groups/${groupId}`, error, { endpoint: `/api/library/groups/${groupId}`, user_id: auth.userId });
+        logger.error(`API Error: /api/library/groups/${groupId}`, error, {
+          endpoint: `/api/library/groups/${groupId}`,
+          user_id: auth.userId,
+        });
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -865,7 +964,10 @@ Deno.serve(async (request) => {
         status = 400;
         return errorResponse(request, 'Missing words array', status);
       }
-      const cleaned = body.words.map((word: unknown) => (typeof word === 'string' ? word.trim() : '')).filter(Boolean).slice(0, 30);
+      const cleaned = body.words
+        .map((word: unknown) => (typeof word === 'string' ? word.trim() : ''))
+        .filter(Boolean)
+        .slice(0, 30);
       try {
         const data = await batchGenerateAudio(cleaned);
         status = 200;

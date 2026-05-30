@@ -54,11 +54,9 @@ export class GlobalErrorBoundary extends Component<Props, State> {
             <div className="mx-auto w-16 h-16 bg-apple-red/10 rounded-2xl flex items-center justify-center mb-6">
               <AlertCircle className="w-8 h-8 text-apple-red" />
             </div>
-            
+
             <h1 className="text-3xl font-black text-text-primary tracking-tight">这页刚才出错了</h1>
-            <p className="mt-4 text-text-secondary leading-7">
-              页面遇到错误。学习进度通常会自动保存，可以刷新后再试。
-            </p>
+            <p className="mt-4 text-text-secondary leading-7">页面遇到错误。学习进度通常会自动保存，可以刷新后再试。</p>
 
             {process.env.NODE_ENV === 'development' && this.state.error && (
               <div className="mt-6 p-4 bg-black/5 rounded-2xl text-left font-mono text-xs overflow-auto max-h-40 text-apple-red">
@@ -75,12 +73,7 @@ export class GlobalErrorBoundary extends Component<Props, State> {
               >
                 刷新后重试
               </IslandButton>
-              <IslandButton
-                onClick={this.handleGoHome}
-                tone="neutral"
-                size="large"
-                icon={<Home className="w-5 h-5" />}
-              >
+              <IslandButton onClick={this.handleGoHome} tone="neutral" size="large" icon={<Home className="w-5 h-5" />}>
                 回到首页
               </IslandButton>
             </div>

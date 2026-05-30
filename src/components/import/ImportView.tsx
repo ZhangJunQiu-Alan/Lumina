@@ -67,7 +67,7 @@ async function lemmatizeImportWords(words: string[], signal: AbortSignal): Promi
     throw new Error(err.error ?? `HTTP ${res.status}`);
   }
 
-  const { data } = await res.json() as { data?: LiteVocabularyResult[] };
+  const { data } = (await res.json()) as { data?: LiteVocabularyResult[] };
   const entries = words.map((word, index) => ({
     word,
     canonicalWord: normalizeWordKey(data?.[index]?.word ?? word) || normalizeWordKey(word),
@@ -94,7 +94,10 @@ function writeManualDraft(value: string) {
 
 function formatRelationPreview(items: EnrichedWord['derived_words']) {
   if (items.length === 0) return '暂无';
-  return items.slice(0, 2).map((item) => item.word).join('、');
+  return items
+    .slice(0, 2)
+    .map((item) => item.word)
+    .join('、');
 }
 
 function formatSynonymAntonymPreview(entry: EnrichedWord) {
@@ -110,7 +113,10 @@ function formatSynonymAntonymPreview(entry: EnrichedWord) {
 
 function formatConfusionPreview(entry: EnrichedWord) {
   if (entry.confusions.length === 0) return '暂无';
-  return entry.confusions.slice(0, 2).map((item) => item.word).join('、');
+  return entry.confusions
+    .slice(0, 2)
+    .map((item) => item.word)
+    .join('、');
 }
 
 export const ImportView = () => {
@@ -139,10 +145,13 @@ export const ImportView = () => {
     return () => window.clearInterval(timer);
   }, [stage]);
 
-  useEffect(() => () => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-  }, []);
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+    },
+    [],
+  );
 
   const parsedWords = splitWords(raw);
   const wordCount = parsedWords.length;
@@ -276,11 +285,7 @@ export const ImportView = () => {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="mx-auto w-full max-w-2xl"
-    >
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mx-auto w-full max-w-2xl">
       <AnimatePresence mode="wait">
         {(stage === 'input' || stage === 'error') && (
           <motion.div
@@ -311,7 +316,7 @@ export const ImportView = () => {
             <div className="mb-6 flex items-center justify-between px-1">
               <span className="text-xs text-text-secondary">当前识别到 {wordCount} 个词</span>
               {wordCount > MANUAL_BATCH_SIZE && (
-                  <span className="text-xs font-bold text-apple-red">这次会先取前 30 个</span>
+                <span className="text-xs font-bold text-apple-red">这次会先取前 30 个</span>
               )}
             </div>
 
@@ -335,76 +340,76 @@ export const ImportView = () => {
           </motion.div>
         )}
 
-        {stage === 'loading' && (() => {
-          const stepOrder: LoadingStep[] = ['lemmatizing', 'fetching', 'enriching', 'merging'];
-          const currentStepIndex = stepOrder.indexOf(loadingStep);
-          const activeCopy = LOADING_STEP_COPY[loadingStep];
-          const activeTitle = loadingStep === 'enriching' && loadingMissingCount > 0
-            ? `正在补齐 ${loadingMissingCount} 个新词`
-            : activeCopy.title;
+        {stage === 'loading' &&
+          (() => {
+            const stepOrder: LoadingStep[] = ['lemmatizing', 'fetching', 'enriching', 'merging'];
+            const currentStepIndex = stepOrder.indexOf(loadingStep);
+            const activeCopy = LOADING_STEP_COPY[loadingStep];
+            const activeTitle =
+              loadingStep === 'enriching' && loadingMissingCount > 0
+                ? `正在补齐 ${loadingMissingCount} 个新词`
+                : activeCopy.title;
 
-          return (
-            <motion.div
-              key="loading"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="glass flex flex-col items-center gap-6 rounded-apple-lg p-12 jelly-shadow"
-            >
-              <Loader2 className="h-10 w-10 animate-spin text-apple-blue" />
-              <div className="text-center">
-                <p className="text-xl font-black">{activeTitle}</p>
-                <p className="mt-1 text-sm text-text-secondary">{activeCopy.detail}</p>
-                <p className="mt-2 text-xs text-text-secondary/70">
-                  已等待 {loadingElapsedSec} 秒 · 正常 10~30 秒
-                </p>
-              </div>
-
-              <ol className="w-full max-w-sm space-y-2 text-left">
-                {stepOrder.map((step, index) => {
-                  const copy = LOADING_STEP_COPY[step];
-                  const isDone = index < currentStepIndex;
-                  const isActive = index === currentStepIndex;
-                  return (
-                    <li
-                      key={step}
-                      className={`flex items-start gap-3 rounded-2xl border px-4 py-3 transition-colors ${
-                        isActive
-                          ? 'border-apple-blue/40 bg-apple-blue/5'
-                          : isDone
-                            ? 'border-transparent bg-apple-gray/60 text-text-secondary'
-                            : 'border-transparent bg-apple-gray/30 text-text-secondary/60'
-                      }`}
-                    >
-                      <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full">
-                        {isDone ? (
-                          <Check className="h-4 w-4 text-apple-blue" />
-                        ) : isActive ? (
-                          <Loader2 className="h-4 w-4 animate-spin text-apple-blue" />
-                        ) : (
-                          <span className="h-2 w-2 rounded-full bg-current opacity-60" />
-                        )}
-                      </span>
-                      <span className="text-sm font-bold">
-                        {step === 'enriching' && loadingMissingCount > 0 && (isActive || isDone)
-                          ? `正在补齐 ${loadingMissingCount} 个新词`
-                          : copy.title}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ol>
-
-              <button
-                type="button"
-                onClick={handleCancelLoading}
-                className="text-sm text-text-secondary underline-offset-4 transition-colors hover:text-text-primary hover:underline"
+            return (
+              <motion.div
+                key="loading"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="glass flex flex-col items-center gap-6 rounded-apple-lg p-12 jelly-shadow"
               >
-                取消并返回
-              </button>
-            </motion.div>
-          );
-        })()}
+                <Loader2 className="h-10 w-10 animate-spin text-apple-blue" />
+                <div className="text-center">
+                  <p className="text-xl font-black">{activeTitle}</p>
+                  <p className="mt-1 text-sm text-text-secondary">{activeCopy.detail}</p>
+                  <p className="mt-2 text-xs text-text-secondary/70">已等待 {loadingElapsedSec} 秒 · 正常 10~30 秒</p>
+                </div>
+
+                <ol className="w-full max-w-sm space-y-2 text-left">
+                  {stepOrder.map((step, index) => {
+                    const copy = LOADING_STEP_COPY[step];
+                    const isDone = index < currentStepIndex;
+                    const isActive = index === currentStepIndex;
+                    return (
+                      <li
+                        key={step}
+                        className={`flex items-start gap-3 rounded-2xl border px-4 py-3 transition-colors ${
+                          isActive
+                            ? 'border-apple-blue/40 bg-apple-blue/5'
+                            : isDone
+                              ? 'border-transparent bg-apple-gray/60 text-text-secondary'
+                              : 'border-transparent bg-apple-gray/30 text-text-secondary/60'
+                        }`}
+                      >
+                        <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full">
+                          {isDone ? (
+                            <Check className="h-4 w-4 text-apple-blue" />
+                          ) : isActive ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-apple-blue" />
+                          ) : (
+                            <span className="h-2 w-2 rounded-full bg-current opacity-60" />
+                          )}
+                        </span>
+                        <span className="text-sm font-bold">
+                          {step === 'enriching' && loadingMissingCount > 0 && (isActive || isDone)
+                            ? `正在补齐 ${loadingMissingCount} 个新词`
+                            : copy.title}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ol>
+
+                <button
+                  type="button"
+                  onClick={handleCancelLoading}
+                  className="text-sm text-text-secondary underline-offset-4 transition-colors hover:text-text-primary hover:underline"
+                >
+                  取消并返回
+                </button>
+              </motion.div>
+            );
+          })()}
 
         {stage === 'preview' && (
           <motion.div
@@ -447,7 +452,9 @@ export const ImportView = () => {
                     <p className="mt-1 truncate text-sm text-text-secondary">{entry.primary_meaning_zh}</p>
                     <div className="mt-4 grid gap-2 sm:grid-cols-2">
                       <div className="rounded-2xl bg-white/70 px-3 py-2">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">构词拆解</p>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">
+                          构词拆解
+                        </p>
                         <p className="mt-1 text-xs leading-5 text-text-primary">
                           {entry.morphology.summary_zh || '暂无'}
                         </p>
@@ -459,16 +466,16 @@ export const ImportView = () => {
                         </p>
                       </div>
                       <div className="rounded-2xl bg-white/70 px-3 py-2">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">近义 / 反义</p>
-                        <p className="mt-1 text-xs leading-5 text-text-primary">
-                          {formatSynonymAntonymPreview(entry)}
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">
+                          近义 / 反义
                         </p>
+                        <p className="mt-1 text-xs leading-5 text-text-primary">{formatSynonymAntonymPreview(entry)}</p>
                       </div>
                       <div className="rounded-2xl bg-white/70 px-3 py-2">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">易混提示</p>
-                        <p className="mt-1 text-xs leading-5 text-text-primary">
-                          {formatConfusionPreview(entry)}
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">
+                          易混提示
                         </p>
+                        <p className="mt-1 text-xs leading-5 text-text-primary">{formatConfusionPreview(entry)}</p>
                       </div>
                     </div>
                   </div>

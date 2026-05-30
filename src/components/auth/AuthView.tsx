@@ -198,10 +198,11 @@ function normalizeOAuthError(message: string) {
 function readOAuthError(search: string, hash: string) {
   const searchParams = new URLSearchParams(search);
   const hashParams = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
-  const rawMessage = searchParams.get('error_description')
-    ?? searchParams.get('error')
-    ?? hashParams.get('error_description')
-    ?? hashParams.get('error');
+  const rawMessage =
+    searchParams.get('error_description') ??
+    searchParams.get('error') ??
+    hashParams.get('error_description') ??
+    hashParams.get('error');
 
   return rawMessage ? normalizeOAuthError(rawMessage) : null;
 }
@@ -456,12 +457,12 @@ export const AuthView = () => {
           password: form.password,
         });
 
-      if (result.requiresEmailConfirmation) {
-        setPendingConfirmationEmail(email);
-        setFeedback({
-          type: 'success',
-          text: '账号已创建。请到邮箱确认后再回来继续。',
-        });
+        if (result.requiresEmailConfirmation) {
+          setPendingConfirmationEmail(email);
+          setFeedback({
+            type: 'success',
+            text: '账号已创建。请到邮箱确认后再回来继续。',
+          });
         }
       }
     } catch (error) {
@@ -558,10 +559,12 @@ export const AuthView = () => {
         >
           <IslandPanel as="div" variant="elevated" className="auth-form-panel">
             <div className="auth-tab-switcher" role="tablist" aria-label="账号操作">
-              {([
-                { id: 'login', label: '登录' },
-                { id: 'register', label: '注册' },
-              ] as const).map((tab) => (
+              {(
+                [
+                  { id: 'login', label: '登录' },
+                  { id: 'register', label: '注册' },
+                ] as const
+              ).map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
@@ -584,33 +587,30 @@ export const AuthView = () => {
                 transition={{ duration: 0.22 }}
                 className="auth-form-content"
               >
-                {title.kicker && (
-                  <p className="auth-form-kicker">{title.kicker}</p>
-                )}
-                <h2 className="auth-form-title">
-                  {title.heading}
-                </h2>
+                {title.kicker && <p className="auth-form-kicker">{title.kicker}</p>}
+                <h2 className="auth-form-title">{title.heading}</h2>
                 {title.body && <p className="auth-form-body">{title.body}</p>}
 
-                {(mode === 'login' || mode === 'register') && (isGoogleAuthEnabled ? (
-                  <>
-                    <button
-                      type="button"
-                      disabled={isAuthLoading || isGoogleSubmitting}
-                      aria-busy={isGoogleSubmitting}
-                      onClick={() => { void handleGoogle(); }}
-                      className="auth-google-button"
-                    >
-                      <Chrome className="h-[18px] w-[18px] opacity-90" />
-                      {isGoogleSubmitting ? '正在跳到 Google...' : '用 Google 登录'}
-                    </button>
-                    <div className="auth-divider">或用邮箱</div>
-                  </>
-                ) : (
-                  <div className="auth-google-disabled">
-                    当前只能使用邮箱登录。Google 入口恢复后会显示在这里。
-                  </div>
-                ))}
+                {(mode === 'login' || mode === 'register') &&
+                  (isGoogleAuthEnabled ? (
+                    <>
+                      <button
+                        type="button"
+                        disabled={isAuthLoading || isGoogleSubmitting}
+                        aria-busy={isGoogleSubmitting}
+                        onClick={() => {
+                          void handleGoogle();
+                        }}
+                        className="auth-google-button"
+                      >
+                        <Chrome className="h-[18px] w-[18px] opacity-90" />
+                        {isGoogleSubmitting ? '正在跳到 Google...' : '用 Google 登录'}
+                      </button>
+                      <div className="auth-divider">或用邮箱</div>
+                    </>
+                  ) : (
+                    <div className="auth-google-disabled">当前只能使用邮箱登录。Google 入口恢复后会显示在这里。</div>
+                  ))}
 
                 <form onSubmit={handleSubmit} className="auth-form-fields">
                   {mode === 'register' && (
@@ -647,7 +647,7 @@ export const AuthView = () => {
                         onChange={(value) => updateField('password', value)}
                         placeholder="输入一个至少 8 位的密码"
                         autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                        trailing={(
+                        trailing={
                           <IslandIconButton
                             type="button"
                             onClick={() => setShowPassword((prev) => !prev)}
@@ -656,15 +656,13 @@ export const AuthView = () => {
                           >
                             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </IslandIconButton>
-                        )}
+                        }
                       />
 
                       {showPasswordStrength && (
                         <div className="auth-password-meter">
                           <div className="auth-password-meter__header">
-                            <p className={passwordStrength.textClass}>
-                              {passwordStrength.label}
-                            </p>
+                            <p className={passwordStrength.textClass}>{passwordStrength.label}</p>
                             <p>{Math.min(passwordStrength.score, 5)} / 5</p>
                           </div>
                           <div className="auth-password-meter__bars">
@@ -672,7 +670,9 @@ export const AuthView = () => {
                               <div
                                 key={index}
                                 className={`${
-                                  index < passwordStrength.score ? passwordStrength.colorClass : 'auth-password-meter__bar-empty'
+                                  index < passwordStrength.score
+                                    ? passwordStrength.colorClass
+                                    : 'auth-password-meter__bar-empty'
                                 }`}
                               />
                             ))}
@@ -682,11 +682,7 @@ export const AuthView = () => {
                       )}
 
                       {mode === 'login' && (
-                        <button
-                          type="button"
-                          onClick={() => switchMode('forgot')}
-                          className="auth-forgot-button"
-                        >
+                        <button type="button" onClick={() => switchMode('forgot')} className="auth-forgot-button">
                           忘记密码？
                         </button>
                       )}
@@ -702,7 +698,7 @@ export const AuthView = () => {
                       onChange={(value) => updateField('confirmPassword', value)}
                       placeholder="再输入一次密码"
                       autoComplete="new-password"
-                      trailing={(
+                      trailing={
                         <IslandIconButton
                           type="button"
                           onClick={() => setShowConfirmPassword((prev) => !prev)}
@@ -711,17 +707,11 @@ export const AuthView = () => {
                         >
                           {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </IslandIconButton>
-                      )}
+                      }
                     />
                   )}
 
-                  {feedback && (
-                    <div
-                      className={`auth-feedback auth-feedback--${feedback.type}`}
-                    >
-                      {feedback.text}
-                    </div>
-                  )}
+                  {feedback && <div className={`auth-feedback auth-feedback--${feedback.type}`}>{feedback.text}</div>}
 
                   {pendingConfirmationEmail && mode === 'register' && (
                     <div className="auth-confirmation-card">
@@ -729,7 +719,9 @@ export const AuthView = () => {
                       <span>我们会重新发到 {pendingConfirmationEmail}，短时间内频繁发送可能会被限制。</span>
                       <button
                         type="button"
-                        onClick={() => { void handleResendConfirmation(); }}
+                        onClick={() => {
+                          void handleResendConfirmation();
+                        }}
                         disabled={isResendingConfirmation}
                         className="auth-resend-button"
                       >
@@ -767,18 +759,7 @@ export const AuthView = () => {
                 </IslandButton>
 
                 <p className="auth-legal-copy">
-                  继续使用即表示你同意
-                  {' '}
-                  <Link to="/terms">
-                    服务条款
-                  </Link>
-                  {' '}
-                  和
-                  {' '}
-                  <Link to="/privacy">
-                    隐私政策
-                  </Link>
-                  。
+                  继续使用即表示你同意 <Link to="/terms">服务条款</Link> 和 <Link to="/privacy">隐私政策</Link>。
                 </p>
               </motion.div>
             </AnimatePresence>

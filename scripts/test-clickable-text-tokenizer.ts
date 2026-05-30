@@ -8,9 +8,7 @@ import type { Word } from '../src/types.ts';
 
 const simpleTokens = tokenizeClickableText('The salt is on the table.');
 assert.deepEqual(
-  simpleTokens
-    .filter((token) => token.kind === 'content')
-    .map((token) => token.normalized),
+  simpleTokens.filter((token) => token.kind === 'content').map((token) => token.normalized),
   ['salt', 'table'],
 );
 
@@ -20,12 +18,13 @@ for (const word of ['should', 'could', 'would', 'might']) {
 
 const mixedTokens = tokenizeClickableText('盐 salt 在 table 上。');
 assert.deepEqual(
-  mixedTokens
-    .filter((token) => token.kind === 'content')
-    .map((token) => token.normalized),
+  mixedTokens.filter((token) => token.kind === 'content').map((token) => token.normalized),
   ['salt', 'table'],
 );
-assert.equal(mixedTokens.some((token) => token.kind === 'cjk' && token.text === '盐'), true);
+assert.equal(
+  mixedTokens.some((token) => token.kind === 'cjk' && token.text === '盐'),
+  true,
+);
 
 assert.deepEqual(
   extractIeltsReadingLookupWords(
@@ -34,19 +33,23 @@ assert.deepEqual(
   ['well-developed', 'acoustic', 'sense', "isn't", 'weak', 'dolphins', 'track', "o'clock", 'signals'],
 );
 
-const legacyReadingDraft = coerceIeltsReadingDraft(JSON.stringify({
-  startedAt: '2026-05-18T08:00:00.000Z',
-  answers: {},
-  selectedPassage: 2,
-}));
+const legacyReadingDraft = coerceIeltsReadingDraft(
+  JSON.stringify({
+    startedAt: '2026-05-18T08:00:00.000Z',
+    answers: {},
+    selectedPassage: 2,
+  }),
+);
 assert.equal(legacyReadingDraft?.practiceMode, false);
 
-const practiceReadingDraft = coerceIeltsReadingDraft(JSON.stringify({
-  startedAt: '2026-05-18T08:00:00.000Z',
-  answers: {},
-  selectedPassage: 2,
-  practiceMode: true,
-}));
+const practiceReadingDraft = coerceIeltsReadingDraft(
+  JSON.stringify({
+    startedAt: '2026-05-18T08:00:00.000Z',
+    answers: {},
+    selectedPassage: 2,
+    practiceMode: true,
+  }),
+);
 assert.equal(practiceReadingDraft?.practiceMode, true);
 
 const round1Word: Word = {
@@ -102,9 +105,7 @@ const round1Word: Word = {
     { word: 'overlook', meaningZh: 'miss signal', noteZh: '' },
     { word: 'neglect', meaningZh: 'third antonym hidden', noteZh: '' },
   ],
-  confusingPairs: [
-    { word: 'assess', difference: 'assess rates value while analyze separates parts' },
-  ],
+  confusingPairs: [{ word: 'assess', difference: 'assess rates value while analyze separates parts' }],
   memory_tip: "Don't just look; analyze the pattern and compare signals.",
   audio_uk_url: null,
   audio_us_url: null,

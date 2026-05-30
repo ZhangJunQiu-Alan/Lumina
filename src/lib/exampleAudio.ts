@@ -43,7 +43,7 @@ export function fetchExampleAudioUrl(text: string, locale: PronunciationLocale):
         return null;
       }
 
-      const payload = await response.json().catch(() => null) as { data?: unknown } | null;
+      const payload = (await response.json().catch(() => null)) as { data?: unknown } | null;
       const url = typeof payload?.data === 'string' ? payload.data : null;
       if (url) {
         urlCache.set(key, url);

@@ -43,7 +43,7 @@ export interface MarkVocabularyMasteredInput {
 
 export async function recordBatchReviewAttempts(
   userId: string,
-  attempts: Omit<ReviewAttemptInput, 'userId'>[]
+  attempts: Omit<ReviewAttemptInput, 'userId'>[],
 ): Promise<ReviewAttemptResponse[]> {
   const results: ReviewAttemptResponse[] = [];
 
@@ -158,11 +158,10 @@ interface FutureReviewStateRow {
 }
 
 function buildWord(row: DueReviewRow) {
-  const vocabularyItem = Array.isArray(row.vocabulary_items)
-    ? row.vocabulary_items[0]
-    : row.vocabulary_items;
-  const relations = [...(vocabularyItem?.vocabulary_relations ?? [])]
-    .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0));
+  const vocabularyItem = Array.isArray(row.vocabulary_items) ? row.vocabulary_items[0] : row.vocabulary_items;
+  const relations = [...(vocabularyItem?.vocabulary_relations ?? [])].sort(
+    (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0),
+  );
   const confusingPairs = [...(vocabularyItem?.confused_words ?? [])]
     .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
     .map((item) => ({
@@ -177,12 +176,8 @@ function buildWord(row: DueReviewRow) {
     phonetic: vocabularyItem?.ipa_uk ?? '',
     ipa_uk: vocabularyItem?.ipa_uk ?? '',
     ipa_us: vocabularyItem?.ipa_us ?? '',
-    pos_tags: (vocabularyItem?.vocabulary_senses ?? [])
-      .map((sense) => sense.pos ?? '')
-      .filter(Boolean),
-    ner_entities: vocabularyItem?.ner_label
-      ? [{ label: vocabularyItem.ner_label, text: vocabularyItem.word }]
-      : [],
+    pos_tags: (vocabularyItem?.vocabulary_senses ?? []).map((sense) => sense.pos ?? '').filter(Boolean),
+    ner_entities: vocabularyItem?.ner_label ? [{ label: vocabularyItem.ner_label, text: vocabularyItem.word }] : [],
     chinese_definition: vocabularyItem?.primary_meaning_zh ?? '',
     senses: (vocabularyItem?.vocabulary_senses ?? []).map((sense) => ({
       pos: sense.pos ?? '',
@@ -238,18 +233,12 @@ function buildWord(row: DueReviewRow) {
 
 function isMissingRichVocabularySchemaError(error: { message?: string } | null | undefined) {
   const message = error?.message ?? '';
-  return [
-    'morphology_summary_zh',
-    'vocabulary_morphology_parts',
-    'vocabulary_relations',
-    'sort_order',
-  ].some((part) => message.includes(part));
+  return ['morphology_summary_zh', 'vocabulary_morphology_parts', 'vocabulary_relations', 'sort_order'].some((part) =>
+    message.includes(part),
+  );
 }
 
-async function fetchRecordedAttemptTransition(
-  input: ReviewAttemptInput,
-  createdAt: string,
-) {
+async function fetchRecordedAttemptTransition(input: ReviewAttemptInput, createdAt: string) {
   const { data, error } = await supabaseAdmin
     .from('review_events')
     .select('previous_state, next_state, source, was_correct, elapsed_ms, next_review_at')
@@ -272,7 +261,9 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
 
   const { data: existing, error: existingError } = await supabaseAdmin
     .from('review_states')
-    .select('user_id, vocabulary_item_id, memory_state, review_count, lapse_count, last_reviewed_at, next_review_at, ease_factor, graduated_at, last_assessed_at')
+    .select(
+      'user_id, vocabulary_item_id, memory_state, review_count, lapse_count, last_reviewed_at, next_review_at, ease_factor, graduated_at, last_assessed_at',
+    )
     .eq('user_id', input.userId)
     .eq('vocabulary_item_id', input.vocabularyItemId)
     .maybeSingle<ReviewStateRow & { last_assessed_at: string | null }>();
@@ -322,7 +313,9 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
 
   // If DB has a newer record, skip this stale attempt.
   if (existing?.last_assessed_at && lastAssessedAt !== null && lastAssessedAt > incomingAssessedAt) {
-    console.warn(`[Conflict] Skipping stale attempt for word ${input.vocabularyItemId}. DB: ${existing.last_assessed_at}, Incoming: ${now.toISOString()}`);
+    console.warn(
+      `[Conflict] Skipping stale attempt for word ${input.vocabularyItemId}. DB: ${existing.last_assessed_at}, Incoming: ${now.toISOString()}`,
+    );
     const currentState = existing.memory_state;
     return {
       memoryState: currentState,
@@ -348,21 +341,22 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
   const previousSuccesses = (existing?.review_count ?? 0) - (existing?.lapse_count ?? 0);
   const totalSuccesses = previousSuccesses + (result !== 'wrong' ? 1 : 0);
 
-  const nextState = input.source === 'round2'
-    ? resolveRound2State(currentState, result)
-    : resolveReviewState(currentState, result, totalSuccesses);
+  const nextState =
+    input.source === 'round2'
+      ? resolveRound2State(currentState, result)
+      : resolveReviewState(currentState, result, totalSuccesses);
 
   // If the user got it wrong during a review, keep it "due" for today (don't push to future).
   // This allows the word to stay in the queue if the user exits the session midway.
-  const nextReviewAt = (input.source === 'review' && result === 'wrong')
-    ? (existing?.next_review_at ?? now.toISOString())
-    : toNextReviewAt(nextState, now);
+  const nextReviewAt =
+    input.source === 'review' && result === 'wrong'
+      ? (existing?.next_review_at ?? now.toISOString())
+      : toNextReviewAt(nextState, now);
 
   const graduated = currentState !== 'mastered' && nextState === 'mastered';
 
-  const { error: upsertError } = await supabaseAdmin
-    .from('review_states')
-    .upsert({
+  const { error: upsertError } = await supabaseAdmin.from('review_states').upsert(
+    {
       user_id: input.userId,
       vocabulary_item_id: input.vocabularyItemId,
       ease_factor: existing?.ease_factor ?? 2.5,
@@ -370,34 +364,35 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
       last_reviewed_at: shouldIncrementReviewCounters ? now.toISOString() : (existing?.last_reviewed_at ?? null),
       next_review_at: nextReviewAt,
       review_count: shouldIncrementReviewCounters ? (existing?.review_count ?? 0) + 1 : (existing?.review_count ?? 0),
-      lapse_count: shouldIncrementReviewCounters && result === 'wrong'
-        ? (existing?.lapse_count ?? 0) + 1
-        : (existing?.lapse_count ?? 0),
+      lapse_count:
+        shouldIncrementReviewCounters && result === 'wrong'
+          ? (existing?.lapse_count ?? 0) + 1
+          : (existing?.lapse_count ?? 0),
       memory_state: nextState,
       last_result: result,
       last_elapsed_ms: elapsedMs,
       last_assessed_at: now.toISOString(),
       graduated_at: nextState === 'mastered' ? (existing?.graduated_at ?? now.toISOString()) : null,
-    }, { onConflict: 'user_id,vocabulary_item_id' });
+    },
+    { onConflict: 'user_id,vocabulary_item_id' },
+  );
 
   if (upsertError) {
     throw new Error(`review_states upsert failed: ${upsertError.message}`);
   }
 
-  const { error: eventError } = await supabaseAdmin
-    .from('review_events')
-    .insert({
-      user_id: input.userId,
-      vocabulary_item_id: input.vocabularyItemId,
-      learning_group_id: input.learningGroupId ?? null,
-      source: input.source,
-      was_correct: input.wasCorrect,
-      elapsed_ms: elapsedMs,
-      previous_state: existing?.memory_state ?? null,
-      next_state: nextState,
-      next_review_at: nextReviewAt,
-      created_at: now.toISOString(),
-    });
+  const { error: eventError } = await supabaseAdmin.from('review_events').insert({
+    user_id: input.userId,
+    vocabulary_item_id: input.vocabularyItemId,
+    learning_group_id: input.learningGroupId ?? null,
+    source: input.source,
+    was_correct: input.wasCorrect,
+    elapsed_ms: elapsedMs,
+    previous_state: existing?.memory_state ?? null,
+    next_state: nextState,
+    next_review_at: nextReviewAt,
+    created_at: now.toISOString(),
+  });
 
   if (eventError) {
     throw new Error(`review_events insert failed: ${eventError.message}`);
@@ -426,7 +421,9 @@ export async function markVocabularyUnknown(input: MarkVocabularyUnknownInput): 
 
   const { data: existing, error: existingError } = await supabaseAdmin
     .from('review_states')
-    .select('user_id, vocabulary_item_id, memory_state, review_count, lapse_count, last_reviewed_at, next_review_at, ease_factor, graduated_at, last_assessed_at')
+    .select(
+      'user_id, vocabulary_item_id, memory_state, review_count, lapse_count, last_reviewed_at, next_review_at, ease_factor, graduated_at, last_assessed_at',
+    )
     .eq('user_id', input.userId)
     .eq('vocabulary_item_id', input.vocabularyItemId)
     .maybeSingle<ReviewStateRow & { last_assessed_at: string | null }>();
@@ -460,9 +457,8 @@ export async function markVocabularyUnknown(input: MarkVocabularyUnknownInput): 
   const nextState = FIRST_MEMORY_STATE;
   const nextReviewAt = toNextReviewAt(nextState, now);
 
-  const { error: upsertError } = await supabaseAdmin
-    .from('review_states')
-    .upsert({
+  const { error: upsertError } = await supabaseAdmin.from('review_states').upsert(
+    {
       user_id: input.userId,
       vocabulary_item_id: input.vocabularyItemId,
       ease_factor: existing?.ease_factor ?? 2.5,
@@ -476,26 +472,26 @@ export async function markVocabularyUnknown(input: MarkVocabularyUnknownInput): 
       last_elapsed_ms: 0,
       last_assessed_at: assessedAt,
       graduated_at: null,
-    }, { onConflict: 'user_id,vocabulary_item_id' });
+    },
+    { onConflict: 'user_id,vocabulary_item_id' },
+  );
 
   if (upsertError) {
     throw new Error(`review_states unknown mark failed: ${upsertError.message}`);
   }
 
-  const { error: eventError } = await supabaseAdmin
-    .from('review_events')
-    .insert({
-      user_id: input.userId,
-      vocabulary_item_id: input.vocabularyItemId,
-      learning_group_id: input.learningGroupId ?? null,
-      source,
-      was_correct: false,
-      elapsed_ms: 0,
-      previous_state: currentState,
-      next_state: nextState,
-      next_review_at: nextReviewAt,
-      created_at: assessedAt,
-    });
+  const { error: eventError } = await supabaseAdmin.from('review_events').insert({
+    user_id: input.userId,
+    vocabulary_item_id: input.vocabularyItemId,
+    learning_group_id: input.learningGroupId ?? null,
+    source,
+    was_correct: false,
+    elapsed_ms: 0,
+    previous_state: currentState,
+    next_state: nextState,
+    next_review_at: nextReviewAt,
+    created_at: assessedAt,
+  });
 
   if (eventError) {
     throw new Error(`review_events unknown mark failed: ${eventError.message}`);
@@ -526,7 +522,9 @@ export async function markVocabularyMastered(input: MarkVocabularyMasteredInput)
 
   const { data: existing, error: existingError } = await supabaseAdmin
     .from('review_states')
-    .select('user_id, vocabulary_item_id, memory_state, review_count, lapse_count, last_reviewed_at, next_review_at, ease_factor, graduated_at, last_assessed_at')
+    .select(
+      'user_id, vocabulary_item_id, memory_state, review_count, lapse_count, last_reviewed_at, next_review_at, ease_factor, graduated_at, last_assessed_at',
+    )
     .eq('user_id', input.userId)
     .eq('vocabulary_item_id', input.vocabularyItemId)
     .maybeSingle<ReviewStateRow & { last_assessed_at: string | null }>();
@@ -538,9 +536,8 @@ export async function markVocabularyMastered(input: MarkVocabularyMasteredInput)
   const previousState = existing?.memory_state ?? null;
   const graduated = previousState !== 'mastered';
 
-  const { error: upsertError } = await supabaseAdmin
-    .from('review_states')
-    .upsert({
+  const { error: upsertError } = await supabaseAdmin.from('review_states').upsert(
+    {
       user_id: input.userId,
       vocabulary_item_id: input.vocabularyItemId,
       ease_factor: existing?.ease_factor ?? 2.5,
@@ -554,26 +551,26 @@ export async function markVocabularyMastered(input: MarkVocabularyMasteredInput)
       last_elapsed_ms: 0,
       last_assessed_at: assessedAt,
       graduated_at: existing?.graduated_at ?? assessedAt,
-    }, { onConflict: 'user_id,vocabulary_item_id' });
+    },
+    { onConflict: 'user_id,vocabulary_item_id' },
+  );
 
   if (upsertError) {
     throw new Error(`review_states mastered mark failed: ${upsertError.message}`);
   }
 
-  const { error: eventError } = await supabaseAdmin
-    .from('review_events')
-    .insert({
-      user_id: input.userId,
-      vocabulary_item_id: input.vocabularyItemId,
-      learning_group_id: input.learningGroupId ?? null,
-      source,
-      was_correct: true,
-      elapsed_ms: 0,
-      previous_state: previousState,
-      next_state: nextState,
-      next_review_at: nextReviewAt,
-      created_at: assessedAt,
-    });
+  const { error: eventError } = await supabaseAdmin.from('review_events').insert({
+    user_id: input.userId,
+    vocabulary_item_id: input.vocabularyItemId,
+    learning_group_id: input.learningGroupId ?? null,
+    source,
+    was_correct: true,
+    elapsed_ms: 0,
+    previous_state: previousState,
+    next_state: nextState,
+    next_review_at: nextReviewAt,
+    created_at: assessedAt,
+  });
 
   if (eventError) {
     throw new Error(`review_events mastered mark failed: ${eventError.message}`);
@@ -618,10 +615,7 @@ function groupBacklogUpdatesByDate(updates: ReviewBacklogRescheduleUpdate[]) {
   return grouped;
 }
 
-async function applyBacklogRescheduleUpdates(
-  userId: string,
-  updates: ReviewBacklogRescheduleUpdate[],
-) {
+async function applyBacklogRescheduleUpdates(userId: string, updates: ReviewBacklogRescheduleUpdate[]) {
   for (const [nextReviewAt, vocabularyItemIds] of groupBacklogUpdatesByDate(updates)) {
     const { error } = await supabaseAdmin
       .from('review_states')
@@ -677,15 +671,11 @@ export async function redistributeDueReviewBacklog(
     throw new Error(`future review schedule query failed: ${futureResult.error.message}`);
   }
 
-  const plan = planReviewBacklogRedistribution(
-    dueRows,
-    (futureResult.data ?? []) as FutureReviewStateRow[],
-    {
-      now,
-      timeZone: options.timeZone,
-      dailyLimit: MAX_DAILY_REVIEW_WORDS,
-    },
-  );
+  const plan = planReviewBacklogRedistribution(dueRows, (futureResult.data ?? []) as FutureReviewStateRow[], {
+    now,
+    timeZone: options.timeZone,
+    dailyLimit: MAX_DAILY_REVIEW_WORDS,
+  });
 
   if (plan.updates.length > 0) {
     await applyBacklogRescheduleUpdates(userId, plan.updates);

@@ -5,16 +5,13 @@ import { readFileSync } from 'fs';
 const env = Object.fromEntries(
   readFileSync('.env', 'utf8')
     .split('\n')
-    .filter(l => l.includes('='))
-    .map(l => l.split('=').map(p => p.trim()))
+    .filter((l) => l.includes('='))
+    .map((l) => l.split('=').map((p) => p.trim())),
 );
 
 // --- Test Supabase ---
 console.log('\n🔷 Testing Supabase...');
-const supabase = createClient(
-  env.VITE_SUPABASE_URL,
-  env.VITE_SUPABASE_PUBLISHABLE_KEY
-);
+const supabase = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_PUBLISHABLE_KEY);
 
 try {
   // Just check we can reach the API — query a system table
@@ -45,7 +42,10 @@ try {
   );
   const payload = await response.json();
   if (!response.ok) throw new Error(payload?.error?.message ?? response.statusText);
-  const text = payload.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('').trim();
+  const text = payload.candidates?.[0]?.content?.parts
+    ?.map((p) => p.text ?? '')
+    .join('')
+    .trim();
   console.log('✅ Gemini: connected successfully —', text);
 } catch (e) {
   console.log('❌ Gemini connection failed:', e.message);

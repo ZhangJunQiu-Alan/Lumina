@@ -145,15 +145,17 @@ function coercePaperPages(value: JsonValue | undefined): IeltsListeningPaperPage
       if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
       const record = item as Record<string, JsonValue>;
       if (typeof record.pageKey !== 'string' || typeof record.imageUrl !== 'string') return [];
-      return [{
-        pageKey: record.pageKey,
-        pdfPage: typeof record.pdfPage === 'number' ? record.pdfPage : 0,
-        width: typeof record.width === 'number' ? record.width : 0,
-        height: typeof record.height === 'number' ? record.height : 0,
-        storagePath: typeof record.storagePath === 'string' ? record.storagePath : '',
-        imageUrl: record.imageUrl,
-        sortOrder: typeof record.sortOrder === 'number' ? record.sortOrder : 0,
-      }];
+      return [
+        {
+          pageKey: record.pageKey,
+          pdfPage: typeof record.pdfPage === 'number' ? record.pdfPage : 0,
+          width: typeof record.width === 'number' ? record.width : 0,
+          height: typeof record.height === 'number' ? record.height : 0,
+          storagePath: typeof record.storagePath === 'string' ? record.storagePath : '',
+          imageUrl: record.imageUrl,
+          sortOrder: typeof record.sortOrder === 'number' ? record.sortOrder : 0,
+        },
+      ];
     })
     .sort((left, right) => left.sortOrder - right.sortOrder);
 }
@@ -243,13 +245,15 @@ function mapTestSummary(row: TestRow, fallbackBook?: BookRow): IeltsListeningTes
   const book = asArray(row.ielts_listening_books)[0] ?? fallbackBook;
   const sections = asArray(row.ielts_listening_sections);
   const nestedQuestionCount = sections.reduce(
-    (count, section) => count + asArray(section.ielts_listening_question_groups)
-      .reduce((groupCount, group) => groupCount + asArray(group.ielts_listening_questions).length, 0),
+    (count, section) =>
+      count +
+      asArray(section.ielts_listening_question_groups).reduce(
+        (groupCount, group) => groupCount + asArray(group.ielts_listening_questions).length,
+        0,
+      ),
     0,
   );
-  const directQuestionCount = Array.isArray(row.ielts_listening_questions)
-    ? row.ielts_listening_questions.length
-    : 0;
+  const directQuestionCount = Array.isArray(row.ielts_listening_questions) ? row.ielts_listening_questions.length : 0;
 
   return {
     id: row.id,
@@ -266,7 +270,8 @@ function mapTestSummary(row: TestRow, fallbackBook?: BookRow): IeltsListeningTes
 export async function fetchIeltsListeningBooks(): Promise<IeltsListeningBookSummary[]> {
   const { data, error } = await supabase
     .from('ielts_listening_books')
-    .select(`
+    .select(
+      `
       id,
       book_number,
       title,
@@ -278,7 +283,8 @@ export async function fetchIeltsListeningBooks(): Promise<IeltsListeningBookSumm
         title,
         ielts_listening_sections ( id )
       )
-    `)
+    `,
+    )
     .order('book_number', { ascending: true });
 
   if (error) throw new Error(`ielts_listening_books lookup failed: ${error.message}`);
@@ -297,7 +303,8 @@ export async function fetchIeltsListeningBooks(): Promise<IeltsListeningBookSumm
 export async function fetchIeltsListeningTestDetail(testId: string): Promise<IeltsListeningTestDetail | null> {
   const { data, error } = await supabase
     .from('ielts_listening_tests')
-    .select(`
+    .select(
+      `
       id,
       book_id,
       test_number,
@@ -344,7 +351,8 @@ export async function fetchIeltsListeningTestDetail(testId: string): Promise<Iel
           )
         )
       )
-    `)
+    `,
+    )
     .eq('id', testId)
     .maybeSingle();
 
@@ -369,7 +377,8 @@ export async function fetchIeltsListeningTestDetail(testId: string): Promise<Iel
 export async function fetchRecentIeltsListeningAttempts(userId: string): Promise<IeltsListeningAttemptSummary[]> {
   const { data, error } = await supabase
     .from('ielts_listening_attempts')
-    .select(`
+    .select(
+      `
       id,
       test_id,
       score,
@@ -387,7 +396,8 @@ export async function fetchRecentIeltsListeningAttempts(userId: string): Promise
           title
         )
       )
-    `)
+    `,
+    )
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(8);
@@ -417,7 +427,8 @@ export async function fetchIeltsListeningAttemptResult(
 ): Promise<IeltsListeningAttemptResult | null> {
   const { data, error } = await supabase
     .from('ielts_listening_attempts')
-    .select(`
+    .select(
+      `
       id,
       test_id,
       score,
@@ -442,7 +453,8 @@ export async function fetchIeltsListeningAttemptResult(
         correct_answer_json,
         is_correct
       )
-    `)
+    `,
+    )
     .eq('id', attemptId)
     .eq('user_id', userId)
     .maybeSingle();
@@ -454,13 +466,15 @@ export async function fetchIeltsListeningAttemptResult(
   const test = asArray(row.ielts_listening_tests)[0];
   const book = asArray(test?.ielts_listening_books)[0];
   const responses = asArray(row.ielts_listening_responses)
-    .map((response): IeltsListeningResponseResult => ({
-      questionId: response.question_id ?? '',
-      questionNumber: response.question_number ?? 0,
-      response: coerceAnswers(response.response_json),
-      correctAnswer: coerceAnswers(response.correct_answer_json),
-      isCorrect: Boolean(response.is_correct),
-    }))
+    .map(
+      (response): IeltsListeningResponseResult => ({
+        questionId: response.question_id ?? '',
+        questionNumber: response.question_number ?? 0,
+        response: coerceAnswers(response.response_json),
+        correctAnswer: coerceAnswers(response.correct_answer_json),
+        isCorrect: Boolean(response.is_correct),
+      }),
+    )
     .sort((left, right) => left.questionNumber - right.questionNumber);
 
   return {

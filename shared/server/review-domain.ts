@@ -136,16 +136,19 @@ export function normalizeElapsedMs(elapsedMs: number): number {
 
 export function sortDueReviewRows<T extends SortableDueReviewRow>(rows: T[]): T[] {
   return [...rows].sort((left, right) => {
-    const dueDelta = (left.next_review_at ? Date.parse(left.next_review_at) : 0)
-      - (right.next_review_at ? Date.parse(right.next_review_at) : 0);
+    const dueDelta =
+      (left.next_review_at ? Date.parse(left.next_review_at) : 0) -
+      (right.next_review_at ? Date.parse(right.next_review_at) : 0);
     if (dueDelta !== 0) return dueDelta;
 
     const leftPriority = STATE_PRIORITY[left.memory_state as keyof typeof STATE_PRIORITY] ?? Number.MAX_SAFE_INTEGER;
     const rightPriority = STATE_PRIORITY[right.memory_state as keyof typeof STATE_PRIORITY] ?? Number.MAX_SAFE_INTEGER;
     if (leftPriority !== rightPriority) return leftPriority - rightPriority;
 
-    return (left.last_assessed_at ? Date.parse(left.last_assessed_at) : 0)
-      - (right.last_assessed_at ? Date.parse(right.last_assessed_at) : 0);
+    return (
+      (left.last_assessed_at ? Date.parse(left.last_assessed_at) : 0) -
+      (right.last_assessed_at ? Date.parse(right.last_assessed_at) : 0)
+    );
   });
 }
 

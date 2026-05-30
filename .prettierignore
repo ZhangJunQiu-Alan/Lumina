@@ -1,0 +1,12 @@
+dist
+node_modules
+output
+.playwright-cli
+.wrangler
+coverage
+package-lock.json
+docs
+content
+public
+src/data
+**/*.md

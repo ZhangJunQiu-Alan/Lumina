@@ -1,6 +1,7 @@
 import 'dotenv/config';
+import './env.js';
 import { randomUUID } from 'node:crypto';
-import express, { type NextFunction, type Response } from 'express';
+import express, { type ErrorRequestHandler, type NextFunction, type Response } from 'express';
 import { logger } from '../shared/server/logger.ts';
 import {
   enrichWords,
@@ -8,7 +9,13 @@ import {
   EnrichmentServiceUnavailableError,
   generateArticle,
 } from '../shared/server/gemini.ts';
-import { fetchDueReviewWords, markVocabularyMastered, markVocabularyUnknown, recordReviewAttempt, recordBatchReviewAttempts } from '../shared/server/review.ts';
+import {
+  fetchDueReviewWords,
+  markVocabularyMastered,
+  markVocabularyUnknown,
+  recordReviewAttempt,
+  recordBatchReviewAttempts,
+} from '../shared/server/review.ts';
 import { getOrCreateAudio, batchGenerateAudio } from '../shared/server/audio.ts';
 import { ExampleAudioValidationError, getOrCreateExampleAudio } from '../shared/server/exampleAudio.ts';
 import {
@@ -45,7 +52,6 @@ import {
 } from '../shared/expensiveRateLimit.ts';
 
 const app = express();
-app.use(express.json());
 
 const requestIdHeader = 'X-Request-Id';
 
@@ -152,15 +158,18 @@ function requireExpensiveQuota(
       return;
     }
 
-    logger.warn('Expensive API rate limit exceeded', requestLogContext(res, {
-      endpoint: req.path,
-      user_id: userId,
-      group,
-      scope: result.scope,
-      window: result.window,
-      limit: result.limit,
-      weight: result.weight,
-    }));
+    logger.warn(
+      'Expensive API rate limit exceeded',
+      requestLogContext(res, {
+        endpoint: req.path,
+        user_id: userId,
+        group,
+        scope: result.scope,
+        window: result.window,
+        limit: result.limit,
+        weight: result.weight,
+      }),
+    );
     return sendRateLimitExceeded(res, result.retryAfterSeconds);
   };
 }
@@ -203,6 +212,8 @@ app.options('*', (req, res) => {
   res.sendStatus(204);
 });
 
+app.use(express.json());
+
 function resolveSavedWordSource(value: unknown): SavedWordSource | null {
   if (value === undefined || value === null) return 'reading_popup';
   if (value === 'reading_popup' || value === 'manual') return value;
@@ -237,7 +248,7 @@ app.post('/api/vocab/enrich', requireAuth, requireAiContentFeatures, aiVocabQuot
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     logger.error('API Error: /api/vocab/enrich', e, requestLogContext(res, { endpoint: '/api/vocab/enrich', source }));
-    
+
     if (e instanceof EnrichmentResponseValidationError) {
       return res.status(e.statusCode).json({ error: message });
     }
@@ -261,7 +272,11 @@ app.post('/api/vocab/lite-enrich', requireAuth, requireAiContentFeatures, aiVoca
     res.json({ data });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/vocab/lite-enrich', e, requestLogContext(res, { endpoint: '/api/vocab/lite-enrich', word, source }));
+    logger.error(
+      'API Error: /api/vocab/lite-enrich',
+      e,
+      requestLogContext(res, { endpoint: '/api/vocab/lite-enrich', word, source }),
+    );
 
     if (e instanceof EnrichmentResponseValidationError) {
       return res.status(e.statusCode).json({ error: message });
@@ -286,7 +301,11 @@ app.post('/api/vocab/lemmatize', requireAuth, requireAiContentFeatures, aiVocabS
     res.json({ data });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/vocab/lemmatize', e, requestLogContext(res, { endpoint: '/api/vocab/lemmatize', word, source }));
+    logger.error(
+      'API Error: /api/vocab/lemmatize',
+      e,
+      requestLogContext(res, { endpoint: '/api/vocab/lemmatize', word, source }),
+    );
 
     if (e instanceof EnrichmentResponseValidationError) {
       return res.status(e.statusCode).json({ error: message });
@@ -300,9 +319,7 @@ app.post('/api/vocab/lemmatize', requireAuth, requireAiContentFeatures, aiVocabS
 
 // POST /api/vocab/lemmatize-batch
 app.post('/api/vocab/lemmatize-batch', requireAuth, requireAiContentFeatures, aiVocabQuota, async (req, res) => {
-  const words = Array.isArray(req.body?.words)
-    ? req.body.words.map(sanitizeLookupWord).filter(Boolean)
-    : [];
+  const words = Array.isArray(req.body?.words) ? req.body.words.map(sanitizeLookupWord).filter(Boolean) : [];
   const source = resolveGeminiSource(req.body?.source, 'import_lemmatize');
   if (words.length === 0) {
     return res.status(400).json({ error: 'Missing words array' });
@@ -313,11 +330,15 @@ app.post('/api/vocab/lemmatize-batch', requireAuth, requireAiContentFeatures, ai
     res.json({ data });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/vocab/lemmatize-batch', e, requestLogContext(res, {
-      endpoint: '/api/vocab/lemmatize-batch',
-      word_count: words.length,
-      source,
-    }));
+    logger.error(
+      'API Error: /api/vocab/lemmatize-batch',
+      e,
+      requestLogContext(res, {
+        endpoint: '/api/vocab/lemmatize-batch',
+        word_count: words.length,
+        source,
+      }),
+    );
 
     if (e instanceof EnrichmentResponseValidationError) {
       return res.status(e.statusCode).json({ error: message });
@@ -342,7 +363,11 @@ app.post('/api/vocab/lookup', requireAuth, async (req: AuthenticatedRequest, res
     res.json(data ? { data } : { data: null, missing: true });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/vocab/lookup', e, requestLogContext(res, { endpoint: '/api/vocab/lookup', user_id: userId, word }));
+    logger.error(
+      'API Error: /api/vocab/lookup',
+      e,
+      requestLogContext(res, { endpoint: '/api/vocab/lookup', user_id: userId, word }),
+    );
 
     if (e instanceof EnrichmentResponseValidationError) {
       return res.status(e.statusCode).json({ error: message });
@@ -357,16 +382,8 @@ app.post('/api/vocab/lookup', requireAuth, async (req: AuthenticatedRequest, res
 // POST /api/vocab/report
 app.post('/api/vocab/report', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.authUserId!;
-  const {
-    vocabularyItemId,
-    wordSnapshot,
-    learningGroupId,
-    sessionRound,
-    issueType,
-    note,
-    routePath,
-    userAgent,
-  } = req.body ?? {};
+  const { vocabularyItemId, wordSnapshot, learningGroupId, sessionRound, issueType, note, routePath, userAgent } =
+    req.body ?? {};
 
   if (typeof vocabularyItemId !== 'string' || vocabularyItemId.trim().length === 0) {
     return res.status(400).json({ error: 'Missing vocabulary item ID' });
@@ -386,37 +403,51 @@ app.post('/api/vocab/report', requireAuth, async (req: AuthenticatedRequest, res
     res.json({ data });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/vocab/report', e, requestLogContext(res, {
-      endpoint: '/api/vocab/report',
-      user_id: userId,
-      vocabulary_item_id: vocabularyItemId,
-      issue_type: issueType,
-    }));
+    logger.error(
+      'API Error: /api/vocab/report',
+      e,
+      requestLogContext(res, {
+        endpoint: '/api/vocab/report',
+        user_id: userId,
+        vocabulary_item_id: vocabularyItemId,
+        issue_type: issueType,
+      }),
+    );
     return sendInternalError(res);
   }
 });
 
 // POST /api/vocab/full-enrich
-app.post('/api/vocab/full-enrich', requireAuth, requireAiContentFeatures, aiVocabSingleQuota, async (req: AuthenticatedRequest, res) => {
-  const word = sanitizeLookupWord(req.body?.word);
-  if (!word) {
-    return res.status(400).json({ error: 'Missing word' });
-  }
-
-  const userId = req.authUserId!;
-  try {
-    const result = await queueFullEnrichmentForWord(word, 'manual_api');
-    if (result.reason === 'not_found') {
-      return res.status(404).json({ error: 'Vocabulary item not found' });
+app.post(
+  '/api/vocab/full-enrich',
+  requireAuth,
+  requireAiContentFeatures,
+  aiVocabSingleQuota,
+  async (req: AuthenticatedRequest, res) => {
+    const word = sanitizeLookupWord(req.body?.word);
+    if (!word) {
+      return res.status(400).json({ error: 'Missing word' });
     }
 
-    res.status(result.queued ? 202 : 200).json(result);
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/vocab/full-enrich', e, requestLogContext(res, { endpoint: '/api/vocab/full-enrich', user_id: userId, word }));
-    return sendInternalError(res);
-  }
-});
+    const userId = req.authUserId!;
+    try {
+      const result = await queueFullEnrichmentForWord(word, 'manual_api');
+      if (result.reason === 'not_found') {
+        return res.status(404).json({ error: 'Vocabulary item not found' });
+      }
+
+      res.status(result.queued ? 202 : 200).json(result);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      logger.error(
+        'API Error: /api/vocab/full-enrich',
+        e,
+        requestLogContext(res, { endpoint: '/api/vocab/full-enrich', user_id: userId, word }),
+      );
+      return sendInternalError(res);
+    }
+  },
+);
 
 // POST /api/vocab/persist
 app.post('/api/vocab/persist', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -433,12 +464,16 @@ app.post('/api/vocab/persist', requireAuth, async (req: AuthenticatedRequest, re
     res.json({ data });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/vocab/persist', e, requestLogContext(res, {
-      endpoint: '/api/vocab/persist',
-      user_id: userId,
-      source_type: sourceType,
-      entry_count: entries.length,
-    }));
+    logger.error(
+      'API Error: /api/vocab/persist',
+      e,
+      requestLogContext(res, {
+        endpoint: '/api/vocab/persist',
+        user_id: userId,
+        source_type: sourceType,
+        entry_count: entries.length,
+      }),
+    );
     return sendInternalError(res);
   }
 });
@@ -450,32 +485,28 @@ app.post('/api/vocab/article', requireAuth, requireAiContentFeatures, aiArticleQ
     return res.status(400).json({ error: 'Missing words array' });
   }
 
-  const cleaned = words
-    .map((w) => (typeof w === 'string' ? w.trim() : ''))
-    .filter(Boolean);
+  const cleaned = words.map((w) => (typeof w === 'string' ? w.trim() : '')).filter(Boolean);
 
   try {
     const article = await generateArticle(cleaned);
     res.json({ data: article });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/vocab/article', e, requestLogContext(res, {
-      endpoint: '/api/vocab/article',
-      word_count: cleaned.length,
-    }));
+    logger.error(
+      'API Error: /api/vocab/article',
+      e,
+      requestLogContext(res, {
+        endpoint: '/api/vocab/article',
+        word_count: cleaned.length,
+      }),
+    );
     return sendInternalError(res);
   }
 });
 
 // POST /api/review/attempt
 app.post('/api/review/attempt', requireAuth, async (req: AuthenticatedRequest, res) => {
-  const {
-    vocabularyItemId,
-    learningGroupId,
-    source,
-    wasCorrect,
-    elapsedMs,
-  } = req.body;
+  const { vocabularyItemId, learningGroupId, source, wasCorrect, elapsedMs } = req.body;
 
   if (!vocabularyItemId || (source !== 'round2' && source !== 'review') || typeof wasCorrect !== 'boolean') {
     return res.status(400).json({ error: 'Missing required attempt fields' });
@@ -494,7 +525,11 @@ app.post('/api/review/attempt', requireAuth, async (req: AuthenticatedRequest, r
     res.json({ data: result });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/review/attempt', e, requestLogContext(res, { endpoint: '/api/review/attempt', user_id: userId }));
+    logger.error(
+      'API Error: /api/review/attempt',
+      e,
+      requestLogContext(res, { endpoint: '/api/review/attempt', user_id: userId }),
+    );
     return sendInternalError(res);
   }
 });
@@ -512,7 +547,11 @@ app.post('/api/review/batch-attempt', requireAuth, async (req: AuthenticatedRequ
     res.json({ data: results });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/review/batch-attempt', e, requestLogContext(res, { endpoint: '/api/review/batch-attempt', user_id: userId }));
+    logger.error(
+      'API Error: /api/review/batch-attempt',
+      e,
+      requestLogContext(res, { endpoint: '/api/review/batch-attempt', user_id: userId }),
+    );
     return sendInternalError(res);
   }
 });
@@ -535,7 +574,11 @@ app.post('/api/review/unknown', requireAuth, async (req: AuthenticatedRequest, r
     res.json({ data: result });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/review/unknown', e, requestLogContext(res, { endpoint: '/api/review/unknown', user_id: userId }));
+    logger.error(
+      'API Error: /api/review/unknown',
+      e,
+      requestLogContext(res, { endpoint: '/api/review/unknown', user_id: userId }),
+    );
     return sendInternalError(res);
   }
 });
@@ -557,12 +600,16 @@ app.post('/api/review/mastered', requireAuth, async (req: AuthenticatedRequest, 
     res.json({ data: result });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/review/mastered', e, requestLogContext(res, {
-      endpoint: '/api/review/mastered',
-      user_id: userId,
-      vocabulary_item_id: vocabularyItemId,
-      learning_group_id: learningGroupId,
-    }));
+    logger.error(
+      'API Error: /api/review/mastered',
+      e,
+      requestLogContext(res, {
+        endpoint: '/api/review/mastered',
+        user_id: userId,
+        vocabulary_item_id: vocabularyItemId,
+        learning_group_id: learningGroupId,
+      }),
+    );
     return sendInternalError(res);
   }
 });
@@ -577,12 +624,16 @@ app.post('/api/ielts/reading/attempts', requireAuth, async (req: AuthenticatedRe
     res.json({ data });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/ielts/reading/attempts', e, requestLogContext(res, {
-      endpoint: '/api/ielts/reading/attempts',
-      user_id: userId,
-      test_id: req.body?.testId,
-      response_count: responseCount,
-    }));
+    logger.error(
+      'API Error: /api/ielts/reading/attempts',
+      e,
+      requestLogContext(res, {
+        endpoint: '/api/ielts/reading/attempts',
+        user_id: userId,
+        test_id: req.body?.testId,
+        response_count: responseCount,
+      }),
+    );
     return sendInternalError(res);
   }
 });
@@ -597,12 +648,16 @@ app.post('/api/ielts/listening/attempts', requireAuth, async (req: Authenticated
     res.json({ data });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error('API Error: /api/ielts/listening/attempts', e, requestLogContext(res, {
-      endpoint: '/api/ielts/listening/attempts',
-      user_id: userId,
-      test_id: req.body?.testId,
-      response_count: responseCount,
-    }));
+    logger.error(
+      'API Error: /api/ielts/listening/attempts',
+      e,
+      requestLogContext(res, {
+        endpoint: '/api/ielts/listening/attempts',
+        user_id: userId,
+        test_id: req.body?.testId,
+        response_count: responseCount,
+      }),
+    );
     return sendInternalError(res);
   }
 });
@@ -757,7 +812,10 @@ app.delete('/api/library/groups/:groupId', requireAuth, async (req: Authenticate
     res.json({ data: { success: true } });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error(`API Error: /api/library/groups/${groupId}`, e, { endpoint: `/api/library/groups/${groupId}`, user_id: userId });
+    logger.error(`API Error: /api/library/groups/${groupId}`, e, {
+      endpoint: `/api/library/groups/${groupId}`,
+      user_id: userId,
+    });
     return sendInternalError(res);
   }
 });
@@ -829,6 +887,43 @@ app.post('/api/example-audio', requireAuth, ttsSingleQuota, async (req, res) => 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+function resolveExpressErrorStatus(error: unknown) {
+  const status =
+    (error as { status?: unknown; statusCode?: unknown } | null)?.status ??
+    (error as { status?: unknown; statusCode?: unknown } | null)?.statusCode;
+  return typeof status === 'number' && status >= 400 && status < 600 ? status : 500;
+}
+
+const expressErrorHandler: ErrorRequestHandler = (error, req, res, next) => {
+  if (res.headersSent) {
+    next(error);
+    return;
+  }
+
+  const status = resolveExpressErrorStatus(error);
+  logger.error(
+    'Unhandled Express Error',
+    error,
+    requestLogContext(res, {
+      endpoint: req.originalUrl,
+      method: req.method,
+      status,
+    }),
+  );
+
+  if (status >= 500) {
+    sendInternalError(res);
+    return;
+  }
+
+  res.status(status).json({
+    error: status === 400 ? 'Bad request' : 'Request failed',
+    request_id: res.locals.requestId,
+  });
+};
+
+app.use(expressErrorHandler);
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {

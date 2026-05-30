@@ -41,19 +41,14 @@ function calculatePosition(anchor: HTMLElement, popover: HTMLElement | null): Po
   const popoverRect = popover?.getBoundingClientRect();
   const popoverWidth = popoverRect?.width ?? POPOVER_WIDTH;
   const popoverHeight = popoverRect?.height ?? 220;
-  const anchorCenterX = anchorRect.left + (anchorRect.width / 2);
+  const anchorCenterX = anchorRect.left + anchorRect.width / 2;
   const maxLeft = Math.max(VIEWPORT_MARGIN, window.innerWidth - popoverWidth - VIEWPORT_MARGIN);
-  const left = Math.min(
-    Math.max(anchorCenterX - (popoverWidth / 2), VIEWPORT_MARGIN),
-    maxLeft,
-  );
+  const left = Math.min(Math.max(anchorCenterX - popoverWidth / 2, VIEWPORT_MARGIN), maxLeft);
 
   const belowTop = anchorRect.bottom + ANCHOR_GAP;
   const aboveTop = anchorRect.top - popoverHeight - ANCHOR_GAP;
   const hasRoomBelow = belowTop + popoverHeight <= window.innerHeight - VIEWPORT_MARGIN;
-  const top = hasRoomBelow
-    ? belowTop
-    : Math.max(VIEWPORT_MARGIN, aboveTop);
+  const top = hasRoomBelow ? belowTop : Math.max(VIEWPORT_MARGIN, aboveTop);
 
   return { top, left };
 }
@@ -112,9 +107,8 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
   const senses = groupSenses(data);
   const srsBadge = data?.srs_state ? SRS_BADGE_CONFIG[data.srs_state] : null;
   const canMutateLibrary = Boolean(data && !data.srs_state);
-  const lookupAudioUrl = accent === 'uk'
-    ? data?.vocabulary_item.audio_uk_url ?? null
-    : data?.vocabulary_item.audio_us_url ?? null;
+  const lookupAudioUrl =
+    accent === 'uk' ? (data?.vocabulary_item.audio_uk_url ?? null) : (data?.vocabulary_item.audio_us_url ?? null);
   const playableWord = data?.vocabulary_item.word ?? '';
 
   const [position, setPosition] = useState<PopoverPosition | null>(() => calculatePosition(anchor, null));
@@ -145,7 +139,9 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
       setResolvedAudioUrl((current) => current ?? url);
     });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [accent, data, lookupAudioUrl, playableWord]);
 
   const haltActiveAudio = useCallback(() => {
@@ -173,26 +169,27 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
     haltActiveAudio();
     setIsPlayingAudio(true);
 
-    const playUrl = async (url: string) => new Promise<boolean>((resolve) => {
-      if (!isCurrentRun()) {
-        resolve(false);
-        return;
-      }
-
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      const settle = (ok: boolean) => {
-        if (audioRef.current === audio) {
-          audioRef.current = null;
+    const playUrl = async (url: string) =>
+      new Promise<boolean>((resolve) => {
+        if (!isCurrentRun()) {
+          resolve(false);
+          return;
         }
-        resolve(ok);
-      };
-      audio.addEventListener('ended', () => settle(true));
-      audio.addEventListener('error', () => settle(false));
-      audio.play().catch(() => settle(false));
-    });
 
-    const url = resolvedAudioUrl ?? await fetchWordAudioUrl(playableWord, accent);
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        const settle = (ok: boolean) => {
+          if (audioRef.current === audio) {
+            audioRef.current = null;
+          }
+          resolve(ok);
+        };
+        audio.addEventListener('ended', () => settle(true));
+        audio.addEventListener('error', () => settle(false));
+        audio.play().catch(() => settle(false));
+      });
+
+    const url = resolvedAudioUrl ?? (await fetchWordAudioUrl(playableWord, accent));
     if (!isCurrentRun()) return;
 
     if (url) {
@@ -311,13 +308,13 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-2">
-            <p className="truncate text-base font-black text-text-primary">
-              {data?.vocabulary_item.word ?? word}
-            </p>
+            <p className="truncate text-base font-black text-text-primary">{data?.vocabulary_item.word ?? word}</p>
             {canPlayAudio && (
               <button
                 type="button"
-                onClick={() => { void playAudio(); }}
+                onClick={() => {
+                  void playAudio();
+                }}
                 className={cx(
                   'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-apple-blue transition-colors hover:bg-apple-blue/10',
                   isPlayingAudio && 'bg-apple-blue/10',
@@ -353,14 +350,16 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
       ) : data ? (
         <div className="space-y-4">
           <div className="space-y-2">
-            {senses.length > 0 ? senses.map((sense) => (
-              <div key={`${sense.pos}-${sense.meaning}`} className="flex items-start gap-2.5">
-                <span className="mt-0.5 shrink-0 whitespace-nowrap rounded-full bg-black/5 px-2.5 py-1 text-center text-[10px] font-black uppercase leading-none tracking-wide text-text-secondary">
-                  {sense.pos}
-                </span>
-                <p className="min-w-0 text-sm font-bold leading-6 text-text-primary">{sense.meaning}</p>
-              </div>
-            )) : (
+            {senses.length > 0 ? (
+              senses.map((sense) => (
+                <div key={`${sense.pos}-${sense.meaning}`} className="flex items-start gap-2.5">
+                  <span className="mt-0.5 shrink-0 whitespace-nowrap rounded-full bg-black/5 px-2.5 py-1 text-center text-[10px] font-black uppercase leading-none tracking-wide text-text-secondary">
+                    {sense.pos}
+                  </span>
+                  <p className="min-w-0 text-sm font-bold leading-6 text-text-primary">{sense.meaning}</p>
+                </div>
+              ))
+            ) : (
               <p className="text-sm font-bold text-text-secondary">暂无词性释义</p>
             )}
           </div>
@@ -388,15 +387,11 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
             </button>
           )}
 
-          {actionError && (
-            <p className="text-xs font-bold leading-5 text-apple-red">{actionError}</p>
-          )}
+          {actionError && <p className="text-xs font-bold leading-5 text-apple-red">{actionError}</p>}
         </div>
       ) : (
         <div className="space-y-3">
-          <p className="text-base font-black text-text-primary">
-            {missing ? '词库暂未收录' : '暂时无法查询这个词'}
-          </p>
+          <p className="text-base font-black text-text-primary">{missing ? '词库暂未收录' : '暂时无法查询这个词'}</p>
           <p className="text-sm leading-6 text-text-secondary">
             {missing && !error ? '已记录到待补充列表，后续统一补充。' : '可以稍后再试。'}
           </p>

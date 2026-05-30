@@ -1,15 +1,12 @@
 import assert from 'node:assert/strict';
-import {
-  normalizeIeltsPassageBody,
-  splitIeltsPassageParagraphs,
-} from '../src/lib/ieltsReadingText.ts';
+import { normalizeIeltsPassageBody, splitIeltsPassageParagraphs } from '../src/lib/ieltsReadingText.ts';
 
 const wrapped = [
   'children will have formed ideas about rainforests- what',
   'and where they are, why they are important, what endan-',
   'gers them- independent of any formal tuition. It is also',
   'possible that some of these ideas will be mistaken.',
-  'Many studies have shown that children harbour misconceptions about \'pure\', cur-',
+  "Many studies have shown that children harbour misconceptions about 'pure', cur-",
   'riculum science. These misconceptions do not remain isolated but become incorpo-',
   'rated into a multifaceted, but organised, conceptual framework, making it and the',
   'component ideas, some of which are erroneous, more robust but also accessible to',

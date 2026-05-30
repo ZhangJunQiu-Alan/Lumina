@@ -8,10 +8,7 @@ import {
 } from '../officialLibraryLite.ts';
 import { isCoreLearningComplete } from '../learningSessionLite.ts';
 import type { OfficialLibraryId } from '../types.ts';
-import {
-  isOfficialDiscardableRound,
-  resolveActuallyLearnedWordIds,
-} from '../officialDiscard.ts';
+import { isOfficialDiscardableRound, resolveActuallyLearnedWordIds } from '../officialDiscard.ts';
 
 const ROUTINE_DAY_RESET_HOUR = 5;
 
@@ -39,11 +36,13 @@ interface LearningGroupDiscardRow {
 }
 
 function isSystemLibraryGroup(sourceType: string | null, libraryId: string | null, groupName: string | null) {
-  return resolveLibraryGroupSourceType(
-    sourceType === 'system' ? 'system' : sourceType === 'custom' ? 'custom' : null,
-    libraryId,
-    groupName,
-  ) === 'system';
+  return (
+    resolveLibraryGroupSourceType(
+      sourceType === 'system' ? 'system' : sourceType === 'custom' ? 'custom' : null,
+      libraryId,
+      groupName,
+    ) === 'system'
+  );
 }
 
 export interface DeleteLearningGroupResult {
@@ -162,10 +161,7 @@ function isMissingDailyRoutineProgressError(error: { message?: string } | null |
 }
 
 function isStrongerThanNew(state: MemoryState | null | undefined) {
-  return state === 'fuzzy'
-    || state === 'slow_recall'
-    || state === 'stable_recall'
-    || state === 'mastered';
+  return state === 'fuzzy' || state === 'slow_recall' || state === 'stable_recall' || state === 'mastered';
 }
 
 export async function deleteLearningGroup(userId: string, groupId: string): Promise<DeleteLearningGroupResult> {
@@ -340,7 +336,8 @@ export async function removeWordFromLibrary(
 async function fetchDiscardGroup(userId: string, groupId: string) {
   const { data, error } = await supabaseAdmin
     .from('learning_groups')
-    .select(`
+    .select(
+      `
       id,
       group_name,
       source_type,
@@ -352,7 +349,8 @@ async function fetchDiscardGroup(userId: string, groupId: string) {
       session_current_index,
       session_queue_word_ids,
       session_round1_confirmed_word_ids
-    `)
+    `,
+    )
     .eq('id', groupId)
     .eq('user_id', userId)
     .maybeSingle();
@@ -375,9 +373,7 @@ async function fetchGroupWordIds(groupId: string) {
     throw new Error(`learning_group_words lookup failed: ${error.message}`);
   }
 
-  return ((data ?? []) as GroupWordRow[])
-    .map((row) => row.vocabulary_item_id)
-    .filter(Boolean);
+  return ((data ?? []) as GroupWordRow[]).map((row) => row.vocabulary_item_id).filter(Boolean);
 }
 
 async function ensureWordIsNewForSavedLibrary(userId: string, vocabularyItemId: string) {
@@ -400,22 +396,20 @@ async function ensureWordIsNewForSavedLibrary(userId: string, vocabularyItemId: 
     return { allowed: true, created: false };
   }
 
-  const { error: upsertError } = await supabaseAdmin
-    .from('review_states')
-    .upsert(
-      {
-        user_id: userId,
-        vocabulary_item_id: vocabularyItemId,
-        memory_state: 'new',
-        interval_days: null,
-        next_review_at: null,
-        graduated_at: null,
-      },
-      {
-        onConflict: 'user_id,vocabulary_item_id',
-        ignoreDuplicates: true,
-      },
-    );
+  const { error: upsertError } = await supabaseAdmin.from('review_states').upsert(
+    {
+      user_id: userId,
+      vocabulary_item_id: vocabularyItemId,
+      memory_state: 'new',
+      interval_days: null,
+      next_review_at: null,
+      graduated_at: null,
+    },
+    {
+      onConflict: 'user_id,vocabulary_item_id',
+      ignoreDuplicates: true,
+    },
+  );
 
   if (upsertError) {
     throw new Error(`review_states saved-word upsert failed: ${upsertError.message}`);
@@ -450,9 +444,7 @@ async function fetchRound2AttemptWordIds(userId: string, groupId: string) {
     throw new Error(`review_events lookup failed: ${error.message}`);
   }
 
-  return ((data ?? []) as ReviewEventWordRow[])
-    .map((row) => row.vocabulary_item_id)
-    .filter(Boolean);
+  return ((data ?? []) as ReviewEventWordRow[]).map((row) => row.vocabulary_item_id).filter(Boolean);
 }
 
 async function forceMissingLearnedWordsToFuzzy(userId: string, learnedWordIds: string[], now: Date) {
@@ -460,7 +452,8 @@ async function forceMissingLearnedWordsToFuzzy(userId: string, learnedWordIds: s
 
   const { data, error } = await supabaseAdmin
     .from('review_states')
-    .select(`
+    .select(
+      `
       vocabulary_item_id,
       memory_state,
       review_count,
@@ -472,7 +465,8 @@ async function forceMissingLearnedWordsToFuzzy(userId: string, learnedWordIds: s
       last_result,
       last_elapsed_ms,
       last_assessed_at
-    `)
+    `,
+    )
     .eq('user_id', userId)
     .in('vocabulary_item_id', learnedWordIds);
 
@@ -480,9 +474,7 @@ async function forceMissingLearnedWordsToFuzzy(userId: string, learnedWordIds: s
     throw new Error(`review_states lookup failed: ${error.message}`);
   }
 
-  const existingByWordId = new Map(
-    ((data ?? []) as ReviewStateRow[]).map((row) => [row.vocabulary_item_id, row]),
-  );
+  const existingByWordId = new Map(((data ?? []) as ReviewStateRow[]).map((row) => [row.vocabulary_item_id, row]));
   const nextReviewAt = toNextReviewAt('fuzzy', now);
   const rows = learnedWordIds
     .map((wordId) => {
@@ -536,9 +528,7 @@ async function findUnsharedWordIds(userId: string, groupId: string, wordIds: str
     throw new Error(`shared learning_group_words lookup failed: ${error.message}`);
   }
 
-  const sharedWordIds = new Set(
-    ((data ?? []) as SharedWordRow[]).map((row) => row.vocabulary_item_id).filter(Boolean),
-  );
+  const sharedWordIds = new Set(((data ?? []) as SharedWordRow[]).map((row) => row.vocabulary_item_id).filter(Boolean));
 
   return wordIds.filter((wordId) => !sharedWordIds.has(wordId));
 }
@@ -588,8 +578,9 @@ async function clearTodayRoutineBinding(userId: string, groupId: string, timeZon
   if (!row) return;
 
   const stepOrder = normalizeRoutineSteps(row.step_order_json);
-  const completedSteps = normalizeRoutineSteps(row.completed_steps_json)
-    .filter((step) => step === 'review' && stepOrder.includes(step));
+  const completedSteps = normalizeRoutineSteps(row.completed_steps_json).filter(
+    (step) => step === 'review' && stepOrder.includes(step),
+  );
   const status = resolveRoutineStatus(stepOrder, completedSteps);
 
   const { error: updateError } = await supabaseAdmin
@@ -627,8 +618,8 @@ export async function discardActiveOfficialLearningGroup(
   }
 
   if (
-    !isOfficialDiscardableRound(group.session_round)
-    || isCoreLearningComplete({
+    !isOfficialDiscardableRound(group.session_round) ||
+    isCoreLearningComplete({
       status: group.status,
       completedAt: group.completed_at,
       sessionRound: group.session_round,

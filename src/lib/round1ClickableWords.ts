@@ -13,9 +13,8 @@ const getRound1WordItems = <T extends { word: string }>(items: readonly T[], lim
   return typeof limit === 'number' ? visibleItems.slice(0, limit) : visibleItems;
 };
 
-const getRelationDetailText = (item: { meaningZh?: string; noteZh?: string }) => (
-  [trimDisplayText(item.meaningZh), trimDisplayText(item.noteZh)].filter(Boolean).join(' · ')
-);
+const getRelationDetailText = (item: { meaningZh?: string; noteZh?: string }) =>
+  [trimDisplayText(item.meaningZh), trimDisplayText(item.noteZh)].filter(Boolean).join(' · ');
 
 function addClickableWordsFromText(words: Set<string>, text: string | null | undefined) {
   const displayText = trimDisplayText(text);
@@ -55,7 +54,9 @@ export function extractRound1ClickableWords(word: Word): string[] {
     addClickableWordsFromText(words, pair.difference);
   }
 
-  for (const sense of word.senses.filter((item) => hasDisplayText(item.example_sentence)).slice(0, ROUND1_EXAMPLE_VISIBLE_LIMIT)) {
+  for (const sense of word.senses
+    .filter((item) => hasDisplayText(item.example_sentence))
+    .slice(0, ROUND1_EXAMPLE_VISIBLE_LIMIT)) {
     addClickableWordsFromText(words, sense.example_sentence);
   }
 

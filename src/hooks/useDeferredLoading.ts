@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 /**
  * Hook to handle deferred loading states.
- * Prevents flickering by waiting for a specified delay (default 300ms) 
+ * Prevents flickering by waiting for a specified delay (default 300ms)
  * before showing a loading UI.
  */
 export function useDeferredLoading(isLoading: boolean, delayMs: number = 300) {

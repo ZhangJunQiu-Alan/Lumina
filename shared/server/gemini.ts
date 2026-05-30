@@ -65,7 +65,7 @@ async function generateGeminiJsonText(options: GeminiGenerateOptions) {
     },
   );
 
-  const payload = await response.json() as {
+  const payload = (await response.json()) as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
     error?: { message?: string; status?: string; code?: number };
   };
@@ -75,10 +75,12 @@ async function generateGeminiJsonText(options: GeminiGenerateOptions) {
     throw new Error(`Gemini API error: ${message}`);
   }
 
-  return payload.candidates?.[0]?.content?.parts
-    ?.map((part) => (typeof part.text === 'string' ? part.text : ''))
-    .join('')
-    .trim() ?? '';
+  return (
+    payload.candidates?.[0]?.content?.parts
+      ?.map((part) => (typeof part.text === 'string' ? part.text : ''))
+      .join('')
+      .trim() ?? ''
+  );
 }
 
 export interface GeminiCallOptions {
@@ -422,9 +424,8 @@ function normalizeLiteForms(items: unknown, currentWord: string): string[] {
 }
 
 function chunkWords(words: string[], chunkSize: number) {
-  return Array.from(
-    { length: Math.ceil(words.length / chunkSize) },
-    (_, index) => words.slice(index * chunkSize, (index + 1) * chunkSize),
+  return Array.from({ length: Math.ceil(words.length / chunkSize) }, (_, index) =>
+    words.slice(index * chunkSize, (index + 1) * chunkSize),
   );
 }
 
@@ -444,16 +445,13 @@ async function mapWithConcurrency<TInput, TOutput>(
   const results = new Array<TOutput>(items.length);
   let nextIndex = 0;
 
-  const workers = Array.from(
-    { length: Math.min(Math.max(concurrency, 1), items.length) },
-    async () => {
-      while (nextIndex < items.length) {
-        const currentIndex = nextIndex;
-        nextIndex += 1;
-        results[currentIndex] = await mapper(items[currentIndex], currentIndex);
-      }
-    },
-  );
+  const workers = Array.from({ length: Math.min(Math.max(concurrency, 1), items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+    }
+  });
 
   await Promise.all(workers);
   return results;
@@ -474,12 +472,9 @@ function isRetriableEnrichmentError(error: unknown) {
   }
 
   const message = getErrorMessage(error);
-  return [
-    'invalid JSON',
-    'response is not an array',
-    '整理结果无效',
-    '轻量查词结果无效',
-  ].some((marker) => message.includes(marker));
+  return ['invalid JSON', 'response is not an array', '整理结果无效', '轻量查词结果无效'].some((marker) =>
+    message.includes(marker),
+  );
 }
 
 export function normalizeGeminiWordResult(
@@ -690,7 +685,10 @@ export async function generateArticle(words: string[]): Promise<GeneratedArticle
     temperature: 0.35,
     maxOutputTokens: ENRICH_MAX_OUTPUT_TOKENS,
   });
-  const jsonText = raw.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim();
+  const jsonText = raw
+    .replace(/^```json?\n?/i, '')
+    .replace(/\n?```$/i, '')
+    .trim();
   let parsed: unknown;
   try {
     parsed = JSON.parse(jsonText) as unknown;
@@ -711,7 +709,10 @@ async function enrichWordLiteOnce(word: string): Promise<LiteEnrichResult> {
     temperature: 0.2,
     maxOutputTokens: LITE_ENRICH_MAX_OUTPUT_TOKENS,
   });
-  const jsonText = raw.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim();
+  const jsonText = raw
+    .replace(/^```json?\n?/i, '')
+    .replace(/\n?```$/i, '')
+    .trim();
 
   let parsed: unknown;
   try {
@@ -795,7 +796,9 @@ export async function enrichWordLite(
     }
 
     if (isRetriableEnrichmentError(error)) {
-      const validationError = new EnrichmentResponseValidationError('轻量查词结果无效：模型多次返回不完整数据，请稍后重试。');
+      const validationError = new EnrichmentResponseValidationError(
+        '轻量查词结果无效：模型多次返回不完整数据，请稍后重试。',
+      );
       logGeminiCallFailure({
         enrichmentType: 'lite',
         source: options.source,
@@ -830,7 +833,10 @@ async function enrichWordsLiteChunk(words: string[]): Promise<LiteEnrichResult[]
     temperature: 0.2,
     maxOutputTokens: LITE_ENRICH_BATCH_MAX_OUTPUT_TOKENS,
   });
-  const jsonText = raw.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim();
+  const jsonText = raw
+    .replace(/^```json?\n?/i, '')
+    .replace(/\n?```$/i, '')
+    .trim();
 
   let parsed: unknown;
   try {
@@ -846,10 +852,9 @@ async function enrichWordsLiteChunk(words: string[]): Promise<LiteEnrichResult[]
     throw new EnrichmentResponseValidationError('批量轻量查词结果无效：模型返回的数据结构不正确。');
   }
 
-  const normalizedEntries = parsed.map((entry, index) => normalizeLiteBatchEnrichResult(
-    entry as Record<string, unknown>,
-    cleanedWords[index],
-  ));
+  const normalizedEntries = parsed.map((entry, index) =>
+    normalizeLiteBatchEnrichResult(entry as Record<string, unknown>, cleanedWords[index]),
+  );
   const responseInputs = normalizedEntries.map((entry) => entry.input);
   const responseBatch = analyzeWordBatch(responseInputs);
 
@@ -871,9 +876,7 @@ async function enrichWordsLiteChunk(words: string[]): Promise<LiteEnrichResult[]
     );
   }
 
-  const entryByInputKey = new Map(
-    normalizedEntries.map((entry) => [normalizeWordKey(entry.input), entry]),
-  );
+  const entryByInputKey = new Map(normalizedEntries.map((entry) => [normalizeWordKey(entry.input), entry]));
 
   return cleanedWords.map((word) => {
     const entry = entryByInputKey.get(normalizeWordKey(word));
@@ -967,7 +970,9 @@ async function enrichWordsLiteResilient(
     }
 
     if (isRetriableEnrichmentError(error)) {
-      const validationError = new EnrichmentResponseValidationError('批量轻量查词结果无效：模型多次返回不完整数据，请稍后重试。');
+      const validationError = new EnrichmentResponseValidationError(
+        '批量轻量查词结果无效：模型多次返回不完整数据，请稍后重试。',
+      );
       logGeminiCallFailure({
         enrichmentType: 'lite',
         source: options.source,
@@ -992,27 +997,20 @@ async function enrichWordsLiteResilient(
   }
 }
 
-export async function enrichWordsLite(
-  words: string[],
-  options: GeminiCallOptions = {},
-): Promise<LiteEnrichResult[]> {
+export async function enrichWordsLite(words: string[], options: GeminiCallOptions = {}): Promise<LiteEnrichResult[]> {
   const cleanedWords = words.map(sanitizeWordInput).filter(Boolean);
   const chunks = chunkWords(cleanedWords, DEFAULT_LITE_ENRICH_BATCH_SIZE);
-  const chunkResults = await mapWithConcurrency(
-    chunks,
-    DEFAULT_LITE_ENRICH_MAX_CONCURRENCY,
-    (chunk, index) => {
-      logger.info('[enrichWordsLite] chunk start', {
-        chunk_index: index + 1,
-        chunk_count: chunks.length,
-        word_count: chunk.length,
-        words_preview: buildGeminiWordsPreview(chunk),
-        source: normalizeGeminiCallSource(options.source),
-        enrichment_type: 'lite',
-      });
-      return enrichWordsLiteResilient(chunk, options);
-    },
-  );
+  const chunkResults = await mapWithConcurrency(chunks, DEFAULT_LITE_ENRICH_MAX_CONCURRENCY, (chunk, index) => {
+    logger.info('[enrichWordsLite] chunk start', {
+      chunk_index: index + 1,
+      chunk_count: chunks.length,
+      word_count: chunk.length,
+      words_preview: buildGeminiWordsPreview(chunk),
+      source: normalizeGeminiCallSource(options.source),
+      enrichment_type: 'lite',
+    });
+    return enrichWordsLiteResilient(chunk, options);
+  });
 
   return chunkResults.flat();
 }
@@ -1029,7 +1027,10 @@ async function enrichWordsChunk(words: string[]): Promise<GeminiWordResult[]> {
   });
 
   // Strip markdown fences as a fallback
-  const jsonText = raw.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim();
+  const jsonText = raw
+    .replace(/^```json?\n?/i, '')
+    .replace(/\n?```$/i, '')
+    .trim();
 
   let parsed: GeminiWordResult[];
   try {
@@ -1151,7 +1152,9 @@ async function enrichWordsResilient(
     }
 
     if (isRetriableEnrichmentError(error)) {
-      const validationError = new EnrichmentResponseValidationError('整理结果无效：模型多次返回不完整数据，请稍后重试。');
+      const validationError = new EnrichmentResponseValidationError(
+        '整理结果无效：模型多次返回不完整数据，请稍后重试。',
+      );
       logGeminiCallFailure({
         enrichmentType,
         source: options.source,
@@ -1179,21 +1182,17 @@ async function enrichWordsResilient(
 export async function enrichWords(words: string[], options: GeminiCallOptions = {}): Promise<GeminiWordResult[]> {
   const cleanedWords = words.map(sanitizeWordInput).filter(Boolean);
   const chunks = chunkWords(cleanedWords, DEFAULT_ENRICH_CHUNK_SIZE);
-  const chunkResults = await mapWithConcurrency(
-    chunks,
-    DEFAULT_ENRICH_MAX_CONCURRENCY,
-    (chunk, index) => {
-      logger.info('[enrichWords] chunk start', {
-        chunk_index: index + 1,
-        chunk_count: chunks.length,
-        word_count: chunk.length,
-        words_preview: buildGeminiWordsPreview(chunk),
-        source: normalizeGeminiCallSource(options.source),
-        enrichment_type: options.enrichmentType ?? 'batch',
-      });
-      return enrichWordsResilient(chunk, options);
-    },
-  );
+  const chunkResults = await mapWithConcurrency(chunks, DEFAULT_ENRICH_MAX_CONCURRENCY, (chunk, index) => {
+    logger.info('[enrichWords] chunk start', {
+      chunk_index: index + 1,
+      chunk_count: chunks.length,
+      word_count: chunk.length,
+      words_preview: buildGeminiWordsPreview(chunk),
+      source: normalizeGeminiCallSource(options.source),
+      enrichment_type: options.enrichmentType ?? 'batch',
+    });
+    return enrichWordsResilient(chunk, options);
+  });
 
   return chunkResults.flat();
 }
@@ -1244,7 +1243,10 @@ async function enrichFormsOnlyChunk(words: string[]): Promise<FormsOnlyResult[]>
     maxOutputTokens: FORMS_ONLY_MAX_OUTPUT_TOKENS,
     thinkingBudget: 0,
   });
-  const jsonText = raw.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim();
+  const jsonText = raw
+    .replace(/^```json?\n?/i, '')
+    .replace(/\n?```$/i, '')
+    .trim();
 
   let parsed: unknown;
   try {
@@ -1266,11 +1268,7 @@ async function enrichFormsOnlyChunk(words: string[]): Promise<FormsOnlyResult[]>
     const rawForms = record.forms;
     const forms = Array.isArray(rawForms)
       ? Array.from(
-          new Set(
-            rawForms
-              .map((f) => normalizeWordKey(asTrimmedString(f)))
-              .filter((f) => f && f !== baseKey),
-          ),
+          new Set(rawForms.map((f) => normalizeWordKey(asTrimmedString(f))).filter((f) => f && f !== baseKey)),
         ).slice(0, MAX_LITE_FORMS)
       : [];
     results.push({ word, forms });
@@ -1341,36 +1339,29 @@ async function enrichFormsOnlyResilient(
   }
 }
 
-export async function enrichFormsOnly(
-  words: string[],
-  options: GeminiCallOptions = {},
-): Promise<FormsOnlyResult[]> {
+export async function enrichFormsOnly(words: string[], options: GeminiCallOptions = {}): Promise<FormsOnlyResult[]> {
   const cleanedWords = words.map(sanitizeWordInput).filter(Boolean);
   if (cleanedWords.length === 0) return [];
 
   const chunks = chunkWords(cleanedWords, FORMS_ONLY_CHUNK_SIZE);
-  const results = await mapWithConcurrency(
-    chunks,
-    FORMS_ONLY_MAX_CONCURRENCY,
-    async (chunk, index) => {
-      logger.info('[enrichFormsOnly] chunk start', {
+  const results = await mapWithConcurrency(chunks, FORMS_ONLY_MAX_CONCURRENCY, async (chunk, index) => {
+    logger.info('[enrichFormsOnly] chunk start', {
+      chunk_index: index + 1,
+      chunk_count: chunks.length,
+      word_count: chunk.length,
+      source: normalizeGeminiCallSource(options.source),
+    });
+    try {
+      return await enrichFormsOnlyResilient(chunk, options);
+    } catch (error) {
+      logger.error('[enrichFormsOnly] chunk failed permanently, skipping', {
         chunk_index: index + 1,
-        chunk_count: chunks.length,
         word_count: chunk.length,
-        source: normalizeGeminiCallSource(options.source),
+        words_preview: buildGeminiWordsPreview(chunk),
+        error: getErrorMessage(error),
       });
-      try {
-        return await enrichFormsOnlyResilient(chunk, options);
-      } catch (error) {
-        logger.error('[enrichFormsOnly] chunk failed permanently, skipping', {
-          chunk_index: index + 1,
-          word_count: chunk.length,
-          words_preview: buildGeminiWordsPreview(chunk),
-          error: getErrorMessage(error),
-        });
-        return [];
-      }
-    },
-  );
+      return [];
+    }
+  });
   return results.flat();
 }

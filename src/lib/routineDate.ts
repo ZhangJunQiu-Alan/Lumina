@@ -3,11 +3,7 @@ const HOUR_MS = 60 * 60 * 1000;
 
 const formatterCache = new Map<string, Intl.DateTimeFormat>();
 
-function getFormatter(
-  locale: string,
-  timeZone: string,
-  options: Intl.DateTimeFormatOptions,
-) {
+function getFormatter(locale: string, timeZone: string, options: Intl.DateTimeFormatOptions) {
   const key = `${locale}:${timeZone}:${JSON.stringify(options)}`;
   const cached = formatterCache.get(key);
   if (cached) return cached;
@@ -41,11 +37,7 @@ export function toCalendarDateKey(date: Date, timeZone: string) {
   return `${year}-${month}-${day}`;
 }
 
-export function toRoutineDateKey(
-  date: Date,
-  timeZone: string,
-  resetHour = ROUTINE_DAY_RESET_HOUR,
-) {
+export function toRoutineDateKey(date: Date, timeZone: string, resetHour = ROUTINE_DAY_RESET_HOUR) {
   return toCalendarDateKey(new Date(date.getTime() - resetHour * HOUR_MS), timeZone);
 }
 

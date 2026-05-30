@@ -48,11 +48,23 @@ const normalized = normalizeGeminiWordResult({
 });
 
 assert.equal(normalized.morphology.parts.length, 2);
-assert.deepEqual(normalized.morphology.parts.map((part) => part.text), ['gran', '-ite']);
+assert.deepEqual(
+  normalized.morphology.parts.map((part) => part.text),
+  ['gran', '-ite'],
+);
 
-assert.deepEqual(normalized.derived_words.map((item) => item.word), ['granitic']);
-assert.deepEqual(normalized.synonyms.map((item) => item.word), ['stone']);
-assert.deepEqual(normalized.antonyms.map((item) => item.word), ['soil']);
+assert.deepEqual(
+  normalized.derived_words.map((item) => item.word),
+  ['granitic'],
+);
+assert.deepEqual(
+  normalized.synonyms.map((item) => item.word),
+  ['stone'],
+);
+assert.deepEqual(
+  normalized.antonyms.map((item) => item.word),
+  ['soil'],
+);
 
 assert.deepEqual(
   normalized.confusions.map((item) => item.word),

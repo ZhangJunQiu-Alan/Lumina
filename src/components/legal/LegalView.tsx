@@ -32,9 +32,7 @@ function LegalDocument({ eyebrow, title, intro, sections }: LegalDocumentProps) 
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-apple-blue">{eyebrow}</p>
           <h1 className="mt-4 text-4xl font-black tracking-tight text-text-primary md:text-5xl">{title}</h1>
           <p className="mt-4 text-base leading-8 text-text-secondary">{intro}</p>
-          <p className="mt-4 text-xs font-bold uppercase tracking-[0.22em] text-text-secondary">
-            更新日期 {updatedAt}
-          </p>
+          <p className="mt-4 text-xs font-bold uppercase tracking-[0.22em] text-text-secondary">更新日期 {updatedAt}</p>
         </div>
 
         <div className="mt-10 space-y-5">

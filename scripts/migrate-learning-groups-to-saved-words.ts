@@ -34,9 +34,8 @@ function asSingleGroup(value: LearningGroupWordJoinRow['learning_groups']) {
 }
 
 function chunkRows<T>(rows: T[], chunkSize: number) {
-  return Array.from(
-    { length: Math.ceil(rows.length / chunkSize) },
-    (_, index) => rows.slice(index * chunkSize, (index + 1) * chunkSize),
+  return Array.from({ length: Math.ceil(rows.length / chunkSize) }, (_, index) =>
+    rows.slice(index * chunkSize, (index + 1) * chunkSize),
   );
 }
 
@@ -63,7 +62,8 @@ async function collectSavedWordCandidates() {
   while (true) {
     const { data, error } = await supabaseAdmin
       .from('learning_group_words')
-      .select(`
+      .select(
+        `
         id,
         vocabulary_item_id,
         learning_groups!inner (
@@ -71,7 +71,8 @@ async function collectSavedWordCandidates() {
           source_type,
           created_at
         )
-      `)
+      `,
+      )
       .order('id', { ascending: true })
       .range(from, from + READ_PAGE_SIZE - 1);
 
@@ -136,11 +137,12 @@ async function collectSavedWordCandidates() {
   }
 
   return {
-    candidates: [...candidateByKey.values()].sort((left, right) => (
-      left.user_id.localeCompare(right.user_id)
-      || left.saved_at.localeCompare(right.saved_at)
-      || left.vocabulary_item_id.localeCompare(right.vocabulary_item_id)
-    )),
+    candidates: [...candidateByKey.values()].sort(
+      (left, right) =>
+        left.user_id.localeCompare(right.user_id) ||
+        left.saved_at.localeCompare(right.saved_at) ||
+        left.vocabulary_item_id.localeCompare(right.vocabulary_item_id),
+    ),
     stats: {
       sourceRows,
       validSourceRows,

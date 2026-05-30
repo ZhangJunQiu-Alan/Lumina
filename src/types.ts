@@ -105,7 +105,7 @@ export interface WordSense {
 }
 
 export interface EnrichedWord {
-  id?: string;             // UUID assigned after DB insert
+  id?: string; // UUID assigned after DB insert
   word: string;
   ipa_uk: string;
   ipa_us: string;
@@ -134,11 +134,7 @@ export function getWordPhonetic(
   locale: PronunciationLocale,
 ): string {
   const preferred = locale === 'us' ? word.ipa_us : word.ipa_uk;
-  return preferred?.trim()
-    || word.phonetic.trim()
-    || word.ipa_uk?.trim()
-    || word.ipa_us?.trim()
-    || '';
+  return preferred?.trim() || word.phonetic.trim() || word.ipa_uk?.trim() || word.ipa_us?.trim() || '';
 }
 
 export interface LearningPreferences {
@@ -166,11 +162,11 @@ export function toWord(e: EnrichedWord): Word {
     phonetic: e.ipa_uk,
     ipa_uk: e.ipa_uk,
     ipa_us: e.ipa_us,
-    pos_tags: e.senses.map(s => s.pos),
+    pos_tags: e.senses.map((s) => s.pos),
     ner_entities: e.ner_label ? [{ label: e.ner_label, text: e.word }] : [],
     chinese_definition: e.primary_meaning_zh,
     senses: e.senses,
-    example_sentences: e.senses.map(s => s.example_sentence),
+    example_sentences: e.senses.map((s) => s.example_sentence),
     morphology: toWordMorphology(e.morphology),
     derivedWords: toWordRelations(e.derived_words),
     synonyms: toWordRelations(e.synonyms),
@@ -466,7 +462,15 @@ export interface ReviewSummaryItem {
   transition: ReviewTransition;
 }
 
-export type OfficialLibraryId = 'ielts-vocab' | 'gre-zhenkao-v7' | 'cet4-vocab' | 'cet6-vocab' | 'tem4-vocab' | 'tem8-vocab' | 'npee-vocab' | 'gaokao-vocab';
+export type OfficialLibraryId =
+  | 'ielts-vocab'
+  | 'gre-zhenkao-v7'
+  | 'cet4-vocab'
+  | 'cet6-vocab'
+  | 'tem4-vocab'
+  | 'tem8-vocab'
+  | 'npee-vocab'
+  | 'gaokao-vocab';
 export type OfficialLibraryCompletionCounts = Record<OfficialLibraryId, number>;
 
 export interface LibraryGroupSummary {

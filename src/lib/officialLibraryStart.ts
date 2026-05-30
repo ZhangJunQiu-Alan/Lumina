@@ -5,10 +5,7 @@ import {
   persistEnrichedVocabularyEntries,
   type PersistedVocabularyEntry,
 } from './importFlow';
-import {
-  getOfficialNextBatch,
-  type OfficialStudyMode,
-} from './officialLibrary';
+import { getOfficialNextBatch, type OfficialStudyMode } from './officialLibrary';
 import { fetchOfficialLearnedWords } from './libraryApi';
 import { invalidateLibraryCache, refreshOfficialLearnedWords } from './libraryCache';
 import { AI_CONTENT_FEATURES_ENABLED } from './aiFeatures';
@@ -56,9 +53,7 @@ async function prepareNextOfficialBatchEntries({
   if (!nextBatch) return null;
 
   const { existing, missing } = await fetchVocabularyEntriesByWords(nextBatch.words);
-  const existingByWord = new Map(
-    existing.map((entry) => [normalizeWordKey(entry.word), entry]),
-  );
+  const existingByWord = new Map(existing.map((entry) => [normalizeWordKey(entry.word), entry]));
 
   let persistedEntries: PersistedVocabularyEntry[] = existing;
 
@@ -78,13 +73,11 @@ async function prepareNextOfficialBatchEntries({
       throw new Error(err.error ?? `HTTP ${res.status}`);
     }
 
-    const { data } = await res.json() as { data: EnrichedWord[] };
+    const { data } = (await res.json()) as { data: EnrichedWord[] };
     const persistedMissingEntries = await persistEnrichedVocabularyEntries(data, {
       sourceType: 'system',
     });
-    const missingByWord = new Map(
-      persistedMissingEntries.map((entry) => [normalizeWordKey(entry.word), entry]),
-    );
+    const missingByWord = new Map(persistedMissingEntries.map((entry) => [normalizeWordKey(entry.word), entry]));
 
     persistedEntries = nextBatch.words
       .map((word) => {
@@ -167,34 +160,34 @@ export async function appendNextOfficialBatchToLearningGroup({
     return { appendedWords: [] };
   }
 
-  const maxSequenceNo = ((existingRows ?? []) as Array<{ sequence_no: number | null }>)
-    .reduce((max, row) => Math.max(max, row.sequence_no ?? -1), -1);
+  const maxSequenceNo = ((existingRows ?? []) as Array<{ sequence_no: number | null }>).reduce(
+    (max, row) => Math.max(max, row.sequence_no ?? -1),
+    -1,
+  );
 
-  const { error: insertWordsError } = await supabase
-    .from('learning_group_words')
-    .insert(entriesToAppend.map((entry, index) => ({
+  const { error: insertWordsError } = await supabase.from('learning_group_words').insert(
+    entriesToAppend.map((entry, index) => ({
       learning_group_id: groupId,
       vocabulary_item_id: entry.id,
       sequence_no: maxSequenceNo + index + 1,
-    })));
+    })),
+  );
 
   if (insertWordsError) {
     throw new Error(`learning_group_words append failed: ${insertWordsError.message}`);
   }
 
-  const { error: reviewStateError } = await supabase
-    .from('review_states')
-    .upsert(
-      entriesToAppend.map((entry) => ({
-        user_id: userId,
-        vocabulary_item_id: entry.id,
-        memory_state: 'new',
-        interval_days: null,
-        next_review_at: null,
-        graduated_at: null,
-      })),
-      { onConflict: 'user_id,vocabulary_item_id', ignoreDuplicates: true },
-    );
+  const { error: reviewStateError } = await supabase.from('review_states').upsert(
+    entriesToAppend.map((entry) => ({
+      user_id: userId,
+      vocabulary_item_id: entry.id,
+      memory_state: 'new',
+      interval_days: null,
+      next_review_at: null,
+      graduated_at: null,
+    })),
+    { onConflict: 'user_id,vocabulary_item_id', ignoreDuplicates: true },
+  );
 
   if (reviewStateError) {
     throw new Error(`review_states append failed: ${reviewStateError.message}`);

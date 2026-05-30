@@ -2,7 +2,12 @@ import { supabase } from './supabase';
 import { apiFetch } from './api';
 import { prepareVocabularyItemsForSavedWords } from './savedWordsReviewState';
 import { EnrichedWord, toWord, type OfficialLibraryId, Word } from '../types';
-import { analyzeWordBatch, formatDuplicateWordsMessage, normalizeWordKey, sanitizeWordInput } from '../../shared/wordBatch';
+import {
+  analyzeWordBatch,
+  formatDuplicateWordsMessage,
+  normalizeWordKey,
+  sanitizeWordInput,
+} from '../../shared/wordBatch';
 
 export type GroupSourceType = 'custom' | 'system';
 export type SavedWordSource = 'import' | 'reading_popup' | 'manual';
@@ -135,19 +140,18 @@ const legacyVocabularyEntrySelect = `
 
 function isMissingRichVocabularySchemaError(error: { message?: string } | null | undefined) {
   const message = error?.message ?? '';
-  return [
-    'morphology_summary_zh',
-    'vocabulary_morphology_parts',
-    'vocabulary_relations',
-    'sort_order',
-  ].some((part) => message.includes(part));
+  return ['morphology_summary_zh', 'vocabulary_morphology_parts', 'vocabulary_relations', 'sort_order'].some((part) =>
+    message.includes(part),
+  );
 }
 
 function mapVocabularyEntry(row: VocabularyItemRow): PersistedVocabularyEntry {
-  const sortedMorphologyParts = [...(row.vocabulary_morphology_parts ?? [])]
-    .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0));
-  const sortedRelations = [...(row.vocabulary_relations ?? [])]
-    .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0));
+  const sortedMorphologyParts = [...(row.vocabulary_morphology_parts ?? [])].sort(
+    (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0),
+  );
+  const sortedRelations = [...(row.vocabulary_relations ?? [])].sort(
+    (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0),
+  );
   const confusions = [...(row.confused_words ?? [])]
     .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
     .map((item) => ({
@@ -214,22 +218,24 @@ function mapVocabularyEntry(row: VocabularyItemRow): PersistedVocabularyEntry {
 }
 
 function isVocabularyEntryReady(entry: PersistedVocabularyEntry) {
-  const sensesReady = entry.senses.length > 0 && entry.senses.every((sense) => (
-    Boolean(
-      sense.pos.trim()
-      && sense.meaning_zh.trim()
-      && sense.example_sentence.trim()
-      && sense.example_translation_zh.trim()
-    )
-  ));
+  const sensesReady =
+    entry.senses.length > 0 &&
+    entry.senses.every((sense) =>
+      Boolean(
+        sense.pos.trim() &&
+        sense.meaning_zh.trim() &&
+        sense.example_sentence.trim() &&
+        sense.example_translation_zh.trim(),
+      ),
+    );
 
   return Boolean(
-    entry.ipa_uk.trim()
-    && entry.ipa_us.trim()
-    && entry.primary_meaning_zh.trim()
-    && entry.morphology.summary_zh.trim()
-    && entry.memory_tip.trim()
-    && sensesReady,
+    entry.ipa_uk.trim() &&
+    entry.ipa_us.trim() &&
+    entry.primary_meaning_zh.trim() &&
+    entry.morphology.summary_zh.trim() &&
+    entry.memory_tip.trim() &&
+    sensesReady,
   );
 }
 
@@ -266,10 +272,7 @@ export async function fetchPersistedVocabularyEntriesByIds(ids: string[]): Promi
   const uniqueIds = Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean)));
   if (uniqueIds.length === 0) return [];
 
-  const { data, error } = await supabase
-    .from('vocabulary_items')
-    .select(vocabularyEntrySelect)
-    .in('id', uniqueIds);
+  const { data, error } = await supabase.from('vocabulary_items').select(vocabularyEntrySelect).in('id', uniqueIds);
 
   let rows: PersistedVocabularyEntry[];
 
@@ -307,9 +310,7 @@ export async function fetchVocabularyEntriesByWords(words: string[]) {
   }
 
   const loadedEntries = await loadVocabularyEntriesByNormalizedWords(batch.words);
-  const entryByKey = new Map(
-    loadedEntries.map((entry) => [normalizeWordKey(entry.word), entry]),
-  );
+  const entryByKey = new Map(loadedEntries.map((entry) => [normalizeWordKey(entry.word), entry]));
 
   const existing: PersistedVocabularyEntry[] = [];
   const missing: string[] = [];
@@ -359,7 +360,7 @@ export async function persistEnrichedVocabularyEntries(
     throw new Error((payload as { error?: string }).error ?? `HTTP ${response.status}`);
   }
 
-  return ((payload as { data?: PersistedVocabularyEntry[] }).data ?? []);
+  return (payload as { data?: PersistedVocabularyEntry[] }).data ?? [];
 }
 
 export async function createLearningGroupFromVocabularyEntries(
@@ -422,9 +423,7 @@ export async function saveToUserSavedWords(
   userId: string,
   source: SavedWordSource,
 ): Promise<{ saved: number; skipped: number; total: number }> {
-  const vocabularyItemIds = Array.from(
-    new Set(entries.map((entry) => entry.id).filter(Boolean)),
-  );
+  const vocabularyItemIds = Array.from(new Set(entries.map((entry) => entry.id).filter(Boolean)));
 
   if (vocabularyItemIds.length === 0) {
     return { saved: 0, skipped: 0, total: 0 };

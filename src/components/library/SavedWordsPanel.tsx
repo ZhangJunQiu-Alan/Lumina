@@ -13,10 +13,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { MemoryState, Word } from '../../types';
-import {
-  createLearningGroupFromVocabularyEntries,
-  fetchPersistedVocabularyEntriesByIds,
-} from '../../lib/importFlow';
+import { createLearningGroupFromVocabularyEntries, fetchPersistedVocabularyEntriesByIds } from '../../lib/importFlow';
 import {
   cleanupSavedWords,
   deleteSavedWord,
@@ -127,9 +124,10 @@ export function SavedWordsPanel({
         const cleanupResult = await cleanupSavedWords();
         if (!active) return;
 
-        cleanupChanged = cleanupResult.removedSavedWords > 0
-          || cleanupResult.createdReviewStates > 0
-          || cleanupResult.deletedCustomGroups > 0;
+        cleanupChanged =
+          cleanupResult.removedSavedWords > 0 ||
+          cleanupResult.createdReviewStates > 0 ||
+          cleanupResult.deletedCustomGroups > 0;
 
         if (cleanupChanged) {
           invalidateLibraryCache(userId);
@@ -172,13 +170,12 @@ export function SavedWordsPanel({
 
     void loadSavedWords();
 
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [userId]);
 
-  const availableWords = useMemo(
-    () => savedWords.filter((entry) => !entry.isInActiveLearningGroup),
-    [savedWords],
-  );
+  const availableWords = useMemo(() => savedWords.filter((entry) => !entry.isInActiveLearningGroup), [savedWords]);
   const availableWordIds = useMemo(
     () => new Set(availableWords.map((entry) => entry.vocabularyItemId)),
     [availableWords],
@@ -191,20 +188,16 @@ export function SavedWordsPanel({
     });
   }, [availableWordIds]);
 
-  const masteredWords = useMemo(
-    () => savedWords.filter((entry) => entry.memoryState === 'mastered'),
-    [savedWords],
-  );
+  const masteredWords = useMemo(() => savedWords.filter((entry) => entry.memoryState === 'mastered'), [savedWords]);
   const masteredCount = masteredWords.length;
 
   const filteredWords = useMemo(() => {
     const query = normalizeSearch(searchTerm);
     if (!query) return savedWords;
 
-    return savedWords.filter((entry) => (
-      entry.word.toLowerCase().includes(query)
-      || entry.meaning.toLowerCase().includes(query)
-    ));
+    return savedWords.filter(
+      (entry) => entry.word.toLowerCase().includes(query) || entry.meaning.toLowerCase().includes(query),
+    );
   }, [savedWords, searchTerm]);
 
   const totalPages = Math.max(Math.ceil(filteredWords.length / PAGE_SIZE), 1);
@@ -214,9 +207,7 @@ export function SavedWordsPanel({
     [clampedPage, filteredWords],
   );
   const selectablePageIds = useMemo(
-    () => pageWords
-      .filter((entry) => !entry.isInActiveLearningGroup)
-      .map((entry) => entry.vocabularyItemId),
+    () => pageWords.filter((entry) => !entry.isInActiveLearningGroup).map((entry) => entry.vocabularyItemId),
     [pageWords],
   );
 
@@ -233,44 +224,48 @@ export function SavedWordsPanel({
   const selectedCount = selectedIds.size;
   const sequentialCanStart = availableWords.length >= GROUP_SIZE;
   const manualCanStart = selectedCount === GROUP_SIZE;
-  const allSelectablePageWordsSelected = selectablePageIds.length > 0
-    && selectablePageIds.every((id) => selectedIds.has(id));
-  const canTogglePageSelection = studyMode === 'manual'
-    && selectablePageIds.length > 0
-    && (allSelectablePageWordsSelected || selectedCount < GROUP_SIZE);
+  const allSelectablePageWordsSelected =
+    selectablePageIds.length > 0 && selectablePageIds.every((id) => selectedIds.has(id));
+  const canTogglePageSelection =
+    studyMode === 'manual' &&
+    selectablePageIds.length > 0 &&
+    (allSelectablePageWordsSelected || selectedCount < GROUP_SIZE);
   const pageSelectionLabel = allSelectablePageWordsSelected ? '取消本页' : '全选本页';
 
-  const createGroupFromIds = useCallback(async (vocabularyItemIds: string[]) => {
-    if (vocabularyItemIds.length !== GROUP_SIZE) {
-      throw new Error(`需要刚好 ${GROUP_SIZE} 个可用词才能开始一组。`);
-    }
+  const createGroupFromIds = useCallback(
+    async (vocabularyItemIds: string[]) => {
+      if (vocabularyItemIds.length !== GROUP_SIZE) {
+        throw new Error(`需要刚好 ${GROUP_SIZE} 个可用词才能开始一组。`);
+      }
 
-    const activeWordIds = await fetchActiveLearningGroupWordIds(userId, { sourceType: 'custom' });
-    const availableIds = vocabularyItemIds.filter((id) => !activeWordIds.has(id));
-    if (availableIds.length !== GROUP_SIZE) {
-      throw new Error('有些词刚刚已经进入学习组，请刷新后再试。');
-    }
+      const activeWordIds = await fetchActiveLearningGroupWordIds(userId, { sourceType: 'custom' });
+      const availableIds = vocabularyItemIds.filter((id) => !activeWordIds.has(id));
+      if (availableIds.length !== GROUP_SIZE) {
+        throw new Error('有些词刚刚已经进入学习组，请刷新后再试。');
+      }
 
-    const entries = await fetchPersistedVocabularyEntriesByIds(availableIds);
-    if (entries.length !== GROUP_SIZE) {
-      throw new Error('这组词暂时没有完整取回，请再试一次。');
-    }
+      const entries = await fetchPersistedVocabularyEntriesByIds(availableIds);
+      if (entries.length !== GROUP_SIZE) {
+        throw new Error('这组词暂时没有完整取回，请再试一次。');
+      }
 
-    const result = await createLearningGroupFromVocabularyEntries(userId, entries, {
-      groupName: `我的词库 · 第 ${nextGroupNumber} 组 · ${GROUP_SIZE} 词`,
-      groupSourceType: 'custom',
-    });
+      const result = await createLearningGroupFromVocabularyEntries(userId, entries, {
+        groupName: `我的词库 · 第 ${nextGroupNumber} 组 · ${GROUP_SIZE} 词`,
+        groupSourceType: 'custom',
+      });
 
-    invalidateLibraryCache(userId);
+      invalidateLibraryCache(userId);
 
-    try {
-      await onLibraryMutated?.();
-    } catch {
-      // Stats refresh should not block starting the learning session.
-    }
+      try {
+        await onLibraryMutated?.();
+      } catch {
+        // Stats refresh should not block starting the learning session.
+      }
 
-    await onStartLearningGroup(result.groupId, result.words);
-  }, [nextGroupNumber, onLibraryMutated, onStartLearningGroup, userId]);
+      await onStartLearningGroup(result.groupId, result.words);
+    },
+    [nextGroupNumber, onLibraryMutated, onStartLearningGroup, userId],
+  );
 
   const handleStartSequential = async () => {
     if (!sequentialCanStart) {
@@ -403,17 +398,18 @@ export function SavedWordsPanel({
     }
   };
 
-  const primaryAction = studyMode === 'sequential'
-    ? {
-        label: sequentialCanStart ? '按顺序开始一组' : `还差 ${GROUP_SIZE - availableWords.length} 个词`,
-        disabled: !sequentialCanStart,
-        onClick: handleStartSequential,
-      }
-    : {
-        label: manualCanStart ? '用选中词开始一组' : `已选 ${selectedCount} / ${GROUP_SIZE}`,
-        disabled: !manualCanStart,
-        onClick: handleStartManual,
-      };
+  const primaryAction =
+    studyMode === 'sequential'
+      ? {
+          label: sequentialCanStart ? '按顺序开始一组' : `还差 ${GROUP_SIZE - availableWords.length} 个词`,
+          disabled: !sequentialCanStart,
+          onClick: handleStartSequential,
+        }
+      : {
+          label: manualCanStart ? '用选中词开始一组' : `已选 ${selectedCount} / ${GROUP_SIZE}`,
+          disabled: !manualCanStart,
+          onClick: handleStartManual,
+        };
 
   if (isLoading) {
     return (
@@ -460,9 +456,7 @@ export function SavedWordsPanel({
         <div className="glass rounded-[32px] p-12 text-center jelly-shadow">
           <BookOpen className="mx-auto h-10 w-10 text-text-secondary/50" />
           <p className="mt-4 text-2xl font-black text-text-primary">我的词库还是空的</p>
-          <p className="mt-3 text-sm leading-7 text-text-secondary">
-            可以先从官方词库开始，也可以导入自己的单词。
-          </p>
+          <p className="mt-3 text-sm leading-7 text-text-secondary">可以先从官方词库开始，也可以导入自己的单词。</p>
         </div>
       ) : (
         <div className="space-y-5">
@@ -478,7 +472,9 @@ export function SavedWordsPanel({
                   type="button"
                   onClick={() => setStudyMode('sequential')}
                   className={`flex-1 rounded-[14px] px-5 text-sm font-black transition-colors sm:flex-none ${
-                    studyMode === 'sequential' ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-text-secondary hover:text-text-primary'
+                    studyMode === 'sequential'
+                      ? 'bg-[#1d1d1f] text-white shadow-sm'
+                      : 'text-text-secondary hover:text-text-primary'
                   }`}
                 >
                   顺序
@@ -487,7 +483,9 @@ export function SavedWordsPanel({
                   type="button"
                   onClick={() => setStudyMode('manual')}
                   className={`flex-1 rounded-[14px] px-5 text-sm font-black transition-colors sm:flex-none ${
-                    studyMode === 'manual' ? 'bg-[#1d1d1f] text-white shadow-sm' : 'text-text-secondary hover:text-text-primary'
+                    studyMode === 'manual'
+                      ? 'bg-[#1d1d1f] text-white shadow-sm'
+                      : 'text-text-secondary hover:text-text-primary'
                   }`}
                 >
                   手动
@@ -519,7 +517,9 @@ export function SavedWordsPanel({
 
               <button
                 type="button"
-                onClick={() => { void primaryAction.onClick(); }}
+                onClick={() => {
+                  void primaryAction.onClick();
+                }}
                 disabled={primaryAction.disabled || isCreatingGroup}
                 className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-[18px] bg-apple-blue px-5 text-sm font-black text-white shadow-[0_18px_34px_rgba(25,200,185,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:scale-100 sm:min-w-[176px]"
               >
@@ -548,11 +548,17 @@ export function SavedWordsPanel({
                   </button>
                   <button
                     type="button"
-                    onClick={() => { void handleClearMastered(); }}
+                    onClick={() => {
+                      void handleClearMastered();
+                    }}
                     disabled={isClearingMastered}
                     className="inline-flex items-center justify-center gap-1.5 rounded-full bg-apple-red px-3 py-1.5 text-xs font-black text-white shadow-sm transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55"
                   >
-                    {isClearingMastered ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                    {isClearingMastered ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
                     确认删除 {masteredCount} 个
                   </button>
                 </div>
@@ -582,7 +588,9 @@ export function SavedWordsPanel({
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.015 }}
                   className={`rounded-[24px] border bg-white px-5 py-4 shadow-[0_14px_34px_rgba(0,0,0,0.05)] transition-all ${
-                    selected ? 'border-apple-blue/45 ring-2 ring-apple-blue/15' : 'border-white/80 hover:-translate-y-0.5 hover:shadow-[0_20px_42px_rgba(0,0,0,0.07)]'
+                    selected
+                      ? 'border-apple-blue/45 ring-2 ring-apple-blue/15'
+                      : 'border-white/80 hover:-translate-y-0.5 hover:shadow-[0_20px_42px_rgba(0,0,0,0.07)]'
                   }`}
                 >
                   <div className="flex min-h-[126px] items-start gap-3">
@@ -605,9 +613,13 @@ export function SavedWordsPanel({
                               <h4 className="truncate text-[1.35rem] font-black leading-tight tracking-tight text-text-primary">
                                 {entry.word}
                               </h4>
-                              <span className="text-xs font-mono font-bold text-apple-blue">{entry.phonetic || '暂无音标'}</span>
+                              <span className="text-xs font-mono font-bold text-apple-blue">
+                                {entry.phonetic || '暂无音标'}
+                              </span>
                             </div>
-                            <p className="mt-1 text-sm font-black leading-6 text-text-primary">{entry.meaning || '暂无释义'}</p>
+                            <p className="mt-1 text-sm font-black leading-6 text-text-primary">
+                              {entry.meaning || '暂无释义'}
+                            </p>
                           </div>
 
                           <span className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold ${badge.className}`}>
@@ -616,7 +628,9 @@ export function SavedWordsPanel({
 
                           <button
                             type="button"
-                            onClick={() => { void handleDeleteWord(entry); }}
+                            onClick={() => {
+                              void handleDeleteWord(entry);
+                            }}
                             disabled={deletingWordId === entry.vocabularyItemId}
                             className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[12px] border border-black/5 bg-white text-text-secondary shadow-[0_8px_18px_rgba(0,0,0,0.04)] transition-colors hover:text-apple-red disabled:cursor-not-allowed disabled:opacity-60"
                             aria-label={`从词库移除 ${entry.word}`}
@@ -655,7 +669,6 @@ export function SavedWordsPanel({
                         </div>
                       </div>
                     </div>
-
                   </div>
                 </motion.div>
               );
@@ -670,7 +683,9 @@ export function SavedWordsPanel({
 
           {filteredWords.length > PAGE_SIZE && (
             <div className="mt-5 flex items-center justify-between text-sm font-bold text-text-secondary">
-              <span>{clampedPage} / {totalPages}</span>
+              <span>
+                {clampedPage} / {totalPages}
+              </span>
               <div className="flex items-center gap-2">
                 <button
                   type="button"

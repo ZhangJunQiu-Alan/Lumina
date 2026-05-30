@@ -28,7 +28,13 @@ assert.equal(normalizeIeltsAnswerText('  Notice–Board. '), 'notice-board');
 assert.equal(isIeltsListeningQuestionCorrect(baseQuestion, 'notice board'), true);
 assert.equal(isIeltsListeningQuestionCorrect({ ...baseQuestion, answer: ['parks'] }, 'park'), true);
 assert.equal(isIeltsListeningQuestionCorrect({ ...baseQuestion, answer: ['A'] }, 'a'), true);
-assert.equal(isIeltsListeningQuestionCorrect({ ...baseQuestion, answer: ['Tower of London', 'the Tower of London'] }, 'the tower of london'), true);
+assert.equal(
+  isIeltsListeningQuestionCorrect(
+    { ...baseQuestion, answer: ['Tower of London', 'the Tower of London'] },
+    'the tower of london',
+  ),
+  true,
+);
 
 const result = evaluateIeltsListeningAnswers(
   [
@@ -45,7 +51,10 @@ const result = evaluateIeltsListeningAnswers(
 
 assert.equal(result.score, 2);
 assert.equal(result.totalQuestions, 3);
-assert.deepEqual(result.responses.map((response) => response.isCorrect), [true, false, true]);
+assert.deepEqual(
+  result.responses.map((response) => response.isCorrect),
+  [true, false, true],
+);
 assert.deepEqual(result.summary, {
   answeredCount: 3,
   correctCount: 2,
@@ -65,7 +74,10 @@ const multiAnswerResult = evaluateIeltsListeningAnswers(
   },
 );
 assert.equal(multiAnswerResult.score, 1);
-assert.deepEqual(multiAnswerResult.responses.map((response) => response.isCorrect), [true, false]);
+assert.deepEqual(
+  multiAnswerResult.responses.map((response) => response.isCorrect),
+  [true, false],
+);
 assert.equal(
   evaluateIeltsListeningAnswers(
     [
@@ -81,11 +93,14 @@ assert.equal(
 );
 
 assert.deepEqual(
-  summarizeIeltsListeningResult([
-    { response: ['a'], isCorrect: true },
-    { response: ['b'], isCorrect: false },
-    { response: [], isCorrect: false },
-  ], 4),
+  summarizeIeltsListeningResult(
+    [
+      { response: ['a'], isCorrect: true },
+      { response: ['b'], isCorrect: false },
+      { response: [], isCorrect: false },
+    ],
+    4,
+  ),
   {
     answeredCount: 2,
     correctCount: 1,

@@ -29,10 +29,12 @@ export function getDisplaySenses(word: Word) {
     }));
   }
 
-  return [{
-    pos: word.pos_tags[0] ?? '未标注',
-    meaning: word.chinese_definition || '暂无释义',
-  }];
+  return [
+    {
+      pos: word.pos_tags[0] ?? '未标注',
+      meaning: word.chinese_definition || '暂无释义',
+    },
+  ];
 }
 
 export const WordSenseList = ({
@@ -107,7 +109,9 @@ export const RoundIndicator = ({
   };
   return (
     <div className={cx('flex min-w-0 items-center gap-2 sm:gap-3', className)}>
-      <div className={`inline-flex h-6 min-w-0 max-w-[36vw] items-center truncate whitespace-nowrap px-3 sm:max-w-none ${colors[type]} text-white text-[9px] font-black uppercase tracking-widest rounded-full shadow-lg`}>
+      <div
+        className={`inline-flex h-6 min-w-0 max-w-[36vw] items-center truncate whitespace-nowrap px-3 sm:max-w-none ${colors[type]} text-white text-[9px] font-black uppercase tracking-widest rounded-full shadow-lg`}
+      >
         {labels[type]}
       </div>
       {showConnector && <div className="h-px flex-1 bg-black/5" />}
@@ -141,10 +145,7 @@ export const SessionProgress = ({
 
   return (
     <div
-      className={cx(
-        'relative h-6 w-full',
-        className,
-      )}
+      className={cx('relative h-6 w-full', className)}
       role="progressbar"
       aria-label={`这一轮进度 ${displayIndex} / ${queueLength}`}
       aria-valuemin={0}
@@ -217,9 +218,13 @@ export const PronunciationControls = ({
             : 'bg-[#eef2ff] text-[#4f46e5] hover:bg-[#e0e7ff]',
         )}
       >
-        {activePronunciationLocale === loc
-          ? <Loader2 className={cx('animate-spin', size === 'small' ? 'h-2.5 w-2.5 sm:h-3 sm:w-3' : 'h-3 w-3 sm:h-3.5 sm:w-3.5')} />
-          : <Volume2 className={size === 'small' ? 'h-2.5 w-2.5 sm:h-3 sm:w-3' : 'h-3 w-3 sm:h-3.5 sm:w-3.5'} />}
+        {activePronunciationLocale === loc ? (
+          <Loader2
+            className={cx('animate-spin', size === 'small' ? 'h-2.5 w-2.5 sm:h-3 sm:w-3' : 'h-3 w-3 sm:h-3.5 sm:w-3.5')}
+          />
+        ) : (
+          <Volume2 className={size === 'small' ? 'h-2.5 w-2.5 sm:h-3 sm:w-3' : 'h-3 w-3 sm:h-3.5 sm:w-3.5'} />
+        )}
         {loc.toUpperCase()}
       </button>
     ))}

@@ -1,8 +1,4 @@
-import type {
-  LearningRoundType,
-  RoutineCardState,
-  RoutineStepKey,
-} from '../types';
+import type { LearningRoundType, RoutineCardState, RoutineStepKey } from '../types';
 import { resolveTimeZone as normalizeTimeZone, toRoutineDateKey } from './routineDate';
 import { supabase } from './supabase';
 
@@ -88,10 +84,7 @@ function inferCompletedLearningSteps(round: LearningRoundType): RoutineStepKey[]
   }
 }
 
-function mergeCompletedSteps(
-  stepOrder: RoutineStepKey[],
-  ...stepLists: RoutineStepKey[][]
-) {
+function mergeCompletedSteps(stepOrder: RoutineStepKey[], ...stepLists: RoutineStepKey[][]) {
   const allowedSteps = new Set(stepOrder);
   const seen = new Set<RoutineStepKey>();
   const merged: RoutineStepKey[] = [];
@@ -151,10 +144,7 @@ export function resolveRoutineLocalDate(timeZone = resolveTimeZone()) {
   return toRoutineDateKey(new Date(), timeZone);
 }
 
-async function fetchDailyRoutineProgress(
-  userId: string,
-  localDate: string,
-): Promise<DailyRoutineProgressRow | null> {
+async function fetchDailyRoutineProgress(userId: string, localDate: string): Promise<DailyRoutineProgressRow | null> {
   const result = await supabase
     .from('daily_routine_progress')
     .select(DAILY_ROUTINE_SELECT)
@@ -228,10 +218,7 @@ async function insertDailyRoutineProgress(
   return (result.data as DailyRoutineProgressRow | null) ?? null;
 }
 
-async function updateDailyRoutineProgress(
-  rowId: string,
-  payload: Partial<DailyRoutineProgressRow>,
-) {
+async function updateDailyRoutineProgress(rowId: string, payload: Partial<DailyRoutineProgressRow>) {
   const result = await supabase
     .from('daily_routine_progress')
     .update({
@@ -268,7 +255,7 @@ export async function ensureTodayRoutineProgress(
     return existing;
   }
 
-  const startingDueCount = options.startingDueCount ?? await countCurrentDueWords(userId);
+  const startingDueCount = options.startingDueCount ?? (await countCurrentDueWords(userId));
   return insertDailyRoutineProgress(userId, localDate, timeZone, startingDueCount);
 }
 
@@ -311,9 +298,10 @@ export async function bindRoutineMainLearningGroup(
   }
 
   const completedSteps = normalizeRoutineSteps(existing.completed_steps_json);
-  const completedStepsForGroup = existing.main_learning_group_id === input.groupId
-    ? completedSteps
-    : pickStillValidCompletedStepsForBoundGroupChange(stepOrder, completedSteps, input.round);
+  const completedStepsForGroup =
+    existing.main_learning_group_id === input.groupId
+      ? completedSteps
+      : pickStillValidCompletedStepsForBoundGroupChange(stepOrder, completedSteps, input.round);
 
   const mergedCompletedSteps = mergeCompletedSteps(
     stepOrder,
@@ -321,14 +309,11 @@ export async function bindRoutineMainLearningGroup(
     inferCompletedLearningSteps(input.round),
   );
   const nextStatus = resolveRoutineStatus(stepOrder, mergedCompletedSteps, input.groupId);
-  const hasSameCompletedSteps = mergedCompletedSteps.length === completedSteps.length
-    && mergedCompletedSteps.every((step, index) => step === completedSteps[index]);
+  const hasSameCompletedSteps =
+    mergedCompletedSteps.length === completedSteps.length &&
+    mergedCompletedSteps.every((step, index) => step === completedSteps[index]);
 
-  if (
-    existing.main_learning_group_id === input.groupId
-    && hasSameCompletedSteps
-    && existing.status === nextStatus
-  ) {
+  if (existing.main_learning_group_id === input.groupId && hasSameCompletedSteps && existing.status === nextStatus) {
     return existing;
   }
 
@@ -360,9 +345,10 @@ export async function markRoutineStepCompleted(
   }
 
   const completedSteps = normalizeRoutineSteps(existing.completed_steps_json);
-  const boundGroupId = input.step === 'review'
-    ? existing.main_learning_group_id
-    : input.groupId ?? existing.main_learning_group_id ?? null;
+  const boundGroupId =
+    input.step === 'review'
+      ? existing.main_learning_group_id
+      : (input.groupId ?? existing.main_learning_group_id ?? null);
 
   if (input.step !== 'review') {
     if (!boundGroupId) {
@@ -372,14 +358,11 @@ export async function markRoutineStepCompleted(
 
   const mergedCompletedSteps = mergeCompletedSteps(stepOrder, completedSteps, [input.step]);
   const nextStatus = resolveRoutineStatus(stepOrder, mergedCompletedSteps, boundGroupId);
-  const hasSameCompletedSteps = mergedCompletedSteps.length === completedSteps.length
-    && mergedCompletedSteps.every((step, index) => step === completedSteps[index]);
+  const hasSameCompletedSteps =
+    mergedCompletedSteps.length === completedSteps.length &&
+    mergedCompletedSteps.every((step, index) => step === completedSteps[index]);
 
-  if (
-    hasSameCompletedSteps
-    && existing.status === nextStatus
-    && existing.main_learning_group_id === boundGroupId
-  ) {
+  if (hasSameCompletedSteps && existing.status === nextStatus && existing.main_learning_group_id === boundGroupId) {
     return existing;
   }
 

@@ -44,15 +44,19 @@ function matchesSingleAnswer(response: string[], correctAnswers: string[]): bool
 }
 
 function uniqueAnswers(values: string[]): string[] {
-  return values.reduce<string[]>((unique, value) => (
-    unique.some((existing) => valuesMatch(existing, value)) ? unique : [...unique, value]
-  ), []);
+  return values.reduce<string[]>(
+    (unique, value) => (unique.some((existing) => valuesMatch(existing, value)) ? unique : [...unique, value]),
+    [],
+  );
 }
 
 function sharedAlternativeGroupKey(question: IeltsListeningQuestion, correctAnswer: string[]): string | null {
   const uniqueCorrect = uniqueAnswers(correctAnswer);
   if (uniqueCorrect.length <= 1) return null;
-  return `${question.groupId}:${uniqueCorrect.map((value) => normalizeIeltsAnswerText(value)).sort().join('|')}`;
+  return `${question.groupId}:${uniqueCorrect
+    .map((value) => normalizeIeltsAnswerText(value))
+    .sort()
+    .join('|')}`;
 }
 
 export function isIeltsListeningQuestionCorrect(
@@ -64,10 +68,7 @@ export function isIeltsListeningQuestionCorrect(
   return matchesSingleAnswer(response, correctAnswers);
 }
 
-export function evaluateIeltsListeningAnswers(
-  questions: IeltsListeningQuestion[],
-  answers: IeltsListeningAnswerMap,
-) {
+export function evaluateIeltsListeningAnswers(questions: IeltsListeningQuestion[], answers: IeltsListeningAnswerMap) {
   const responses = questions.map((question) => {
     const response = normalizeIeltsAnswerValue(answers[question.number]);
     const correctAnswer = normalizeIeltsAnswerValue(question.answer);
@@ -120,9 +121,4 @@ export function summarizeIeltsListeningResult(
   return summarizeIeltsReadingResult(responses, totalQuestions);
 }
 
-export {
-  clampIeltsElapsedSeconds,
-  formatElapsedTime,
-  normalizeIeltsAnswerText,
-  normalizeIeltsAnswerValue,
-};
+export { clampIeltsElapsedSeconds, formatElapsedTime, normalizeIeltsAnswerText, normalizeIeltsAnswerValue };

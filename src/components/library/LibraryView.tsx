@@ -28,11 +28,7 @@ import {
 } from '../../types';
 import { toConfusingPairs, toWordMorphology, toWordRelations } from '../../types';
 import { ExampleSentenceList } from '../shared/ExampleSentenceList';
-import {
-  cancelBrowserSpeech,
-  isBrowserSpeechSupported,
-  speakTextViaBrowser,
-} from '../../lib/browserSpeech';
+import { cancelBrowserSpeech, isBrowserSpeechSupported, speakTextViaBrowser } from '../../lib/browserSpeech';
 import {
   getCachedLibraryGroupDetail,
   getCachedLibraryGroups,
@@ -105,25 +101,31 @@ interface DetailVocabularyItemRow {
     example_sentence: string | null;
     example_translation_zh: string | null;
   }[];
-  vocabulary_morphology_parts?: {
-    part_text: string | null;
-    part_kind: 'prefix' | 'root' | 'suffix' | null;
-    meaning_zh: string | null;
-    note_zh: string | null;
-    sort_order: number | null;
-  }[] | null;
-  vocabulary_relations?: {
-    relation_type: 'derived' | 'synonym' | 'antonym' | null;
-    related_word: string | null;
-    meaning_zh: string | null;
-    note_zh: string | null;
-    sort_order: number | null;
-  }[] | null;
-  confused_words?: {
-    confused_word: string | null;
-    difference_note_zh: string | null;
-    sort_order: number | null;
-  }[] | null;
+  vocabulary_morphology_parts?:
+    | {
+        part_text: string | null;
+        part_kind: 'prefix' | 'root' | 'suffix' | null;
+        meaning_zh: string | null;
+        note_zh: string | null;
+        sort_order: number | null;
+      }[]
+    | null;
+  vocabulary_relations?:
+    | {
+        relation_type: 'derived' | 'synonym' | 'antonym' | null;
+        related_word: string | null;
+        meaning_zh: string | null;
+        note_zh: string | null;
+        sort_order: number | null;
+      }[]
+    | null;
+  confused_words?:
+    | {
+        confused_word: string | null;
+        difference_note_zh: string | null;
+        sort_order: number | null;
+      }[]
+    | null;
   review_states: DetailReviewStateRow[] | DetailReviewStateRow | null;
 }
 
@@ -172,11 +174,14 @@ const groupStatusStyle: Record<'active' | 'completed', string> = {
 };
 
 function resolveGroupActionLabel(group: LibraryGroupSummary) {
-  if (isReinforcementRound(group.sessionRound) && isCoreLearningComplete({
-    status: group.status,
-    completedAt: group.completedAt,
-    sessionRound: group.sessionRound,
-  })) {
+  if (
+    isReinforcementRound(group.sessionRound) &&
+    isCoreLearningComplete({
+      status: group.status,
+      completedAt: group.completedAt,
+      sessionRound: group.sessionRound,
+    })
+  ) {
     return '继续加固';
   }
 
@@ -194,12 +199,9 @@ function asArray<T>(value: T | T[] | null | undefined): T[] {
 
 function isMissingRichVocabularySchemaError(error: { message?: string } | null | undefined) {
   const message = error?.message ?? '';
-  return [
-    'morphology_summary_zh',
-    'vocabulary_morphology_parts',
-    'vocabulary_relations',
-    'sort_order',
-  ].some((part) => message.includes(part));
+  return ['morphology_summary_zh', 'vocabulary_morphology_parts', 'vocabulary_relations', 'sort_order'].some((part) =>
+    message.includes(part),
+  );
 }
 
 function formatDateTime(value: string | null): string {
@@ -246,11 +248,12 @@ function mapGroupSummary(row: LearningGroupRow): LibraryGroupSummary {
 
   return {
     id: row.id,
-    title: sourceType === 'system'
-      ? row.group_name ?? formatGroupTitle(row.created_at)
-      : row.group_name?.startsWith('我的词库')
-        ? row.group_name
-        : formatGroupTitle(row.created_at),
+    title:
+      sourceType === 'system'
+        ? (row.group_name ?? formatGroupTitle(row.created_at))
+        : row.group_name?.startsWith('我的词库')
+          ? row.group_name
+          : formatGroupTitle(row.created_at),
     createdAt: row.created_at,
     wordCount: row.learning_group_words?.length ?? 0,
     sourceType,
@@ -266,8 +269,9 @@ function mapGroupWord(row: GroupWordRow): LibraryGroupWord | null {
   if (!vocabularyItem) return null;
 
   const reviewState = asArray(vocabularyItem.review_states)[0];
-  const relations = [...(vocabularyItem.vocabulary_relations ?? [])]
-    .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0));
+  const relations = [...(vocabularyItem.vocabulary_relations ?? [])].sort(
+    (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0),
+  );
   const confusingPairs = toConfusingPairs(
     [...(vocabularyItem.confused_words ?? [])]
       .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
@@ -278,7 +282,7 @@ function mapGroupWord(row: GroupWordRow): LibraryGroupWord | null {
   ).filter((pair) => pair.word);
   const confusingWord = confusingPairs[0];
 
-  const mapRelations = (type: 'derived' | 'synonym' | 'antonym'): EnrichedWordRelation[] => (
+  const mapRelations = (type: 'derived' | 'synonym' | 'antonym'): EnrichedWordRelation[] =>
     relations
       .filter((relation) => relation.relation_type === type)
       .map((relation) => ({
@@ -286,8 +290,7 @@ function mapGroupWord(row: GroupWordRow): LibraryGroupWord | null {
         meaning_zh: relation.meaning_zh ?? '',
         note_zh: relation.note_zh ?? '',
       }))
-      .filter((relation) => relation.word)
-  );
+      .filter((relation) => relation.word);
 
   return {
     id: vocabularyItem.id,
@@ -329,7 +332,8 @@ function mapGroupWord(row: GroupWordRow): LibraryGroupWord | null {
 async function fetchLibraryGroupSummaries(userId: string): Promise<LibraryGroupSummary[]> {
   const { data, error } = await supabase
     .from('learning_groups')
-    .select(`
+    .select(
+      `
       id,
       group_name,
       source_type,
@@ -339,7 +343,8 @@ async function fetchLibraryGroupSummaries(userId: string): Promise<LibraryGroupS
       completed_at,
       session_round,
       learning_group_words ( id )
-    `)
+    `,
+    )
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
@@ -445,7 +450,10 @@ async function fetchOfficialLibraryDetail(
   const initialResult = await supabase
     .from('learning_group_words')
     .select(richWordSelect)
-    .in('learning_group_id', systemGroups.map((group) => group.id));
+    .in(
+      'learning_group_id',
+      systemGroups.map((group) => group.id),
+    );
 
   let data = (initialResult.data ?? []) as unknown as GroupWordRow[];
   let error = initialResult.error;
@@ -454,7 +462,10 @@ async function fetchOfficialLibraryDetail(
     const fallbackResult = await supabase
       .from('learning_group_words')
       .select(legacyWordSelect)
-      .in('learning_group_id', systemGroups.map((group) => group.id));
+      .in(
+        'learning_group_id',
+        systemGroups.map((group) => group.id),
+      );
 
     data = (fallbackResult.data ?? []) as unknown as GroupWordRow[];
     error = fallbackResult.error;
@@ -477,10 +488,7 @@ async function fetchOfficialLibraryDetail(
   };
 }
 
-async function fetchLibraryGroupDetail(
-  userId: string,
-  groupId: string,
-): Promise<LibraryGroupDetailCacheData> {
+async function fetchLibraryGroupDetail(userId: string, groupId: string): Promise<LibraryGroupDetailCacheData> {
   const richWordSelect = `
       sequence_no,
       vocabulary_items!inner (
@@ -549,7 +557,8 @@ async function fetchLibraryGroupDetail(
     `;
   const { data: groupData, error: groupError } = await supabase
     .from('learning_groups')
-    .select(`
+    .select(
+      `
       id,
       group_name,
       source_type,
@@ -559,7 +568,8 @@ async function fetchLibraryGroupDetail(
       completed_at,
       session_round,
       learning_group_words ( id )
-    `)
+    `,
+    )
     .eq('id', groupId)
     .eq('user_id', userId)
     .maybeSingle();
@@ -600,13 +610,7 @@ async function fetchLibraryGroupDetail(
   };
 }
 
-function WordDetailDrawer({
-  word,
-  onClose,
-}: {
-  word: LibraryGroupWord;
-  onClose: () => void;
-}) {
+function WordDetailDrawer({ word, onClose }: { word: LibraryGroupWord; onClose: () => void }) {
   const { preferences } = useLearningPreferences();
   const [activeExampleKey, setActiveExampleKey] = useState<string | null>(null);
   const playbackRunIdRef = useRef(0);
@@ -623,27 +627,33 @@ function WordDetailDrawer({
     onClose();
   }, [onClose, stopPlayback]);
 
-  const playExampleSentence = useCallback(async (sentence: string, key: string) => {
-    if (!canPlayExampleAudio) return;
+  const playExampleSentence = useCallback(
+    async (sentence: string, key: string) => {
+      if (!canPlayExampleAudio) return;
 
-    if (activeExampleKey === key) {
+      if (activeExampleKey === key) {
+        stopPlayback();
+        return;
+      }
+
       stopPlayback();
-      return;
-    }
+      const runId = playbackRunIdRef.current;
+      setActiveExampleKey(key);
+      await speakTextViaBrowser(sentence, preferences.defaultPronunciationLocale);
 
-    stopPlayback();
-    const runId = playbackRunIdRef.current;
-    setActiveExampleKey(key);
-    await speakTextViaBrowser(sentence, preferences.defaultPronunciationLocale);
+      if (runId === playbackRunIdRef.current) {
+        setActiveExampleKey(null);
+      }
+    },
+    [activeExampleKey, canPlayExampleAudio, preferences.defaultPronunciationLocale, stopPlayback],
+  );
 
-    if (runId === playbackRunIdRef.current) {
-      setActiveExampleKey(null);
-    }
-  }, [activeExampleKey, canPlayExampleAudio, preferences.defaultPronunciationLocale, stopPlayback]);
-
-  useEffect(() => () => {
-    stopPlayback();
-  }, [stopPlayback]);
+  useEffect(
+    () => () => {
+      stopPlayback();
+    },
+    [stopPlayback],
+  );
 
   useEffect(() => {
     stopPlayback();
@@ -681,7 +691,9 @@ function WordDetailDrawer({
         </div>
 
         <div className="mt-6 flex flex-wrap gap-2">
-          <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest ${memoryStateStyle[word.memoryState]}`}>
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest ${memoryStateStyle[word.memoryState]}`}
+          >
             {memoryStateLabel[word.memoryState]}
           </span>
           {word.posTags.map((tag) => (
@@ -706,9 +718,7 @@ function WordDetailDrawer({
               <p className="text-xs font-bold uppercase tracking-widest">下次可能再见</p>
             </div>
             <p className="mt-3 text-sm text-text-primary">{formatDateTime(word.nextReviewAt)}</p>
-            {word.lastResult && (
-              <p className="mt-2 text-sm text-text-secondary">{lastResultLabel[word.lastResult]}</p>
-            )}
+            {word.lastResult && <p className="mt-2 text-sm text-text-secondary">{lastResultLabel[word.lastResult]}</p>}
           </section>
 
           <section className="glass rounded-2xl p-5">
@@ -722,7 +732,9 @@ function WordDetailDrawer({
               locale={preferences.defaultPronunciationLocale}
               activeExampleKey={activeExampleKey}
               canPlayAudio={canPlayExampleAudio}
-              onPlayExample={({ sentence, key }) => { void playExampleSentence(sentence, key); }}
+              onPlayExample={({ sentence, key }) => {
+                void playExampleSentence(sentence, key);
+              }}
               emptyMessage="这个词目前还没有例句。"
               variant="drawer"
             />
@@ -735,21 +747,23 @@ function WordDetailDrawer({
             </p>
 
             <div className="mt-4 space-y-3">
-              {word.morphology.parts.length > 0 ? word.morphology.parts.map((part, index) => (
-                <div key={`${word.id}-morphology-${index}`} className="rounded-2xl bg-black/5 px-4 py-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-black text-text-primary">{part.text}</span>
-                    <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">
-                      {part.kind}
-                    </span>
+              {word.morphology.parts.length > 0 ? (
+                word.morphology.parts.map((part, index) => (
+                  <div key={`${word.id}-morphology-${index}`} className="rounded-2xl bg-black/5 px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-black text-text-primary">{part.text}</span>
+                      <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">
+                        {part.kind}
+                      </span>
+                    </div>
+                    {(part.meaningZh || part.noteZh) && (
+                      <p className="mt-2 text-xs leading-5 text-text-secondary">
+                        {[part.meaningZh, part.noteZh].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
                   </div>
-                  {(part.meaningZh || part.noteZh) && (
-                    <p className="mt-2 text-xs leading-5 text-text-secondary">
-                      {[part.meaningZh, part.noteZh].filter(Boolean).join(' · ')}
-                    </p>
-                  )}
-                </div>
-              )) : (
+                ))
+              ) : (
                 <p className="text-sm leading-6 text-text-secondary">这个词目前还没有可展示的构词拆解。</p>
               )}
             </div>
@@ -911,9 +925,7 @@ function DeleteGroupDialog({
             <p className="mt-3 text-sm leading-7 text-text-secondary">
               删除后，这组词会从你的个人材料里移除；如果这些词没有出现在其他词组里，对应的复习状态也会一起清掉。
             </p>
-            <p className="mt-4 rounded-2xl bg-black/5 px-4 py-3 text-sm font-bold text-text-primary">
-              {groupTitle}
-            </p>
+            <p className="mt-4 rounded-2xl bg-black/5 px-4 py-3 text-sm font-bold text-text-primary">{groupTitle}</p>
           </div>
         </div>
 
@@ -993,7 +1005,9 @@ export const LibraryView = ({
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   useEffect(() => {
@@ -1003,16 +1017,15 @@ export const LibraryView = ({
       setGroups([]);
       setOfficialResumeCandidates(
         Object.fromEntries(
-          OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [
-            definition.id,
-            { active: null, reinforcement: null },
-          ]),
+          OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [definition.id, { active: null, reinforcement: null }]),
         ) as Record<OfficialLibraryId, OfficialResumeTargets>,
       );
       setOfficialCompletionCounts(buildEmptyOfficialCompletionCounts());
       setIsLoading(false);
       setErrorMsg('');
-      return () => { active = false; };
+      return () => {
+        active = false;
+      };
     }
 
     const cachedGroups = getCachedLibraryGroups(user.id);
@@ -1036,7 +1049,9 @@ export const LibraryView = ({
 
     if (groupsFresh && resumeFresh && completionCountsFresh) {
       setIsLoading(false);
-      return () => { active = false; };
+      return () => {
+        active = false;
+      };
     }
 
     if (!cachedGroups || !cachedResume || !cachedCompletionCounts) {
@@ -1064,7 +1079,7 @@ export const LibraryView = ({
         const msg =
           groupsResult.reason instanceof Error
             ? groupsResult.reason.message
-            : (groupsResult.reason as { message?: string })?.message ?? JSON.stringify(groupsResult.reason);
+            : ((groupsResult.reason as { message?: string })?.message ?? JSON.stringify(groupsResult.reason));
         if (!cachedGroups) {
           setErrorMsg(msg);
         } else {
@@ -1078,16 +1093,13 @@ export const LibraryView = ({
         const msg =
           resumeResult.reason instanceof Error
             ? resumeResult.reason.message
-            : (resumeResult.reason as { message?: string })?.message ?? JSON.stringify(resumeResult.reason);
+            : ((resumeResult.reason as { message?: string })?.message ?? JSON.stringify(resumeResult.reason));
         console.error('official resume lookup failed:', msg);
         if (!cachedResume) {
           setErrorMsg((current) => current || msg);
           setOfficialResumeCandidates(
             Object.fromEntries(
-              OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [
-                definition.id,
-                { active: null, reinforcement: null },
-              ]),
+              OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [definition.id, { active: null, reinforcement: null }]),
             ) as Record<OfficialLibraryId, OfficialResumeTargets>,
           );
         }
@@ -1099,8 +1111,8 @@ export const LibraryView = ({
         const msg =
           completionCountsResult.reason instanceof Error
             ? completionCountsResult.reason.message
-            : (completionCountsResult.reason as { message?: string })?.message
-              ?? JSON.stringify(completionCountsResult.reason);
+            : ((completionCountsResult.reason as { message?: string })?.message ??
+              JSON.stringify(completionCountsResult.reason));
         console.error('official completion count lookup failed:', msg);
         if (!cachedCompletionCounts) {
           setErrorMsg((current) => current || msg);
@@ -1113,7 +1125,9 @@ export const LibraryView = ({
 
     void run();
 
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [user]);
 
   if (isLoading || officialResumeCandidates === undefined || officialCompletionCounts === undefined) {
@@ -1124,10 +1138,7 @@ export const LibraryView = ({
     return <LibraryError message={errorMsg} />;
   }
 
-  const customGroupCount = groups.reduce(
-    (count, group) => (group.sourceType === 'custom' ? count + 1 : count),
-    0,
-  );
+  const customGroupCount = groups.reduce((count, group) => (group.sourceType === 'custom' ? count + 1 : count), 0);
   const officialLibraries = OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => ({
     definition,
     summary: buildOfficialLibrarySummary(
@@ -1136,9 +1147,8 @@ export const LibraryView = ({
       officialResumeCandidates[definition.id] ?? null,
       officialCompletionCounts[definition.id] ?? 0,
     ),
-    existingGroupCount: groups.filter(
-      (group) => group.sourceType === 'system' && group.libraryId === definition.id,
-    ).length,
+    existingGroupCount: groups.filter((group) => group.sourceType === 'system' && group.libraryId === definition.id)
+      .length,
   }));
 
   return (
@@ -1159,10 +1169,12 @@ export const LibraryView = ({
         <div className="border-b border-black/8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
-              {([
-                { key: 'personal', label: '个人词库' },
-                { key: 'system', label: '官方词库' },
-              ] as const).map((tab) => {
+              {(
+                [
+                  { key: 'personal', label: '个人词库' },
+                  { key: 'system', label: '官方词库' },
+                ] as const
+              ).map((tab) => {
                 const selected = activeTab === tab.key;
                 return (
                   <button
@@ -1257,14 +1269,13 @@ export const OfficialLibraryDetailView = ({
   const navigate = useNavigate();
   const { libraryId: rawLibraryId } = useParams();
   const { user } = useAuth();
-  
-  if (!rawLibraryId || !isOfficialLibraryId(rawLibraryId)) {
-    return <Navigate to="/app/library/official/ielts-vocab" replace />;
-  }
 
-  const libraryId = rawLibraryId;
+  const validLibraryId = rawLibraryId && isOfficialLibraryId(rawLibraryId) ? rawLibraryId : null;
+  const libraryId = validLibraryId ?? 'ielts-vocab';
   const definition = getOfficialLibraryDefinition(libraryId);
-  const [summary, setSummary] = useState<OfficialLibrarySummary>(() => buildOfficialLibrarySummary(libraryId, [], null));
+  const [summary, setSummary] = useState<OfficialLibrarySummary>(() =>
+    buildOfficialLibrarySummary(libraryId, [], null),
+  );
   const [words, setWords] = useState<LibraryGroupWord[]>([]);
   const [existingGroupCount, setExistingGroupCount] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -1274,13 +1285,15 @@ export const OfficialLibraryDetailView = ({
   useEffect(() => {
     let active = true;
 
-    if (!user) {
+    if (!validLibraryId || !user) {
       setSummary(buildOfficialLibrarySummary(libraryId, [], null));
       setWords([]);
       setExistingGroupCount(0);
       setIsLoading(false);
       setErrorMsg('');
-      return () => { active = false; };
+      return () => {
+        active = false;
+      };
     }
 
     const cached = getCachedOfficialLibraryDetail(user.id, libraryId);
@@ -1296,15 +1309,15 @@ export const OfficialLibraryDetailView = ({
     }
 
     if (cached && isLibraryCacheFresh(cached)) {
-      return () => { active = false; };
+      return () => {
+        active = false;
+      };
     }
 
     const loadOfficialDetail = async () => {
       try {
-        const detail = await refreshOfficialLibraryDetail(
-          user.id,
-          libraryId,
-          () => fetchOfficialLibraryDetail(user.id, libraryId),
+        const detail = await refreshOfficialLibraryDetail(user.id, libraryId, () =>
+          fetchOfficialLibraryDetail(user.id, libraryId),
         );
         if (!active) return;
         setSummary(detail.summary);
@@ -1314,9 +1327,7 @@ export const OfficialLibraryDetailView = ({
       } catch (error) {
         if (!active) return;
         const msg =
-          error instanceof Error
-            ? error.message
-            : (error as { message?: string })?.message ?? JSON.stringify(error);
+          error instanceof Error ? error.message : ((error as { message?: string })?.message ?? JSON.stringify(error));
         if (!cached) {
           setErrorMsg(msg);
         } else {
@@ -1329,13 +1340,16 @@ export const OfficialLibraryDetailView = ({
 
     void loadOfficialDetail();
 
-    return () => { active = false; };
-  }, [libraryId, user]);
+    return () => {
+      active = false;
+    };
+  }, [libraryId, user, validLibraryId]);
 
-  const selectedWord = useMemo(
-    () => words.find((word) => word.id === selectedId) ?? null,
-    [selectedId, words],
-  );
+  const selectedWord = useMemo(() => words.find((word) => word.id === selectedId) ?? null, [selectedId, words]);
+
+  if (!validLibraryId) {
+    return <Navigate to="/app/library/official/ielts-vocab" replace />;
+  }
 
   if (isLoading) {
     return <LibraryLoading message="正在打开官方词库" />;
@@ -1370,9 +1384,7 @@ export const OfficialLibraryDetailView = ({
           <div className="glass rounded-[32px] p-12 text-center jelly-shadow">
             <BookOpen className="mx-auto h-10 w-10 text-text-secondary/50" />
             <p className="mt-4 text-2xl font-black text-text-primary">{definition.title} 还没有开始</p>
-            <p className="mt-3 text-sm leading-7 text-text-secondary">
-              回首页选择词库和顺序后，就能开始官方学习。
-            </p>
+            <p className="mt-3 text-sm leading-7 text-text-secondary">回首页选择词库和顺序后，就能开始官方学习。</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -1390,16 +1402,20 @@ export const OfficialLibraryDetailView = ({
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-2">
                       <span className="rounded-full bg-black/5 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.24em] text-text-secondary">
-                        {String(((getOfficialWordPosition(libraryId, word.word) === Number.MAX_SAFE_INTEGER)
-                          ? index
-                          : getOfficialWordPosition(libraryId, word.word)) + 1).padStart(4, '0')}
+                        {String(
+                          (getOfficialWordPosition(libraryId, word.word) === Number.MAX_SAFE_INTEGER
+                            ? index
+                            : getOfficialWordPosition(libraryId, word.word)) + 1,
+                        ).padStart(4, '0')}
                       </span>
                       <h3 className="text-3xl font-black tracking-tight text-text-primary">{word.word}</h3>
                       <span className="text-sm font-mono text-apple-blue">{word.phonetic || '暂无音标'}</span>
                     </div>
                     <p className="mt-3 text-lg text-text-primary/92">{word.meaning || '暂无释义'}</p>
                   </div>
-                  <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest ${memoryStateStyle[word.memoryState]}`}>
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest ${memoryStateStyle[word.memoryState]}`}
+                  >
                     {memoryStateLabel[word.memoryState]}
                   </span>
                 </div>
@@ -1415,12 +1431,7 @@ export const OfficialLibraryDetailView = ({
       </div>
 
       <AnimatePresence>
-        {selectedWord && (
-          <WordDetailDrawer
-            word={selectedWord}
-            onClose={() => setSelectedId(null)}
-          />
-        )}
+        {selectedWord && <WordDetailDrawer word={selectedWord} onClose={() => setSelectedId(null)} />}
       </AnimatePresence>
     </>
   );
@@ -1456,7 +1467,9 @@ export const LibraryGroupDetailView = ({
       setWords([]);
       setIsLoading(false);
       setErrorMsg('');
-      return () => { active = false; };
+      return () => {
+        active = false;
+      };
     }
 
     if (cachedDetail) {
@@ -1473,10 +1486,8 @@ export const LibraryGroupDetailView = ({
           setErrorMsg('');
         }
 
-        const detail = await refreshLibraryGroupDetail(
-          user.id,
-          groupId,
-          () => fetchLibraryGroupDetail(user.id, groupId),
+        const detail = await refreshLibraryGroupDetail(user.id, groupId, () =>
+          fetchLibraryGroupDetail(user.id, groupId),
         );
         if (!active) return;
         setGroup(detail.group);
@@ -1485,9 +1496,7 @@ export const LibraryGroupDetailView = ({
       } catch (error) {
         if (!active) return;
         const msg =
-          error instanceof Error
-            ? error.message
-            : (error as { message?: string })?.message ?? JSON.stringify(error);
+          error instanceof Error ? error.message : ((error as { message?: string })?.message ?? JSON.stringify(error));
         if (!cachedDetail) {
           setErrorMsg(msg);
         } else {
@@ -1502,13 +1511,12 @@ export const LibraryGroupDetailView = ({
       void loadGroupDetail();
     }
 
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [groupId, user]);
 
-  const selectedWord = useMemo(
-    () => words.find((word) => word.id === selectedId) ?? null,
-    [selectedId, words],
-  );
+  const selectedWord = useMemo(() => words.find((word) => word.id === selectedId) ?? null, [selectedId, words]);
 
   if (isLoading) {
     return <LibraryLoading message="正在打开这组材料" />;
@@ -1523,9 +1531,7 @@ export const LibraryGroupDetailView = ({
       <div className="glass mx-auto max-w-3xl rounded-apple-lg p-14 text-center jelly-shadow">
         <BookOpen className="mx-auto h-10 w-10 text-text-secondary/50" />
         <p className="mt-4 text-2xl font-black text-text-primary">这组材料暂时打不开</p>
-        <p className="mt-3 text-sm leading-7 text-text-secondary">
-          可能是这组材料已经不在了，也可能它不属于你。
-        </p>
+        <p className="mt-3 text-sm leading-7 text-text-secondary">可能是这组材料已经不在了，也可能它不属于你。</p>
         <button
           type="button"
           onClick={() => navigate('/app/library')}
@@ -1559,9 +1565,7 @@ export const LibraryGroupDetailView = ({
       navigate('/app/library');
     } catch (error) {
       const msg =
-        error instanceof Error
-          ? error.message
-          : (error as { message?: string })?.message ?? JSON.stringify(error);
+        error instanceof Error ? error.message : ((error as { message?: string })?.message ?? JSON.stringify(error));
       setDeleteErrorMsg(msg);
     } finally {
       setIsDeletingGroup(false);
@@ -1597,7 +1601,9 @@ export const LibraryGroupDetailView = ({
               <span className="rounded-full bg-[#12192b]/8 px-3 py-1 text-xs font-bold uppercase tracking-widest text-[#12192b]">
                 {groupHelperLabel}
               </span>
-              <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest ${groupStatusStyle[group.status]}`}>
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest ${groupStatusStyle[group.status]}`}
+              >
                 {groupStatusLabel[group.status]}
               </span>
             </div>
@@ -1606,7 +1612,9 @@ export const LibraryGroupDetailView = ({
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
-              onClick={() => { void onStartLearningGroup?.(group.id); }}
+              onClick={() => {
+                void onStartLearningGroup?.(group.id);
+              }}
               disabled={words.length === 0 || isStartingLearningGroup}
               className="inline-flex items-center gap-2 rounded-full bg-apple-blue px-5 py-3 text-sm font-black text-white shadow-[0_18px_34px_rgba(25,200,185,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
             >
@@ -1671,7 +1679,9 @@ export const LibraryGroupDetailView = ({
                     </div>
                     <p className="mt-3 text-lg text-text-primary/92">{word.meaning || '暂无释义'}</p>
                   </div>
-                  <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest ${memoryStateStyle[word.memoryState]}`}>
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest ${memoryStateStyle[word.memoryState]}`}
+                  >
                     {memoryStateLabel[word.memoryState]}
                   </span>
                 </div>
@@ -1687,12 +1697,7 @@ export const LibraryGroupDetailView = ({
       </div>
 
       <AnimatePresence>
-        {selectedWord && (
-          <WordDetailDrawer
-            word={selectedWord}
-            onClose={() => setSelectedId(null)}
-          />
-        )}
+        {selectedWord && <WordDetailDrawer word={selectedWord} onClose={() => setSelectedId(null)} />}
       </AnimatePresence>
 
       <AnimatePresence>
@@ -1706,7 +1711,9 @@ export const LibraryGroupDetailView = ({
               setDeleteErrorMsg('');
               setIsDeleteDialogOpen(false);
             }}
-            onConfirm={() => { void handleDeleteGroup(); }}
+            onConfirm={() => {
+              void handleDeleteGroup();
+            }}
           />
         )}
       </AnimatePresence>

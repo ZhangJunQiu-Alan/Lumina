@@ -35,14 +35,7 @@ if (!(await fileExists(privateRawFixtureDir))) {
 }
 
 async function assertListeningImport(bookNumber: number, maxFallbackHotspots: number) {
-  const args = [
-    '--import',
-    'tsx',
-    'scripts/import-ielts-listening.ts',
-    '--book',
-    String(bookNumber),
-    '--dry-run',
-  ];
+  const args = ['--import', 'tsx', 'scripts/import-ielts-listening.ts', '--book', String(bookNumber), '--dry-run'];
   if (await fileExists('.env')) {
     args.splice(2, 0, '--env-file=.env');
   }

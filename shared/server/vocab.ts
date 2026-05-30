@@ -1,13 +1,14 @@
-import { enrichWordLite, enrichWords, enrichWordsLite, type GeminiWordResult, type LiteEnrichResult } from './gemini.ts';
+import {
+  enrichWordLite,
+  enrichWords,
+  enrichWordsLite,
+  type GeminiWordResult,
+  type LiteEnrichResult,
+} from './gemini.ts';
 import { logger } from './logger.ts';
 import type { MemoryState } from './review-domain.ts';
 import { supabaseAdmin } from './supabase.ts';
-import {
-  analyzeWordBatch,
-  formatDuplicateWordsMessage,
-  normalizeWordKey,
-  sanitizeWordInput,
-} from '../wordBatch.ts';
+import { analyzeWordBatch, formatDuplicateWordsMessage, normalizeWordKey, sanitizeWordInput } from '../wordBatch.ts';
 
 export type EnrichmentLevel = 'lite' | 'full';
 
@@ -280,11 +281,12 @@ async function fetchVocabularyForms(vocabularyItemId: string) {
 
 function normalizeFullVocabularyEntry(entry: GeminiWordResult): GeminiWordResult {
   const word = sanitizeWordInput(entry.word);
-  const confusions = Array.isArray(entry.confusions) && entry.confusions.length > 0
-    ? entry.confusions
-    : entry.confused_word
-      ? [{ word: entry.confused_word, difference_zh: entry.confused_diff_zh ?? '' }]
-      : [];
+  const confusions =
+    Array.isArray(entry.confusions) && entry.confusions.length > 0
+      ? entry.confusions
+      : entry.confused_word
+        ? [{ word: entry.confused_word, difference_zh: entry.confused_diff_zh ?? '' }]
+        : [];
 
   return {
     word,
@@ -309,10 +311,12 @@ function normalizeFullVocabularyEntry(entry: GeminiWordResult): GeminiWordResult
 }
 
 function mapFullVocabularyEntry(row: FullVocabularyItemRow): PersistedFullVocabularyEntry {
-  const sortedMorphologyParts = [...(row.vocabulary_morphology_parts ?? [])]
-    .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0));
-  const sortedRelations = [...(row.vocabulary_relations ?? [])]
-    .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0));
+  const sortedMorphologyParts = [...(row.vocabulary_morphology_parts ?? [])].sort(
+    (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0),
+  );
+  const sortedRelations = [...(row.vocabulary_relations ?? [])].sort(
+    (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0),
+  );
   const confusions = [...(row.confused_words ?? [])]
     .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
     .map((item) => ({
@@ -419,9 +423,7 @@ export async function persistFullVocabularyEntries(
   }
 
   const persistedEntries = await fetchFullVocabularyEntriesByWords(batch.words);
-  const entryByKey = new Map(
-    persistedEntries.map((entry) => [normalizeWordKey(entry.word), entry]),
-  );
+  const entryByKey = new Map(persistedEntries.map((entry) => [normalizeWordKey(entry.word), entry]));
 
   return batch.words.map((word) => {
     const entry = entryByKey.get(normalizeWordKey(word));
@@ -440,15 +442,13 @@ async function insertVocabularyForms(vocabularyItemId: string, canonicalWord: st
 
   if (uniqueForms.length === 0) return;
 
-  const { error } = await supabaseAdmin
-    .from('vocabulary_item_forms')
-    .upsert(
-      uniqueForms.map((form) => ({
-        vocabulary_item_id: vocabularyItemId,
-        form,
-      })),
-      { onConflict: 'form', ignoreDuplicates: true },
-    );
+  const { error } = await supabaseAdmin.from('vocabulary_item_forms').upsert(
+    uniqueForms.map((form) => ({
+      vocabulary_item_id: vocabularyItemId,
+      form,
+    })),
+    { onConflict: 'form', ignoreDuplicates: true },
+  );
 
   if (error && !isPostgrestDuplicateError(error)) {
     throw new Error(`vocabulary_item_forms insert failed: ${error.message}`);
@@ -467,15 +467,13 @@ async function replaceLiteVocabularySenses(vocabularyItemId: string, senses: Lit
 
   if (senses.length === 0) return;
 
-  const { error: insertError } = await supabaseAdmin
-    .from('vocabulary_senses')
-    .insert(
-      senses.map((sense) => ({
-        vocabulary_item_id: vocabularyItemId,
-        pos: sense.pos,
-        meaning_zh: sense.meaning_zh,
-      })),
-    );
+  const { error: insertError } = await supabaseAdmin.from('vocabulary_senses').insert(
+    senses.map((sense) => ({
+      vocabulary_item_id: vocabularyItemId,
+      pos: sense.pos,
+      meaning_zh: sense.meaning_zh,
+    })),
+  );
 
   if (insertError) {
     throw new Error(`vocabulary_senses insert failed: ${insertError.message}`);
@@ -483,10 +481,7 @@ async function replaceLiteVocabularySenses(vocabularyItemId: string, senses: Lit
 }
 
 async function toLiteVocabularyResult(item: VocabularyItemRow): Promise<LiteVocabularyResult> {
-  const [senses, forms] = await Promise.all([
-    fetchVocabularySenses(item.id),
-    fetchVocabularyForms(item.id),
-  ]);
+  const [senses, forms] = await Promise.all([fetchVocabularySenses(item.id), fetchVocabularyForms(item.id)]);
 
   return {
     word: item.word,
@@ -496,10 +491,7 @@ async function toLiteVocabularyResult(item: VocabularyItemRow): Promise<LiteVoca
   };
 }
 
-export async function ensureLiteVocabularyEntry(
-  word: string,
-  source = 'reading_popup',
-): Promise<LiteVocabularyResult> {
+export async function ensureLiteVocabularyEntry(word: string, source = 'reading_popup'): Promise<LiteVocabularyResult> {
   const normalizedRequestedWord = sanitizeLookupWord(word);
   if (!normalizedRequestedWord) {
     throw new Error('Missing word');
@@ -542,7 +534,7 @@ export async function ensureLiteVocabularyEntry(
   }
 
   const insertedItem = ((insertedRows ?? []) as VocabularyItemRow[])[0] ?? null;
-  const item = insertedItem ?? await fetchVocabularyItemByWord(canonicalWord);
+  const item = insertedItem ?? (await fetchVocabularyItemByWord(canonicalWord));
   if (!item) {
     throw new Error(`vocabulary_items lite insert did not return item: ${canonicalWord}`);
   }
@@ -609,7 +601,7 @@ async function persistLiteVocabularyResult(
   }
 
   const insertedItem = ((insertedRows ?? []) as VocabularyItemRow[])[0] ?? null;
-  const item = insertedItem ?? await fetchVocabularyItemByWord(canonicalWord);
+  const item = insertedItem ?? (await fetchVocabularyItemByWord(canonicalWord));
   if (!item) {
     throw new Error(`vocabulary_items lemma insert did not return item: ${canonicalWord}`);
   }
@@ -649,9 +641,7 @@ export async function lemmatizeVocabularyWords(
       source,
       enrichmentType: 'lite',
     });
-    const liteResultByWord = new Map(
-      uniqueMissingWords.map((word, index) => [word, liteResults[index]]),
-    );
+    const liteResultByWord = new Map(uniqueMissingWords.map((word, index) => [word, liteResults[index]]));
     const persistedResultByWord = new Map<string, LiteVocabularyResult>();
 
     for (const item of missing) {
@@ -794,17 +784,15 @@ async function replaceFullVocabularyChildren(vocabularyItemId: string, entry: Ge
   }
 
   if (entry.senses.length > 0) {
-    const { error: insertSensesError } = await supabaseAdmin
-      .from('vocabulary_senses')
-      .insert(
-        entry.senses.map((sense) => ({
-          vocabulary_item_id: vocabularyItemId,
-          pos: sense.pos,
-          meaning_zh: sense.meaning_zh,
-          example_sentence: sense.example_sentence,
-          example_translation_zh: sense.example_translation_zh,
-        })),
-      );
+    const { error: insertSensesError } = await supabaseAdmin.from('vocabulary_senses').insert(
+      entry.senses.map((sense) => ({
+        vocabulary_item_id: vocabularyItemId,
+        pos: sense.pos,
+        meaning_zh: sense.meaning_zh,
+        example_sentence: sense.example_sentence,
+        example_translation_zh: sense.example_translation_zh,
+      })),
+    );
     if (insertSensesError) {
       throw new Error(`vocabulary_senses insert failed [${entry.word}]: ${insertSensesError.message}`);
     }
@@ -819,18 +807,16 @@ async function replaceFullVocabularyChildren(vocabularyItemId: string, entry: Ge
   }
 
   if (entry.morphology.parts.length > 0) {
-    const { error: insertMorphologyError } = await supabaseAdmin
-      .from('vocabulary_morphology_parts')
-      .insert(
-        entry.morphology.parts.map((part, index) => ({
-          vocabulary_item_id: vocabularyItemId,
-          part_text: part.text,
-          part_kind: part.kind,
-          meaning_zh: part.meaning_zh,
-          note_zh: part.note_zh,
-          sort_order: index,
-        })),
-      );
+    const { error: insertMorphologyError } = await supabaseAdmin.from('vocabulary_morphology_parts').insert(
+      entry.morphology.parts.map((part, index) => ({
+        vocabulary_item_id: vocabularyItemId,
+        part_text: part.text,
+        part_kind: part.kind,
+        meaning_zh: part.meaning_zh,
+        note_zh: part.note_zh,
+        sort_order: index,
+      })),
+    );
     if (insertMorphologyError) {
       throw new Error(`vocabulary_morphology_parts insert failed [${entry.word}]: ${insertMorphologyError.message}`);
     }
@@ -872,9 +858,7 @@ async function replaceFullVocabularyChildren(vocabularyItemId: string, entry: Ge
   ];
 
   if (relationRows.length > 0) {
-    const { error: insertRelationsError } = await supabaseAdmin
-      .from('vocabulary_relations')
-      .insert(relationRows);
+    const { error: insertRelationsError } = await supabaseAdmin.from('vocabulary_relations').insert(relationRows);
     if (insertRelationsError) {
       throw new Error(`vocabulary_relations insert failed [${entry.word}]: ${insertRelationsError.message}`);
     }
@@ -888,23 +872,22 @@ async function replaceFullVocabularyChildren(vocabularyItemId: string, entry: Ge
     throw new Error(`confused_words cleanup failed [${entry.word}]: ${deleteConfusedError.message}`);
   }
 
-  const confusions = entry.confusions.length > 0
-    ? entry.confusions
-    : entry.confused_word
-      ? [{ word: entry.confused_word, difference_zh: entry.confused_diff_zh ?? '' }]
-      : [];
+  const confusions =
+    entry.confusions.length > 0
+      ? entry.confusions
+      : entry.confused_word
+        ? [{ word: entry.confused_word, difference_zh: entry.confused_diff_zh ?? '' }]
+        : [];
 
   if (confusions.length > 0) {
-    const { error: insertConfusedError } = await supabaseAdmin
-      .from('confused_words')
-      .insert(
-        confusions.map((confusion, index) => ({
-          vocabulary_item_id: vocabularyItemId,
-          confused_word: confusion.word,
-          difference_note_zh: confusion.difference_zh,
-          sort_order: index,
-        })),
-      );
+    const { error: insertConfusedError } = await supabaseAdmin.from('confused_words').insert(
+      confusions.map((confusion, index) => ({
+        vocabulary_item_id: vocabularyItemId,
+        confused_word: confusion.word,
+        difference_note_zh: confusion.difference_zh,
+        sort_order: index,
+      })),
+    );
     if (insertConfusedError) {
       throw new Error(`confused_words insert failed [${entry.word}]: ${insertConfusedError.message}`);
     }

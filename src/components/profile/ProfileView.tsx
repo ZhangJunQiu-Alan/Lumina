@@ -1,13 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
-import {
-  Activity,
-  CalendarDays,
-  CheckCircle2,
-  Flame,
-  LogOut,
-  TrendingUp,
-} from 'lucide-react';
+import { Activity, CalendarDays, CheckCircle2, Flame, LogOut, TrendingUp } from 'lucide-react';
 import type { ActivityDay, UserStats } from '../../types';
 import { cx } from '../shared/LearningUI';
 
@@ -90,9 +83,7 @@ function getFallbackActivityDays(days: ActivityDay[]) {
 
 function buildHeatmapWeeks(days: ActivityDay[]): (ActivityDay | null)[][] {
   const normalizedDays = getFallbackActivityDays(days);
-  const dayByDate = new Map<string, ActivityDay>(
-    normalizedDays.map((day): [string, ActivityDay] => [day.date, day]),
-  );
+  const dayByDate = new Map<string, ActivityDay>(normalizedDays.map((day): [string, ActivityDay] => [day.date, day]));
   const firstDate = parseDateKey(normalizedDays[0].date);
   const lastDate = parseDateKey(normalizedDays[normalizedDays.length - 1].date);
   const mondayIndex = (firstDate.getUTCDay() + 6) % 7;
@@ -180,24 +171,10 @@ function TrendChart({ days }: { days: ActivityDay[] }) {
 
           return (
             <g key={day.date}>
-              <rect
-                x={x}
-                y={reviewY}
-                width={barWidth}
-                height={reviewHeight}
-                rx="4"
-                fill="#34C759"
-              >
+              <rect x={x} y={reviewY} width={barWidth} height={reviewHeight} rx="4" fill="#34C759">
                 <title>{`${day.date} 复习 ${day.reviewWordCount} 词`}</title>
               </rect>
-              <rect
-                x={x}
-                y={learnedY}
-                width={barWidth}
-                height={learnedHeight}
-                rx="4"
-                fill="#007AFF"
-              >
+              <rect x={x} y={learnedY} width={barWidth} height={learnedHeight} rx="4" fill="#007AFF">
                 <title>{`${day.date} 新学 ${day.learnedWordCount} 词`}</title>
               </rect>
               {shouldLabel && (
@@ -215,13 +192,32 @@ function TrendChart({ days }: { days: ActivityDay[] }) {
         })}
 
         {accuracyPoints.length > 1 && (
-          <polyline points={accuracyPath} fill="none" stroke="#FF9500" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline
+            points={accuracyPath}
+            fill="none"
+            stroke="#FF9500"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
         )}
         {accuracyPoints.map((point) => (
-          <circle key={`${point.x}:${point.y}`} cx={point.x} cy={point.y} r="4" fill="#FF9500" stroke="white" strokeWidth="2" />
+          <circle
+            key={`${point.x}:${point.y}`}
+            cx={point.x}
+            cy={point.y}
+            r="4"
+            fill="#FF9500"
+            stroke="white"
+            strokeWidth="2"
+          />
         ))}
-        <text x={chartWidth - right + 10} y={top + 4} className="fill-[#c06d00] text-[11px] font-black">100%</text>
-        <text x={chartWidth - right + 10} y={top + innerHeight + 4} className="fill-[#c06d00] text-[11px] font-black">0%</text>
+        <text x={chartWidth - right + 10} y={top + 4} className="fill-[#c06d00] text-[11px] font-black">
+          100%
+        </text>
+        <text x={chartWidth - right + 10} y={top + innerHeight + 4} className="fill-[#c06d00] text-[11px] font-black">
+          0%
+        </text>
       </svg>
     </div>
   );
@@ -239,10 +235,7 @@ function ActivityHeatmap({ days }: { days: ActivityDay[] }) {
   return (
     <div className="overflow-x-auto pb-2">
       <div className="min-w-max">
-        <div
-          className="ml-8 grid gap-[3px]"
-          style={{ gridTemplateColumns: `repeat(${weeks.length}, 12px)` }}
-        >
+        <div className="ml-8 grid gap-[3px]" style={{ gridTemplateColumns: `repeat(${weeks.length}, 12px)` }}>
           {monthLabels.map((label, index) => (
             <div key={`${label}:${index}`} className="h-4 text-[10px] font-bold text-[#8b7a66]">
               {label}
@@ -274,9 +267,11 @@ function ActivityHeatmap({ days }: { days: ActivityDay[] }) {
                     'h-3 w-3 rounded-[3px] border',
                     day ? getActivityTone(totalActivity(day)) : 'border-transparent bg-transparent',
                   )}
-                  title={day
-                    ? `${day.date} · 新学 ${day.learnedWordCount} · 复习 ${day.reviewWordCount} · 正确率 ${day.accuracy ?? '--'}%`
-                    : undefined}
+                  title={
+                    day
+                      ? `${day.date} · 新学 ${day.learnedWordCount} · 复习 ${day.reviewWordCount} · 正确率 ${day.accuracy ?? '--'}%`
+                      : undefined
+                  }
                 />
               )),
             )}
@@ -287,15 +282,7 @@ function ActivityHeatmap({ days }: { days: ActivityDay[] }) {
   );
 }
 
-function MetricPill({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: typeof Flame;
-  label: string;
-  value: string;
-}) {
+function MetricPill({ icon: Icon, label, value }: { icon: typeof Flame; label: string; value: string }) {
   return (
     <div className="rounded-[24px] border border-black/[0.04] bg-white/60 p-4">
       <div className="flex items-center gap-3">
@@ -317,12 +304,10 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
   const trendDays = useMemo(() => activityDays.slice(-trendRange), [activityDays, trendRange]);
   const yearlySummary = useMemo(() => summarizeActivity(activityDays), [activityDays]);
   const trendSummary = useMemo(() => summarizeActivity(trendDays), [trendDays]);
-  const yearlyAccuracy = yearlySummary.attempts > 0
-    ? Math.round((yearlySummary.correct / yearlySummary.attempts) * 100)
-    : null;
-  const trendAccuracy = trendSummary.attempts > 0
-    ? Math.round((trendSummary.correct / trendSummary.attempts) * 100)
-    : null;
+  const yearlyAccuracy =
+    yearlySummary.attempts > 0 ? Math.round((yearlySummary.correct / yearlySummary.attempts) * 100) : null;
+  const trendAccuracy =
+    trendSummary.attempts > 0 ? Math.round((trendSummary.correct / trendSummary.attempts) * 100) : null;
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
@@ -330,7 +315,11 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
         <MetricPill icon={Flame} label="连续学习" value={`${stats.streak} 天`} />
         <MetricPill icon={CalendarDays} label="一年活跃" value={`${yearlySummary.activeDays} 天`} />
         <MetricPill icon={Activity} label="新学单词" value={`${yearlySummary.learned}`} />
-        <MetricPill icon={CheckCircle2} label="年度正确率" value={yearlyAccuracy === null ? '--' : `${yearlyAccuracy}%`} />
+        <MetricPill
+          icon={CheckCircle2}
+          label="年度正确率"
+          value={yearlyAccuracy === null ? '--' : `${yearlyAccuracy}%`}
+        />
       </section>
 
       <section className="glass rounded-[34px] p-5 md:p-7">
@@ -350,7 +339,9 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
               className="rounded-2xl border border-black/[0.06] bg-white/80 px-4 py-3 text-sm font-black text-[#2f261d] outline-none transition-colors focus:border-apple-blue/40"
             >
               {trendRanges.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
               ))}
             </select>
           </div>
@@ -373,9 +364,18 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
 
         <div className="mt-5 rounded-[28px] border border-black/[0.04] bg-white/58 p-4">
           <div className="mb-3 flex flex-wrap items-center gap-4 text-xs font-black text-text-secondary">
-            <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-apple-blue" />新学</span>
-            <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-apple-green" />复习</span>
-            <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-apple-orange" />正确率</span>
+            <span className="inline-flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-apple-blue" />
+              新学
+            </span>
+            <span className="inline-flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-apple-green" />
+              复习
+            </span>
+            <span className="inline-flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-apple-orange" />
+              正确率
+            </span>
           </div>
           <TrendChart days={trendDays} />
         </div>

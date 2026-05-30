@@ -44,7 +44,7 @@ export function fetchWordAudioUrl(word: string, locale: PronunciationLocale): Pr
         failureCache.set(key, Date.now());
         return null;
       }
-      const payload = await response.json().catch(() => null) as { data?: string } | null;
+      const payload = (await response.json().catch(() => null)) as { data?: string } | null;
       const url = payload?.data ?? null;
       if (url) {
         urlCache.set(key, url);

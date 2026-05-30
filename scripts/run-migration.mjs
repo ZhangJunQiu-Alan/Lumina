@@ -4,8 +4,11 @@ import { readFileSync } from 'fs';
 const env = Object.fromEntries(
   readFileSync('.env', 'utf8')
     .split('\n')
-    .filter(l => l.includes('='))
-    .map(l => { const i = l.indexOf('='); return [l.slice(0,i).trim(), l.slice(i+1).trim()]; })
+    .filter((l) => l.includes('='))
+    .map((l) => {
+      const i = l.indexOf('=');
+      return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
+    }),
 );
 
 const dbPassword = env.SUPABASE_DB_PASSWORD;
@@ -46,8 +49,11 @@ await client.end();
 const { rows } = await (async () => {
   const c = new pg.Client({
     host: 'db.zhjdsvcgccdvtnicyasi.supabase.co',
-    port: 5432, database: 'postgres', user: 'postgres',
-    password: dbPassword, ssl: { rejectUnauthorized: false },
+    port: 5432,
+    database: 'postgres',
+    user: 'postgres',
+    password: dbPassword,
+    ssl: { rejectUnauthorized: false },
   });
   await c.connect();
   const r = await c.query(`
@@ -60,5 +66,5 @@ const { rows } = await (async () => {
 })();
 
 console.log('📋 Tables in public schema:');
-rows.forEach(r => console.log(`  ✅ ${r.tablename}`));
+rows.forEach((r) => console.log(`  ✅ ${r.tablename}`));
 console.log('');

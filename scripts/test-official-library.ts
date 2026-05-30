@@ -140,15 +140,26 @@ assert.equal(
   true,
 );
 assert.equal(
-  resolveOfficialLibraryId(null, formatOfficialCounterGroupName('gre-zhenkao-v7', 'shuffle', 1, OFFICIAL_BATCH_SIZE), 'system'),
+  resolveOfficialLibraryId(
+    null,
+    formatOfficialCounterGroupName('gre-zhenkao-v7', 'shuffle', 1, OFFICIAL_BATCH_SIZE),
+    'system',
+  ),
   'gre-zhenkao-v7',
 );
 assert.equal(
-  resolveOfficialLibraryId(null, formatOfficialCounterGroupName('gre-zhenkao-v7', 'sequential', 2, OFFICIAL_BATCH_SIZE), 'system'),
+  resolveOfficialLibraryId(
+    null,
+    formatOfficialCounterGroupName('gre-zhenkao-v7', 'sequential', 2, OFFICIAL_BATCH_SIZE),
+    'system',
+  ),
   'gre-zhenkao-v7',
 );
 assert.equal(
-  resolveOfficialStudyModeFromGroupName('ielts-vocab', formatOfficialCounterGroupName('ielts-vocab', 'shuffle', 2, OFFICIAL_BATCH_SIZE)),
+  resolveOfficialStudyModeFromGroupName(
+    'ielts-vocab',
+    formatOfficialCounterGroupName('ielts-vocab', 'shuffle', 2, OFFICIAL_BATCH_SIZE),
+  ),
   'shuffle',
 );
 assert.equal(resolveOfficialStudyModeFromGroupName('ielts-vocab', '雅思词汇真经 · 0001-0030'), 'sequential');
@@ -163,10 +174,7 @@ assert.ok(seqBatch);
 assert.equal(seqBatch.words.length, OFFICIAL_BATCH_SIZE);
 assert.equal(seqBatch.words[0], IELTS_WORDS_FLAT[5]);
 assert.equal(seqBatch.words[39], IELTS_WORDS_FLAT[44]);
-assert.equal(
-  seqBatch.groupName,
-  formatOfficialGroupName('ielts-vocab', 5, OFFICIAL_BATCH_SIZE),
-);
+assert.equal(seqBatch.groupName, formatOfficialGroupName('ielts-vocab', 5, OFFICIAL_BATCH_SIZE));
 
 // Sequential skips sparse learned-word holes and falls back to counter naming
 // when the picked words are not a contiguous official range.
@@ -183,17 +191,16 @@ assert.equal(
 );
 
 // Shuffle picks only from unlearned and never repeats learned words.
-const learnedHalf = new Set(IELTS_WORDS_FLAT.slice(0, Math.floor(IELTS_WORDS_FLAT.length / 2)).map((w) => w.trim().toLowerCase()));
+const learnedHalf = new Set(
+  IELTS_WORDS_FLAT.slice(0, Math.floor(IELTS_WORDS_FLAT.length / 2)).map((w) => w.trim().toLowerCase()),
+);
 const shuffleBatch = getOfficialNextBatch('ielts-vocab', learnedHalf, 'shuffle', 5, 0);
 assert.ok(shuffleBatch);
 assert.equal(shuffleBatch.words.length, OFFICIAL_BATCH_SIZE);
 for (const word of shuffleBatch.words) {
   assert.equal(learnedHalf.has(word.trim().toLowerCase()), false);
 }
-assert.equal(
-  shuffleBatch.groupName,
-  formatOfficialCounterGroupName('ielts-vocab', 'shuffle', 6, OFFICIAL_BATCH_SIZE),
-);
+assert.equal(shuffleBatch.groupName, formatOfficialCounterGroupName('ielts-vocab', 'shuffle', 6, OFFICIAL_BATCH_SIZE));
 
 // Exhaustion returns null.
 const allLearned = new Set(IELTS_WORDS_FLAT.map((w) => w.trim().toLowerCase()));
@@ -201,13 +208,12 @@ assert.equal(getOfficialNextBatch('ielts-vocab', allLearned, 'sequential', 1, IE
 assert.equal(getOfficialNextBatch('ielts-vocab', allLearned, 'shuffle', 1, 0), null);
 
 // Tail batch clamps to remainder.
-const learnedAllButFour = new Set(IELTS_WORDS_FLAT.slice(0, IELTS_WORDS_FLAT.length - 4).map((w) => w.trim().toLowerCase()));
+const learnedAllButFour = new Set(
+  IELTS_WORDS_FLAT.slice(0, IELTS_WORDS_FLAT.length - 4).map((w) => w.trim().toLowerCase()),
+);
 const tailBatch = getOfficialNextBatch('ielts-vocab', learnedAllButFour, 'sequential', 9, IELTS_WORDS_FLAT.length - 4);
 assert.ok(tailBatch);
 assert.equal(tailBatch.words.length, 4);
-assert.equal(
-  tailBatch.groupName,
-  formatOfficialGroupName('ielts-vocab', IELTS_WORDS_FLAT.length - 4, 4),
-);
+assert.equal(tailBatch.groupName, formatOfficialGroupName('ielts-vocab', IELTS_WORDS_FLAT.length - 4, 4));
 
 console.log('official library checks passed');

@@ -2,7 +2,12 @@ import 'dotenv/config';
 import { OFFICIAL_LIBRARY_DEFINITIONS } from '../src/lib/officialLibrary.ts';
 import { enrichWords, type GeminiWordResult } from '../shared/server/gemini.ts';
 import { supabaseAdmin } from '../shared/server/supabase.ts';
-import { analyzeWordBatch, formatDuplicateWordsMessage, normalizeWordKey, sanitizeWordInput } from '../shared/wordBatch.ts';
+import {
+  analyzeWordBatch,
+  formatDuplicateWordsMessage,
+  normalizeWordKey,
+  sanitizeWordInput,
+} from '../shared/wordBatch.ts';
 
 interface CliOptions {
   batchSize: number;
@@ -98,9 +103,10 @@ function parseArgs(argv: string[]): CliOptions {
 }
 
 function resolveTargetOfficialWords(libraryId: string | null) {
-  const definitions = libraryId === null
-    ? OFFICIAL_LIBRARY_DEFINITIONS
-    : OFFICIAL_LIBRARY_DEFINITIONS.filter((definition) => definition.id === libraryId);
+  const definitions =
+    libraryId === null
+      ? OFFICIAL_LIBRARY_DEFINITIONS
+      : OFFICIAL_LIBRARY_DEFINITIONS.filter((definition) => definition.id === libraryId);
 
   if (definitions.length === 0) {
     throw new Error(`Unknown official library id: ${libraryId}`);
@@ -110,9 +116,8 @@ function resolveTargetOfficialWords(libraryId: string | null) {
 }
 
 function chunkWords(words: string[], chunkSize: number) {
-  return Array.from(
-    { length: Math.ceil(words.length / chunkSize) },
-    (_, index) => words.slice(index * chunkSize, (index + 1) * chunkSize),
+  return Array.from({ length: Math.ceil(words.length / chunkSize) }, (_, index) =>
+    words.slice(index * chunkSize, (index + 1) * chunkSize),
   );
 }
 
@@ -124,22 +129,24 @@ function sleep(ms: number) {
 
 function isVocabularyReady(row: VocabularyLookupRow) {
   const senses = row.vocabulary_senses ?? [];
-  const senseReady = senses.length > 0 && senses.every((sense) => (
-    Boolean(
-      sense.pos?.trim()
-      && sense.meaning_zh?.trim()
-      && sense.example_sentence?.trim()
-      && sense.example_translation_zh?.trim()
-    )
-  ));
+  const senseReady =
+    senses.length > 0 &&
+    senses.every((sense) =>
+      Boolean(
+        sense.pos?.trim() &&
+        sense.meaning_zh?.trim() &&
+        sense.example_sentence?.trim() &&
+        sense.example_translation_zh?.trim(),
+      ),
+    );
 
   return Boolean(
-    row.ipa_uk?.trim()
-    && row.ipa_us?.trim()
-    && row.primary_meaning_zh?.trim()
-    && row.morphology_summary_zh?.trim()
-    && row.memory_tip?.trim()
-    && senseReady,
+    row.ipa_uk?.trim() &&
+    row.ipa_us?.trim() &&
+    row.primary_meaning_zh?.trim() &&
+    row.morphology_summary_zh?.trim() &&
+    row.memory_tip?.trim() &&
+    senseReady,
   );
 }
 
@@ -149,7 +156,8 @@ async function collectMissingOfficialWords(officialWords: string[]) {
   for (const words of chunkWords(officialWords.map(normalizeWordKey), OFFICIAL_WORD_CHUNK_SIZE)) {
     const { data, error } = await supabaseAdmin
       .from('vocabulary_items')
-      .select(`
+      .select(
+        `
         word,
         ipa_uk,
         ipa_us,
@@ -162,7 +170,8 @@ async function collectMissingOfficialWords(officialWords: string[]) {
           example_sentence,
           example_translation_zh
         )
-      `)
+      `,
+      )
       .in('word', words);
 
     if (error) {
@@ -227,17 +236,16 @@ async function persistEnrichedBatch(enriched: GeminiWordResult[]) {
     throw new Error(`vocabulary_items upsert failed: ${itemsError.message}`);
   }
 
-  const wordIdMap = new Map(
-    (insertedItems ?? []).map((row) => [row.word as string, row.id as string]),
-  );
+  const wordIdMap = new Map((insertedItems ?? []).map((row) => [row.word as string, row.id as string]));
 
   for (const entry of preparedEnriched) {
     const vocabularyItemId = wordIdMap.get(normalizeWordKey(entry.word));
-    const confusions = entry.confusions.length > 0
-      ? entry.confusions
-      : entry.confused_word
-        ? [{ word: entry.confused_word, difference_zh: entry.confused_diff_zh ?? '' }]
-        : [];
+    const confusions =
+      entry.confusions.length > 0
+        ? entry.confusions
+        : entry.confused_word
+          ? [{ word: entry.confused_word, difference_zh: entry.confused_diff_zh ?? '' }]
+          : [];
 
     if (!vocabularyItemId) {
       throw new Error(`词条写入后没有拿到 id：${entry.word}`);
@@ -252,17 +260,15 @@ async function persistEnrichedBatch(enriched: GeminiWordResult[]) {
     }
 
     if (entry.senses.length > 0) {
-      const { error: insertSensesError } = await supabaseAdmin
-        .from('vocabulary_senses')
-        .insert(
-          entry.senses.map((sense) => ({
-            vocabulary_item_id: vocabularyItemId,
-            pos: sense.pos,
-            meaning_zh: sense.meaning_zh,
-            example_sentence: sense.example_sentence,
-            example_translation_zh: sense.example_translation_zh,
-          })),
-        );
+      const { error: insertSensesError } = await supabaseAdmin.from('vocabulary_senses').insert(
+        entry.senses.map((sense) => ({
+          vocabulary_item_id: vocabularyItemId,
+          pos: sense.pos,
+          meaning_zh: sense.meaning_zh,
+          example_sentence: sense.example_sentence,
+          example_translation_zh: sense.example_translation_zh,
+        })),
+      );
       if (insertSensesError) {
         throw new Error(`vocabulary_senses insert failed [${entry.word}]: ${insertSensesError.message}`);
       }
@@ -277,18 +283,16 @@ async function persistEnrichedBatch(enriched: GeminiWordResult[]) {
     }
 
     if (entry.morphology.parts.length > 0) {
-      const { error: insertMorphologyError } = await supabaseAdmin
-        .from('vocabulary_morphology_parts')
-        .insert(
-          entry.morphology.parts.map((part, index) => ({
-            vocabulary_item_id: vocabularyItemId,
-            part_text: part.text,
-            part_kind: part.kind,
-            meaning_zh: part.meaning_zh,
-            note_zh: part.note_zh,
-            sort_order: index,
-          })),
-        );
+      const { error: insertMorphologyError } = await supabaseAdmin.from('vocabulary_morphology_parts').insert(
+        entry.morphology.parts.map((part, index) => ({
+          vocabulary_item_id: vocabularyItemId,
+          part_text: part.text,
+          part_kind: part.kind,
+          meaning_zh: part.meaning_zh,
+          note_zh: part.note_zh,
+          sort_order: index,
+        })),
+      );
       if (insertMorphologyError) {
         throw new Error(`vocabulary_morphology_parts insert failed [${entry.word}]: ${insertMorphologyError.message}`);
       }
@@ -330,9 +334,7 @@ async function persistEnrichedBatch(enriched: GeminiWordResult[]) {
     ];
 
     if (relationRows.length > 0) {
-      const { error: insertRelationsError } = await supabaseAdmin
-        .from('vocabulary_relations')
-        .insert(relationRows);
+      const { error: insertRelationsError } = await supabaseAdmin.from('vocabulary_relations').insert(relationRows);
       if (insertRelationsError) {
         throw new Error(`vocabulary_relations insert failed [${entry.word}]: ${insertRelationsError.message}`);
       }
@@ -347,16 +349,14 @@ async function persistEnrichedBatch(enriched: GeminiWordResult[]) {
     }
 
     if (confusions.length > 0) {
-      const { error: insertConfusedError } = await supabaseAdmin
-        .from('confused_words')
-        .insert(
-          confusions.map((confusion, index) => ({
-            vocabulary_item_id: vocabularyItemId,
-            confused_word: confusion.word,
-            difference_note_zh: confusion.difference_zh,
-            sort_order: index,
-          })),
-        );
+      const { error: insertConfusedError } = await supabaseAdmin.from('confused_words').insert(
+        confusions.map((confusion, index) => ({
+          vocabulary_item_id: vocabularyItemId,
+          confused_word: confusion.word,
+          difference_note_zh: confusion.difference_zh,
+          sort_order: index,
+        })),
+      );
       if (insertConfusedError) {
         throw new Error(`confused_words insert failed [${entry.word}]: ${insertConfusedError.message}`);
       }
@@ -392,7 +392,7 @@ async function printCoverageSummary(label: string, officialWords: string[]) {
 async function asyncPool<T, R>(
   poolLimit: number,
   array: T[],
-  iteratorFn: (item: T, index: number) => Promise<R>
+  iteratorFn: (item: T, index: number) => Promise<R>,
 ): Promise<R[]> {
   const ret: Promise<R>[] = [];
   const executing: Promise<void>[] = [];

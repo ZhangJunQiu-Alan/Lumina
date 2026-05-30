@@ -13,10 +13,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import {
-  type OfficialLibraryDefinition,
-  resolveOfficialLibraryStartMode,
-} from '../../lib/officialLibrary';
+import { type OfficialLibraryDefinition, resolveOfficialLibraryStartMode } from '../../lib/officialLibrary';
 import type { OfficialLibrarySummary, Word } from '../../types';
 
 type Stage = 'idle' | 'resuming' | 'error';
@@ -63,14 +60,7 @@ function CompletionProgressRing({
       aria-label={`完成度 ${percentage}%，${completedMemoryWordCount} / ${totalWordCount} 词`}
     >
       <svg viewBox="0 0 132 132" className="h-full w-full -rotate-90">
-        <circle
-          cx="66"
-          cy="66"
-          r={radius}
-          fill="none"
-          stroke="rgba(25,200,185,0.13)"
-          strokeWidth="12"
-        />
+        <circle cx="66" cy="66" r={radius} fill="none" stroke="rgba(25,200,185,0.13)" strokeWidth="12" />
         <motion.circle
           cx="66"
           cy="66"
@@ -115,11 +105,7 @@ export function OfficialLibraryPanel({
   const actionDisabled = startMode === 'completed';
   const resumeActive = startMode === 'resume';
 
-  const ctaButtonLabel = actionDisabled
-    ? '已完结'
-    : resumeActive
-      ? '继续学习'
-      : '开始记忆';
+  const ctaButtonLabel = actionDisabled ? '已完结' : resumeActive ? '继续学习' : '开始记忆';
 
   const handleStartOfficial = async () => {
     if (startMode === 'resume' && summary.activeResumeCandidate) {
@@ -169,7 +155,9 @@ export function OfficialLibraryPanel({
                 {showOpenDetailAction && onOpenDetail && (
                   <button
                     type="button"
-                    onClick={() => { void onOpenDetail(); }}
+                    onClick={() => {
+                      void onOpenDetail();
+                    }}
                     className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-white/88 px-3 text-[12px] font-bold text-text-secondary shadow-[0_8px_20px_rgba(0,0,0,0.05)] transition-colors hover:text-text-primary sm:h-11 sm:px-4 sm:text-sm"
                   >
                     查看词库
@@ -199,7 +187,6 @@ export function OfficialLibraryPanel({
               </div>
             )}
           </div>
-
         </motion.div>
       )}
 
@@ -214,12 +201,8 @@ export function OfficialLibraryPanel({
           <div className="flex flex-col items-center gap-6 text-center">
             <Loader2 className="h-10 w-10 animate-spin text-apple-blue" />
             <div>
-              <p className="text-xl font-black text-text-primary">
-                正在打开上次那一组…
-              </p>
-              <p className="mt-1 text-sm text-text-secondary">
-                会直接回到上次那一轮、那个词位。
-              </p>
+              <p className="text-xl font-black text-text-primary">正在打开上次那一组…</p>
+              <p className="mt-1 text-sm text-text-secondary">会直接回到上次那一轮、那个词位。</p>
             </div>
           </div>
         </motion.div>

@@ -35,19 +35,18 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
   };
 
   const graduatedCount = items.filter((item) => item.transition.graduated).length;
-  const upgradedCount = items.filter((item) => (
-    !item.transition.graduated
-    && getRank(item.transition.to) > getRank(item.transition.from)
-  )).length;
-  const downgradedCount = items.filter((item) => (
-    item.transition.from !== null
-    && !item.transition.graduated
-    && getRank(item.transition.to) < getRank(item.transition.from)
-  )).length;
-  const confirmedCount = items.filter((item) => (
-    item.transition.from !== null
-    && item.transition.from === item.transition.to
-  )).length;
+  const upgradedCount = items.filter(
+    (item) => !item.transition.graduated && getRank(item.transition.to) > getRank(item.transition.from),
+  ).length;
+  const downgradedCount = items.filter(
+    (item) =>
+      item.transition.from !== null &&
+      !item.transition.graduated &&
+      getRank(item.transition.to) < getRank(item.transition.from),
+  ).length;
+  const confirmedCount = items.filter(
+    (item) => item.transition.from !== null && item.transition.from === item.transition.to,
+  ).length;
 
   return (
     <motion.div
@@ -61,7 +60,8 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
             <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">状态更新</p>
             <h2 className="mt-2 text-3xl font-black">这一轮完成了</h2>
             <p className="mt-3 text-sm text-text-secondary">
-              一共过了 {items.length} 个词 · 升级 {upgradedCount} 个 · 稳定确认 {confirmedCount} 个 · 需要再复习 {downgradedCount} 个 · 掌握 {graduatedCount} 个
+              一共过了 {items.length} 个词 · 升级 {upgradedCount} 个 · 稳定确认 {confirmedCount} 个 · 需要再复习{' '}
+              {downgradedCount} 个 · 掌握 {graduatedCount} 个
             </p>
           </div>
           <div className="w-16 h-16 rounded-2xl bg-apple-green/10 text-apple-green flex items-center justify-center">
@@ -96,11 +96,13 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
                   {item.transition.from ? memoryStateLabel[item.transition.from] : '刚加入'}
                 </span>
                 <ArrowRight className="w-4 h-4 text-text-secondary" />
-                <span className={`rounded-full px-3 py-1 ${
-                  item.transition.graduated
-                    ? 'bg-apple-green/10 text-apple-green'
-                    : 'bg-apple-blue/10 text-apple-blue'
-                }`}>
+                <span
+                  className={`rounded-full px-3 py-1 ${
+                    item.transition.graduated
+                      ? 'bg-apple-green/10 text-apple-green'
+                      : 'bg-apple-blue/10 text-apple-blue'
+                  }`}
+                >
                   {memoryStateLabel[item.transition.to]}
                 </span>
               </div>

@@ -53,12 +53,15 @@ class Logger {
 
   error(message: string, error?: unknown, context?: LogContext) {
     if (this.shouldLog('error')) {
-      const errorDetail = error instanceof Error ? { 
-        error_name: error.name,
-        error_message: error.message,
-        stack: error.stack 
-      } : { error };
-      
+      const errorDetail =
+        error instanceof Error
+          ? {
+              error_name: error.name,
+              error_message: error.message,
+              stack: error.stack,
+            }
+          : { error };
+
       console.error(this.format('error', message, { ...errorDetail, ...context }));
     }
   }

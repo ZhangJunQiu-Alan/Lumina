@@ -73,7 +73,8 @@ const execFileAsync = promisify(execFile);
 const QUESTION_HEADING_RE = /(?:^|\n)\s*(?:\d{1,3})?\s*Questions?\s*(\d{1,2})(?:\s*(?:[-–—~]|and)\s*(\d{1,2}))?/gi;
 // Matches actual "READING PASSAGE 1/2/3" headings, not question instructions such as
 // "Reading Passage 2 has five paragraphs".
-const READING_PASSAGE_RE = /(?:^|\n)\s*READING\s+PASSAGE\s+(I{1,3}|[123])\s*(?:below\.?|on the following pages?\.?)?\s*(?:\n|$)/gi;
+const READING_PASSAGE_RE =
+  /(?:^|\n)\s*READING\s+PASSAGE\s+(I{1,3}|[123])\s*(?:below\.?|on the following pages?\.?)?\s*(?:\n|$)/gi;
 const WORD_RE = /[\p{Script=Latin}]+(?:[-'][\p{Script=Latin}]+)?/gu;
 
 async function pathExists(filePath: string): Promise<boolean> {
@@ -122,16 +123,18 @@ function parseArgs(argv: string[]): CliArgs {
 }
 
 function usage(): never {
-  console.error([
-    'Usage:',
-    '  npm run import:ielts-reading -- --pdf content/ielts-reading/raw/cambridge-18.pdf --book 18 --dry-run',
-    '  npm run import:ielts-reading -- --json output/ielts-reading/cambridge-18-reading.json --apply',
-    '',
-    'Notes:',
-    '  --dry-run writes a candidate JSON and validation report under output/ielts-reading.',
-    '  --apply refuses to write when validation has errors.',
-    '  --apply-passages-only updates book/test/passage metadata and passage bodies without rebuilding questions.',
-  ].join('\n'));
+  console.error(
+    [
+      'Usage:',
+      '  npm run import:ielts-reading -- --pdf content/ielts-reading/raw/cambridge-18.pdf --book 18 --dry-run',
+      '  npm run import:ielts-reading -- --json output/ielts-reading/cambridge-18-reading.json --apply',
+      '',
+      'Notes:',
+      '  --dry-run writes a candidate JSON and validation report under output/ielts-reading.',
+      '  --apply refuses to write when validation has errors.',
+      '  --apply-passages-only updates book/test/passage metadata and passage bodies without rebuilding questions.',
+    ].join('\n'),
+  );
   process.exit(1);
 }
 
@@ -162,13 +165,7 @@ async function extractPdfTextWithPdfplumber(pdfPath: string): Promise<string | n
 
 async function extractPdfTextWithPdftotext(pdfPath: string): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync('pdftotext', [
-      '-layout',
-      '-enc',
-      'UTF-8',
-      pdfPath,
-      '-',
-    ], {
+    const { stdout } = await execFileAsync('pdftotext', ['-layout', '-enc', 'UTF-8', pdfPath, '-'], {
       maxBuffer: 50 * 1024 * 1024,
     });
     const text = normalizePdfText(stdout);
@@ -233,14 +230,18 @@ async function extractPdfText(pdfPath: string, explicitBookNumber?: number): Pro
 function inferBookNumber(sourcePath: string, text: string, explicit?: number): number {
   if (explicit && Number.isFinite(explicit)) return explicit;
   const filename = path.basename(sourcePath);
-  const match = /(?:cambridge|ielts|剑桥)[^\d]{0,12}(\d{1,2})/i.exec(filename)
-    ?? /(?:cambridge|ielts|剑桥)[^\d]{0,12}(\d{1,2})/i.exec(text.slice(0, 5000));
+  const match =
+    /(?:cambridge|ielts|剑桥)[^\d]{0,12}(\d{1,2})/i.exec(filename) ??
+    /(?:cambridge|ielts|剑桥)[^\d]{0,12}(\d{1,2})/i.exec(text.slice(0, 5000));
   if (!match) throw new Error('无法从文件名或 PDF 文本推断 Cambridge IELTS 册号，请传 --book <number>。');
   return Number.parseInt(match[1], 10);
 }
 
 function lineClean(value: string): string {
-  return value.replace(/[\u0000-\u0008\u000b\u000e-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  return value
+    .replace(/[\u0000-\u0008\u000b\u000e-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function splitTests(text: string): Map<number, string> {
@@ -420,10 +421,7 @@ function buildRequiredAnswerVariants(parts: string[]): string[] {
   const cleaned = parts.map(cleanAnswerText).filter(Boolean);
   if (cleaned.length === 0) return [];
   if (cleaned.length === 1) return splitAnswerAlternatives(cleaned[0]);
-  return [
-    cleaned.join(' '),
-    [...cleaned].reverse().join(' '),
-  ];
+  return [cleaned.join(' '), [...cleaned].reverse().join(' ')];
 }
 
 interface PendingAnswerEntry {
@@ -437,7 +435,7 @@ function parseAnswerNumber(value: string): number | null {
   const normalized = value.trim().toUpperCase();
   if (normalized === 'IZ' || normalized === 'I2') return 12;
   if (normalized === 'IO' || normalized === 'I0') return 10;
-  if (normalized === 'I') return 1;  // digit 1 OCR'd as capital I by pdfplumber
+  if (normalized === 'I') return 1; // digit 1 OCR'd as capital I by pdfplumber
   const number = Number.parseInt(normalized, 10);
   return Number.isFinite(number) ? number : null;
 }
@@ -447,10 +445,9 @@ function buildAnswerNumbers(startValue: string, endValue?: string): number[] {
   const end = endValue ? parseAnswerNumber(endValue) : start;
   if (!start || !end) return [];
 
-  return Array.from(
-    { length: Math.max(1, end - start + 1) },
-    (_value, index) => start + index,
-  ).filter((number) => number >= 1 && number <= 40);
+  return Array.from({ length: Math.max(1, end - start + 1) }, (_value, index) => start + index).filter(
+    (number) => number >= 1 && number <= 40,
+  );
 }
 
 function parseAnswerColumn(lines: string[]): Map<number, string[]> {
@@ -461,11 +458,12 @@ function parseAnswerColumn(lines: string[]): Map<number, string[]> {
     if (!current) return;
 
     const joined = cleanAnswerText(current.parts.join(' '));
-    let answers = current.eitherOrder && current.parts.length > 1 && !current.bothRequired
-      ? current.parts.flatMap(splitAnswerAlternatives)
-      : current.bothRequired
-      ? buildRequiredAnswerVariants(current.parts)
-      : splitAnswerAlternatives(joined);
+    let answers =
+      current.eitherOrder && current.parts.length > 1 && !current.bothRequired
+        ? current.parts.flatMap(splitAnswerAlternatives)
+        : current.bothRequired
+          ? buildRequiredAnswerVariants(current.parts)
+          : splitAnswerAlternatives(joined);
     answers = answers.map(normalizeParsedAnswer).filter(Boolean);
 
     if (current.numbers.length > 1 && current.eitherOrder && answers.length > 0) {
@@ -571,7 +569,11 @@ function parseQuestionsRangeHeader(line: string): [number, number] | null {
   const pm = /\bReading\s+Passage\s+([123])[,.]?\s*$/i.exec(line);
   if (pm) {
     const p = Number.parseInt(pm[1], 10);
-    const ranges: [number, number][] = [[1, 13], [14, 26], [27, 40]];
+    const ranges: [number, number][] = [
+      [1, 13],
+      [14, 26],
+      [27, 40],
+    ];
     return ranges[p - 1] ?? null;
   }
 
@@ -580,7 +582,11 @@ function parseQuestionsRangeHeader(line: string): [number, number] | null {
 
 // Standard IELTS passage Q-ranges (P1→Q1-13, P2→Q14-26, P3→Q27-40).
 // Used to infer range when passage header lacks explicit question numbers.
-const IELTS_PASSAGE_RANGES: [number, number][] = [[1, 13], [14, 26], [27, 40]];
+const IELTS_PASSAGE_RANGES: [number, number][] = [
+  [1, 13],
+  [14, 26],
+  [27, 40],
+];
 
 // Parse answers listed positionally (no question-number prefix) following a Questions X-Y header.
 function parsePositionalAnswerColumn(lines: string[]): Map<number, string[]> {
@@ -588,11 +594,14 @@ function parsePositionalAnswerColumn(lines: string[]): Map<number, string[]> {
   let rangeStart: number | null = null;
   let rangeEnd: number | null = null;
   let next: number | null = null;
-  let passageRangeIndex = -1;   // tracks which standard passage range we're in
+  let passageRangeIndex = -1; // tracks which standard passage range we're in
 
   for (const rawLine of lines) {
     // Strip decorative &” separators used in some book layouts
-    const line = rawLine.replace(/&[“””]/g, '').replace(/\s+/g, ' ').trim();
+    const line = rawLine
+      .replace(/&[“””]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
     if (!line) continue;
 
     // Update range when a section header is found
@@ -600,9 +609,7 @@ function parsePositionalAnswerColumn(lines: string[]): Map<number, string[]> {
     if (range) {
       [rangeStart, rangeEnd] = range;
       next = rangeStart;
-      passageRangeIndex = IELTS_PASSAGE_RANGES.findIndex(
-        ([s, e]) => s === rangeStart && e === rangeEnd,
-      );
+      passageRangeIndex = IELTS_PASSAGE_RANGES.findIndex(([s, e]) => s === rangeStart && e === rangeEnd);
       continue;
     }
 
@@ -723,10 +730,12 @@ function inferQuestionType(chunk: string): IeltsReadingQuestionType {
   if (lower.includes('true') && lower.includes('false') && lower.includes('not given')) return 'true_false_not_given';
   if (lower.includes('yes') && lower.includes('no') && lower.includes('not given')) return 'yes_no_not_given';
   if (/choose\s+(two|three)/i.test(chunk)) return 'multiple_choice_multi';
-  if (/choose\s+the\s+correct\s+letter|choose\s+the\s+correct\s+answer|multiple\s+choice/i.test(chunk)) return 'multiple_choice_single';
+  if (/choose\s+the\s+correct\s+letter|choose\s+the\s+correct\s+answer|multiple\s+choice/i.test(chunk))
+    return 'multiple_choice_single';
   if (/list\s+of\s+headings|match\s+.*headings/i.test(chunk)) return 'matching_headings';
   if (/match\s+.*information|which\s+paragraph\s+contains/i.test(chunk)) return 'matching_information';
-  if (/match\s+.*features|list\s+of\s+(people|researchers|scientists|statements)/i.test(chunk)) return 'matching_features';
+  if (/match\s+.*features|list\s+of\s+(people|researchers|scientists|statements)/i.test(chunk))
+    return 'matching_features';
   if (/sentence\s+endings/i.test(chunk)) return 'matching_sentence_endings';
   if (/summary/i.test(chunk)) return 'summary_completion';
   if (/notes?/i.test(chunk)) return 'note_completion';
@@ -829,9 +838,10 @@ function parseQuestionGroups(questionChunk: string, answerMap: Map<number, strin
     const options = parseOptions(chunk);
     // When the heading had a trailing separator but no end number (e.g. "Questions 1~"),
     // infer the end from the next heading's start minus 1.
-    const inferredEnd = (heading as any).truncated && heading.end === heading.start
-      ? (matches[index + 1]?.start ?? heading.start + 1) - 1
-      : heading.end;
+    const inferredEnd =
+      (heading as any).truncated && heading.end === heading.start
+        ? (matches[index + 1]?.start ?? heading.start + 1) - 1
+        : heading.end;
     const prompts = parseQuestionPrompts(chunk, heading.start, inferredEnd);
     const questions: ImportedQuestion[] = [];
 
@@ -906,7 +916,8 @@ function titleLineWordCount(value: string): number {
 }
 
 // Lines ending with these function words are mid-sentence and cannot be titles.
-const MID_SENTENCE_END_RE = /\b(?:with|of|the|a|an|and|or|but|in|on|at|to|for|from|by|as|that|which|whose|whose|where|when|if|though|since|because|while|after|before|until|unless|whether|so|nor|than|its|our|your|my|his|her)\s*$/i;
+const MID_SENTENCE_END_RE =
+  /\b(?:with|of|the|a|an|and|or|but|in|on|at|to|for|from|by|as|that|which|whose|whose|where|when|if|though|since|because|while|after|before|until|unless|whether|so|nor|than|its|our|your|my|his|her)\s*$/i;
 
 function buildPassageText(passageNumber: number, passagePart: string) {
   const lines = passagePart.split('\n').map(lineClean).filter(cleanPassageLine);
@@ -917,10 +928,7 @@ function buildPassageText(passageNumber: number, passagePart: string) {
     };
   }
 
-  if (
-    MID_SENTENCE_END_RE.test(lines[0])
-    && (lines.length < 2 || titleLineWordCount(lines[1]) > 5)
-  ) {
+  if (MID_SENTENCE_END_RE.test(lines[0]) && (lines.length < 2 || titleLineWordCount(lines[1]) > 5)) {
     return {
       title: `Reading Passage ${passageNumber}`,
       body: normalizeIeltsPassageBody(lines.join('\n').trim()),
@@ -930,11 +938,11 @@ function buildPassageText(passageNumber: number, passagePart: string) {
   const titleLines = [lines[0]];
   let bodyStart = 1;
   while (
-    bodyStart < lines.length
-    && titleLines.length < 3
-    && titleLineWordCount(lines[bodyStart]) <= 5
-    && !/^Section\b/i.test(lines[bodyStart])
-    && !/[.!?]$/.test(titleLines[titleLines.length - 1])
+    bodyStart < lines.length &&
+    titleLines.length < 3 &&
+    titleLineWordCount(lines[bodyStart]) <= 5 &&
+    !/^Section\b/i.test(lines[bodyStart]) &&
+    !/[.!?]$/.test(titleLines[titleLines.length - 1])
   ) {
     titleLines.push(lines[bodyStart]);
     bodyStart += 1;
@@ -949,7 +957,7 @@ function buildPassageText(passageNumber: number, passagePart: string) {
 function parsePassage(passageNumber: number, chunk: string, answerMap: Map<number, string[]>): ImportedPassage {
   const questionStart = chunk.search(/(?:^|\n)\s*(?:\d{1,3})?\s*Questions?\s*\d{1,2}/i);
   let passagePart = questionStart >= 0 ? chunk.slice(0, questionStart) : chunk;
-  let questionPart = questionStart >= 0 ? chunk.slice(questionStart) : '';
+  const questionPart = questionStart >= 0 ? chunk.slice(questionStart) : '';
   let passageText = buildPassageText(passageNumber, passagePart);
 
   if (questionStart >= 0 && countWords(passageText.body) < 150) {
@@ -1061,20 +1069,13 @@ function applyKnownTitleRepairs(book: ImportedBook) {
 function findQuestionGroup(book: ImportedBook, testNumber: number, passageNumber: number, questionNumber: number) {
   const test = book.tests.find((candidate) => candidate.testNumber === testNumber);
   const passage = test?.passages.find((candidate) => candidate.passageNumber === passageNumber);
-  return passage?.groups.find((candidate) =>
-    candidate.questionRangeStart <= questionNumber && candidate.questionRangeEnd >= questionNumber,
+  return passage?.groups.find(
+    (candidate) => candidate.questionRangeStart <= questionNumber && candidate.questionRangeEnd >= questionNumber,
   );
 }
 
-function forcedAnswerRepairs(
-  testNumber: number,
-  answers: Record<number, string[]>,
-): [string, string[], boolean][] {
-  return Object.entries(answers).map(([questionNumber, answer]) => [
-    `${testNumber}:${questionNumber}`,
-    answer,
-    true,
-  ]);
+function forcedAnswerRepairs(testNumber: number, answers: Record<number, string[]>): [string, string[], boolean][] {
+  return Object.entries(answers).map(([questionNumber, answer]) => [`${testNumber}:${questionNumber}`, answer, true]);
 }
 
 function applyKnownQuestionRepairs(book: ImportedBook) {
@@ -1108,7 +1109,8 @@ function applyKnownQuestionRepairs(book: ImportedBook) {
   if (question14Group && question14) {
     question14Group.type = 'multiple_choice_single';
     question14Group.prompt = 'Question 14';
-    question14Group.instructions = 'Choose the correct letter, A, B, C, D or E. Write your answer in box 14 on your answer sheet.';
+    question14Group.instructions =
+      'Choose the correct letter, A, B, C, D or E. Write your answer in box 14 on your answer sheet.';
     question14Group.options = question14Options;
     question14.prompt = 'Which of the following is the most suitable title for Reading Passage 1?';
     question14.options = question14Options;
@@ -1577,7 +1579,8 @@ function validateBook(book: ImportedBook): ImportReport {
     test.passages.flatMap((passage) => passage.groups.flatMap((group) => group.questions)),
   );
   const answerCount = allQuestions.filter((question) => question.answer.length > 0).length;
-  const suspiciousAnswerRe = /\b(?:Answer key|LISTENING|GENERAL TRAINING|Model and sample tasks|IELTS|score under|examination conditions|scores acceptable|acceptable score)\b/i;
+  const suspiciousAnswerRe =
+    /\b(?:Answer key|LISTENING|GENERAL TRAINING|Model and sample tasks|IELTS|score under|examination conditions|scores acceptable|acceptable score)\b/i;
 
   if (!Number.isInteger(book.bookNumber) || book.bookNumber <= 0) {
     errors.push('册号无效。');
@@ -1597,7 +1600,9 @@ function validateBook(book: ImportedBook): ImportReport {
     if (numbers.length !== 40 || numbers.some((number, index) => number !== expected[index])) {
       errors.push(`Test ${test.testNumber} 题号必须连续 1-40，当前为 ${numbers.join(', ') || '空'}。`);
     }
-    const missingAnswers = questions.filter((question) => question.answer.length === 0).map((question) => question.questionNumber);
+    const missingAnswers = questions
+      .filter((question) => question.answer.length === 0)
+      .map((question) => question.questionNumber);
     if (missingAnswers.length > 0) {
       errors.push(`Test ${test.testNumber} 缺少答案：${missingAnswers.join(', ')}。`);
     }
@@ -1646,47 +1651,64 @@ async function applyBook(book: ImportedBook) {
 
   const { data: bookRow, error: bookError } = await supabaseAdmin
     .from('ielts_reading_books')
-    .upsert({
-      book_number: book.bookNumber,
-      title: book.title,
-      source_label: book.sourceLabel,
-    }, { onConflict: 'book_number' })
+    .upsert(
+      {
+        book_number: book.bookNumber,
+        title: book.title,
+        source_label: book.sourceLabel,
+      },
+      { onConflict: 'book_number' },
+    )
     .select('id')
     .single();
-  if (bookError || !bookRow) throw new Error(`ielts_reading_books upsert failed: ${bookError?.message ?? 'missing row'}`);
+  if (bookError || !bookRow)
+    throw new Error(`ielts_reading_books upsert failed: ${bookError?.message ?? 'missing row'}`);
 
   for (const test of book.tests) {
     const { data: testRow, error: testError } = await supabaseAdmin
       .from('ielts_reading_tests')
-      .upsert({
-        book_id: bookRow.id,
-        test_number: test.testNumber,
-        title: test.title,
-      }, { onConflict: 'book_id,test_number' })
+      .upsert(
+        {
+          book_id: bookRow.id,
+          test_number: test.testNumber,
+          title: test.title,
+        },
+        { onConflict: 'book_id,test_number' },
+      )
       .select('id')
       .single();
-    if (testError || !testRow) throw new Error(`ielts_reading_tests upsert failed [Test ${test.testNumber}]: ${testError?.message ?? 'missing row'}`);
+    if (testError || !testRow)
+      throw new Error(
+        `ielts_reading_tests upsert failed [Test ${test.testNumber}]: ${testError?.message ?? 'missing row'}`,
+      );
 
     for (const passage of test.passages) {
       const { data: passageRow, error: passageError } = await supabaseAdmin
         .from('ielts_reading_passages')
-        .upsert({
-          test_id: testRow.id,
-          passage_number: passage.passageNumber,
-          title: passage.title,
-          body: passage.body,
-          word_count: countWords(passage.body),
-          sort_order: passage.passageNumber,
-        }, { onConflict: 'test_id,passage_number' })
+        .upsert(
+          {
+            test_id: testRow.id,
+            passage_number: passage.passageNumber,
+            title: passage.title,
+            body: passage.body,
+            word_count: countWords(passage.body),
+            sort_order: passage.passageNumber,
+          },
+          { onConflict: 'test_id,passage_number' },
+        )
         .select('id')
         .single();
-      if (passageError || !passageRow) throw new Error(`ielts_reading_passages upsert failed [Test ${test.testNumber} Passage ${passage.passageNumber}]: ${passageError?.message ?? 'missing row'}`);
+      if (passageError || !passageRow)
+        throw new Error(
+          `ielts_reading_passages upsert failed [Test ${test.testNumber} Passage ${passage.passageNumber}]: ${passageError?.message ?? 'missing row'}`,
+        );
 
       const { error: deleteGroupsError } = await supabaseAdmin
         .from('ielts_reading_question_groups')
         .delete()
         .eq('passage_id', passageRow.id);
-      if (deleteGroupsError) throw new Error(`ielts_reading_question_groups cleanup failed: ${deleteGroupsError.message}`);
+      if (deleteGroupsError)
+        throw new Error(`ielts_reading_question_groups cleanup failed: ${deleteGroupsError.message}`);
 
       for (let groupIndex = 0; groupIndex < passage.groups.length; groupIndex += 1) {
         const group = passage.groups[groupIndex];
@@ -1704,7 +1726,8 @@ async function applyBook(book: ImportedBook) {
           })
           .select('id')
           .single();
-        if (groupError || !groupRow) throw new Error(`ielts_reading_question_groups insert failed: ${groupError?.message ?? 'missing row'}`);
+        if (groupError || !groupRow)
+          throw new Error(`ielts_reading_question_groups insert failed: ${groupError?.message ?? 'missing row'}`);
 
         const questionRows = group.questions.map((question, questionIndex) => ({
           test_id: testRow.id,
@@ -1717,9 +1740,7 @@ async function applyBook(book: ImportedBook) {
           sort_order: questionIndex + 1,
         }));
         if (questionRows.length > 0) {
-          const { error: questionsError } = await supabaseAdmin
-            .from('ielts_reading_questions')
-            .insert(questionRows);
+          const { error: questionsError } = await supabaseAdmin.from('ielts_reading_questions').insert(questionRows);
           if (questionsError) throw new Error(`ielts_reading_questions insert failed: ${questionsError.message}`);
         }
       }
@@ -1732,39 +1753,53 @@ async function applyBookPassagesOnly(book: ImportedBook) {
 
   const { data: bookRow, error: bookError } = await supabaseAdmin
     .from('ielts_reading_books')
-    .upsert({
-      book_number: book.bookNumber,
-      title: book.title,
-      source_label: book.sourceLabel,
-    }, { onConflict: 'book_number' })
+    .upsert(
+      {
+        book_number: book.bookNumber,
+        title: book.title,
+        source_label: book.sourceLabel,
+      },
+      { onConflict: 'book_number' },
+    )
     .select('id')
     .single();
-  if (bookError || !bookRow) throw new Error(`ielts_reading_books upsert failed: ${bookError?.message ?? 'missing row'}`);
+  if (bookError || !bookRow)
+    throw new Error(`ielts_reading_books upsert failed: ${bookError?.message ?? 'missing row'}`);
 
   for (const test of book.tests) {
     const { data: testRow, error: testError } = await supabaseAdmin
       .from('ielts_reading_tests')
-      .upsert({
-        book_id: bookRow.id,
-        test_number: test.testNumber,
-        title: test.title,
-      }, { onConflict: 'book_id,test_number' })
+      .upsert(
+        {
+          book_id: bookRow.id,
+          test_number: test.testNumber,
+          title: test.title,
+        },
+        { onConflict: 'book_id,test_number' },
+      )
       .select('id')
       .single();
-    if (testError || !testRow) throw new Error(`ielts_reading_tests upsert failed [Test ${test.testNumber}]: ${testError?.message ?? 'missing row'}`);
+    if (testError || !testRow)
+      throw new Error(
+        `ielts_reading_tests upsert failed [Test ${test.testNumber}]: ${testError?.message ?? 'missing row'}`,
+      );
 
     for (const passage of test.passages) {
-      const { error: passageError } = await supabaseAdmin
-        .from('ielts_reading_passages')
-        .upsert({
+      const { error: passageError } = await supabaseAdmin.from('ielts_reading_passages').upsert(
+        {
           test_id: testRow.id,
           passage_number: passage.passageNumber,
           title: passage.title,
           body: passage.body,
           word_count: countWords(passage.body),
           sort_order: passage.passageNumber,
-        }, { onConflict: 'test_id,passage_number' });
-      if (passageError) throw new Error(`ielts_reading_passages upsert failed [Test ${test.testNumber} Passage ${passage.passageNumber}]: ${passageError.message}`);
+        },
+        { onConflict: 'test_id,passage_number' },
+      );
+      if (passageError)
+        throw new Error(
+          `ielts_reading_passages upsert failed [Test ${test.testNumber} Passage ${passage.passageNumber}]: ${passageError.message}`,
+        );
     }
   }
 }
@@ -1774,14 +1809,16 @@ async function main() {
   if (!args.pdf && !args.json) usage();
 
   const book = args.json
-    ? JSON.parse(await readFile(args.json, 'utf8')) as ImportedBook
+    ? (JSON.parse(await readFile(args.json, 'utf8')) as ImportedBook)
     : await parsePdfBook(args.pdf!, args.book);
   normalizeBookPassageBodies(book);
   const report = validateBook(book);
   const output = await writeDryRunOutput(book, report, args.out);
 
   console.log(`IELTS reading import candidate: Cambridge ${report.summary.bookNumber}`);
-  console.log(`Tests: ${report.summary.testCount}, passages: ${report.summary.passageCount}, questions: ${report.summary.questionCount}, answers: ${report.summary.answerCount}`);
+  console.log(
+    `Tests: ${report.summary.testCount}, passages: ${report.summary.passageCount}, questions: ${report.summary.questionCount}, answers: ${report.summary.answerCount}`,
+  );
   console.log(`Candidate JSON: ${output.candidatePath}`);
   console.log(`Report JSON: ${output.reportPath}`);
 

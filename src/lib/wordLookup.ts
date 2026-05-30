@@ -127,7 +127,7 @@ export async function lookupWord(word: string): Promise<WordLookupResult | null>
         throw new Error(body.error ?? `HTTP ${response.status}`);
       }
 
-      const { data, missing } = await response.json() as {
+      const { data, missing } = (await response.json()) as {
         data: WordLookupResult | null;
         missing?: boolean;
       };
@@ -177,10 +177,7 @@ export function invalidateWord(word: string) {
   notifyListeners();
 }
 
-export function updateCachedLookup(
-  vocabularyItemId: string,
-  updater: (current: WordLookupResult) => WordLookupResult,
-) {
+export function updateCachedLookup(vocabularyItemId: string, updater: (current: WordLookupResult) => WordLookupResult) {
   let changed = false;
 
   for (const [key, cached] of memoryCache.entries()) {
@@ -212,9 +209,13 @@ export function useWordLookup(word: string | null) {
   const [error, setError] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
 
-  useEffect(() => subscribeWordLookup(() => {
-    setRefreshTick((current) => current + 1);
-  }), []);
+  useEffect(
+    () =>
+      subscribeWordLookup(() => {
+        setRefreshTick((current) => current + 1);
+      }),
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;

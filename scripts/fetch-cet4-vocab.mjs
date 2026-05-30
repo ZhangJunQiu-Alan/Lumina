@@ -16,10 +16,10 @@ async function fetchText(url) {
 function extractWords(rawText) {
   const words = [];
   const seen = new Set();
-  
+
   for (const line of rawText.split('\n')) {
     // Matches words followed by a space and phonetic bracket [ or a part of speech like art., n., vt.
-    const match = line.trim().match(/^([a-zA-Z\-]+)(?:\s+\[|\s+[a-zA-Z]+\.)/);
+    const match = line.trim().match(/^([a-zA-Z-]+)(?:\s+\[|\s+[a-zA-Z]+\.)/);
     if (match) {
       const word = match[1].toLowerCase();
       if (!seen.has(word)) {
@@ -28,7 +28,7 @@ function extractWords(rawText) {
       }
     }
   }
-  
+
   return words;
 }
 
@@ -58,9 +58,7 @@ async function main() {
   await mkdir(path.dirname(OUTPUT_FILE), { recursive: true });
   await writeFile(OUTPUT_FILE, renderTypeScript(words, APP_URL), 'utf8');
 
-  console.log(
-    `Wrote ${words.length} unique words to ${OUTPUT_FILE}`,
-  );
+  console.log(`Wrote ${words.length} unique words to ${OUTPUT_FILE}`);
   console.log(`First few samples: ${words.slice(0, 10).join(', ')}`);
 }
 

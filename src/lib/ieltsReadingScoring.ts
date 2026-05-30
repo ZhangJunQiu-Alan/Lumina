@@ -1,8 +1,6 @@
 import type { IeltsReadingQuestion, IeltsReadingQuestionType } from '../types';
 
-const MULTI_ANSWER_TYPES = new Set<IeltsReadingQuestionType>([
-  'multiple_choice_multi',
-]);
+const MULTI_ANSWER_TYPES = new Set<IeltsReadingQuestionType>(['multiple_choice_multi']);
 
 const DASH_RE = /[‐‑‒–—]/g;
 const QUOTE_RE = /[‘’]/g;
@@ -99,15 +97,19 @@ function matchesMultiAnswer(response: string[], correctAnswers: string[]): boole
 }
 
 function uniqueAnswers(values: string[]): string[] {
-  return values.reduce<string[]>((unique, value) => (
-    unique.some((existing) => valuesMatch(existing, value)) ? unique : [...unique, value]
-  ), []);
+  return values.reduce<string[]>(
+    (unique, value) => (unique.some((existing) => valuesMatch(existing, value)) ? unique : [...unique, value]),
+    [],
+  );
 }
 
 function sharedAlternativeGroupKey(question: IeltsReadingQuestion, correctAnswer: string[]): string | null {
   const uniqueCorrect = uniqueAnswers(correctAnswer);
   if (uniqueCorrect.length <= 1) return null;
-  return `${question.groupId}:${uniqueCorrect.map((value) => normalizeIeltsAnswerText(value)).sort().join('|')}`;
+  return `${question.groupId}:${uniqueCorrect
+    .map((value) => normalizeIeltsAnswerText(value))
+    .sort()
+    .join('|')}`;
 }
 
 export function isIeltsQuestionCorrect(
@@ -124,10 +126,7 @@ export function isIeltsQuestionCorrect(
   return matchesSingleAnswer(response, correctAnswers);
 }
 
-export function evaluateIeltsReadingAnswers(
-  questions: IeltsReadingQuestion[],
-  answers: IeltsReadingAnswerMap,
-) {
+export function evaluateIeltsReadingAnswers(questions: IeltsReadingQuestion[], answers: IeltsReadingAnswerMap) {
   const responses = questions.map((question) => {
     const response = normalizeIeltsAnswerValue(answers[question.number]);
     const correctAnswer = normalizeIeltsAnswerValue(question.answer);

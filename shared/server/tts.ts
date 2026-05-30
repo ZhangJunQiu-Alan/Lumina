@@ -24,24 +24,21 @@ export async function generateSpeechAudio(
 ): Promise<Uint8Array> {
   const voice = LOCALE_VOICE[locale];
 
-  const res = await fetch(
-    `https://texttospeech.googleapis.com/v1/text:synthesize?key=${GOOGLE_TTS_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        input: { text },
-        voice,
-        audioConfig: {
-          audioEncoding: 'MP3',
-          speakingRate: options.speakingRate ?? 0.85,
-          pitch: options.pitch ?? 0,
-        },
-      }),
-    },
-  );
+  const res = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${GOOGLE_TTS_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      input: { text },
+      voice,
+      audioConfig: {
+        audioEncoding: 'MP3',
+        speakingRate: options.speakingRate ?? 0.85,
+        pitch: options.pitch ?? 0,
+      },
+    }),
+  });
 
-  const json = await res.json() as { audioContent?: string; error?: { message: string } };
+  const json = (await res.json()) as { audioContent?: string; error?: { message: string } };
   if (!res.ok || !json.audioContent) {
     throw new Error(`Google TTS error: ${json.error?.message ?? res.statusText}`);
   }

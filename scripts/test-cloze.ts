@@ -116,7 +116,10 @@ function run() {
     assert.ok(prompt);
     assert.equal(prompt.expectedForm, 'abandoned');
     assert.equal(prompt.blankedSentence, `They ${CLOZE_BLANK} the ship at dawn.`);
-    assert.equal(normalizeExampleAudioText('They **abandoned**   the ship at dawn.'), 'They abandoned the ship at dawn.');
+    assert.equal(
+      normalizeExampleAudioText('They **abandoned**   the ship at dawn.'),
+      'They abandoned the ship at dawn.',
+    );
   }
 
   // All occurrences replaced
@@ -127,10 +130,7 @@ function run() {
     });
     assert.ok(prompt);
     assert.equal(prompt.expectedForm, 'run');
-    assert.equal(
-      prompt.blankedSentence,
-      `${CLOZE_BLANK} fast or ${CLOZE_BLANK} slow, just ${CLOZE_BLANK}.`,
-    );
+    assert.equal(prompt.blankedSentence, `${CLOZE_BLANK} fast or ${CLOZE_BLANK} slow, just ${CLOZE_BLANK}.`);
   }
 
   // Case-insensitive match, expectedForm lowercased
@@ -172,10 +172,7 @@ function run() {
   {
     const prompt = buildClozePrompt({
       word: 'abandon',
-      senses: [
-        sense('', ''),
-        sense('They abandoned the idea.', '他们放弃了这个想法。'),
-      ],
+      senses: [sense('', ''), sense('They abandoned the idea.', '他们放弃了这个想法。')],
     });
     assert.ok(prompt);
     assert.equal(prompt.senseIndex, 1);
@@ -186,10 +183,7 @@ function run() {
   {
     const prompt = buildClozePrompt({
       word: 'abandon',
-      senses: [
-        sense('Nothing relevant here.', 'no match'),
-        sense('They abandoned the idea.', 'match'),
-      ],
+      senses: [sense('Nothing relevant here.', 'no match'), sense('They abandoned the idea.', 'match')],
     });
     assert.ok(prompt);
     assert.equal(prompt.senseIndex, 1);

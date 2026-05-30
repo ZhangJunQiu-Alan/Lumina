@@ -25,11 +25,7 @@ export const ArticleView = ({ sentences, words, onFinish }: ArticleViewProps) =>
   }, [sentences]);
 
   const allTranslated = sentences.length > 0 && revealedCount >= sentences.length;
-  const translateButtonLabel = allTranslated
-    ? '已全部翻译'
-    : revealedCount > 0
-        ? '翻译下一句'
-        : '逐句翻译';
+  const translateButtonLabel = allTranslated ? '已全部翻译' : revealedCount > 0 ? '翻译下一句' : '逐句翻译';
   const revealedProgressLabel = `${Math.min(revealedCount, sentences.length)} / ${sentences.length}`;
 
   const handleRevealNext = useCallback(() => {
@@ -69,11 +65,7 @@ export const ArticleView = ({ sentences, words, onFinish }: ArticleViewProps) =>
             {sentences.map((sentence, index) => (
               <div key={`${sentence.en}-${index}`} className="space-y-2">
                 <p>
-                  <ClickableText
-                    text={sentence.en}
-                    targetWords={targetWords}
-                    onWordClick={openPopover}
-                  />
+                  <ClickableText text={sentence.en} targetWords={targetWords} onWordClick={openPopover} />
                 </p>
                 {index < revealedCount && (
                   <motion.p
@@ -86,11 +78,7 @@ export const ArticleView = ({ sentences, words, onFinish }: ArticleViewProps) =>
                 )}
               </div>
             ))}
-            {sentences.length === 0 && (
-              <p className="text-text-secondary">
-                这篇短文暂时没有内容。
-              </p>
-            )}
+            {sentences.length === 0 && <p className="text-text-secondary">这篇短文暂时没有内容。</p>}
           </div>
         </div>
 

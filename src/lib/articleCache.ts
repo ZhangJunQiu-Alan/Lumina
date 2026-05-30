@@ -15,12 +15,12 @@ function normalizeWordIds(words: Word[]) {
 
 function isArticleSentence(value: unknown): value is ArticleSentence {
   return (
-    typeof value === 'object'
-    && value !== null
-    && typeof (value as ArticleSentence).en === 'string'
-    && typeof (value as ArticleSentence).zh === 'string'
-    && (value as ArticleSentence).en.trim().length > 0
-    && (value as ArticleSentence).zh.trim().length > 0
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as ArticleSentence).en === 'string' &&
+    typeof (value as ArticleSentence).zh === 'string' &&
+    (value as ArticleSentence).en.trim().length > 0 &&
+    (value as ArticleSentence).zh.trim().length > 0
   );
 }
 
@@ -33,11 +33,11 @@ function readArticleCache(): ArticleCacheEntry | null {
 
     const parsed = JSON.parse(raw) as Partial<ArticleCacheEntry>;
     if (
-      typeof parsed.groupId !== 'string'
-      || !Array.isArray(parsed.wordIds)
-      || !Array.isArray(parsed.sentences)
-      || typeof parsed.createdAt !== 'string'
-      || !parsed.sentences.every(isArticleSentence)
+      typeof parsed.groupId !== 'string' ||
+      !Array.isArray(parsed.wordIds) ||
+      !Array.isArray(parsed.sentences) ||
+      typeof parsed.createdAt !== 'string' ||
+      !parsed.sentences.every(isArticleSentence)
     ) {
       return null;
     }

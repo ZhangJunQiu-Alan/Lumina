@@ -2,14 +2,9 @@ import type { PronunciationLocale, Word } from '../types';
 import { fetchWordAudioUrl, primeWordAudioUrl } from './wordAudio';
 import { lookupWord } from './wordLookup';
 
-function getLookupAudioUrl(
-  result: Awaited<ReturnType<typeof lookupWord>>,
-  locale: PronunciationLocale,
-) {
+function getLookupAudioUrl(result: Awaited<ReturnType<typeof lookupWord>>, locale: PronunciationLocale) {
   if (!result) return null;
-  return locale === 'uk'
-    ? result.vocabulary_item.audio_uk_url
-    : result.vocabulary_item.audio_us_url;
+  return locale === 'uk' ? result.vocabulary_item.audio_uk_url : result.vocabulary_item.audio_us_url;
 }
 
 export function preloadWordPronunciation(word: Word, locale: PronunciationLocale) {
@@ -42,7 +37,5 @@ async function preloadClickableWordResource(word: string, locale: PronunciationL
 export async function preloadClickableWordResources(words: string[], locale: PronunciationLocale) {
   if (words.length === 0) return;
 
-  await Promise.allSettled(
-    words.map((word) => preloadClickableWordResource(word, locale)),
-  );
+  await Promise.allSettled(words.map((word) => preloadClickableWordResource(word, locale)));
 }

@@ -18,14 +18,9 @@ if (jsFiles.length === 0) {
   process.exit(1);
 }
 
-const bundleText = jsFiles
-  .map((file) => fs.readFileSync(file, 'utf8'))
-  .join('\n');
+const bundleText = jsFiles.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
 
-const requiredMarkers = [
-  '/api/home/overview',
-  '/functions/v1/api',
-];
+const requiredMarkers = ['/api/home/overview', '/functions/v1/api'];
 
 const missingMarkers = requiredMarkers.filter((marker) => !bundleText.includes(marker));
 

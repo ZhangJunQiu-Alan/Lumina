@@ -1,11 +1,4 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type PropsWithChildren,
-} from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { isGoogleAuthEnabled } from '../lib/authFeatures';
@@ -43,9 +36,9 @@ function hasPasswordRecoveryMarker() {
   if (typeof window === 'undefined') return false;
 
   const searchParams = new URLSearchParams(window.location.search);
-  const hashParams = new URLSearchParams(window.location.hash.startsWith('#')
-    ? window.location.hash.slice(1)
-    : window.location.hash);
+  const hashParams = new URLSearchParams(
+    window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash,
+  );
   return searchParams.get('type') === 'recovery' || hashParams.get('type') === 'recovery';
 }
 
@@ -89,72 +82,75 @@ export function AuthProvider({ children }: PropsWithChildren) {
     };
   }, []);
 
-  const value = useMemo<AuthContextValue>(() => ({
-    session,
-    user,
-    isAuthenticated: Boolean(session?.user),
-    isAuthLoading,
-    isPasswordRecovery,
-    async signInWithGoogle(nextPath) {
-      if (!isGoogleAuthEnabled) {
-        throw new Error('Google 登录暂未配置，请先使用邮箱登录。');
-      }
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      session,
+      user,
+      isAuthenticated: Boolean(session?.user),
+      isAuthLoading,
+      isPasswordRecovery,
+      async signInWithGoogle(nextPath) {
+        if (!isGoogleAuthEnabled) {
+          throw new Error('Google 登录暂未配置，请先使用邮箱登录。');
+        }
 
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: buildAuthRedirect(nextPath),
-          scopes: 'openid email profile https://www.googleapis.com/auth/userinfo.email',
-        },
-      });
-
-      if (error) throw error;
-    },
-    async signInWithPassword(email, password) {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-    },
-    async signUpWithPassword({ fullName, email, password }) {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: buildAuthRedirect('/app/home'),
-          data: {
-            full_name: fullName,
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: buildAuthRedirect(nextPath),
+            scopes: 'openid email profile https://www.googleapis.com/auth/userinfo.email',
           },
-        },
-      });
+        });
 
-      if (error) throw error;
-      return { requiresEmailConfirmation: !data.session };
-    },
-    async requestPasswordReset(email, nextPath) {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: buildAuthRedirect(nextPath),
-      });
-      if (error) throw error;
-    },
-    async updatePassword(password) {
-      const { error } = await supabase.auth.updateUser({ password });
-      if (error) throw error;
-      setIsPasswordRecovery(false);
-    },
-    async resendSignupConfirmation(email, nextPath) {
-      const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email,
-        options: {
-          emailRedirectTo: buildAuthRedirect(nextPath ?? '/app/home'),
-        },
-      });
-      if (error) throw error;
-    },
-    async signOut() {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-    },
-  }), [isAuthLoading, isPasswordRecovery, session, user]);
+        if (error) throw error;
+      },
+      async signInWithPassword(email, password) {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      },
+      async signUpWithPassword({ fullName, email, password }) {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: buildAuthRedirect('/app/home'),
+            data: {
+              full_name: fullName,
+            },
+          },
+        });
+
+        if (error) throw error;
+        return { requiresEmailConfirmation: !data.session };
+      },
+      async requestPasswordReset(email, nextPath) {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: buildAuthRedirect(nextPath),
+        });
+        if (error) throw error;
+      },
+      async updatePassword(password) {
+        const { error } = await supabase.auth.updateUser({ password });
+        if (error) throw error;
+        setIsPasswordRecovery(false);
+      },
+      async resendSignupConfirmation(email, nextPath) {
+        const { error } = await supabase.auth.resend({
+          type: 'signup',
+          email,
+          options: {
+            emailRedirectTo: buildAuthRedirect(nextPath ?? '/app/home'),
+          },
+        });
+        if (error) throw error;
+      },
+      async signOut() {
+        const { error } = await supabase.auth.signOut();
+        if (error) throw error;
+      },
+    }),
+    [isAuthLoading, isPasswordRecovery, session, user],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

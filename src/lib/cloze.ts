@@ -33,34 +33,112 @@ const LABEL = {
 
 const IRREGULARS: Record<string, InflectedForm[]> = {
   run: [{ form: 'ran', label: LABEL.pastOnly }],
-  go: [{ form: 'went', label: LABEL.pastOnly }, { form: 'gone', label: LABEL.pastParticiple }],
-  see: [{ form: 'saw', label: LABEL.pastOnly }, { form: 'seen', label: LABEL.pastParticiple }],
-  take: [{ form: 'took', label: LABEL.pastOnly }, { form: 'taken', label: LABEL.pastParticiple }],
-  give: [{ form: 'gave', label: LABEL.pastOnly }, { form: 'given', label: LABEL.pastParticiple }],
+  go: [
+    { form: 'went', label: LABEL.pastOnly },
+    { form: 'gone', label: LABEL.pastParticiple },
+  ],
+  see: [
+    { form: 'saw', label: LABEL.pastOnly },
+    { form: 'seen', label: LABEL.pastParticiple },
+  ],
+  take: [
+    { form: 'took', label: LABEL.pastOnly },
+    { form: 'taken', label: LABEL.pastParticiple },
+  ],
+  give: [
+    { form: 'gave', label: LABEL.pastOnly },
+    { form: 'given', label: LABEL.pastParticiple },
+  ],
   come: [{ form: 'came', label: LABEL.pastOnly }],
   become: [{ form: 'became', label: LABEL.pastOnly }],
-  know: [{ form: 'knew', label: LABEL.pastOnly }, { form: 'known', label: LABEL.pastParticiple }],
-  grow: [{ form: 'grew', label: LABEL.pastOnly }, { form: 'grown', label: LABEL.pastParticiple }],
-  throw: [{ form: 'threw', label: LABEL.pastOnly }, { form: 'thrown', label: LABEL.pastParticiple }],
-  draw: [{ form: 'drew', label: LABEL.pastOnly }, { form: 'drawn', label: LABEL.pastParticiple }],
-  write: [{ form: 'wrote', label: LABEL.pastOnly }, { form: 'written', label: LABEL.pastParticiple }],
-  drive: [{ form: 'drove', label: LABEL.pastOnly }, { form: 'driven', label: LABEL.pastParticiple }],
-  rise: [{ form: 'rose', label: LABEL.pastOnly }, { form: 'risen', label: LABEL.pastParticiple }],
-  ride: [{ form: 'rode', label: LABEL.pastOnly }, { form: 'ridden', label: LABEL.pastParticiple }],
-  break: [{ form: 'broke', label: LABEL.pastOnly }, { form: 'broken', label: LABEL.pastParticiple }],
-  choose: [{ form: 'chose', label: LABEL.pastOnly }, { form: 'chosen', label: LABEL.pastParticiple }],
-  speak: [{ form: 'spoke', label: LABEL.pastOnly }, { form: 'spoken', label: LABEL.pastParticiple }],
-  wake: [{ form: 'woke', label: LABEL.pastOnly }, { form: 'woken', label: LABEL.pastParticiple }],
-  steal: [{ form: 'stole', label: LABEL.pastOnly }, { form: 'stolen', label: LABEL.pastParticiple }],
-  eat: [{ form: 'ate', label: LABEL.pastOnly }, { form: 'eaten', label: LABEL.pastParticiple }],
-  fall: [{ form: 'fell', label: LABEL.pastOnly }, { form: 'fallen', label: LABEL.pastParticiple }],
-  forget: [{ form: 'forgot', label: LABEL.pastOnly }, { form: 'forgotten', label: LABEL.pastParticiple }],
-  get: [{ form: 'got', label: LABEL.pastOnly }, { form: 'gotten', label: LABEL.pastParticiple }],
-  begin: [{ form: 'began', label: LABEL.pastOnly }, { form: 'begun', label: LABEL.pastParticiple }],
-  swim: [{ form: 'swam', label: LABEL.pastOnly }, { form: 'swum', label: LABEL.pastParticiple }],
-  sing: [{ form: 'sang', label: LABEL.pastOnly }, { form: 'sung', label: LABEL.pastParticiple }],
-  ring: [{ form: 'rang', label: LABEL.pastOnly }, { form: 'rung', label: LABEL.pastParticiple }],
-  drink: [{ form: 'drank', label: LABEL.pastOnly }, { form: 'drunk', label: LABEL.pastParticiple }],
+  know: [
+    { form: 'knew', label: LABEL.pastOnly },
+    { form: 'known', label: LABEL.pastParticiple },
+  ],
+  grow: [
+    { form: 'grew', label: LABEL.pastOnly },
+    { form: 'grown', label: LABEL.pastParticiple },
+  ],
+  throw: [
+    { form: 'threw', label: LABEL.pastOnly },
+    { form: 'thrown', label: LABEL.pastParticiple },
+  ],
+  draw: [
+    { form: 'drew', label: LABEL.pastOnly },
+    { form: 'drawn', label: LABEL.pastParticiple },
+  ],
+  write: [
+    { form: 'wrote', label: LABEL.pastOnly },
+    { form: 'written', label: LABEL.pastParticiple },
+  ],
+  drive: [
+    { form: 'drove', label: LABEL.pastOnly },
+    { form: 'driven', label: LABEL.pastParticiple },
+  ],
+  rise: [
+    { form: 'rose', label: LABEL.pastOnly },
+    { form: 'risen', label: LABEL.pastParticiple },
+  ],
+  ride: [
+    { form: 'rode', label: LABEL.pastOnly },
+    { form: 'ridden', label: LABEL.pastParticiple },
+  ],
+  break: [
+    { form: 'broke', label: LABEL.pastOnly },
+    { form: 'broken', label: LABEL.pastParticiple },
+  ],
+  choose: [
+    { form: 'chose', label: LABEL.pastOnly },
+    { form: 'chosen', label: LABEL.pastParticiple },
+  ],
+  speak: [
+    { form: 'spoke', label: LABEL.pastOnly },
+    { form: 'spoken', label: LABEL.pastParticiple },
+  ],
+  wake: [
+    { form: 'woke', label: LABEL.pastOnly },
+    { form: 'woken', label: LABEL.pastParticiple },
+  ],
+  steal: [
+    { form: 'stole', label: LABEL.pastOnly },
+    { form: 'stolen', label: LABEL.pastParticiple },
+  ],
+  eat: [
+    { form: 'ate', label: LABEL.pastOnly },
+    { form: 'eaten', label: LABEL.pastParticiple },
+  ],
+  fall: [
+    { form: 'fell', label: LABEL.pastOnly },
+    { form: 'fallen', label: LABEL.pastParticiple },
+  ],
+  forget: [
+    { form: 'forgot', label: LABEL.pastOnly },
+    { form: 'forgotten', label: LABEL.pastParticiple },
+  ],
+  get: [
+    { form: 'got', label: LABEL.pastOnly },
+    { form: 'gotten', label: LABEL.pastParticiple },
+  ],
+  begin: [
+    { form: 'began', label: LABEL.pastOnly },
+    { form: 'begun', label: LABEL.pastParticiple },
+  ],
+  swim: [
+    { form: 'swam', label: LABEL.pastOnly },
+    { form: 'swum', label: LABEL.pastParticiple },
+  ],
+  sing: [
+    { form: 'sang', label: LABEL.pastOnly },
+    { form: 'sung', label: LABEL.pastParticiple },
+  ],
+  ring: [
+    { form: 'rang', label: LABEL.pastOnly },
+    { form: 'rung', label: LABEL.pastParticiple },
+  ],
+  drink: [
+    { form: 'drank', label: LABEL.pastOnly },
+    { form: 'drunk', label: LABEL.pastParticiple },
+  ],
   bring: [{ form: 'brought', label: LABEL.past }],
   think: [{ form: 'thought', label: LABEL.past }],
   buy: [{ form: 'bought', label: LABEL.past }],
@@ -87,7 +165,10 @@ const IRREGULARS: Record<string, InflectedForm[]> = {
   lead: [{ form: 'led', label: LABEL.past }],
   read: [{ form: 'read', label: LABEL.past }],
   make: [{ form: 'made', label: LABEL.past }],
-  have: [{ form: 'had', label: LABEL.past }, { form: 'has', label: LABEL.thirdPerson }],
+  have: [
+    { form: 'had', label: LABEL.past },
+    { form: 'has', label: LABEL.thirdPerson },
+  ],
   do: [
     { form: 'did', label: LABEL.pastOnly },
     { form: 'done', label: LABEL.pastParticiple },
@@ -121,10 +202,7 @@ function isConsonantDoubleable(base: string): boolean {
   const last = base[base.length - 1];
   const mid = base[base.length - 2];
   const first = base[base.length - 3];
-  return !isVowel(last)
-    && isVowel(mid)
-    && !isVowel(first)
-    && last !== 'w' && last !== 'x' && last !== 'y';
+  return !isVowel(last) && isVowel(mid) && !isVowel(first) && last !== 'w' && last !== 'x' && last !== 'y';
 }
 
 function escapeRegex(s: string): string {
@@ -196,8 +274,11 @@ function findFirstMatch(
     const match = regex.exec(sentence);
     if (!match) continue;
     const hit = { form: candidate, index: match.index, matchedText: match[0], wholeWord: true };
-    if (!best || hit.index < best.index
-      || (hit.index === best.index && hit.matchedText.length > best.matchedText.length)) {
+    if (
+      !best ||
+      hit.index < best.index ||
+      (hit.index === best.index && hit.matchedText.length > best.matchedText.length)
+    ) {
       best = hit;
     }
   }
@@ -214,8 +295,11 @@ function findFirstMatch(
     if (offset < 0) continue;
     const matchedText = matchedWord.slice(offset, offset + candidate.form.length);
     const hit = { form: candidate, index: match.index + offset, matchedText, wholeWord: false };
-    if (!best || hit.index < best.index
-      || (hit.index === best.index && hit.matchedText.length > best.matchedText.length)) {
+    if (
+      !best ||
+      hit.index < best.index ||
+      (hit.index === best.index && hit.matchedText.length > best.matchedText.length)
+    ) {
       best = hit;
     }
   }

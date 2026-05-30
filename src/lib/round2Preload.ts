@@ -8,9 +8,7 @@ import { preloadClickableWordResources, preloadWordPronunciation } from './wordR
 export async function preloadRound2CardResources(word: Word, locale: PronunciationLocale) {
   const prompt = buildClozePrompt({ word: word.word, senses: word.senses });
   const clickableWords = prompt ? extractRound2ClickableWords(prompt) : [];
-  const fullSentence = prompt
-    ? normalizeExampleAudioText(word.senses[prompt.senseIndex]?.example_sentence ?? '')
-    : '';
+  const fullSentence = prompt ? normalizeExampleAudioText(word.senses[prompt.senseIndex]?.example_sentence ?? '') : '';
 
   await Promise.allSettled([
     preloadWordPronunciation(word, locale),

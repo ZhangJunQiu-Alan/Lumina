@@ -75,12 +75,7 @@ function DrawerHeader({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        <IslandIconButton
-          type="button"
-          onClick={onClose}
-          className="h-10 w-10 shrink-0"
-          aria-label="关闭学习节奏设置"
-        >
+        <IslandIconButton type="button" onClick={onClose} className="h-10 w-10 shrink-0" aria-label="关闭学习节奏设置">
           <X className="h-5 w-5" />
         </IslandIconButton>
       </div>

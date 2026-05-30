@@ -83,10 +83,7 @@ export interface DeleteLibraryGroupResponse {
   removedReviewStateCount: number;
 }
 
-export async function deleteLibraryGroup(
-  userId: string,
-  groupId: string,
-): Promise<DeleteLibraryGroupResponse> {
+export async function deleteLibraryGroup(userId: string, groupId: string): Promise<DeleteLibraryGroupResponse> {
   const { data: group, error: groupError } = await supabase
     .from('learning_groups')
     .select('id, source_type, library_id, group_name')
@@ -222,16 +219,15 @@ export async function fetchActiveLearningGroupWordIds(
     throw new Error(groupWordsError.message);
   }
 
-  return new Set(
-    ((groupWords ?? []) as GroupWordRow[]).map((row) => row.vocabulary_item_id).filter(Boolean),
-  );
+  return new Set(((groupWords ?? []) as GroupWordRow[]).map((row) => row.vocabulary_item_id).filter(Boolean));
 }
 
 export async function fetchSavedWords(userId: string): Promise<SavedWordEntry[]> {
   const [savedResult, activeWordIds] = await Promise.all([
     supabase
       .from('user_saved_words')
-      .select(`
+      .select(
+        `
         id,
         vocabulary_item_id,
         source,
@@ -246,7 +242,8 @@ export async function fetchSavedWords(userId: string): Promise<SavedWordEntry[]>
             example_sentence
           )
         )
-      `)
+      `,
+      )
       .eq('user_id', userId)
       .order('saved_at', { ascending: true }),
     fetchActiveLearningGroupWordIds(userId, { sourceType: 'custom' }),
@@ -274,9 +271,7 @@ export async function fetchSavedWords(userId: string): Promise<SavedWordEntry[]>
     reviewStates = (data ?? []) as SavedWordReviewStateRow[];
   }
 
-  const reviewStateByWordId = new Map(
-    reviewStates.map((row) => [row.vocabulary_item_id, row]),
-  );
+  const reviewStateByWordId = new Map(reviewStates.map((row) => [row.vocabulary_item_id, row]));
 
   return savedRows
     .map((row) => {
@@ -290,9 +285,9 @@ export async function fetchSavedWords(userId: string): Promise<SavedWordEntry[]>
         word: vocabularyItem.word,
         phonetic: vocabularyItem.ipa_uk ?? '',
         meaning: vocabularyItem.primary_meaning_zh ?? '',
-        exampleSentence: (vocabularyItem.vocabulary_senses ?? [])
-          .map((sense) => sense.example_sentence?.trim() ?? '')
-          .find(Boolean) ?? '',
+        exampleSentence:
+          (vocabularyItem.vocabulary_senses ?? []).map((sense) => sense.example_sentence?.trim() ?? '').find(Boolean) ??
+          '',
         enrichmentLevel: vocabularyItem.enrichment_level ?? 'full',
         source: row.source ?? 'manual',
         savedAt: row.saved_at ?? new Date(0).toISOString(),
@@ -305,9 +300,7 @@ export async function fetchSavedWords(userId: string): Promise<SavedWordEntry[]>
     .filter((entry): entry is SavedWordEntry => Boolean(entry));
 }
 
-export async function migrateCustomGroupWordsIntoSavedWords(
-  userId: string,
-): Promise<{ inserted: number }> {
+export async function migrateCustomGroupWordsIntoSavedWords(userId: string): Promise<{ inserted: number }> {
   const { data: customGroups, error: groupsError } = await supabase
     .from('learning_groups')
     .select('id')
@@ -426,10 +419,7 @@ export function buildEmptyOfficialCompletionCounts(): OfficialLibraryCompletionC
   ) as OfficialLibraryCompletionCounts;
 }
 
-export async function fetchOfficialLearnedWords(
-  userId: string,
-  libraryId: OfficialLibraryId,
-): Promise<Set<string>> {
+export async function fetchOfficialLearnedWords(userId: string, libraryId: OfficialLibraryId): Promise<Set<string>> {
   const officialWordSet = new Set(
     getOfficialLibraryDefinition(libraryId).words.map((word) => word.trim().toLowerCase()),
   );
@@ -511,17 +501,15 @@ export async function fetchOfficialCompletionCounts(userId: string): Promise<Off
   }
 
   return Object.fromEntries(
-    OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [
-      definition.id,
-      completedWordsByLibrary[definition.id].size,
-    ]),
+    OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [definition.id, completedWordsByLibrary[definition.id].size]),
   ) as OfficialLibraryCompletionCounts;
 }
 
 export async function fetchDifficultWords(userId: string) {
   const { data, error } = await supabase
     .from('review_states')
-    .select(`
+    .select(
+      `
       memory_state,
       next_review_at,
       last_result,
@@ -560,7 +548,8 @@ export async function fetchDifficultWords(userId: string) {
           sort_order
         )
       )
-    `)
+    `,
+    )
     .eq('user_id', userId)
     .in('memory_state', ['fuzzy', 'slow_recall'])
     .order('next_review_at', { ascending: true });

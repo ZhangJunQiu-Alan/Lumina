@@ -78,11 +78,14 @@ const expected = new Map<number, ExpectedQuestion>([
   [37, { answer: ['deep'], type: 'summary_completion' }],
   [38, { answer: ['blind'], type: 'summary_completion' }],
   [39, { answer: ['similar'], type: 'summary_completion' }],
-  [40, {
-    answer: ['B'],
-    type: 'multiple_choice_single',
-    prompt: "Which of the following statements best summarises the writer's general conclusion?",
-  }],
+  [
+    40,
+    {
+      answer: ['B'],
+      type: 'multiple_choice_single',
+      prompt: "Which of the following statements best summarises the writer's general conclusion?",
+    },
+  ],
 ]);
 
 function assertFound<T>(value: T | null | undefined, label: string): T {
@@ -143,13 +146,18 @@ async function repairQuestions(testId: string) {
   console.log(`question rows needing repair: ${mismatches.length}`);
   for (const question of mismatches) {
     const entry = expected.get(question.question_number);
-    console.log(`Q${question.question_number}: ${JSON.stringify(question.answer_json ?? [])} -> ${JSON.stringify(entry?.answer ?? [])}; note=${JSON.stringify(question.answer_note)}`);
+    console.log(
+      `Q${question.question_number}: ${JSON.stringify(question.answer_json ?? [])} -> ${JSON.stringify(entry?.answer ?? [])}; note=${JSON.stringify(question.answer_note)}`,
+    );
   }
 
   if (!shouldApply) return questions;
 
   for (const question of questions) {
-    const entry = assertFound(expected.get(question.question_number), `official answer for Q${question.question_number}`);
+    const entry = assertFound(
+      expected.get(question.question_number),
+      `official answer for Q${question.question_number}`,
+    );
     await updateRow(
       `ielts_reading_questions Q${question.question_number} update failed`,
       supabaseAdmin
@@ -163,7 +171,10 @@ async function repairQuestions(testId: string) {
     );
   }
 
-  const q40 = assertFound(questions.find((question) => question.question_number === 40), 'Q40');
+  const q40 = assertFound(
+    questions.find((question) => question.question_number === 40),
+    'Q40',
+  );
   await updateRow(
     'ielts_reading_question_groups Q40 update failed',
     supabaseAdmin
@@ -183,10 +194,7 @@ async function repairQuestions(testId: string) {
 }
 
 async function repairStoredResponses(testId: string) {
-  const attemptsResult = await supabaseAdmin
-    .from('ielts_reading_attempts')
-    .select('id, score')
-    .eq('test_id', testId);
+  const attemptsResult = await supabaseAdmin.from('ielts_reading_attempts').select('id, score').eq('test_id', testId);
   assertNoError(attemptsResult.error, 'ielts_reading_attempts lookup failed');
   const attempts = attemptsResult.data ?? [];
   if (attempts.length === 0) {
@@ -205,7 +213,10 @@ async function repairStoredResponses(testId: string) {
   const scores = new Map(attemptIds.map((id) => [id, 0]));
 
   for (const response of responses) {
-    const entry = assertFound(expected.get(response.question_number), `official response answer for Q${response.question_number}`);
+    const entry = assertFound(
+      expected.get(response.question_number),
+      `official response answer for Q${response.question_number}`,
+    );
     const expectedStoredAnswer = normalizeIeltsAnswerValue(entry.answer);
     const isCorrect = isIeltsQuestionCorrect(
       {
@@ -241,10 +252,7 @@ async function repairStoredResponses(testId: string) {
     if (shouldApply) {
       await updateRow(
         `ielts_reading_attempts ${attempt.id} score update failed`,
-        supabaseAdmin
-          .from('ielts_reading_attempts')
-          .update({ score })
-          .eq('id', attempt.id),
+        supabaseAdmin.from('ielts_reading_attempts').update({ score }).eq('id', attempt.id),
       );
     }
   }

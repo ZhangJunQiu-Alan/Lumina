@@ -175,10 +175,7 @@ function matchOfficialGroupRange(definition: OfficialLibraryDefinition, groupNam
 }
 
 function isGroupOwnedByLibrary(definition: OfficialLibraryDefinition, groupName: string | null | undefined) {
-  return (
-    matchOfficialGroupRange(definition, groupName) !== null
-    || definition.counterPattern.test(groupName ?? '')
-  );
+  return matchOfficialGroupRange(definition, groupName) !== null || definition.counterPattern.test(groupName ?? '');
 }
 
 export function isOfficialLibraryId(value: string | null | undefined): value is OfficialLibraryId {
@@ -220,10 +217,7 @@ export function isOfficialGroupName(groupName: string | null | undefined): boole
   return OFFICIAL_LIBRARY_DEFINITIONS.some((definition) => isGroupOwnedByLibrary(definition, groupName));
 }
 
-export function parseOfficialGroupRange(
-  libraryId: OfficialLibraryId,
-  groupName: string | null | undefined,
-) {
+export function parseOfficialGroupRange(libraryId: OfficialLibraryId, groupName: string | null | undefined) {
   const match = matchOfficialGroupRange(getOfficialLibraryDefinition(libraryId), groupName);
   if (!match) return null;
 
@@ -249,11 +243,7 @@ export function resolveLibraryGroupSourceType(
   return 'custom';
 }
 
-export function formatOfficialGroupName(
-  libraryId: OfficialLibraryId,
-  progress: number,
-  batchLength: number,
-): string {
+export function formatOfficialGroupName(libraryId: OfficialLibraryId, progress: number, batchLength: number): string {
   const definition = getOfficialLibraryDefinition(libraryId);
   const start = String(progress + 1).padStart(4, '0');
   const end = String(progress + batchLength).padStart(4, '0');
@@ -290,9 +280,9 @@ export function deriveOfficialProgress(
 ) {
   return groups.reduce((maxProgress, group) => {
     if (
-      group.sourceType !== 'system'
-      || group.libraryId !== libraryId
-      || !isCoreLearningComplete({
+      group.sourceType !== 'system' ||
+      group.libraryId !== libraryId ||
+      !isCoreLearningComplete({
         status: group.status,
         completedAt: group.completedAt,
         sessionRound: group.sessionRound,
@@ -310,15 +300,18 @@ export function deriveOfficialProgress(
 
 export function countUnlockedOfficialWords(
   libraryId: OfficialLibraryId,
-  groups: Pick<LibraryGroupSummary, 'sourceType' | 'wordCount' | 'libraryId' | 'status' | 'completedAt' | 'sessionRound'>[],
+  groups: Pick<
+    LibraryGroupSummary,
+    'sourceType' | 'wordCount' | 'libraryId' | 'status' | 'completedAt' | 'sessionRound'
+  >[],
 ) {
   return clampProgress(
     libraryId,
     groups.reduce((count, group) => {
       if (
-        group.sourceType !== 'system'
-        || group.libraryId !== libraryId
-        || !isCoreLearningComplete({
+        group.sourceType !== 'system' ||
+        group.libraryId !== libraryId ||
+        !isCoreLearningComplete({
           status: group.status,
           completedAt: group.completedAt,
           sessionRound: group.sessionRound,
@@ -357,29 +350,27 @@ export function getOfficialNextBatch(
   progress: number,
 ): { words: string[]; groupName: string } | null {
   const definition = getOfficialLibraryDefinition(libraryId);
-  const remaining = definition.words.filter(
-    (word) => !learnedLowercase.has(word.trim().toLowerCase()),
-  );
+  const remaining = definition.words.filter((word) => !learnedLowercase.has(word.trim().toLowerCase()));
 
   if (remaining.length === 0) return null;
 
-  const picked = mode === 'sequential'
-    ? remaining.slice(0, definition.batchSize)
-    : (() => {
-        const pool = [...remaining];
-        for (let i = pool.length - 1; i > 0; i -= 1) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [pool[i], pool[j]] = [pool[j], pool[i]];
-        }
-        return pool.slice(0, definition.batchSize);
-      })();
+  const picked =
+    mode === 'sequential'
+      ? remaining.slice(0, definition.batchSize)
+      : (() => {
+          const pool = [...remaining];
+          for (let i = pool.length - 1; i > 0; i -= 1) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [pool[i], pool[j]] = [pool[j], pool[i]];
+          }
+          return pool.slice(0, definition.batchSize);
+        })();
 
   if (mode === 'sequential') {
     const positions = picked.map((word) => getOfficialWordPosition(libraryId, word));
-    const isContiguous = positions.every((position, index) => (
-      position !== Number.MAX_SAFE_INTEGER
-      && position === positions[0] + index
-    ));
+    const isContiguous = positions.every(
+      (position, index) => position !== Number.MAX_SAFE_INTEGER && position === positions[0] + index,
+    );
 
     if (isContiguous) {
       return {
@@ -401,14 +392,18 @@ export function countExistingOfficialGroups(
   libraryId: OfficialLibraryId,
   groups: Pick<LibraryGroupSummary, 'sourceType' | 'libraryId'>[],
 ) {
-  return groups.reduce((count, group) => (
-    group.sourceType === 'system' && group.libraryId === libraryId ? count + 1 : count
-  ), 0);
+  return groups.reduce(
+    (count, group) => (group.sourceType === 'system' && group.libraryId === libraryId ? count + 1 : count),
+    0,
+  );
 }
 
 export function buildOfficialLibrarySummary(
   libraryId: OfficialLibraryId,
-  groups: Pick<LibraryGroupSummary, 'sourceType' | 'title' | 'wordCount' | 'libraryId' | 'status' | 'completedAt' | 'sessionRound'>[],
+  groups: Pick<
+    LibraryGroupSummary,
+    'sourceType' | 'title' | 'wordCount' | 'libraryId' | 'status' | 'completedAt' | 'sessionRound'
+  >[],
   resumeTargets: OfficialResumeTargets | null,
   completedMemoryWordCount = 0,
 ): OfficialLibrarySummary {
@@ -438,17 +433,14 @@ export function resolveOfficialLibraryStartMode(
     return 'resume' as const;
   }
 
-  return summary.completed ? 'completed' as const : 'new' as const;
+  return summary.completed ? ('completed' as const) : ('new' as const);
 }
 
 export function getOfficialWordPosition(libraryId: OfficialLibraryId, word: string) {
   return officialWordOrder.get(libraryId)?.get(word.trim().toLowerCase()) ?? Number.MAX_SAFE_INTEGER;
 }
 
-export function sortWordsByOfficialOrder<T extends { word: string }>(
-  libraryId: OfficialLibraryId,
-  words: T[],
-) {
+export function sortWordsByOfficialOrder<T extends { word: string }>(libraryId: OfficialLibraryId, words: T[]) {
   return [...words].sort((left, right) => {
     const leftOrder = getOfficialWordPosition(libraryId, left.word);
     const rightOrder = getOfficialWordPosition(libraryId, right.word);

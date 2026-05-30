@@ -63,10 +63,11 @@ export function LuminaLogo({
 }: LuminaLogoProps) {
   return (
     <div className={`inline-flex items-center gap-3.5 ${className}`.trim()}>
-      <LuminaMark size={size} className={`shrink-0 drop-shadow-[0_8px_14px_rgba(114,93,66,0.18)] ${markClassName}`.trim()} />
-      {showWordmark && (
-        <LuminaWordmark className={`${wordmarkClassName} ${textClassName}`.trim()} />
-      )}
+      <LuminaMark
+        size={size}
+        className={`shrink-0 drop-shadow-[0_8px_14px_rgba(114,93,66,0.18)] ${markClassName}`.trim()}
+      />
+      {showWordmark && <LuminaWordmark className={`${wordmarkClassName} ${textClassName}`.trim()} />}
     </div>
   );
 }

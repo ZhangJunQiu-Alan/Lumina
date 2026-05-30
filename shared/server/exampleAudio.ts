@@ -75,17 +75,18 @@ async function generateUploadAndSave(
   const { data: urlData } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
   const url = urlData.publicUrl;
 
-  const { error: saveErr } = await supabaseAdmin
-    .from('example_audio_cache')
-    .upsert({
+  const { error: saveErr } = await supabaseAdmin.from('example_audio_cache').upsert(
+    {
       sentence_hash: sentenceHash,
       sentence_text: sentenceText,
       locale,
       voice_name: voiceName,
       audio_url: url,
-    }, {
+    },
+    {
       onConflict: 'sentence_hash,locale,voice_name',
-    });
+    },
+  );
 
   if (saveErr) {
     throw new Error(`Example audio cache save failed: ${saveErr.message}`);

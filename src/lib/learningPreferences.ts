@@ -58,7 +58,7 @@ function normalizeSpeechPlaybackRate(value: unknown): SpeechPlaybackRate {
 
 function normalizeGapMs(value: unknown): number {
   return AUTO_PLAY_GAP_OPTIONS.includes(value as (typeof AUTO_PLAY_GAP_OPTIONS)[number])
-    ? value as number
+    ? (value as number)
     : LEARNING_PREFERENCES_DEFAULTS.autoPlayRepeatGapMs;
 }
 
@@ -140,9 +140,7 @@ function normalizeLearningPreferences(
         ? clozeSentenceAutoPlayValue
         : LEARNING_PREFERENCES_DEFAULTS.clozeSentenceAutoPlayEnabled,
     memoryTipEnabled:
-      typeof memoryTipValue === 'boolean'
-        ? memoryTipValue
-        : LEARNING_PREFERENCES_DEFAULTS.memoryTipEnabled,
+      typeof memoryTipValue === 'boolean' ? memoryTipValue : LEARNING_PREFERENCES_DEFAULTS.memoryTipEnabled,
   };
 }
 
@@ -166,13 +164,15 @@ function toDatabaseRow(userId: string, preferences: LearningPreferences): Omit<L
 
 function isMissingUserSettingsTableError(error: { message?: string } | null | undefined) {
   const message = error?.message ?? '';
-  return message.includes('user_settings')
-    || message.includes('correct_answer_reveal_ms')
-    || message.includes('popover_auto_play_enabled')
-    || message.includes('cloze_sentence_auto_play_enabled')
-    || message.includes('memory_tip_enabled')
-    || message.includes('speech_playback_rate')
-    || message.includes('schema cache');
+  return (
+    message.includes('user_settings') ||
+    message.includes('correct_answer_reveal_ms') ||
+    message.includes('popover_auto_play_enabled') ||
+    message.includes('cloze_sentence_auto_play_enabled') ||
+    message.includes('memory_tip_enabled') ||
+    message.includes('speech_playback_rate') ||
+    message.includes('schema cache')
+  );
 }
 
 function buildLocalPreferencesKey(userId: string) {
@@ -205,7 +205,8 @@ export async function getLearningPreferences(userId: string): Promise<LearningPr
   const localPreferences = getLocalLearningPreferences(userId);
   const { data, error } = await supabase
     .from('user_settings')
-    .select(`
+    .select(
+      `
       user_id,
       default_pronunciation_locale,
       speech_playback_rate,
@@ -220,7 +221,8 @@ export async function getLearningPreferences(userId: string): Promise<LearningPr
       cloze_sentence_auto_play_enabled,
       memory_tip_enabled,
       updated_at
-    `)
+    `,
+    )
     .eq('user_id', userId)
     .maybeSingle();
 
@@ -248,11 +250,15 @@ export async function saveLearningPreferences(
 
   const { data, error } = await supabase
     .from('user_settings')
-    .upsert({
-      ...toDatabaseRow(userId, nextPreferences),
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'user_id' })
-    .select(`
+    .upsert(
+      {
+        ...toDatabaseRow(userId, nextPreferences),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' },
+    )
+    .select(
+      `
       user_id,
       default_pronunciation_locale,
       speech_playback_rate,
@@ -267,7 +273,8 @@ export async function saveLearningPreferences(
       cloze_sentence_auto_play_enabled,
       memory_tip_enabled,
       updated_at
-    `)
+    `,
+    )
     .single();
 
   if (error) {

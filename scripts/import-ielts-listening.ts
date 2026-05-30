@@ -133,24 +133,26 @@ function parseArgs(argv: string[]): CliArgs {
 }
 
 function printUsage() {
-  console.log([
-    'Usage:',
-    '  npm run import:ielts-listening -- --book 4 --dry-run',
-    '  npm run import:ielts-listening -- --book 4 --apply',
-    '  npm run import:ielts-listening -- --book 5 --dry-run',
-    '  npm run import:ielts-listening -- --book 5 --apply',
-    '  npm run import:ielts-listening -- --book 6 --dry-run',
-    '  npm run import:ielts-listening -- --book 6 --apply',
-    '  npm run import:ielts-listening -- --book 7 --dry-run',
-    '  npm run import:ielts-listening -- --book 7 --apply',
-    '  npm run import:ielts-listening -- --book 8 --dry-run',
-    '  npm run import:ielts-listening -- --book 8 --apply',
-    '  npm run import:ielts-listening -- --book 9 --dry-run',
-    '  npm run import:ielts-listening -- --book 9 --apply',
-    '  npm run import:ielts-listening -- --book 10 --dry-run',
-    '  npm run import:ielts-listening -- --book 10 --apply',
-    '  npm run import:ielts-listening -- --book 4 --text output/ielts-reading/cambridge-4-extracted.txt --dry-run',
-  ].join('\n'));
+  console.log(
+    [
+      'Usage:',
+      '  npm run import:ielts-listening -- --book 4 --dry-run',
+      '  npm run import:ielts-listening -- --book 4 --apply',
+      '  npm run import:ielts-listening -- --book 5 --dry-run',
+      '  npm run import:ielts-listening -- --book 5 --apply',
+      '  npm run import:ielts-listening -- --book 6 --dry-run',
+      '  npm run import:ielts-listening -- --book 6 --apply',
+      '  npm run import:ielts-listening -- --book 7 --dry-run',
+      '  npm run import:ielts-listening -- --book 7 --apply',
+      '  npm run import:ielts-listening -- --book 8 --dry-run',
+      '  npm run import:ielts-listening -- --book 8 --apply',
+      '  npm run import:ielts-listening -- --book 9 --dry-run',
+      '  npm run import:ielts-listening -- --book 9 --apply',
+      '  npm run import:ielts-listening -- --book 10 --dry-run',
+      '  npm run import:ielts-listening -- --book 10 --apply',
+      '  npm run import:ielts-listening -- --book 4 --text output/ielts-reading/cambridge-4-extracted.txt --dry-run',
+    ].join('\n'),
+  );
 }
 
 function lineClean(value: string): string {
@@ -194,14 +196,15 @@ async function pathExists(filePath: string): Promise<boolean> {
 
 async function findBookPdf(bookNumber: number): Promise<string> {
   const entries = await readdir(DEFAULT_RAW_DIR);
-  const match = entries.find((entry) => (
-    entry.includes(`【${bookNumber}】`) && entry.toLowerCase().endsWith('.pdf')
-  ));
+  const match = entries.find((entry) => entry.includes(`【${bookNumber}】`) && entry.toLowerCase().endsWith('.pdf'));
   if (!match) throw new Error(`找不到 Cambridge ${bookNumber} PDF。`);
   return path.join(DEFAULT_RAW_DIR, match);
 }
 
-async function extractTextWithVisionOcr(pdfPath: string, bookNumber: number): Promise<{ text: string; sourceLabel: string; ocrJsonPath: string } | null> {
+async function extractTextWithVisionOcr(
+  pdfPath: string,
+  bookNumber: number,
+): Promise<{ text: string; sourceLabel: string; ocrJsonPath: string } | null> {
   const ocrJsonPath = path.join(DEFAULT_OUTPUT_DIR, '..', 'ielts-ocr', `cambridge-${bookNumber}.json`);
   try {
     if (!(await pathExists(ocrJsonPath))) {
@@ -219,8 +222,10 @@ async function extractTextWithVisionOcr(pdfPath: string, bookNumber: number): Pr
   }
 }
 
-async function readSourceText(args: CliArgs): Promise<{ text: string; sourceLabel: string; pdfPath: string; ocrJsonPath?: string }> {
-  const pdfPath = args.pdf ?? await findBookPdf(args.book!);
+async function readSourceText(
+  args: CliArgs,
+): Promise<{ text: string; sourceLabel: string; pdfPath: string; ocrJsonPath?: string }> {
+  const pdfPath = args.pdf ?? (await findBookPdf(args.book!));
   const textPath = args.text ?? `output/ielts-reading/cambridge-${args.book}-extracted.txt`;
   if (await pathExists(textPath)) {
     const text = normalizeExtractedText(await readFile(textPath, 'utf8'));
@@ -274,11 +279,12 @@ function extractMainListeningTestChunks(text: string): Map<number, string> {
     const sectionOneIndex = sample.search(/\bSECTION\s+(?:1|I)\b/i);
     const beforeSection = sectionOneIndex >= 0 ? sample.slice(0, sectionOneIndex) : '';
     if (
-      sectionOneIndex < 0
-      || listeningIndex < 0
-      || Math.abs(listeningIndex - sectionOneIndex) > 1400
-      || /\b(?:READING|WRITING|SPEAKING)\b/i.test(beforeSection)
-    ) continue;
+      sectionOneIndex < 0 ||
+      listeningIndex < 0 ||
+      Math.abs(listeningIndex - sectionOneIndex) > 1400 ||
+      /\b(?:READING|WRITING|SPEAKING)\b/i.test(beforeSection)
+    )
+      continue;
     if (!anchors.some((anchor) => anchor.testNumber === testNumber)) {
       anchors.push({ testNumber, index: match.index });
     }
@@ -341,7 +347,10 @@ function parseSectionNumber(value: string): number | null {
 
 function parseQuestionRange(value: string): { start: number; end: number } | null {
   const questionNumberToken = '([0-9](?:\\s*[0-9Oo])?)';
-  const match = new RegExp(`Questions?[\\s~:.-]+${questionNumberToken}(?:\\s*(?:-|to|and|&)\\s*${questionNumberToken})?`, 'i').exec(value);
+  const match = new RegExp(
+    `Questions?[\\s~:.-]+${questionNumberToken}(?:\\s*(?:-|to|and|&)\\s*${questionNumberToken})?`,
+    'i',
+  ).exec(value);
   if (!match) return null;
   const normalizeToken = (token: string) => Number.parseInt(token.replace(/[Oo]/g, '0').replace(/\s+/g, ''), 10);
   const start = normalizeToken(match[1]);
@@ -354,11 +363,12 @@ function inferQuestionType(chunk: string): IeltsListeningQuestionType {
   const lower = chunk.toLowerCase();
   if (lower.includes('choose the correct letter')) return 'multiple_choice_single';
   if (
-    lower.includes('choose two letters')
-    || lower.includes('choose your answers from the box')
-    || lower.includes('what recommendations')
-    || lower.includes('what problems')
-  ) return 'matching';
+    lower.includes('choose two letters') ||
+    lower.includes('choose your answers from the box') ||
+    lower.includes('what recommendations') ||
+    lower.includes('what problems')
+  )
+    return 'matching';
   if (lower.includes('complete the table')) return 'table_completion';
   if (lower.includes('complete the form')) return 'form_completion';
   if (lower.includes('complete the sentences')) return 'sentence_completion';
@@ -412,7 +422,11 @@ function extractQuestionPrompt(chunk: string, questionNumber: number): string {
   return `Question ${questionNumber}`;
 }
 
-function buildGroups(sectionChunk: string, sectionNumber: number, answerMap: Map<number, string[]>): ImportedListeningGroup[] {
+function buildGroups(
+  sectionChunk: string,
+  sectionNumber: number,
+  answerMap: Map<number, string[]>,
+): ImportedListeningGroup[] {
   const headingMatches: { index: number; heading: string; start: number; end: number }[] = [];
   const headingRe = /Questions?[\s~:.-]+[0-9](?:\s*[0-9Oo])?(?:\s*(?:-|to|and|&)\s*[0-9](?:\s*[0-9Oo])?)?/gi;
   let match: RegExpExecArray | null;
@@ -420,33 +434,37 @@ function buildGroups(sectionChunk: string, sectionNumber: number, answerMap: Map
     const heading = match[0];
     const range = parseQuestionRange(heading);
     if (!range) continue;
-    if (range.start < ((sectionNumber - 1) * 10) + 1 || range.end > sectionNumber * 10) continue;
+    if (range.start < (sectionNumber - 1) * 10 + 1 || range.end > sectionNumber * 10) continue;
     headingMatches.push({ index: match.index, heading, ...range });
   }
 
-  const sectionStart = ((sectionNumber - 1) * 10) + 1;
+  const sectionStart = (sectionNumber - 1) * 10 + 1;
   const sectionEnd = sectionNumber * 10;
   const filteredMatches = headingMatches
     .filter((heading) => {
       if (headingMatches.length <= 1) return true;
       return !(heading.start === sectionStart && heading.end === sectionEnd);
     })
-    .filter((heading, index, matches) => (
-      matches.findIndex((item) => item.start === heading.start && item.end === heading.end) === index
-    ));
+    .filter(
+      (heading, index, matches) =>
+        matches.findIndex((item) => item.start === heading.start && item.end === heading.end) === index,
+    );
 
-  const usableMatches = filteredMatches.length > 0
-    ? filteredMatches
-    : [{ index: 0, heading: `Questions ${sectionStart}-${sectionEnd}`, start: sectionStart, end: sectionEnd }];
+  const usableMatches =
+    filteredMatches.length > 0
+      ? filteredMatches
+      : [{ index: 0, heading: `Questions ${sectionStart}-${sectionEnd}`, start: sectionStart, end: sectionEnd }];
 
-  const adjustedMatches = usableMatches.map((heading, index, ordered) => {
-    let end = heading.end;
-    const nextHeading = ordered[index + 1];
-    if (nextHeading && nextHeading.start <= end) {
-      end = Math.max(heading.start, nextHeading.start - 1);
-    }
-    return { ...heading, end };
-  }).filter((heading) => heading.start <= heading.end);
+  const adjustedMatches = usableMatches
+    .map((heading, index, ordered) => {
+      let end = heading.end;
+      const nextHeading = ordered[index + 1];
+      if (nextHeading && nextHeading.start <= end) {
+        end = Math.max(heading.start, nextHeading.start - 1);
+      }
+      return { ...heading, end };
+    })
+    .filter((heading) => heading.start <= heading.end);
 
   return adjustedMatches.map((heading, index, ordered) => {
     const nextIndex = ordered[index + 1]?.index ?? sectionChunk.length;
@@ -482,172 +500,172 @@ function buildGroups(sectionChunk: string, sectionNumber: number, answerMap: Map
 const LISTENING_ANSWERS_BY_BOOK: Record<number, Record<number, Record<number, string[]>>> = {
   4: {
     1: {
-    1: ['shopping', 'variety of shopping'],
-    2: ['guided tours'],
-    3: ['more than 12', 'over 12'],
-    4: ['notice board'],
-    5: ['13th February'],
-    6: ['Tower of London'],
-    7: ['Bristol'],
-    8: ['American Museum'],
-    9: ['student newspaper'],
-    10: ['Yentob'],
-    11: ['coal firewood', 'firewood coal', 'coal and firewood', 'firewood and coal'],
-    12: ['local craftsmen'],
-    13: ['160'],
-    14: ['Woodside'],
-    15: ['Ticket Office'],
-    16: ['Gift Shop'],
-    17: ['Workshop', 'main Workshop'],
-    18: ['Showroom'],
-    19: ['Cafe'],
-    20: ['cottages'],
-    21: ['A'],
-    22: ['C'],
-    23: ['E'],
-    24: ['B'],
-    25: ['G'],
-    26: ['F'],
-    27: ['C'],
-    28: ['D'],
-    29: ['A'],
-    30: ['B'],
-    31: ['cities', 'environment'],
-    32: ['windy'],
-    33: ['humid'],
-    34: ['shady', 'shaded'],
-    35: ['dangerous'],
-    36: ['leaves'],
-    37: ['ground'],
-    38: ['considerably reduce', 'decrease', 'filter'],
-    39: ['low'],
-    40: ['space', 'room'],
+      1: ['shopping', 'variety of shopping'],
+      2: ['guided tours'],
+      3: ['more than 12', 'over 12'],
+      4: ['notice board'],
+      5: ['13th February'],
+      6: ['Tower of London'],
+      7: ['Bristol'],
+      8: ['American Museum'],
+      9: ['student newspaper'],
+      10: ['Yentob'],
+      11: ['coal firewood', 'firewood coal', 'coal and firewood', 'firewood and coal'],
+      12: ['local craftsmen'],
+      13: ['160'],
+      14: ['Woodside'],
+      15: ['Ticket Office'],
+      16: ['Gift Shop'],
+      17: ['Workshop', 'main Workshop'],
+      18: ['Showroom'],
+      19: ['Cafe'],
+      20: ['cottages'],
+      21: ['A'],
+      22: ['C'],
+      23: ['E'],
+      24: ['B'],
+      25: ['G'],
+      26: ['F'],
+      27: ['C'],
+      28: ['D'],
+      29: ['A'],
+      30: ['B'],
+      31: ['cities', 'environment'],
+      32: ['windy'],
+      33: ['humid'],
+      34: ['shady', 'shaded'],
+      35: ['dangerous'],
+      36: ['leaves'],
+      37: ['ground'],
+      38: ['considerably reduce', 'decrease', 'filter'],
+      39: ['low'],
+      40: ['space', 'room'],
     },
     2: {
-    1: ['C'],
-    2: ['C'],
-    3: ['B'],
-    4: ['B'],
-    5: ['A'],
-    6: ['Cathedral'],
-    7: ['Markets'],
-    8: ['Gardens'],
-    9: ['Art Gallery'],
-    10: ['climb the tower', 'see the view'],
-    11: ['C'],
-    12: ['B'],
-    13: ['A'],
-    14: ['C'],
-    15: ['B'],
-    16: ['C'],
-    17: ['A'],
-    18: ['B'],
-    19: ['B'],
-    20: ['A'],
-    21: ['collecting data', 'gathering data', 'data collection'],
-    22: ['1,500', '1500'],
-    23: ['5'],
-    24: ['3,000-4,000', '3000-4000', '3,000 to 4,000'],
-    25: ['B', 'C'],
-    26: ['B', 'C'],
-    27: ['Mehta'],
-    28: ['Survey Research'],
-    29: ['London University', 'London University Press'],
-    30: ['1988'],
-    31: ['C'],
-    32: ['A'],
-    33: ['mass media', 'media'],
-    34: ['academic circles', 'academics', 'researchers'],
-    35: ['specialist knowledge', 'specialised knowledge'],
-    36: ['unaware'],
-    37: ['individual customers', 'individual consumers', 'individuals'],
-    38: ['illegal profit', 'illegal profits'],
-    39: ['D', 'E'],
-    40: ['D', 'E'],
+      1: ['C'],
+      2: ['C'],
+      3: ['B'],
+      4: ['B'],
+      5: ['A'],
+      6: ['Cathedral'],
+      7: ['Markets'],
+      8: ['Gardens'],
+      9: ['Art Gallery'],
+      10: ['climb the tower', 'see the view'],
+      11: ['C'],
+      12: ['B'],
+      13: ['A'],
+      14: ['C'],
+      15: ['B'],
+      16: ['C'],
+      17: ['A'],
+      18: ['B'],
+      19: ['B'],
+      20: ['A'],
+      21: ['collecting data', 'gathering data', 'data collection'],
+      22: ['1,500', '1500'],
+      23: ['5'],
+      24: ['3,000-4,000', '3000-4000', '3,000 to 4,000'],
+      25: ['B', 'C'],
+      26: ['B', 'C'],
+      27: ['Mehta'],
+      28: ['Survey Research'],
+      29: ['London University', 'London University Press'],
+      30: ['1988'],
+      31: ['C'],
+      32: ['A'],
+      33: ['mass media', 'media'],
+      34: ['academic circles', 'academics', 'researchers'],
+      35: ['specialist knowledge', 'specialised knowledge'],
+      36: ['unaware'],
+      37: ['individual customers', 'individual consumers', 'individuals'],
+      38: ['illegal profit', 'illegal profits'],
+      39: ['D', 'E'],
+      40: ['D', 'E'],
     },
     3: {
-    1: ['1 1/2 years', 'one and a half years', '18 months', '1.5 years'],
-    2: ['Forest', 'Forrest'],
-    3: ['Academic'],
-    4: ['Thursday'],
-    5: ['B'],
-    6: ['B'],
-    7: ['A'],
-    8: ['deposit'],
-    9: ['monthly'],
-    10: ['telephone', 'phone'],
-    11: ['C'],
-    12: ['A'],
-    13: ['C'],
-    14: ['B'],
-    15: ['lighting', 'lights', 'light'],
-    16: ['adult', 'adults'],
-    17: ['Studio Theatre', 'the Studio Theatre', 'Studio Theater', 'the Studio Theater'],
-    18: ['the whole family', 'all the family', 'families'],
-    19: ['City Gardens', 'the City Gardens', 'in City Gardens', 'outdoors'],
-    20: ['young children', 'younger children', 'children'],
-    21: ['A'],
-    22: ['B'],
-    23: ['C'],
-    24: ['A'],
-    25: ['B'],
-    26: ['A'],
-    27: ['C'],
-    28: ['B'],
-    29: ['B'],
-    30: ['B'],
-    31: ['questionnaire'],
-    32: ['approximately 2,000', 'about 2,000', 'approximately 2000', 'about 2000'],
-    33: ['Education'],
-    34: ['halls of residence', 'living quarters'],
-    35: ['traffic', 'parking'],
-    36: ['most lecture rooms', 'lecture rooms', 'lecture halls', 'lecture theatres', 'lecture theaters'],
-    37: ['choice of facilities', 'facilities', 'room for facilities'],
-    38: ['D', 'F'],
-    39: ['B'],
-    40: ['A', 'C'],
+      1: ['1 1/2 years', 'one and a half years', '18 months', '1.5 years'],
+      2: ['Forest', 'Forrest'],
+      3: ['Academic'],
+      4: ['Thursday'],
+      5: ['B'],
+      6: ['B'],
+      7: ['A'],
+      8: ['deposit'],
+      9: ['monthly'],
+      10: ['telephone', 'phone'],
+      11: ['C'],
+      12: ['A'],
+      13: ['C'],
+      14: ['B'],
+      15: ['lighting', 'lights', 'light'],
+      16: ['adult', 'adults'],
+      17: ['Studio Theatre', 'the Studio Theatre', 'Studio Theater', 'the Studio Theater'],
+      18: ['the whole family', 'all the family', 'families'],
+      19: ['City Gardens', 'the City Gardens', 'in City Gardens', 'outdoors'],
+      20: ['young children', 'younger children', 'children'],
+      21: ['A'],
+      22: ['B'],
+      23: ['C'],
+      24: ['A'],
+      25: ['B'],
+      26: ['A'],
+      27: ['C'],
+      28: ['B'],
+      29: ['B'],
+      30: ['B'],
+      31: ['questionnaire'],
+      32: ['approximately 2,000', 'about 2,000', 'approximately 2000', 'about 2000'],
+      33: ['Education'],
+      34: ['halls of residence', 'living quarters'],
+      35: ['traffic', 'parking'],
+      36: ['most lecture rooms', 'lecture rooms', 'lecture halls', 'lecture theatres', 'lecture theaters'],
+      37: ['choice of facilities', 'facilities', 'room for facilities'],
+      38: ['D', 'F'],
+      39: ['B'],
+      40: ['A', 'C'],
     },
     4: {
-    1: ['College Dining Room'],
-    2: ['office staff', 'students'],
-    3: ['office staff', 'students'],
-    4: ['10th December'],
-    5: ['coffee break', 'coffee breaks'],
-    6: ['6'],
-    7: ['set of dictionaries', 'dictionaries', 'a good dictionary'],
-    8: ['music', 'music tapes', 'tapes', 'some music', 'some music tapes', 'some tapes', 'photos', 'photographs'],
-    9: ['music', 'music tapes', 'tapes', 'some music', 'some music tapes', 'some tapes', 'photos', 'photographs'],
-    10: ['speech'],
-    11: ['B'],
-    12: ['A'],
-    13: ['A'],
-    14: ['A'],
-    15: ['B'],
-    16: ['180'],
-    17: ['nearest station'],
-    18: ['local history'],
-    19: ['690'],
-    20: ['walking club', 'local walking club'],
-    21: ['20 balloons'],
-    22: ['units of measurement', 'measurements', 'measurement units'],
-    23: ['rock salt', 'salt'],
-    24: ['crystals'],
-    25: ['string', 'piece of string'],
-    26: ['ordinary white light', 'white light'],
-    27: ['H'],
-    28: ['B'],
-    29: ['E'],
-    30: ['C'],
-    31: ['795'],
-    32: ['tail'],
-    33: ['floor', 'bed', 'bottom'],
-    34: ['sense of smell'],
-    35: ['A'],
-    36: ['A'],
-    37: ['B'],
-    38: ['B'],
-    39: ['B', 'E'],
-    40: ['B', 'E'],
+      1: ['College Dining Room'],
+      2: ['office staff', 'students'],
+      3: ['office staff', 'students'],
+      4: ['10th December'],
+      5: ['coffee break', 'coffee breaks'],
+      6: ['6'],
+      7: ['set of dictionaries', 'dictionaries', 'a good dictionary'],
+      8: ['music', 'music tapes', 'tapes', 'some music', 'some music tapes', 'some tapes', 'photos', 'photographs'],
+      9: ['music', 'music tapes', 'tapes', 'some music', 'some music tapes', 'some tapes', 'photos', 'photographs'],
+      10: ['speech'],
+      11: ['B'],
+      12: ['A'],
+      13: ['A'],
+      14: ['A'],
+      15: ['B'],
+      16: ['180'],
+      17: ['nearest station'],
+      18: ['local history'],
+      19: ['690'],
+      20: ['walking club', 'local walking club'],
+      21: ['20 balloons'],
+      22: ['units of measurement', 'measurements', 'measurement units'],
+      23: ['rock salt', 'salt'],
+      24: ['crystals'],
+      25: ['string', 'piece of string'],
+      26: ['ordinary white light', 'white light'],
+      27: ['H'],
+      28: ['B'],
+      29: ['E'],
+      30: ['C'],
+      31: ['795'],
+      32: ['tail'],
+      33: ['floor', 'bed', 'bottom'],
+      34: ['sense of smell'],
+      35: ['A'],
+      36: ['A'],
+      37: ['B'],
+      38: ['B'],
+      39: ['B', 'E'],
+      40: ['B', 'E'],
     },
   },
   5: {
@@ -1167,7 +1185,16 @@ const LISTENING_ANSWERS_BY_BOOK: Record<number, Record<number, Record<number, st
       3: ['48 North Avenue'],
       4: ['WS6 2YH', 'WS62YH'],
       5: ['01674 553242', '01674553242'],
-      6: ['drink', 'drinks', 'refreshment', 'refreshments', 'free drink', 'free drinks', 'free refreshment', 'free refreshments'],
+      6: [
+        'drink',
+        'drinks',
+        'refreshment',
+        'refreshments',
+        'free drink',
+        'free drinks',
+        'free refreshment',
+        'free refreshments',
+      ],
       7: ['pianist', 'piano player', 'the pianist', 'a pianist'],
       8: ['10.50'],
       9: ['4'],
@@ -1673,18 +1700,24 @@ const LISTENING_ANSWERS_BY_BOOK: Record<number, Record<number, Record<number, st
 };
 
 function answerMapForTest(bookNumber: number, testNumber: number): Map<number, string[]> {
-  return new Map(Object.entries(LISTENING_ANSWERS_BY_BOOK[bookNumber]?.[testNumber] ?? {})
-    .map(([key, value]) => [Number.parseInt(key, 10), value]));
+  return new Map(
+    Object.entries(LISTENING_ANSWERS_BY_BOOK[bookNumber]?.[testNumber] ?? {}).map(([key, value]) => [
+      Number.parseInt(key, 10),
+      value,
+    ]),
+  );
 }
 
 async function listFilesRecursive(root: string): Promise<string[]> {
   const entries = await readdir(root, { withFileTypes: true });
-  const files = await Promise.all(entries.map(async (entry) => {
-    const entryPath = path.join(root, entry.name);
-    if (entry.isDirectory()) return listFilesRecursive(entryPath);
-    if (entry.isFile()) return [entryPath];
-    return [];
-  }));
+  const files = await Promise.all(
+    entries.map(async (entry) => {
+      const entryPath = path.join(root, entry.name);
+      if (entry.isDirectory()) return listFilesRecursive(entryPath);
+      if (entry.isFile()) return [entryPath];
+      return [];
+    }),
+  );
   return files.flat();
 }
 
@@ -1721,7 +1754,12 @@ async function findAudioSources(bookNumber: number): Promise<Map<string, AudioSo
   return sources;
 }
 
-function buildBook(text: string, sourceLabel: string, bookNumber: number, audioSources: Map<string, AudioSource>): ImportedListeningBook {
+function buildBook(
+  text: string,
+  sourceLabel: string,
+  bookNumber: number,
+  audioSources: Map<string, AudioSource>,
+): ImportedListeningBook {
   const chunks = extractMainListeningTestChunks(text);
   const tests: ImportedListeningTest[] = [];
 
@@ -1730,14 +1768,17 @@ function buildBook(text: string, sourceLabel: string, bookNumber: number, audioS
     const sectionChunks = splitSections(testChunk);
     const sections: ImportedListeningSection[] = [];
 
-    for (const [sectionNumber, sectionChunk] of [...sectionChunks.entries()].sort((left, right) => left[0] - right[0])) {
+    for (const [sectionNumber, sectionChunk] of [...sectionChunks.entries()].sort(
+      (left, right) => left[0] - right[0],
+    )) {
       const audioSource = audioSources.get(`${testNumber}:${sectionNumber}`);
       sections.push({
         sectionNumber,
         title: `Section ${sectionNumber}`,
         instructions: sectionChunk.trim(),
         sourceAudioFilename: audioSource?.sourceAudioFilename ?? '',
-        audioStoragePath: audioSource?.storagePath ?? `cambridge-${bookNumber}/test-${testNumber}/section-${sectionNumber}.mp3`,
+        audioStoragePath:
+          audioSource?.storagePath ?? `cambridge-${bookNumber}/test-${testNumber}/section-${sectionNumber}.mp3`,
         paperPages: [],
         groups: buildGroups(sectionChunk, sectionNumber, answerMap),
       });
@@ -1800,15 +1841,17 @@ function validateBook(book: ImportedListeningBook, audioSources: Map<string, Aud
   const errors: string[] = [];
   const warnings: string[] = [];
   const sectionCount = book.tests.reduce((sum, test) => sum + test.sections.length, 0);
-  const questions = book.tests.flatMap((test) => test.sections.flatMap((section) => section.groups.flatMap((group) => group.questions)));
+  const questions = book.tests.flatMap((test) =>
+    test.sections.flatMap((section) => section.groups.flatMap((group) => group.questions)),
+  );
   const answerCount = questions.filter((question) => question.answers.length > 0).length;
   const paperPageCount = book.tests.reduce(
     (sum, test) => sum + test.sections.reduce((sectionSum, section) => sectionSum + section.paperPages.length, 0),
     0,
   );
-  const uniquePaperPageCount = new Set(book.tests.flatMap((test) => (
-    test.sections.flatMap((section) => section.paperPages.map((page) => page.pdfPage))
-  ))).size;
+  const uniquePaperPageCount = new Set(
+    book.tests.flatMap((test) => test.sections.flatMap((section) => section.paperPages.map((page) => page.pdfPage))),
+  ).size;
   const hotspotCount = questions.filter((question) => question.paperHotspot).length;
   const fallbackHotspotCount = questions.filter((question) => question.paperHotspot?.source === 'fallback-grid').length;
 
@@ -1821,19 +1864,28 @@ function validateBook(book: ImportedListeningBook, audioSources: Map<string, Aud
   if (hotspotCount !== 160) errors.push(`Expected 160 paper hotspots, found ${hotspotCount}`);
 
   for (const test of book.tests) {
-    if (test.sections.length !== 4) errors.push(`Test ${test.testNumber}: expected 4 sections, found ${test.sections.length}`);
+    if (test.sections.length !== 4)
+      errors.push(`Test ${test.testNumber}: expected 4 sections, found ${test.sections.length}`);
     const testQuestions = test.sections.flatMap((section) => section.groups.flatMap((group) => group.questions));
-    if (testQuestions.length !== 40) errors.push(`Test ${test.testNumber}: expected 40 questions, found ${testQuestions.length}`);
+    if (testQuestions.length !== 40)
+      errors.push(`Test ${test.testNumber}: expected 40 questions, found ${testQuestions.length}`);
     for (let questionNumber = 1; questionNumber <= 40; questionNumber += 1) {
       if (!testQuestions.some((question) => question.questionNumber === questionNumber)) {
         errors.push(`Test ${test.testNumber}: missing question ${questionNumber}`);
       }
     }
     for (const section of test.sections) {
-      if (!section.sourceAudioFilename) warnings.push(`Test ${test.testNumber} Section ${section.sectionNumber}: missing audio source`);
-      if (section.paperPages.length === 0) errors.push(`Test ${test.testNumber} Section ${section.sectionNumber}: missing paper page`);
-      const sectionHotspots = section.groups.flatMap((group) => group.questions).filter((question) => question.paperHotspot).length;
-      if (sectionHotspots !== 10) errors.push(`Test ${test.testNumber} Section ${section.sectionNumber}: expected 10 paper hotspots, found ${sectionHotspots}`);
+      if (!section.sourceAudioFilename)
+        warnings.push(`Test ${test.testNumber} Section ${section.sectionNumber}: missing audio source`);
+      if (section.paperPages.length === 0)
+        errors.push(`Test ${test.testNumber} Section ${section.sectionNumber}: missing paper page`);
+      const sectionHotspots = section.groups
+        .flatMap((group) => group.questions)
+        .filter((question) => question.paperHotspot).length;
+      if (sectionHotspots !== 10)
+        errors.push(
+          `Test ${test.testNumber} Section ${section.sectionNumber}: expected 10 paper hotspots, found ${sectionHotspots}`,
+        );
     }
   }
 
@@ -1899,12 +1951,10 @@ async function uploadAudioSources(audioSources: Map<string, AudioSource>): Promi
   const urls = new Map<string, string>();
   for (const [key, source] of audioSources.entries()) {
     const buffer = await readFile(source.filePath);
-    const { error } = await supabaseAdmin.storage
-      .from(AUDIO_BUCKET)
-      .upload(source.storagePath, buffer, {
-        contentType: contentTypeFor(source.filePath),
-        upsert: true,
-      });
+    const { error } = await supabaseAdmin.storage.from(AUDIO_BUCKET).upload(source.storagePath, buffer, {
+      contentType: contentTypeFor(source.filePath),
+      upsert: true,
+    });
     if (error) throw new Error(`Audio upload failed [${source.storagePath}]: ${error.message}`);
     const { data } = supabaseAdmin.storage.from(AUDIO_BUCKET).getPublicUrl(source.storagePath);
     urls.set(key, data.publicUrl);
@@ -1950,19 +2000,13 @@ async function renderPdfPage(pdfPath: string, pdfPage: number): Promise<string> 
   const outputDir = path.join(DEFAULT_OUTPUT_DIR, 'paper-pages');
   await mkdir(outputDir, { recursive: true });
   const prefix = path.join(outputDir, `page-${String(pdfPage).padStart(3, '0')}`);
-  await execFileAsync('pdftoppm', [
-    '-jpeg',
-    '-r',
-    '150',
-    '-f',
-    String(pdfPage),
-    '-l',
-    String(pdfPage),
-    pdfPath,
-    prefix,
-  ], {
-    maxBuffer: 20 * 1024 * 1024,
-  });
+  await execFileAsync(
+    'pdftoppm',
+    ['-jpeg', '-r', '150', '-f', String(pdfPage), '-l', String(pdfPage), pdfPath, prefix],
+    {
+      maxBuffer: 20 * 1024 * 1024,
+    },
+  );
   const renderedPath = `${prefix}-${String(pdfPage).padStart(3, '0')}.jpg`;
   if (!(await pathExists(renderedPath))) {
     throw new Error(`PDF page render failed for page ${pdfPage}`);
@@ -1976,12 +2020,10 @@ async function uploadPaperPages(book: ImportedListeningBook, pdfPath: string): P
   for (const page of getPaperPages(book)) {
     const renderedPath = await renderPdfPage(pdfPath, page.pdfPage);
     const buffer = await readFile(renderedPath);
-    const { error } = await supabaseAdmin.storage
-      .from(PAPER_BUCKET)
-      .upload(page.storagePath, buffer, {
-        contentType: 'image/jpeg',
-        upsert: true,
-      });
+    const { error } = await supabaseAdmin.storage.from(PAPER_BUCKET).upload(page.storagePath, buffer, {
+      contentType: 'image/jpeg',
+      upsert: true,
+    });
     if (error) throw new Error(`Paper page upload failed [${page.storagePath}]: ${error.message}`);
     const { data } = supabaseAdmin.storage.from(PAPER_BUCKET).getPublicUrl(page.storagePath);
     urls.set(page.storagePath, data.publicUrl);
@@ -2008,54 +2050,70 @@ async function applyBook(book: ImportedListeningBook, audioSources: Map<string, 
   await uploadPaperPages(book, pdfPath);
   const { data: bookRow, error: bookError } = await supabaseAdmin
     .from('ielts_listening_books')
-    .upsert({
-      book_number: book.bookNumber,
-      title: book.title,
-      source_label: book.sourceLabel,
-    }, { onConflict: 'book_number' })
+    .upsert(
+      {
+        book_number: book.bookNumber,
+        title: book.title,
+        source_label: book.sourceLabel,
+      },
+      { onConflict: 'book_number' },
+    )
     .select('id')
     .single();
-  if (bookError || !bookRow) throw new Error(`ielts_listening_books upsert failed: ${bookError?.message ?? 'missing row'}`);
+  if (bookError || !bookRow)
+    throw new Error(`ielts_listening_books upsert failed: ${bookError?.message ?? 'missing row'}`);
 
   for (const test of book.tests) {
     const { data: testRow, error: testError } = await supabaseAdmin
       .from('ielts_listening_tests')
-      .upsert({
-        book_id: bookRow.id,
-        test_number: test.testNumber,
-        title: test.title,
-      }, { onConflict: 'book_id,test_number' })
+      .upsert(
+        {
+          book_id: bookRow.id,
+          test_number: test.testNumber,
+          title: test.title,
+        },
+        { onConflict: 'book_id,test_number' },
+      )
       .select('id')
       .single();
-    if (testError || !testRow) throw new Error(`ielts_listening_tests upsert failed [Test ${test.testNumber}]: ${testError?.message ?? 'missing row'}`);
+    if (testError || !testRow)
+      throw new Error(
+        `ielts_listening_tests upsert failed [Test ${test.testNumber}]: ${testError?.message ?? 'missing row'}`,
+      );
 
     for (const section of test.sections) {
       const audioKey = `${test.testNumber}:${section.sectionNumber}`;
       const audioUrl = audioUrls.get(audioKey) ?? section.audioUrl ?? '';
       const { data: sectionRow, error: sectionError } = await supabaseAdmin
         .from('ielts_listening_sections')
-        .upsert({
-          test_id: testRow.id,
-          section_number: section.sectionNumber,
-          title: section.title,
-          instructions: section.instructions,
-          audio_url: audioUrl,
-          audio_storage_path: section.audioStoragePath,
-          source_audio_filename: section.sourceAudioFilename,
-          paper_pages_json: section.paperPages,
-          sort_order: section.sectionNumber,
-        }, { onConflict: 'test_id,section_number' })
+        .upsert(
+          {
+            test_id: testRow.id,
+            section_number: section.sectionNumber,
+            title: section.title,
+            instructions: section.instructions,
+            audio_url: audioUrl,
+            audio_storage_path: section.audioStoragePath,
+            source_audio_filename: section.sourceAudioFilename,
+            paper_pages_json: section.paperPages,
+            sort_order: section.sectionNumber,
+          },
+          { onConflict: 'test_id,section_number' },
+        )
         .select('id')
         .single();
       if (sectionError || !sectionRow) {
-        throw new Error(`ielts_listening_sections upsert failed [Test ${test.testNumber} Section ${section.sectionNumber}]: ${sectionError?.message ?? 'missing row'}`);
+        throw new Error(
+          `ielts_listening_sections upsert failed [Test ${test.testNumber} Section ${section.sectionNumber}]: ${sectionError?.message ?? 'missing row'}`,
+        );
       }
 
       const { error: deleteGroupsError } = await supabaseAdmin
         .from('ielts_listening_question_groups')
         .delete()
         .eq('section_id', sectionRow.id);
-      if (deleteGroupsError) throw new Error(`ielts_listening_question_groups cleanup failed: ${deleteGroupsError.message}`);
+      if (deleteGroupsError)
+        throw new Error(`ielts_listening_question_groups cleanup failed: ${deleteGroupsError.message}`);
 
       for (const [groupIndex, group] of section.groups.entries()) {
         const { data: groupRow, error: groupError } = await supabaseAdmin
@@ -2072,7 +2130,8 @@ async function applyBook(book: ImportedListeningBook, audioSources: Map<string, 
           })
           .select('id')
           .single();
-        if (groupError || !groupRow) throw new Error(`ielts_listening_question_groups insert failed: ${groupError?.message ?? 'missing row'}`);
+        if (groupError || !groupRow)
+          throw new Error(`ielts_listening_question_groups insert failed: ${groupError?.message ?? 'missing row'}`);
 
         const questionRows = group.questions.map((question, questionIndex) => ({
           test_id: testRow.id,
@@ -2082,15 +2141,17 @@ async function applyBook(book: ImportedListeningBook, audioSources: Map<string, 
           prompt: question.prompt,
           options_json: question.options.length > 0 ? question.options : group.options,
           answer_json: question.answers,
-          answer_note: question.answerNote || (question.answers.length > 1 ? `Cambridge ${book.bookNumber} answer variants ${sourceHash(question.answers.join('|'))}` : ''),
+          answer_note:
+            question.answerNote ||
+            (question.answers.length > 1
+              ? `Cambridge ${book.bookNumber} answer variants ${sourceHash(question.answers.join('|'))}`
+              : ''),
           paper_hotspot_json: question.paperHotspot ?? null,
           sort_order: questionIndex,
         }));
 
         if (questionRows.length > 0) {
-          const { error: questionsError } = await supabaseAdmin
-            .from('ielts_listening_questions')
-            .insert(questionRows);
+          const { error: questionsError } = await supabaseAdmin.from('ielts_listening_questions').insert(questionRows);
           if (questionsError) throw new Error(`ielts_listening_questions insert failed: ${questionsError.message}`);
         }
       }
@@ -2108,8 +2169,12 @@ async function main() {
   const output = await writeDryRunOutput(book, report, args.out);
 
   console.log(`IELTS listening import candidate: Cambridge ${report.summary.bookNumber}`);
-  console.log(`Tests: ${report.summary.testCount}, sections: ${report.summary.sectionCount}, questions: ${report.summary.questionCount}, answers: ${report.summary.answerCount}, audio: ${report.summary.audioCount}`);
-  console.log(`Paper pages: ${report.summary.paperPageCount} (${report.summary.uniquePaperPageCount} unique), hotspots: ${report.summary.hotspotCount}, fallback hotspots: ${report.summary.fallbackHotspotCount}`);
+  console.log(
+    `Tests: ${report.summary.testCount}, sections: ${report.summary.sectionCount}, questions: ${report.summary.questionCount}, answers: ${report.summary.answerCount}, audio: ${report.summary.audioCount}`,
+  );
+  console.log(
+    `Paper pages: ${report.summary.paperPageCount} (${report.summary.uniquePaperPageCount} unique), hotspots: ${report.summary.hotspotCount}, fallback hotspots: ${report.summary.fallbackHotspotCount}`,
+  );
   console.log(`Candidate JSON: ${output.candidatePath}`);
   console.log(`Report JSON: ${output.reportPath}`);
 

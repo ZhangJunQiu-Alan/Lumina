@@ -4,11 +4,7 @@ import { getOrCreateAudio } from '../shared/server/audio.ts';
 import { supabaseAdmin } from '../shared/server/supabase.ts';
 import { normalizeWordKey } from '../shared/wordBatch.ts';
 
-const ALL_OFFICIAL_WORDS = Array.from(
-  new Set(
-    OFFICIAL_LIBRARY_DEFINITIONS.flatMap((def) => def.words)
-  )
-);
+const ALL_OFFICIAL_WORDS = Array.from(new Set(OFFICIAL_LIBRARY_DEFINITIONS.flatMap((def) => def.words)));
 
 interface CliOptions {
   batchSize: number;
@@ -101,9 +97,8 @@ function parseArgs(argv: string[]): CliOptions {
 }
 
 function chunkWords(words: string[], chunkSize: number) {
-  return Array.from(
-    { length: Math.ceil(words.length / chunkSize) },
-    (_, index) => words.slice(index * chunkSize, (index + 1) * chunkSize),
+  return Array.from({ length: Math.ceil(words.length / chunkSize) }, (_, index) =>
+    words.slice(index * chunkSize, (index + 1) * chunkSize),
   );
 }
 
@@ -115,10 +110,10 @@ function sleep(ms: number) {
 
 function isReadyForAudio(row: AudioLookupRow) {
   return Boolean(
-    row.ipa_uk?.trim()
-    && row.primary_meaning_zh?.trim()
-    && row.memory_tip?.trim()
-    && (row.vocabulary_senses?.length ?? 0) > 0,
+    row.ipa_uk?.trim() &&
+    row.primary_meaning_zh?.trim() &&
+    row.memory_tip?.trim() &&
+    (row.vocabulary_senses?.length ?? 0) > 0,
   );
 }
 
@@ -130,7 +125,8 @@ async function collectOfficialWordsMissingAudio() {
   for (const words of chunkWords(officialWords, LOOKUP_CHUNK_SIZE)) {
     const { data, error } = await supabaseAdmin
       .from('vocabulary_items')
-      .select(`
+      .select(
+        `
         word,
         ipa_uk,
         primary_meaning_zh,
@@ -140,16 +136,15 @@ async function collectOfficialWordsMissingAudio() {
         vocabulary_senses (
           pos
         )
-      `)
+      `,
+      )
       .in('word', words);
 
     if (error) {
       throw new Error(`audio lookup failed: ${error.message}`);
     }
 
-    const byWord = new Map(
-      ((data ?? []) as AudioLookupRow[]).map((row) => [normalizeWordKey(row.word), row]),
-    );
+    const byWord = new Map(((data ?? []) as AudioLookupRow[]).map((row) => [normalizeWordKey(row.word), row]));
 
     for (const word of words) {
       const row = byWord.get(word);
@@ -215,7 +210,9 @@ async function main() {
 
   for (const [index, words] of batches.entries()) {
     const batchLabel = `${index + 1}/${batches.length}`;
-    console.log(`\n[${batchLabel}] warming ${words.length} words: ${words.slice(0, 3).join(', ')}${words.length > 3 ? '...' : ''}`);
+    console.log(
+      `\n[${batchLabel}] warming ${words.length} words: ${words.slice(0, 3).join(', ')}${words.length > 3 ? '...' : ''}`,
+    );
 
     for (const [wordIndex, word] of words.entries()) {
       await warmWordAudio(word, options);

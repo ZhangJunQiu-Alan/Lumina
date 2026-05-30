@@ -48,7 +48,7 @@ export const LibrarySkeleton = () => {
           <Skeleton className="h-6 w-24" />
           <div className="h-px flex-1 bg-black/5" />
         </div>
-        
+
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2">
           {[1, 2].map((i) => (
             <div key={i} className="glass rounded-[32px] p-7 shadow-sm">

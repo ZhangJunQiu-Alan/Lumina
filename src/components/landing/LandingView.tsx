@@ -223,7 +223,7 @@ const reviewTimeline = [
   { label: '15 天后', value: '长期巩固' },
 ];
 
-function HeroMapCard({ node }: { node: typeof mapNodes[number] }) {
+function HeroMapCard({ node }: { node: (typeof mapNodes)[number] }) {
   return (
     <div className={`landing-map-card ${node.className}`}>
       <div className="landing-map-card__header">
@@ -243,7 +243,9 @@ function MemoryCurveChart() {
   return (
     <svg className="landing-memory-chart" viewBox="0 0 560 238" role="img" aria-label="艾宾浩斯遗忘曲线示意图">
       <rect x="0" y="0" width="560" height="238" rx="18" fill="rgba(255,253,243,0.9)" />
-      <text x="280" y="34" textAnchor="middle" className="landing-chart-title">艾宾浩斯遗忘曲线</text>
+      <text x="280" y="34" textAnchor="middle" className="landing-chart-title">
+        艾宾浩斯遗忘曲线
+      </text>
       {[64, 96, 128, 160, 192].map((y) => (
         <line key={y} x1="64" x2="520" y1={y} y2={y} className="landing-chart-grid" />
       ))}
@@ -262,14 +264,26 @@ function MemoryCurveChart() {
         <circle key={x} cx={x} cy={[70, 92, 98, 106, 112, 132][index]} r="7" className="landing-chart-dot" />
       ))}
       {['新学', '1天后', '2天后', '4天后', '7天后', '15天后'].map((label, index) => (
-        <text key={label} x={[72, 152, 240, 340, 440, 520][index]} y="222" textAnchor="middle" className="landing-chart-axis">{label}</text>
+        <text
+          key={label}
+          x={[72, 152, 240, 340, 440, 520][index]}
+          y="222"
+          textAnchor="middle"
+          className="landing-chart-axis"
+        >
+          {label}
+        </text>
       ))}
       {['100%', '75%', '50%', '25%', '0%'].map((label, index) => (
-        <text key={label} x="35" y={[68, 100, 132, 164, 196][index]} textAnchor="middle" className="landing-chart-axis">{label}</text>
+        <text key={label} x="35" y={[68, 100, 132, 164, 196][index]} textAnchor="middle" className="landing-chart-axis">
+          {label}
+        </text>
       ))}
       <g className="landing-chart-badge">
         <rect x="420" y="66" width="88" height="28" rx="14" />
-        <text x="464" y="85" textAnchor="middle">智能复习点</text>
+        <text x="464" y="85" textAnchor="middle">
+          智能复习点
+        </text>
       </g>
     </svg>
   );
@@ -295,13 +309,17 @@ export const LandingView = () => {
 
             <nav className="landing-nav" aria-label="Landing page navigation">
               {navItems.map((item) => (
-                <a key={item.href} href={item.href}>{item.label}</a>
+                <a key={item.href} href={item.href}>
+                  {item.label}
+                </a>
               ))}
             </nav>
 
             <div className="landing-header-actions">
               {!isAuthenticated && (
-                <Link to="/auth?mode=login" className="landing-login-link">登录</Link>
+                <Link to="/auth?mode=login" className="landing-login-link">
+                  登录
+                </Link>
               )}
               <IslandButton
                 onClick={() => navigate(primaryTarget)}
@@ -482,7 +500,8 @@ export const LandingView = () => {
             串成一条进度线。
           </h2>
           <p>
-            Lumina 不只提供一个背单词入口。它会围绕“今天该学什么、该复习什么、该练什么”组织内容，让英语学习从零散任务变成连续系统。
+            Lumina
+            不只提供一个背单词入口。它会围绕“今天该学什么、该复习什么、该练什么”组织内容，让英语学习从零散任务变成连续系统。
           </p>
         </div>
 
@@ -491,7 +510,8 @@ export const LandingView = () => {
             <p>系统如何工作</p>
             <h2 id="landing-route-title">从新词到长期掌握，每一步都有记录。</h2>
             <span>
-              学习内容进入 Lumina 后，会先形成个人词库和练习轨迹。之后每一次复习、错题和模考结果，都会继续影响下一轮安排。
+              学习内容进入 Lumina
+              后，会先形成个人词库和练习轨迹。之后每一次复习、错题和模考结果，都会继续影响下一轮安排。
             </span>
           </div>
 
@@ -607,7 +627,8 @@ export const LandingView = () => {
             <p>为什么是一个系统</p>
             <h2 id="landing-continuity-title">账号里保存的不只是分数，还有学习连续性。</h2>
             <span>
-              单词、复习、练习结果和偏好放在一起，才知道下一步该继续哪里。Lumina 的目标是让学习路径越来越清楚，而不是让入口越来越多。
+              单词、复习、练习结果和偏好放在一起，才知道下一步该继续哪里。Lumina
+              的目标是让学习路径越来越清楚，而不是让入口越来越多。
             </span>
           </div>
 
@@ -631,9 +652,7 @@ export const LandingView = () => {
           <div className="landing-contact-copy">
             <p>关于 Lumina</p>
             <h2>关于我们</h2>
-            <span>
-              Lumina 还在持续打磨。这里会放真实联系方式，方便反馈词库、题库、雅思训练和账号问题。
-            </span>
+            <span>Lumina 还在持续打磨。这里会放真实联系方式，方便反馈词库、题库、雅思训练和账号问题。</span>
             <div className="landing-contact-links">
               <Link to="/privacy">隐私政策</Link>
               <Link to="/terms">服务条款</Link>

@@ -14,20 +14,15 @@ function FullscreenLoader({ message }: { message: string }) {
   return (
     <div className="min-h-screen px-6 py-10">
       <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-3xl items-center justify-center">
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-xl"
-        >
-          <IslandPanel as="div" variant="elevated" className="flex flex-col items-center gap-5 p-12 text-center jelly-shadow">
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-xl">
+          <IslandPanel
+            as="div"
+            variant="elevated"
+            className="flex flex-col items-center gap-5 p-12 text-center jelly-shadow"
+          >
             <Loader2 className="h-10 w-10 animate-spin text-apple-blue" />
             <div>
-              <LuminaLogo
-                size={22}
-                className="justify-center"
-                markClassName="h-6 w-6"
-                wordmarkClassName="h-4.5"
-              />
+              <LuminaLogo size={22} className="justify-center" markClassName="h-6 w-6" wordmarkClassName="h-4.5" />
               <p className="mt-3 text-2xl font-black text-text-primary">{message}</p>
             </div>
           </IslandPanel>
@@ -85,11 +80,11 @@ export default function RootApp() {
         <Route path="/terms" element={<TermsView />} />
         <Route
           path="/app/*"
-          element={(
+          element={
             <ProtectedRoute>
               <App />
             </ProtectedRoute>
-          )}
+          }
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

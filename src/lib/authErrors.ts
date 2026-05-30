@@ -14,7 +14,10 @@ function matchByMessage(raw: string): AuthErrorCopy | null {
   if (lower.includes('already') && (lower.includes('registered') || lower.includes('exists'))) {
     return { text: '这个邮箱已经注册过了', hint: '直接登录，或用"忘记密码"找回。' };
   }
-  if (lower.includes('password') && (lower.includes('short') || lower.includes('weak') || lower.includes('6 characters'))) {
+  if (
+    lower.includes('password') &&
+    (lower.includes('short') || lower.includes('weak') || lower.includes('6 characters'))
+  ) {
     return { text: '密码再强一点更安全', hint: '至少 8 位，尽量混合字母和数字。' };
   }
   if (lower.includes('rate') && lower.includes('limit')) {

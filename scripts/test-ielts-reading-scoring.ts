@@ -27,8 +27,14 @@ assert.equal(isIeltsQuestionCorrect(baseQuestion, 'eco tourism'), true);
 assert.equal(isIeltsQuestionCorrect({ ...baseQuestion, answer: ['lower frequencies'] }, 'lower frequencies'), true);
 assert.equal(isIeltsQuestionCorrect({ ...baseQuestion, answer: ['parks'] }, 'park'), true);
 assert.equal(isIeltsQuestionCorrect({ ...baseQuestion, answer: ['TRUE'], type: 'true_false_not_given' }, 'true'), true);
-assert.equal(isIeltsQuestionCorrect({ ...baseQuestion, answer: ['A', 'C'], type: 'multiple_choice_multi' }, ['C', 'A']), true);
-assert.equal(isIeltsQuestionCorrect({ ...baseQuestion, answer: ['A', 'C'], type: 'multiple_choice_multi' }, ['A']), false);
+assert.equal(
+  isIeltsQuestionCorrect({ ...baseQuestion, answer: ['A', 'C'], type: 'multiple_choice_multi' }, ['C', 'A']),
+  true,
+);
+assert.equal(
+  isIeltsQuestionCorrect({ ...baseQuestion, answer: ['A', 'C'], type: 'multiple_choice_multi' }, ['A']),
+  false,
+);
 
 const result = evaluateIeltsReadingAnswers(
   [
@@ -45,7 +51,10 @@ const result = evaluateIeltsReadingAnswers(
 
 assert.equal(result.score, 2);
 assert.equal(result.totalQuestions, 3);
-assert.deepEqual(result.responses.map((response) => response.isCorrect), [true, false, true]);
+assert.deepEqual(
+  result.responses.map((response) => response.isCorrect),
+  [true, false, true],
+);
 assert.deepEqual(result.summary, {
   answeredCount: 3,
   correctCount: 2,
@@ -76,9 +85,30 @@ assert.deepEqual(incompleteResult.summary, {
 
 const anyOrderResult = evaluateIeltsReadingAnswers(
   [
-    { ...baseQuestion, id: 'q33', groupId: 'group-any-order', number: 33, answer: ['A', 'C', 'F'], type: 'multiple_choice_multi' },
-    { ...baseQuestion, id: 'q34', groupId: 'group-any-order', number: 34, answer: ['A', 'C', 'F'], type: 'multiple_choice_multi' },
-    { ...baseQuestion, id: 'q35', groupId: 'group-any-order', number: 35, answer: ['A', 'C', 'F'], type: 'multiple_choice_multi' },
+    {
+      ...baseQuestion,
+      id: 'q33',
+      groupId: 'group-any-order',
+      number: 33,
+      answer: ['A', 'C', 'F'],
+      type: 'multiple_choice_multi',
+    },
+    {
+      ...baseQuestion,
+      id: 'q34',
+      groupId: 'group-any-order',
+      number: 34,
+      answer: ['A', 'C', 'F'],
+      type: 'multiple_choice_multi',
+    },
+    {
+      ...baseQuestion,
+      id: 'q35',
+      groupId: 'group-any-order',
+      number: 35,
+      answer: ['A', 'C', 'F'],
+      type: 'multiple_choice_multi',
+    },
   ],
   {
     33: 'F',
@@ -91,9 +121,30 @@ assert.equal(anyOrderResult.score, 3);
 
 const duplicateAnyOrderResult = evaluateIeltsReadingAnswers(
   [
-    { ...baseQuestion, id: 'q33', groupId: 'group-any-order', number: 33, answer: ['A', 'C', 'F'], type: 'multiple_choice_multi' },
-    { ...baseQuestion, id: 'q34', groupId: 'group-any-order', number: 34, answer: ['A', 'C', 'F'], type: 'multiple_choice_multi' },
-    { ...baseQuestion, id: 'q35', groupId: 'group-any-order', number: 35, answer: ['A', 'C', 'F'], type: 'multiple_choice_multi' },
+    {
+      ...baseQuestion,
+      id: 'q33',
+      groupId: 'group-any-order',
+      number: 33,
+      answer: ['A', 'C', 'F'],
+      type: 'multiple_choice_multi',
+    },
+    {
+      ...baseQuestion,
+      id: 'q34',
+      groupId: 'group-any-order',
+      number: 34,
+      answer: ['A', 'C', 'F'],
+      type: 'multiple_choice_multi',
+    },
+    {
+      ...baseQuestion,
+      id: 'q35',
+      groupId: 'group-any-order',
+      number: 35,
+      answer: ['A', 'C', 'F'],
+      type: 'multiple_choice_multi',
+    },
   ],
   {
     33: 'A',
@@ -104,11 +155,14 @@ const duplicateAnyOrderResult = evaluateIeltsReadingAnswers(
 
 assert.equal(duplicateAnyOrderResult.score, 2);
 assert.deepEqual(
-  summarizeIeltsReadingResult([
-    { response: ['a'], isCorrect: true },
-    { response: ['b'], isCorrect: false },
-    { response: [], isCorrect: false },
-  ], 4),
+  summarizeIeltsReadingResult(
+    [
+      { response: ['a'], isCorrect: true },
+      { response: ['b'], isCorrect: false },
+      { response: [], isCorrect: false },
+    ],
+    4,
+  ),
   {
     answeredCount: 2,
     correctCount: 1,

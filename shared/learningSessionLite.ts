@@ -12,9 +12,9 @@ export function isCoreLearningComplete(input: {
   const round = input.round ?? input.sessionRound ?? null;
 
   return (
-    input.groupCompleted === true
-    || input.status === 'completed'
-    || Boolean(input.completedAt)
-    || (typeof round === 'string' && REINFORCEMENT_ROUNDS.includes(round as LearningRoundType))
+    input.groupCompleted === true ||
+    input.status === 'completed' ||
+    Boolean(input.completedAt) ||
+    (typeof round === 'string' && REINFORCEMENT_ROUNDS.includes(round as LearningRoundType))
   );
 }

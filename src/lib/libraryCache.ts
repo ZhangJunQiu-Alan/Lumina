@@ -71,10 +71,7 @@ export function getCachedSavedWords(userId: string) {
   return savedWordsCache.get(userId) ?? null;
 }
 
-export async function refreshSavedWords(
-  userId: string,
-  loader: () => Promise<SavedWordEntry[]>,
-) {
+export async function refreshSavedWords(userId: string, loader: () => Promise<SavedWordEntry[]>) {
   const existingRequest = savedWordsRequests.get(userId);
   if (existingRequest) return existingRequest;
 
@@ -98,10 +95,7 @@ export function getCachedLibraryGroupDetail(userId: string, groupId: string) {
   return groupDetailCache.get(buildGroupDetailKey(userId, groupId)) ?? null;
 }
 
-export async function refreshLibraryGroups(
-  userId: string,
-  loader: () => Promise<LibraryGroupSummary[]>,
-) {
+export async function refreshLibraryGroups(userId: string, loader: () => Promise<LibraryGroupSummary[]>) {
   const existingRequest = groupListRequests.get(userId);
   if (existingRequest) return existingRequest;
 
@@ -150,10 +144,7 @@ export function getCachedOfficialResumeCandidates(userId: string) {
   return officialResumeCache.get(userId) ?? null;
 }
 
-export async function refreshOfficialResumeCandidates(
-  userId: string,
-  loader: () => Promise<OfficialResumeMap>,
-) {
+export async function refreshOfficialResumeCandidates(userId: string, loader: () => Promise<OfficialResumeMap>) {
   const existingRequest = officialResumeRequests.get(userId);
   if (existingRequest) return existingRequest;
 

@@ -90,12 +90,16 @@ function run() {
     ['oldest-due', 'fuzzy', 'slow', 'stable-early', 'stable-late'],
   );
 
-  const overdueRows = Array.from({ length: 250 }, (_, index) => ({
-    vocabulary_item_id: `word-${index}`,
-    memory_state: index % 3 === 0 ? 'fuzzy' : index % 3 === 1 ? 'slow_recall' : 'stable_recall',
-    next_review_at: '2026-04-10T08:00:00.000Z',
-    last_assessed_at: `2026-04-09T${String(index % 24).padStart(2, '0')}:00:00.000Z`,
-  } as const));
+  const overdueRows = Array.from(
+    { length: 250 },
+    (_, index) =>
+      ({
+        vocabulary_item_id: `word-${index}`,
+        memory_state: index % 3 === 0 ? 'fuzzy' : index % 3 === 1 ? 'slow_recall' : 'stable_recall',
+        next_review_at: '2026-04-10T08:00:00.000Z',
+        last_assessed_at: `2026-04-09T${String(index % 24).padStart(2, '0')}:00:00.000Z`,
+      }) as const,
+  );
 
   const backlogPlan = planReviewBacklogRedistribution(overdueRows, [], {
     now: BASE_TIME,

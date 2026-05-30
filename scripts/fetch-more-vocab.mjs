@@ -12,18 +12,18 @@ async function fetchText(url) {
 function extractWords(rawText, filterFn) {
   const words = [];
   const seen = new Set();
-  
+
   for (const line of rawText.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    
+
     // Updated regex to handle line numbers, optional asterisk, and optional phonetic bracket or part-of-speech
     // Matches patterns like: "1. abandon [", "2. *abacus [", "*abase [", "a, an ["
-    const match = trimmed.match(/^(?:\d+\.\s+)?(\*?)([a-zA-Z\-]+).*?(?:\s+\[|\s+[a-zA-Z]+\.)/);
+    const match = trimmed.match(/^(?:\d+\.\s+)?(\*?)([a-zA-Z-]+).*?(?:\s+\[|\s+[a-zA-Z]+\.)/);
     if (match) {
       const isStarred = match[1] === '*';
       const word = match[2].toLowerCase();
-      
+
       if (filterFn && !filterFn(isStarred)) continue;
 
       if (!seen.has(word)) {
@@ -32,7 +32,7 @@ function extractWords(rawText, filterFn) {
       }
     }
   }
-  
+
   return words;
 }
 
@@ -63,22 +63,12 @@ async function processVocab(url, fileName, title, constName, filterFn = null) {
 
 async function main() {
   const baseUrl = 'https://raw.githubusercontent.com/mahavivo/english-wordlists/master';
-  
+
   // CET6
-  await processVocab(
-    `${baseUrl}/CET6_edited.txt`,
-    'cet6-vocab.ts',
-    '六级大纲核心词汇',
-    'CET6'
-  );
+  await processVocab(`${baseUrl}/CET6_edited.txt`, 'cet6-vocab.ts', '六级大纲核心词汇', 'CET6');
 
   // NPEE (考研)
-  await processVocab(
-    `${baseUrl}/NPEE_Wordlist.txt`,
-    'npee-vocab.ts',
-    '考研英语大纲词汇',
-    'NPEE'
-  );
+  await processVocab(`${baseUrl}/NPEE_Wordlist.txt`, 'npee-vocab.ts', '考研英语大纲词汇', 'NPEE');
 
   // TEM4 (专四) - Filter out starred from the combined table
   await processVocab(
@@ -86,7 +76,7 @@ async function main() {
     'tem4-vocab.ts',
     '英语专业四级(TEM4)',
     'TEM4',
-    (isStarred) => !isStarred
+    (isStarred) => !isStarred,
   );
 
   // TEM8 (专八) - Only specific starred ones
@@ -94,7 +84,7 @@ async function main() {
     `${baseUrl}/%E8%8B%B1%E8%AF%AD%E4%B8%93%E4%B8%9A%E6%98%9F%E6%A0%87%E5%85%AB%E7%BA%A7%E8%AF%8D%E6%B1%87.txt`,
     'tem8-vocab.ts',
     '英语专业八级(TEM8)',
-    'TEM8'
+    'TEM8',
   );
 }
 

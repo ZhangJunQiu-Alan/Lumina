@@ -30,13 +30,9 @@ function buildAudioStoragePath(word: string, locale: 'uk' | 'us') {
   return `${locale}/${fileName}`;
 }
 
-async function uploadAndSave(
-  word: string,
-  vocabId: string | null,
-  locale: 'uk' | 'us',
-): Promise<string> {
+async function uploadAndSave(word: string, vocabId: string | null, locale: 'uk' | 'us'): Promise<string> {
   const cacheKey = `${word.toLowerCase()}:${locale}`;
-  
+
   // Check pending requests (deduplication)
   if (pendingRequests.has(cacheKey)) {
     return pendingRequests.get(cacheKey)!;
@@ -59,7 +55,10 @@ async function uploadAndSave(
       // Persist URL back to vocabulary_items if we have the row ID
       if (vocabId) {
         const col = locale === 'uk' ? 'audio_uk_url' : 'audio_us_url';
-        await supabaseAdmin.from('vocabulary_items').update({ [col]: url }).eq('id', vocabId);
+        await supabaseAdmin
+          .from('vocabulary_items')
+          .update({ [col]: url })
+          .eq('id', vocabId);
       }
 
       urlCache.set(cacheKey, url);
@@ -103,19 +102,26 @@ export async function getOrCreateAudio(word: string, locale: 'uk' | 'us'): Promi
 
 /** Batch-generate UK + US audio for a list of words.
  *  Returns { [word]: { uk_url, us_url } } — errors per word are silently skipped. */
-export async function batchGenerateAudio(
-  words: string[],
-): Promise<Record<string, { uk_url: string; us_url: string }>> {
+export async function batchGenerateAudio(words: string[]): Promise<Record<string, { uk_url: string; us_url: string }>> {
   // Fetch existing URLs in one query
   const { data: existing } = await supabaseAdmin
     .from('vocabulary_items')
     .select('id, word, audio_uk_url, audio_us_url')
-    .in('word', words.map(w => w.toLowerCase()));
+    .in(
+      'word',
+      words.map((w) => w.toLowerCase()),
+    );
 
   const existingMap = new Map(
-    (existing ?? []).map(r => [r.word as string, r as {
-      id: string; word: string; audio_uk_url: string | null; audio_us_url: string | null
-    }]),
+    (existing ?? []).map((r) => [
+      r.word as string,
+      r as {
+        id: string;
+        word: string;
+        audio_uk_url: string | null;
+        audio_us_url: string | null;
+      },
+    ]),
   );
 
   const result: Record<string, { uk_url: string; us_url: string }> = {};
@@ -125,12 +131,8 @@ export async function batchGenerateAudio(
       const row = existingMap.get(word.toLowerCase());
 
       const [ukUrl, usUrl] = await Promise.all([
-        row?.audio_uk_url
-          ? Promise.resolve(row.audio_uk_url)
-          : getOrCreateAudio(word, 'uk'),
-        row?.audio_us_url
-          ? Promise.resolve(row.audio_us_url)
-          : getOrCreateAudio(word, 'us'),
+        row?.audio_uk_url ? Promise.resolve(row.audio_uk_url) : getOrCreateAudio(word, 'uk'),
+        row?.audio_us_url ? Promise.resolve(row.audio_us_url) : getOrCreateAudio(word, 'us'),
       ]);
 
       result[word.toLowerCase()] = { uk_url: ukUrl, us_url: usUrl };

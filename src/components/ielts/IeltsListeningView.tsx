@@ -157,7 +157,9 @@ function RecentListeningAttempts({
             Cambridge {attempt.bookNumber} · Test {attempt.testNumber}
           </p>
           <div className="mt-3 flex items-end justify-between gap-4">
-            <p className="text-2xl font-black text-text-primary">{attempt.score} / {attempt.totalQuestions}</p>
+            <p className="text-2xl font-black text-text-primary">
+              {attempt.score} / {attempt.totalQuestions}
+            </p>
             <p className="text-xs font-bold text-text-secondary">{formatElapsedTime(attempt.elapsedSeconds)}</p>
           </div>
         </button>
@@ -365,9 +367,12 @@ function getResponseStatus(response?: IeltsListeningResponseResult): 'neutral' |
 }
 
 function getPaperControlClass(status: ReturnType<typeof getResponseStatus>, answered: boolean) {
-  if (status === 'correct') return 'border-apple-green bg-apple-green/95 text-white shadow-[0_10px_22px_rgba(111,186,44,0.22)]';
-  if (status === 'wrong') return 'border-apple-red bg-apple-red/95 text-white shadow-[0_10px_22px_rgba(224,90,90,0.20)]';
-  if (status === 'unanswered') return 'border-apple-red bg-white text-apple-red shadow-[0_10px_22px_rgba(224,90,90,0.12)]';
+  if (status === 'correct')
+    return 'border-apple-green bg-apple-green/95 text-white shadow-[0_10px_22px_rgba(111,186,44,0.22)]';
+  if (status === 'wrong')
+    return 'border-apple-red bg-apple-red/95 text-white shadow-[0_10px_22px_rgba(224,90,90,0.20)]';
+  if (status === 'unanswered')
+    return 'border-apple-red bg-white text-apple-red shadow-[0_10px_22px_rgba(224,90,90,0.12)]';
   if (answered) return 'border-apple-orange bg-white text-text-primary shadow-[0_10px_22px_rgba(245,195,28,0.16)]';
   return 'border-apple-orange/45 bg-white/92 text-text-primary shadow-[0_8px_18px_rgba(31,45,75,0.12)]';
 }
@@ -544,7 +549,9 @@ function ResultPanel({
           <p className="text-xs font-black uppercase tracking-[0.22em] text-text-secondary">
             Cambridge {result.bookNumber} · Listening Test {result.testNumber}
           </p>
-          <h2 className="mt-3 text-3xl font-black text-text-primary">本次得分 {result.score} / {result.totalQuestions}</h2>
+          <h2 className="mt-3 text-3xl font-black text-text-primary">
+            本次得分 {result.score} / {result.totalQuestions}
+          </h2>
           <p className="mt-2 text-sm font-bold text-text-secondary">用时 {formatElapsedTime(result.elapsedSeconds)}</p>
         </div>
         <button
@@ -605,10 +612,11 @@ function ResultPanel({
               )}
             >
               <div className="flex flex-wrap items-center gap-3">
-                <span className={cx(
-                  'flex h-9 w-9 items-center justify-center rounded-xl text-sm font-black',
-                  correct ? 'bg-apple-green text-white' : 'bg-apple-red text-white',
-                )}
+                <span
+                  className={cx(
+                    'flex h-9 w-9 items-center justify-center rounded-xl text-sm font-black',
+                    correct ? 'bg-apple-green text-white' : 'bg-apple-red text-white',
+                  )}
                 >
                   {question.number}
                 </span>
@@ -731,7 +739,8 @@ export function IeltsListeningTestView() {
   }, []);
 
   const questions = useMemo(() => (test ? getIeltsListeningQuestions(test) : []), [test]);
-  const selectedSectionData = test?.sections.find((section) => section.number === selectedSection) ?? test?.sections[0] ?? null;
+  const selectedSectionData =
+    test?.sections.find((section) => section.number === selectedSection) ?? test?.sections[0] ?? null;
   const elapsedSeconds = clampIeltsElapsedSeconds((now - new Date(startedAt).getTime()) / 1000, TEST_DURATION_SECONDS);
   const remainingSeconds = Math.max(0, TEST_DURATION_SECONDS - elapsedSeconds);
   const flaggedSet = useMemo(() => new Set(flaggedNumbers), [flaggedNumbers]);
@@ -744,11 +753,11 @@ export function IeltsListeningTestView() {
   }, []);
 
   const toggleFlag = useCallback((questionNumber: number) => {
-    setFlaggedNumbers((current) => (
+    setFlaggedNumbers((current) =>
       current.includes(questionNumber)
         ? current.filter((item) => item !== questionNumber)
-        : [...current, questionNumber].sort((left, right) => left - right)
-    ));
+        : [...current, questionNumber].sort((left, right) => left - right),
+    );
   }, []);
 
   const submitAttempt = useCallback(async () => {
@@ -791,8 +800,10 @@ export function IeltsListeningTestView() {
 
   if (!testId) return <Navigate to="/app/ielts-listening" replace />;
   if (isLoading) return <IeltsListeningLoadingShell label="正在读取雅思听力套题" />;
-  if (errorMsg && !test) return <IeltsListeningErrorShell message={errorMsg} onBack={() => navigate('/app/ielts-listening')} />;
-  if (!test) return <IeltsListeningErrorShell message="找不到这套雅思听力。" onBack={() => navigate('/app/ielts-listening')} />;
+  if (errorMsg && !test)
+    return <IeltsListeningErrorShell message={errorMsg} onBack={() => navigate('/app/ielts-listening')} />;
+  if (!test)
+    return <IeltsListeningErrorShell message="找不到这套雅思听力。" onBack={() => navigate('/app/ielts-listening')} />;
 
   return (
     <div className="min-h-full bg-[#edf3ff] px-4 pb-8 pt-5 sm:px-6 lg:px-8 lg:pt-8">
@@ -823,10 +834,11 @@ export function IeltsListeningTestView() {
                 <span className="text-text-secondary">{result?.totalQuestions ?? questions.length}</span>
               </div>
             ) : (
-              <div className={cx(
-                'inline-flex h-16 shrink-0 items-center gap-3 rounded-[18px] bg-white px-5 text-xl font-black tracking-[0.08em] text-text-primary shadow-[0_14px_30px_rgba(31,45,75,0.08)]',
-                remainingSeconds <= 180 && 'text-apple-red',
-              )}
+              <div
+                className={cx(
+                  'inline-flex h-16 shrink-0 items-center gap-3 rounded-[18px] bg-white px-5 text-xl font-black tracking-[0.08em] text-text-primary shadow-[0_14px_30px_rgba(31,45,75,0.08)]',
+                  remainingSeconds <= 180 && 'text-apple-red',
+                )}
               >
                 <Clock3 className="h-5 w-5 text-text-secondary" />
                 <span>{formatElapsedTime(remainingSeconds)}</span>
@@ -851,7 +863,9 @@ export function IeltsListeningTestView() {
             ) : (
               <button
                 type="button"
-                onClick={() => { void submitAttempt(); }}
+                onClick={() => {
+                  void submitAttempt();
+                }}
                 disabled={isSubmitting}
                 className="inline-flex h-16 shrink-0 items-center gap-3 rounded-[18px] bg-apple-orange px-6 text-base font-black text-white shadow-[0_16px_34px_rgba(245,195,28,0.24)] disabled:opacity-70"
               >
@@ -868,11 +882,16 @@ export function IeltsListeningTestView() {
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-lg font-black text-text-primary">Section {selectedSectionData?.number}</h3>
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-text-secondary">
-                  Questions {((selectedSection - 1) * 10) + 1}-{selectedSection * 10}
+                  Questions {(selectedSection - 1) * 10 + 1}-{selectedSection * 10}
                 </p>
               </div>
               {selectedSectionData?.audioUrl ? (
-                <audio key={selectedSectionData.audioUrl} controls className="mt-4 w-full" src={selectedSectionData.audioUrl}>
+                <audio
+                  key={selectedSectionData.audioUrl}
+                  controls
+                  className="mt-4 w-full"
+                  src={selectedSectionData.audioUrl}
+                >
                   <track kind="captions" />
                 </audio>
               ) : (
@@ -888,7 +907,9 @@ export function IeltsListeningTestView() {
                     onClick={() => setSelectedSection(section.number)}
                     className={cx(
                       'rounded-2xl px-3 py-3 text-sm font-black transition-colors',
-                      selectedSection === section.number ? 'bg-apple-orange text-white' : 'bg-[#f3f5fa] text-text-secondary',
+                      selectedSection === section.number
+                        ? 'bg-apple-orange text-white'
+                        : 'bg-[#f3f5fa] text-text-secondary',
                     )}
                   >
                     S{section.number}
@@ -901,8 +922,14 @@ export function IeltsListeningTestView() {
               <div className="mb-4 flex items-center justify-between">
                 <p className="text-sm font-black text-text-secondary">答题进度</p>
                 <div className="flex items-center gap-3 text-xs font-bold text-text-secondary">
-                  <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-apple-orange" />已答</span>
-                  <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#ff9500]" />标记</span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full bg-apple-orange" />
+                    已答
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full bg-[#ff9500]" />
+                    标记
+                  </span>
                 </div>
               </div>
               <div className="grid grid-cols-10 gap-2">
@@ -916,7 +943,9 @@ export function IeltsListeningTestView() {
                       onClick={() => setSelectedSection(question.sectionNumber)}
                       className={cx(
                         'relative flex h-[42px] w-[42px] items-center justify-center rounded-xl border text-sm font-black transition-all',
-                        answered ? 'border-apple-orange bg-apple-orange text-white' : 'border-[#dce3ee] bg-white text-text-secondary',
+                        answered
+                          ? 'border-apple-orange bg-apple-orange text-white'
+                          : 'border-[#dce3ee] bg-white text-text-secondary',
                       )}
                     >
                       {question.number}
@@ -946,7 +975,9 @@ export function IeltsListeningTestView() {
                         <p className="text-xs font-black uppercase tracking-[0.22em] text-apple-orange">
                           Section {selectedSectionData.number}
                         </p>
-                        <h3 className="mt-2 text-2xl font-black text-text-primary">Questions {((selectedSectionData.number - 1) * 10) + 1}-{selectedSectionData.number * 10}</h3>
+                        <h3 className="mt-2 text-2xl font-black text-text-primary">
+                          Questions {(selectedSectionData.number - 1) * 10 + 1}-{selectedSectionData.number * 10}
+                        </h3>
                       </div>
                     </div>
 
@@ -957,7 +988,10 @@ export function IeltsListeningTestView() {
                 )}
 
                 {selectedSectionData?.groups.map((group) => (
-                  <section key={group.id} className="space-y-4 rounded-[30px] border border-white/70 bg-white/84 p-6 shadow-[0_18px_44px_rgba(14,26,56,0.07)]">
+                  <section
+                    key={group.id}
+                    className="space-y-4 rounded-[30px] border border-white/70 bg-white/84 p-6 shadow-[0_18px_44px_rgba(14,26,56,0.07)]"
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <p className="rounded-lg bg-apple-orange/10 px-3 py-2 text-xs font-black uppercase tracking-[0.18em] text-apple-orange">
                         {group.type.replaceAll('_', ' ')}
@@ -974,10 +1008,11 @@ export function IeltsListeningTestView() {
                         return (
                           <div key={question.id} className="rounded-[24px] border border-[#e5ebf5] bg-white p-5">
                             <div className="mb-4 flex items-start gap-4">
-                              <div className={cx(
-                                'flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] text-base font-black',
-                                answered ? 'bg-apple-orange text-white' : 'bg-[#f0f3f9] text-text-secondary',
-                              )}
+                              <div
+                                className={cx(
+                                  'flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] text-base font-black',
+                                  answered ? 'bg-apple-orange text-white' : 'bg-[#f0f3f9] text-text-secondary',
+                                )}
                               >
                                 {question.number}
                               </div>

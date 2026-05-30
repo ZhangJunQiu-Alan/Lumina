@@ -16,11 +16,16 @@ export function isLearningRoundType(value: unknown): value is LearningRoundType 
 }
 
 export function isCoreLearningRound(value: unknown): value is Extract<LearningRoundType, 'round1' | 'round2'> {
-  return typeof value === 'string' && CORE_LEARNING_ROUNDS.includes(value as Extract<LearningRoundType, 'round1' | 'round2'>);
+  return (
+    typeof value === 'string' && CORE_LEARNING_ROUNDS.includes(value as Extract<LearningRoundType, 'round1' | 'round2'>)
+  );
 }
 
 export function isReinforcementRound(value: unknown): value is Extract<LearningRoundType, 'round3' | 'article'> {
-  return typeof value === 'string' && REINFORCEMENT_ROUNDS.includes(value as Extract<LearningRoundType, 'round3' | 'article'>);
+  return (
+    typeof value === 'string' &&
+    REINFORCEMENT_ROUNDS.includes(value as Extract<LearningRoundType, 'round3' | 'article'>)
+  );
 }
 
 export function isCoreLearningComplete(input: {
@@ -33,10 +38,10 @@ export function isCoreLearningComplete(input: {
   const round = input.round ?? input.sessionRound ?? null;
 
   return (
-    input.groupCompleted === true
-    || input.status === 'completed'
-    || Boolean(input.completedAt)
-    || isReinforcementRound(round)
+    input.groupCompleted === true ||
+    input.status === 'completed' ||
+    Boolean(input.completedAt) ||
+    isReinforcementRound(round)
   );
 }
 
@@ -45,12 +50,15 @@ export function normalizeSessionQueueWordIds(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0);
 }
 
-export function normalizeSessionPassedQueueIndices(value: unknown, queueLength: number, currentIndex?: number): number[] {
+export function normalizeSessionPassedQueueIndices(
+  value: unknown,
+  queueLength: number,
+  currentIndex?: number,
+): number[] {
   if (!Array.isArray(value) || queueLength <= 0) return [];
 
-  const upperBound = typeof currentIndex === 'number'
-    ? Math.min(Math.max(Math.round(currentIndex), 0), queueLength)
-    : queueLength;
+  const upperBound =
+    typeof currentIndex === 'number' ? Math.min(Math.max(Math.round(currentIndex), 0), queueLength) : queueLength;
   const indices = new Set<number>();
 
   for (const entry of value) {
@@ -86,9 +94,7 @@ export function clampSessionIndex(currentIndex: number, queueLength: number) {
 
 export function rebuildSessionQueue(words: Word[], queueWordIds: string[]) {
   const wordMap = new Map(words.map((word) => [word.id, word]));
-  return queueWordIds
-    .map((wordId) => wordMap.get(wordId))
-    .filter((word): word is Word => Boolean(word));
+  return queueWordIds.map((wordId) => wordMap.get(wordId)).filter((word): word is Word => Boolean(word));
 }
 
 export function filterMasteredSessionWords(words: Word[], masteredWordIds: Iterable<string>) {
@@ -114,8 +120,9 @@ export function normalizePersistedLearningSession(
       effectiveQueue.length,
       currentIndex,
     ),
-    round1ConfirmedWordIds: normalizeSessionRound1ConfirmedWordIds(session.round1ConfirmedWordIds)
-      .filter((wordId) => words.some((word) => word.id === wordId)),
+    round1ConfirmedWordIds: normalizeSessionRound1ConfirmedWordIds(session.round1ConfirmedWordIds).filter((wordId) =>
+      words.some((word) => word.id === wordId),
+    ),
   };
 }
 
@@ -161,10 +168,10 @@ export function reconcileSessionWithRound2History(
   },
 ): PersistedLearningSession {
   if (
-    session.groupCompleted
-    || isReinforcementRound(session.round)
-    || input.correctWordIds.length === 0
-    || words.length === 0
+    session.groupCompleted ||
+    isReinforcementRound(session.round) ||
+    input.correctWordIds.length === 0 ||
+    words.length === 0
   ) {
     return normalizePersistedLearningSession(session, words);
   }
@@ -180,33 +187,35 @@ export function reconcileSessionWithRound2History(
   const lastActiveAt = latestIso(session.lastActiveAt, input.lastAttemptAt) ?? session.lastActiveAt;
 
   if (firstPendingIndex === -1) {
-    return normalizePersistedLearningSession({
-      ...session,
-      round: 'round3',
-      currentIndex: 0,
-      queueWordIds: wordIds,
-      passedQueueIndices: [],
-      lastActiveAt,
-      groupCompleted: true,
-      completedAt: session.completedAt ?? input.lastAttemptAt ?? lastActiveAt,
-    }, words);
+    return normalizePersistedLearningSession(
+      {
+        ...session,
+        round: 'round3',
+        currentIndex: 0,
+        queueWordIds: wordIds,
+        passedQueueIndices: [],
+        lastActiveAt,
+        groupCompleted: true,
+        completedAt: session.completedAt ?? input.lastAttemptAt ?? lastActiveAt,
+      },
+      words,
+    );
   }
 
-  return normalizePersistedLearningSession({
-    ...session,
-    round: 'round2',
-    currentIndex: firstPendingIndex,
-    queueWordIds: wordIds,
-    passedQueueIndices: wordIds
-      .slice(0, firstPendingIndex)
-      .map((_, index) => index),
-    lastActiveAt,
-  }, words);
+  return normalizePersistedLearningSession(
+    {
+      ...session,
+      round: 'round2',
+      currentIndex: firstPendingIndex,
+      queueWordIds: wordIds,
+      passedQueueIndices: wordIds.slice(0, firstPendingIndex).map((_, index) => index),
+      lastActiveAt,
+    },
+    words,
+  );
 }
 
-export function createResumeCandidate(
-  input: Omit<ResumeCandidate, 'queueLength'>,
-): ResumeCandidate {
+export function createResumeCandidate(input: Omit<ResumeCandidate, 'queueLength'>): ResumeCandidate {
   const queueLength = input.queueWordIds.length;
 
   return {

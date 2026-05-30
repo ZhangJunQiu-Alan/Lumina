@@ -72,16 +72,20 @@ export function IslandPanel({
 }
 
 interface IslandCardProps extends HTMLAttributes<HTMLDivElement> {
-  color?: 'default' | 'app-blue' | 'app-yellow' | 'app-orange' | 'app-teal' | 'app-green' | 'app-red' | 'warm-peach-pink';
+  color?:
+    | 'default'
+    | 'app-blue'
+    | 'app-yellow'
+    | 'app-orange'
+    | 'app-teal'
+    | 'app-green'
+    | 'app-red'
+    | 'warm-peach-pink';
 }
 
 export function IslandCard({ color = 'default', className, children, ...props }: IslandCardProps) {
   return (
-    <AnimalCard
-      {...props}
-      color={color}
-      className={cx('lumina-island-card', className)}
-    >
+    <AnimalCard {...props} color={color} className={cx('lumina-island-card', className)}>
       {children}
     </AnimalCard>
   );
@@ -97,12 +101,7 @@ interface IslandInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, '
 }
 
 export function IslandInput({ className, ...props }: IslandInputProps) {
-  return (
-    <AnimalInput
-      {...props}
-      className={cx('lumina-island-input', className)}
-    />
-  );
+  return <AnimalInput {...props} className={cx('lumina-island-input', className)} />;
 }
 
 interface IslandBadgeProps extends HTMLAttributes<HTMLSpanElement> {
@@ -111,26 +110,15 @@ interface IslandBadgeProps extends HTMLAttributes<HTMLSpanElement> {
 
 export function IslandBadge({ tone = 'neutral', className, children, ...props }: IslandBadgeProps) {
   return (
-    <span
-      {...props}
-      className={cx('lumina-island-badge', `lumina-island-badge--${tone}`, className)}
-    >
+    <span {...props} className={cx('lumina-island-badge', `lumina-island-badge--${tone}`, className)}>
       {children}
     </span>
   );
 }
 
-export function IslandIconButton({
-  className,
-  children,
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement>) {
+export function IslandIconButton({ className, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
-    <button
-      {...props}
-      type={props.type ?? 'button'}
-      className={cx('lumina-island-icon-button', className)}
-    >
+    <button {...props} type={props.type ?? 'button'} className={cx('lumina-island-icon-button', className)}>
       {children}
     </button>
   );

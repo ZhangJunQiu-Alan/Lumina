@@ -12,10 +12,7 @@ export interface QueuedAttempt {
   timestamp: number;
 }
 
-export type AttemptSyncListener = (params: {
-  attempt: QueuedAttempt;
-  result: ReviewAttemptResponse;
-}) => void;
+export type AttemptSyncListener = (params: { attempt: QueuedAttempt; result: ReviewAttemptResponse }) => void;
 
 const STORAGE_KEY = 'lumina_attempt_queue';
 const SYNC_THRESHOLD = 5; // 每积攒 5 个词同步一次
@@ -45,9 +42,7 @@ class AttemptBuffer {
         this.queue = Array.isArray(parsed)
           ? parsed.map((item) => ({
               ...item,
-              clientAttemptId: typeof item.clientAttemptId === 'string'
-                ? item.clientAttemptId
-                : this.createAttemptId(),
+              clientAttemptId: typeof item.clientAttemptId === 'string' ? item.clientAttemptId : this.createAttemptId(),
             }))
           : [];
       }
@@ -117,14 +112,16 @@ class AttemptBuffer {
 
     try {
       // 使用批量接口一次性同步，提高效率
-      const results = await submitBatchReviewAttempts(batchToSync.map(item => ({
-        vocabularyItemId: item.vocabularyItemId,
-        learningGroupId: item.learningGroupId,
-        source: item.source,
-        wasCorrect: item.wasCorrect,
-        elapsedMs: item.elapsedMs,
-        timestamp: item.timestamp, // 携带产生时间，用于后端冲突校验
-      })));
+      const results = await submitBatchReviewAttempts(
+        batchToSync.map((item) => ({
+          vocabularyItemId: item.vocabularyItemId,
+          learningGroupId: item.learningGroupId,
+          source: item.source,
+          wasCorrect: item.wasCorrect,
+          elapsedMs: item.elapsedMs,
+          timestamp: item.timestamp, // 携带产生时间，用于后端冲突校验
+        })),
+      );
 
       results.forEach((result, index) => {
         const attempt = batchToSync[index];
@@ -134,8 +131,8 @@ class AttemptBuffer {
       });
 
       // 同步成功，从主队列中移除这些已同步的项
-      const syncedIds = new Set(batchToSync.map(i => i.clientAttemptId));
-      this.queue = this.queue.filter(i => !syncedIds.has(i.clientAttemptId));
+      const syncedIds = new Set(batchToSync.map((i) => i.clientAttemptId));
+      this.queue = this.queue.filter((i) => !syncedIds.has(i.clientAttemptId));
       this.saveToStorage();
       return true;
     } catch (e) {

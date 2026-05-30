@@ -7,14 +7,9 @@ export { extractIeltsReadingLookupWords } from './ieltsReadingLookupWords';
 
 const IELTS_READING_LOOKUP_PRELOAD_CONCURRENCY = 4;
 
-function getLookupAudioUrl(
-  result: Awaited<ReturnType<typeof lookupWord>>,
-  locale: PronunciationLocale,
-) {
+function getLookupAudioUrl(result: Awaited<ReturnType<typeof lookupWord>>, locale: PronunciationLocale) {
   if (!result) return null;
-  return locale === 'uk'
-    ? result.vocabulary_item.audio_uk_url
-    : result.vocabulary_item.audio_us_url;
+  return locale === 'uk' ? result.vocabulary_item.audio_uk_url : result.vocabulary_item.audio_us_url;
 }
 
 async function preloadIeltsReadingLookupWord(word: string, locale: PronunciationLocale) {
@@ -34,11 +29,7 @@ async function preloadIeltsReadingLookupWord(word: string, locale: Pronunciation
   await directAudioRequest;
 }
 
-async function runWithConcurrency<T>(
-  items: T[],
-  concurrency: number,
-  worker: (item: T) => Promise<void>,
-) {
+async function runWithConcurrency<T>(items: T[], concurrency: number, worker: (item: T) => Promise<void>) {
   let cursor = 0;
   const workerCount = Math.min(Math.max(concurrency, 1), items.length);
 
@@ -54,16 +45,11 @@ async function runWithConcurrency<T>(
   );
 }
 
-export async function preloadIeltsReadingPassageLookupResources(
-  passageBody: string,
-  locale: PronunciationLocale,
-) {
+export async function preloadIeltsReadingPassageLookupResources(passageBody: string, locale: PronunciationLocale) {
   const words = extractIeltsReadingLookupWords(passageBody);
   if (words.length === 0) return;
 
-  await runWithConcurrency(
-    words,
-    IELTS_READING_LOOKUP_PRELOAD_CONCURRENCY,
-    (word) => preloadIeltsReadingLookupWord(word, locale),
+  await runWithConcurrency(words, IELTS_READING_LOOKUP_PRELOAD_CONCURRENCY, (word) =>
+    preloadIeltsReadingLookupWord(word, locale),
   );
 }

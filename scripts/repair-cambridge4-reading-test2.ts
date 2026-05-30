@@ -90,140 +90,395 @@ const q36To40Options: Option[] = [
 ];
 
 const groupPatches = new Map<string, Partial<GroupRow>>([
-  ['1-4', {
-    question_type: 'summary_completion',
-    prompt: 'Questions 1-4',
-    instructions: [
-      'Complete the summary below.',
-      'Choose NO MORE THAN TWO WORDS from the passage for each answer.',
-      'Write your answers in boxes 1-4 on your answer sheet.',
-    ].join('\n'),
-    options_json: [],
-  }],
-  ['5-9', {
-    question_type: 'matching_features',
-    prompt: 'Questions 5-9',
-    instructions: [
-      'Look at the following statements and the list of people in the box below.',
-      'Match each statement with the correct person A-E.',
-      'Write the appropriate letter A-E in boxes 5-9 on your answer sheet.',
-      'NB You may use any letter more than once.',
-    ].join(' '),
-    options_json: q5To9Options,
-  }],
-  ['10-13', {
-    question_type: 'yes_no_not_given',
-    prompt: 'Questions 10-13',
-    instructions: [
-      'Do the following statements agree with the views of the writer in Reading Passage 1?',
-      'In boxes 10-13 on your answer sheet, write YES if the statement agrees with the views of the writer, NO if the statement contradicts the views of the writer, or NOT GIVEN if it is impossible to say what the writer thinks about this.',
-    ].join(' '),
-    options_json: [],
-  }],
-  ['14-15', {
-    question_type: 'multiple_choice_single',
-    prompt: 'Questions 14 and 15',
-    instructions: 'Choose the correct letter, A, B, C or D. Write your answers in boxes 14 and 15 on your answer sheet.',
-    options_json: [],
-  }],
-  ['16-23', {
-    question_type: 'yes_no_not_given',
-    prompt: 'Questions 16-23',
-    instructions: [
-      'Do the following statements agree with the views of the writer in Reading Passage 2?',
-      'In boxes 16-23 on your answer sheet, write YES if the statement agrees with the views of the writer, NO if the statement contradicts the views of the writer, or NOT GIVEN if it is impossible to say what the writer thinks about this.',
-    ].join(' '),
-    options_json: [],
-  }],
-  ['24-26', {
-    question_type: 'table_completion',
-    prompt: 'Questions 24-26',
-    instructions: [
-      'Complete the vertical axis on the table below.',
-      'Choose NO MORE THAN THREE WORDS from Reading Passage 2 for each answer.',
-      'Write your answers in boxes 24-26 on your answer sheet.',
-      'Medical complaints of patients visiting therapists',
-      'Complaint | Approximate percentage',
-      'Musculo-skeletal | 24%',
-      'Digestive | 13%',
-      '[24] ______ | 12%',
-      'Respiratory | 10%',
-      'Candida | 8%',
-      '[25] ______ | 6%',
-      '[26] ______ | 5%',
-      'General health maintenance | 4%',
-    ].join('\n'),
-    options_json: [],
-  }],
-  ['27-32', {
-    question_type: 'matching_information',
-    prompt: 'Questions 27-32',
-    instructions: [
-      'Reading Passage 3 has nine paragraphs labelled A-I.',
-      'Which paragraph contains the following information?',
-      'Write the correct letter A-I in boxes 27-32 on your answer sheet.',
-      'NB You may use any letter more than once.',
-    ].join(' '),
-    options_json: paragraphOptions,
-  }],
-  ['33-35', {
-    question_type: 'multiple_choice_multi',
-    prompt: 'Questions 33-35',
-    instructions: [
-      'Choose THREE letters A-F.',
-      'Write your answers in boxes 33-35 on your answer sheet.',
-      'The list below gives some ways of regarding play. Which THREE ways are mentioned by the writer of the text?',
-    ].join(' '),
-    options_json: q33To35Options,
-  }],
-  ['36-40', {
-    question_type: 'matching_features',
-    prompt: 'Questions 36-40',
-    instructions: [
-      'Look at the following researchers and the list of findings below.',
-      'Match each researcher with the correct finding.',
-      'Write the correct letter A-H in boxes 36-40 on your answer sheet.',
-    ].join(' '),
-    options_json: q36To40Options,
-  }],
+  [
+    '1-4',
+    {
+      question_type: 'summary_completion',
+      prompt: 'Questions 1-4',
+      instructions: [
+        'Complete the summary below.',
+        'Choose NO MORE THAN TWO WORDS from the passage for each answer.',
+        'Write your answers in boxes 1-4 on your answer sheet.',
+      ].join('\n'),
+      options_json: [],
+    },
+  ],
+  [
+    '5-9',
+    {
+      question_type: 'matching_features',
+      prompt: 'Questions 5-9',
+      instructions: [
+        'Look at the following statements and the list of people in the box below.',
+        'Match each statement with the correct person A-E.',
+        'Write the appropriate letter A-E in boxes 5-9 on your answer sheet.',
+        'NB You may use any letter more than once.',
+      ].join(' '),
+      options_json: q5To9Options,
+    },
+  ],
+  [
+    '10-13',
+    {
+      question_type: 'yes_no_not_given',
+      prompt: 'Questions 10-13',
+      instructions: [
+        'Do the following statements agree with the views of the writer in Reading Passage 1?',
+        'In boxes 10-13 on your answer sheet, write YES if the statement agrees with the views of the writer, NO if the statement contradicts the views of the writer, or NOT GIVEN if it is impossible to say what the writer thinks about this.',
+      ].join(' '),
+      options_json: [],
+    },
+  ],
+  [
+    '14-15',
+    {
+      question_type: 'multiple_choice_single',
+      prompt: 'Questions 14 and 15',
+      instructions:
+        'Choose the correct letter, A, B, C or D. Write your answers in boxes 14 and 15 on your answer sheet.',
+      options_json: [],
+    },
+  ],
+  [
+    '16-23',
+    {
+      question_type: 'yes_no_not_given',
+      prompt: 'Questions 16-23',
+      instructions: [
+        'Do the following statements agree with the views of the writer in Reading Passage 2?',
+        'In boxes 16-23 on your answer sheet, write YES if the statement agrees with the views of the writer, NO if the statement contradicts the views of the writer, or NOT GIVEN if it is impossible to say what the writer thinks about this.',
+      ].join(' '),
+      options_json: [],
+    },
+  ],
+  [
+    '24-26',
+    {
+      question_type: 'table_completion',
+      prompt: 'Questions 24-26',
+      instructions: [
+        'Complete the vertical axis on the table below.',
+        'Choose NO MORE THAN THREE WORDS from Reading Passage 2 for each answer.',
+        'Write your answers in boxes 24-26 on your answer sheet.',
+        'Medical complaints of patients visiting therapists',
+        'Complaint | Approximate percentage',
+        'Musculo-skeletal | 24%',
+        'Digestive | 13%',
+        '[24] ______ | 12%',
+        'Respiratory | 10%',
+        'Candida | 8%',
+        '[25] ______ | 6%',
+        '[26] ______ | 5%',
+        'General health maintenance | 4%',
+      ].join('\n'),
+      options_json: [],
+    },
+  ],
+  [
+    '27-32',
+    {
+      question_type: 'matching_information',
+      prompt: 'Questions 27-32',
+      instructions: [
+        'Reading Passage 3 has nine paragraphs labelled A-I.',
+        'Which paragraph contains the following information?',
+        'Write the correct letter A-I in boxes 27-32 on your answer sheet.',
+        'NB You may use any letter more than once.',
+      ].join(' '),
+      options_json: paragraphOptions,
+    },
+  ],
+  [
+    '33-35',
+    {
+      question_type: 'multiple_choice_multi',
+      prompt: 'Questions 33-35',
+      instructions: [
+        'Choose THREE letters A-F.',
+        'Write your answers in boxes 33-35 on your answer sheet.',
+        'The list below gives some ways of regarding play. Which THREE ways are mentioned by the writer of the text?',
+      ].join(' '),
+      options_json: q33To35Options,
+    },
+  ],
+  [
+    '36-40',
+    {
+      question_type: 'matching_features',
+      prompt: 'Questions 36-40',
+      instructions: [
+        'Look at the following researchers and the list of findings below.',
+        'Match each researcher with the correct finding.',
+        'Write the correct letter A-H in boxes 36-40 on your answer sheet.',
+      ].join(' '),
+      options_json: q36To40Options,
+    },
+  ],
 ]);
 
 const expected = new Map<number, ExpectedQuestion>([
-  [1, { type: 'summary_completion', prompt: 'This great variety of languages came about largely as a result of geographical ______.', answer: ['isolation'] }],
-  [2, { type: 'summary_completion', prompt: 'Factors such as government initiatives and ______ are contributing to a huge decrease in the number of languages.', answer: ['economic globalisation', 'economic globalization', 'socio-economic pressures'] }],
-  [3, { type: 'summary_completion', prompt: "One factor which may help is people's increasing appreciation of their ______.", answer: ['cultural identity'] }],
-  [4, { type: 'summary_completion', prompt: "In apprentice schemes, the endangered language is used to teach people a ______.", answer: ['traditional skill'] }],
-  [5, { type: 'matching_features', prompt: 'Endangered languages cannot be saved unless people learn to speak more than one language.', answer: ['E'] }],
-  [6, { type: 'matching_features', prompt: 'Saving languages from extinction is not in itself a satisfactory goal.', answer: ['B'] }],
+  [
+    1,
+    {
+      type: 'summary_completion',
+      prompt: 'This great variety of languages came about largely as a result of geographical ______.',
+      answer: ['isolation'],
+    },
+  ],
+  [
+    2,
+    {
+      type: 'summary_completion',
+      prompt:
+        'Factors such as government initiatives and ______ are contributing to a huge decrease in the number of languages.',
+      answer: ['economic globalisation', 'economic globalization', 'socio-economic pressures'],
+    },
+  ],
+  [
+    3,
+    {
+      type: 'summary_completion',
+      prompt: "One factor which may help is people's increasing appreciation of their ______.",
+      answer: ['cultural identity'],
+    },
+  ],
+  [
+    4,
+    {
+      type: 'summary_completion',
+      prompt: 'In apprentice schemes, the endangered language is used to teach people a ______.',
+      answer: ['traditional skill'],
+    },
+  ],
+  [
+    5,
+    {
+      type: 'matching_features',
+      prompt: 'Endangered languages cannot be saved unless people learn to speak more than one language.',
+      answer: ['E'],
+    },
+  ],
+  [
+    6,
+    {
+      type: 'matching_features',
+      prompt: 'Saving languages from extinction is not in itself a satisfactory goal.',
+      answer: ['B'],
+    },
+  ],
   [7, { type: 'matching_features', prompt: 'The way we think may be determined by our language.', answer: ['D'] }],
-  [8, { type: 'matching_features', prompt: 'Young people often reject the established way of life in their community.', answer: ['C'] }],
-  [9, { type: 'matching_features', prompt: 'A change of language may mean a loss of traditional culture.', answer: ['B'] }],
-  [10, { type: 'yes_no_not_given', prompt: 'The Navajo language will die out because it currently has too few speakers.', answer: ['NO'] }],
-  [11, { type: 'yes_no_not_given', prompt: 'A large number of native speakers fail to guarantee the survival of a language.', answer: ['YES'] }],
-  [12, { type: 'yes_no_not_given', prompt: 'National governments could do more to protect endangered languages.', answer: ['NOT GIVEN'] }],
+  [
+    8,
+    {
+      type: 'matching_features',
+      prompt: 'Young people often reject the established way of life in their community.',
+      answer: ['C'],
+    },
+  ],
+  [
+    9,
+    {
+      type: 'matching_features',
+      prompt: 'A change of language may mean a loss of traditional culture.',
+      answer: ['B'],
+    },
+  ],
+  [
+    10,
+    {
+      type: 'yes_no_not_given',
+      prompt: 'The Navajo language will die out because it currently has too few speakers.',
+      answer: ['NO'],
+    },
+  ],
+  [
+    11,
+    {
+      type: 'yes_no_not_given',
+      prompt: 'A large number of native speakers fail to guarantee the survival of a language.',
+      answer: ['YES'],
+    },
+  ],
+  [
+    12,
+    {
+      type: 'yes_no_not_given',
+      prompt: 'National governments could do more to protect endangered languages.',
+      answer: ['NOT GIVEN'],
+    },
+  ],
   [13, { type: 'yes_no_not_given', prompt: 'The loss of linguistic diversity is inevitable.', answer: ['YES'] }],
-  [14, { type: 'multiple_choice_single', prompt: 'Traditionally, how have Australian doctors differed from doctors in many Western countries?', options: q14Options, answer: ['C'] }],
+  [
+    14,
+    {
+      type: 'multiple_choice_single',
+      prompt: 'Traditionally, how have Australian doctors differed from doctors in many Western countries?',
+      options: q14Options,
+      answer: ['C'],
+    },
+  ],
   [15, { type: 'multiple_choice_single', prompt: 'In 1990, Americans', options: q15Options, answer: ['B'] }],
-  [16, { type: 'yes_no_not_given', prompt: 'Australians have been turning to alternative therapies in increasing numbers over the past 20 years.', answer: ['YES'] }],
-  [17, { type: 'yes_no_not_given', prompt: 'Between 1983 and 1990 the numbers of patients visiting alternative therapists rose to include a further 8% of the population.', answer: ['NO'] }],
-  [18, { type: 'yes_no_not_given', prompt: 'The 1990 survey related to 550,000 consultations with alternative therapists.', answer: ['YES'] }],
-  [19, { type: 'yes_no_not_given', prompt: 'In the past, Australians had a higher opinion of doctors than they do today.', answer: ['YES'] }],
-  [20, { type: 'yes_no_not_given', prompt: 'Some Australian doctors are retraining in alternative therapies.', answer: ['YES'] }],
-  [21, { type: 'yes_no_not_given', prompt: 'Alternative therapists earn higher salaries than doctors.', answer: ['NOT GIVEN'] }],
-  [22, { type: 'yes_no_not_given', prompt: 'The 1993 Sydney survey involved 289 patients who visited alternative therapists for acupuncture treatment.', answer: ['NO'] }],
-  [23, { type: 'yes_no_not_given', prompt: 'All the patients in the 1993 Sydney survey had long-term medical complaints.', answer: ['YES'] }],
-  [24, { type: 'table_completion', prompt: 'Medical complaint category between Digestive and Respiratory.', answer: ['emotional', 'emotional problems'] }],
-  [25, { type: 'table_completion', prompt: 'Medical complaint category between Candida and general ill health.', answer: ['headache', 'headaches'] }],
-  [26, { type: 'table_completion', prompt: 'Medical complaint category before general health maintenance.', answer: ['general ill health'] }],
-  [27, { type: 'matching_information', prompt: 'the way play causes unusual connections in the brain which are beneficial', answer: ['H'] }],
-  [28, { type: 'matching_information', prompt: 'insights from recording how much time young animals spend playing', answer: ['F'] }],
-  [29, { type: 'matching_information', prompt: 'a description of the physical hazards that can accompany play', answer: ['A'] }],
-  [30, { type: 'matching_information', prompt: 'a description of the mental activities which are exercised and developed during play', answer: ['H'] }],
-  [31, { type: 'matching_information', prompt: 'the possible effects that a reduction in play opportunities will have on humans', answer: ['I'] }],
+  [
+    16,
+    {
+      type: 'yes_no_not_given',
+      prompt: 'Australians have been turning to alternative therapies in increasing numbers over the past 20 years.',
+      answer: ['YES'],
+    },
+  ],
+  [
+    17,
+    {
+      type: 'yes_no_not_given',
+      prompt:
+        'Between 1983 and 1990 the numbers of patients visiting alternative therapists rose to include a further 8% of the population.',
+      answer: ['NO'],
+    },
+  ],
+  [
+    18,
+    {
+      type: 'yes_no_not_given',
+      prompt: 'The 1990 survey related to 550,000 consultations with alternative therapists.',
+      answer: ['YES'],
+    },
+  ],
+  [
+    19,
+    {
+      type: 'yes_no_not_given',
+      prompt: 'In the past, Australians had a higher opinion of doctors than they do today.',
+      answer: ['YES'],
+    },
+  ],
+  [
+    20,
+    {
+      type: 'yes_no_not_given',
+      prompt: 'Some Australian doctors are retraining in alternative therapies.',
+      answer: ['YES'],
+    },
+  ],
+  [
+    21,
+    {
+      type: 'yes_no_not_given',
+      prompt: 'Alternative therapists earn higher salaries than doctors.',
+      answer: ['NOT GIVEN'],
+    },
+  ],
+  [
+    22,
+    {
+      type: 'yes_no_not_given',
+      prompt:
+        'The 1993 Sydney survey involved 289 patients who visited alternative therapists for acupuncture treatment.',
+      answer: ['NO'],
+    },
+  ],
+  [
+    23,
+    {
+      type: 'yes_no_not_given',
+      prompt: 'All the patients in the 1993 Sydney survey had long-term medical complaints.',
+      answer: ['YES'],
+    },
+  ],
+  [
+    24,
+    {
+      type: 'table_completion',
+      prompt: 'Medical complaint category between Digestive and Respiratory.',
+      answer: ['emotional', 'emotional problems'],
+    },
+  ],
+  [
+    25,
+    {
+      type: 'table_completion',
+      prompt: 'Medical complaint category between Candida and general ill health.',
+      answer: ['headache', 'headaches'],
+    },
+  ],
+  [
+    26,
+    {
+      type: 'table_completion',
+      prompt: 'Medical complaint category before general health maintenance.',
+      answer: ['general ill health'],
+    },
+  ],
+  [
+    27,
+    {
+      type: 'matching_information',
+      prompt: 'the way play causes unusual connections in the brain which are beneficial',
+      answer: ['H'],
+    },
+  ],
+  [
+    28,
+    {
+      type: 'matching_information',
+      prompt: 'insights from recording how much time young animals spend playing',
+      answer: ['F'],
+    },
+  ],
+  [
+    29,
+    {
+      type: 'matching_information',
+      prompt: 'a description of the physical hazards that can accompany play',
+      answer: ['A'],
+    },
+  ],
+  [
+    30,
+    {
+      type: 'matching_information',
+      prompt: 'a description of the mental activities which are exercised and developed during play',
+      answer: ['H'],
+    },
+  ],
+  [
+    31,
+    {
+      type: 'matching_information',
+      prompt: 'the possible effects that a reduction in play opportunities will have on humans',
+      answer: ['I'],
+    },
+  ],
   [32, { type: 'matching_information', prompt: 'the classes of animals for which play is important', answer: ['B'] }],
-  [33, { type: 'multiple_choice_multi', prompt: 'The list below gives some ways of regarding play. Which THREE ways are mentioned by the writer of the text?', answer: ['A', 'C', 'F'], answerNote: 'Questions 33-35 are accepted in any order.' }],
-  [34, { type: 'multiple_choice_multi', prompt: 'The list below gives some ways of regarding play. Which THREE ways are mentioned by the writer of the text?', answer: ['A', 'C', 'F'], answerNote: 'Questions 33-35 are accepted in any order.' }],
-  [35, { type: 'multiple_choice_multi', prompt: 'The list below gives some ways of regarding play. Which THREE ways are mentioned by the writer of the text?', answer: ['A', 'C', 'F'], answerNote: 'Questions 33-35 are accepted in any order.' }],
+  [
+    33,
+    {
+      type: 'multiple_choice_multi',
+      prompt:
+        'The list below gives some ways of regarding play. Which THREE ways are mentioned by the writer of the text?',
+      answer: ['A', 'C', 'F'],
+      answerNote: 'Questions 33-35 are accepted in any order.',
+    },
+  ],
+  [
+    34,
+    {
+      type: 'multiple_choice_multi',
+      prompt:
+        'The list below gives some ways of regarding play. Which THREE ways are mentioned by the writer of the text?',
+      answer: ['A', 'C', 'F'],
+      answerNote: 'Questions 33-35 are accepted in any order.',
+    },
+  ],
+  [
+    35,
+    {
+      type: 'multiple_choice_multi',
+      prompt:
+        'The list below gives some ways of regarding play. Which THREE ways are mentioned by the writer of the text?',
+      answer: ['A', 'C', 'F'],
+      answerNote: 'Questions 33-35 are accepted in any order.',
+    },
+  ],
   [36, { type: 'matching_features', prompt: 'Robert Barton', answer: ['B'] }],
   [37, { type: 'matching_features', prompt: 'Marc Bekoff', answer: ['G'] }],
   [38, { type: 'matching_features', prompt: 'John Byers', answer: ['E'] }],
@@ -278,16 +533,15 @@ async function getTargetTestId() {
 }
 
 async function getGroups(testId: string) {
-  const passageResult = await supabaseAdmin
-    .from('ielts_reading_passages')
-    .select('id')
-    .eq('test_id', testId);
+  const passageResult = await supabaseAdmin.from('ielts_reading_passages').select('id').eq('test_id', testId);
   assertNoError(passageResult.error, 'ielts_reading_passages lookup failed');
   const passageIds = (passageResult.data ?? []).map((passage) => passage.id);
 
   const groupResult = await supabaseAdmin
     .from('ielts_reading_question_groups')
-    .select('id, passage_id, question_type, prompt, instructions, options_json, question_range_start, question_range_end')
+    .select(
+      'id, passage_id, question_type, prompt, instructions, options_json, question_range_start, question_range_end',
+    )
     .in('passage_id', passageIds)
     .order('sort_order');
   assertNoError(groupResult.error, 'ielts_reading_question_groups lookup failed');
@@ -307,22 +561,26 @@ async function getQuestions(testId: string) {
 function mismatchedGroups(groups: GroupRow[]) {
   return groups.filter((group) => {
     const patch = groupPatches.get(rangeKey(group));
-    return !patch
-      || group.question_type !== patch.question_type
-      || group.prompt !== patch.prompt
-      || group.instructions !== patch.instructions
-      || !optionsEqual(group.options_json, patch.options_json as Option[]);
+    return (
+      !patch ||
+      group.question_type !== patch.question_type ||
+      group.prompt !== patch.prompt ||
+      group.instructions !== patch.instructions ||
+      !optionsEqual(group.options_json, patch.options_json as Option[])
+    );
   });
 }
 
 function mismatchedQuestions(questions: QuestionRow[]) {
   return questions.filter((question) => {
     const entry = expected.get(question.question_number);
-    return !entry
-      || question.prompt !== entry.prompt
-      || !answersEqual(question.answer_json, entry.answer)
-      || !optionsEqual(question.options_json, entry.options)
-      || (question.answer_note ?? null) !== (entry.answerNote ?? null);
+    return (
+      !entry ||
+      question.prompt !== entry.prompt ||
+      !answersEqual(question.answer_json, entry.answer) ||
+      !optionsEqual(question.options_json, entry.options) ||
+      (question.answer_note ?? null) !== (entry.answerNote ?? null)
+    );
   });
 }
 
@@ -332,7 +590,9 @@ async function repairGroups(testId: string) {
   console.log(`question groups checked: ${groups.length}`);
   console.log(`question groups needing repair: ${mismatches.length}`);
   for (const group of mismatches) {
-    console.log(`group ${rangeKey(group)}: ${group.question_type} -> ${groupPatches.get(rangeKey(group))?.question_type ?? 'missing patch'}`);
+    console.log(
+      `group ${rangeKey(group)}: ${group.question_type} -> ${groupPatches.get(rangeKey(group))?.question_type ?? 'missing patch'}`,
+    );
   }
   if (!shouldApply) return groups;
 
@@ -340,10 +600,7 @@ async function repairGroups(testId: string) {
     const patch = assertFound(groupPatches.get(rangeKey(group)), `patch for group ${rangeKey(group)}`);
     await updateRow(
       `ielts_reading_question_groups ${rangeKey(group)} update failed`,
-      supabaseAdmin
-        .from('ielts_reading_question_groups')
-        .update(patch)
-        .eq('id', group.id),
+      supabaseAdmin.from('ielts_reading_question_groups').update(patch).eq('id', group.id),
     );
   }
   return getGroups(testId);
@@ -356,7 +613,9 @@ async function repairQuestions(testId: string) {
   console.log(`question rows needing repair: ${mismatches.length}`);
   for (const question of mismatches) {
     const entry = expected.get(question.question_number);
-    console.log(`Q${question.question_number}: ${JSON.stringify(question.answer_json ?? [])} -> ${JSON.stringify(entry?.answer ?? [])}`);
+    console.log(
+      `Q${question.question_number}: ${JSON.stringify(question.answer_json ?? [])} -> ${JSON.stringify(entry?.answer ?? [])}`,
+    );
   }
   if (!shouldApply) return questions;
 
@@ -379,7 +638,10 @@ async function repairQuestions(testId: string) {
 }
 
 function toScoringQuestion(question: QuestionRow): IeltsReadingQuestion {
-  const entry = assertFound(expected.get(question.question_number), `official scoring data for Q${question.question_number}`);
+  const entry = assertFound(
+    expected.get(question.question_number),
+    `official scoring data for Q${question.question_number}`,
+  );
   return {
     id: question.id,
     testId: '',
@@ -395,10 +657,7 @@ function toScoringQuestion(question: QuestionRow): IeltsReadingQuestion {
 }
 
 async function repairStoredResponses(testId: string, questions: QuestionRow[]) {
-  const attemptsResult = await supabaseAdmin
-    .from('ielts_reading_attempts')
-    .select('id, score')
-    .eq('test_id', testId);
+  const attemptsResult = await supabaseAdmin.from('ielts_reading_attempts').select('id, score').eq('test_id', testId);
   assertNoError(attemptsResult.error, 'ielts_reading_attempts lookup failed');
   const attempts = attemptsResult.data ?? [];
   if (attempts.length === 0) {
@@ -430,9 +689,13 @@ async function repairStoredResponses(testId: string, questions: QuestionRow[]) {
     const evaluatedByNumber = new Map(evaluation.responses.map((response) => [response.questionNumber, response]));
 
     for (const response of attemptResponses) {
-      const evaluated = assertFound(evaluatedByNumber.get(response.question_number), `stored response Q${response.question_number}`);
+      const evaluated = assertFound(
+        evaluatedByNumber.get(response.question_number),
+        `stored response Q${response.question_number}`,
+      );
       const expectedAnswer = normalizeIeltsAnswerValue(evaluated.correctAnswer);
-      if (answersEqual(response.correct_answer_json, expectedAnswer) && response.is_correct === evaluated.isCorrect) continue;
+      if (answersEqual(response.correct_answer_json, expectedAnswer) && response.is_correct === evaluated.isCorrect)
+        continue;
       responseUpdates += 1;
       if (shouldApply) {
         await updateRow(
@@ -453,10 +716,7 @@ async function repairStoredResponses(testId: string, questions: QuestionRow[]) {
       if (shouldApply) {
         await updateRow(
           `ielts_reading_attempts ${attempt.id} score update failed`,
-          supabaseAdmin
-            .from('ielts_reading_attempts')
-            .update({ score: evaluation.score })
-            .eq('id', attempt.id),
+          supabaseAdmin.from('ielts_reading_attempts').update({ score: evaluation.score }).eq('id', attempt.id),
         );
       }
     }

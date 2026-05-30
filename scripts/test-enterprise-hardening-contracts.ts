@@ -26,15 +26,12 @@ function assertIncludes(source: string, needle: string, label: string) {
   assert.ok(source.includes(needle), `${label} should include ${needle}`);
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 const packageJson = JSON.parse(read('package.json')) as { scripts: Record<string, string> };
-for (const script of [
-  'test:official-library',
-  'test:core',
-  'test:ielts',
-  'test:all',
-  'check:edge',
-  'check:audit',
-]) {
+for (const script of ['test:official-library', 'test:core', 'test:ielts', 'test:all', 'check:edge', 'check:audit']) {
   assert.equal(typeof packageJson.scripts[script], 'string', `${script} should be declared`);
 }
 
@@ -119,13 +116,11 @@ assertIncludes(
   "WHEN source_type = 'system' THEN 'official:'",
   'exclusive learning library keying',
 );
-assertIncludes(
-  exclusiveLearningMigration,
-  "ELSE 'custom'",
-  'exclusive learning library keying',
-);
+assertIncludes(exclusiveLearningMigration, "ELSE 'custom'", 'exclusive learning library keying');
 
-const exclusiveLearningTriggerMigration = read('supabase/migrations/20260522030000_enforce_exclusive_learning_group_trigger.sql');
+const exclusiveLearningTriggerMigration = read(
+  'supabase/migrations/20260522030000_enforce_exclusive_learning_group_trigger.sql',
+);
 for (const sql of [
   'CREATE OR REPLACE FUNCTION public.learning_group_library_key',
   'CREATE OR REPLACE FUNCTION public.discard_conflicting_active_learning_groups',
@@ -141,11 +136,13 @@ for (const sql of [
 }
 assertIncludes(
   exclusiveLearningTriggerMigration,
-  "public.learning_group_library_key(source_type, library_id) <> v_target_library_key",
+  'public.learning_group_library_key(source_type, library_id) <> v_target_library_key',
   'exclusive learning trigger keying',
 );
 
-const parallelOfficialLearningMigration = read('supabase/migrations/20260529020000_parallel_official_learning_stream.sql');
+const parallelOfficialLearningMigration = read(
+  'supabase/migrations/20260529020000_parallel_official_learning_stream.sql',
+);
 for (const sql of [
   'ADD COLUMN IF NOT EXISTS session_round1_confirmed_word_ids',
   'DROP TRIGGER IF EXISTS enforce_exclusive_active_learning_library_insert',
@@ -173,7 +170,8 @@ assert.equal(
 );
 
 const importFlow = read('src/lib/importFlow.ts');
-const directVocabularyWrites = /\.(?:from)\('(?:vocabulary_(?:items|senses|item_forms|morphology_parts|relations)|confused_words)'\)\s*\n\s*\.(?:insert|upsert|delete|update)/g;
+const directVocabularyWrites =
+  /\.(?:from)\('(?:vocabulary_(?:items|senses|item_forms|morphology_parts|relations)|confused_words)'\)\s*\n\s*\.(?:insert|upsert|delete|update)/g;
 assert.equal(
   directVocabularyWrites.test(importFlow),
   false,
@@ -222,7 +220,10 @@ assertIncludes(edgeApi, 'X-Request-Id', 'Edge API');
 const rateLimitCore = read('shared/expensiveRateLimit.ts');
 assertIncludes(rateLimitCore, 'const DEFAULT_RATE_LIMITS', 'shared rate-limit policy');
 assertIncludes(rateLimitCore, 'IP_RATE_LIMIT_MULTIPLIER = 3', 'shared IP fallback rate limit');
-for (const [label, source] of [['Express', server], ['Edge', edgeApi]] as const) {
+for (const [label, source] of [
+  ['Express', server],
+  ['Edge', edgeApi],
+] as const) {
   assertIncludes(source, "shared/expensiveRateLimit.ts'", `${label} imports shared rate-limit core`);
   assert.equal(
     source.includes('const DEFAULT_RATE_LIMITS'),
@@ -230,18 +231,23 @@ for (const [label, source] of [['Express', server], ['Edge', edgeApi]] as const)
     `${label} must not redeclare rate-limit policy (single source in shared/expensiveRateLimit.ts)`,
   );
 }
-for (const [route, middleware] of [
-  ["/api/vocab/enrich", 'requireAuth, requireAiContentFeatures, aiVocabQuota'],
-  ["/api/vocab/lite-enrich", 'requireAuth, requireAiContentFeatures, aiVocabSingleQuota'],
-  ["/api/vocab/lemmatize", 'requireAuth, requireAiContentFeatures, aiVocabSingleQuota'],
-  ["/api/vocab/lemmatize-batch", 'requireAuth, requireAiContentFeatures, aiVocabQuota'],
-  ["/api/vocab/full-enrich", 'requireAuth, requireAiContentFeatures, aiVocabSingleQuota'],
-  ["/api/vocab/article", 'requireAuth, requireAiContentFeatures, aiArticleQuota'],
-  ["/api/audio/:word", 'requireAuth, ttsSingleQuota'],
-  ["/api/audio/batch", 'requireAuth, ttsBatchQuota'],
-  ["/api/example-audio", 'requireAuth, ttsSingleQuota'],
+for (const [method, route, middleware] of [
+  ['post', '/api/vocab/enrich', 'requireAuth, requireAiContentFeatures, aiVocabQuota'],
+  ['post', '/api/vocab/lite-enrich', 'requireAuth, requireAiContentFeatures, aiVocabSingleQuota'],
+  ['post', '/api/vocab/lemmatize', 'requireAuth, requireAiContentFeatures, aiVocabSingleQuota'],
+  ['post', '/api/vocab/lemmatize-batch', 'requireAuth, requireAiContentFeatures, aiVocabQuota'],
+  ['post', '/api/vocab/full-enrich', 'requireAuth, requireAiContentFeatures, aiVocabSingleQuota'],
+  ['post', '/api/vocab/article', 'requireAuth, requireAiContentFeatures, aiArticleQuota'],
+  ['get', '/api/audio/:word', 'requireAuth, ttsSingleQuota'],
+  ['post', '/api/audio/batch', 'requireAuth, ttsBatchQuota'],
+  ['post', '/api/example-audio', 'requireAuth, ttsSingleQuota'],
 ]) {
-  assertIncludes(server, `'${route}', ${middleware}`, `Express expensive route ${route}`);
+  const middlewarePattern = middleware.split(', ').map(escapeRegExp).join('\\s*,\\s*');
+  assert.match(
+    server,
+    new RegExp(`app\\.${method}\\(\\s*'${escapeRegExp(route)}'\\s*,\\s*${middlewarePattern}`),
+    `Express expensive route ${route}`,
+  );
 }
 assertIncludes(server, 'function requireAiContentFeatures', 'Express AI feature gate');
 assertIncludes(edgeApi, "group === 'ai_vocab' || group === 'ai_article'", 'Edge AI feature gate');
@@ -259,18 +265,19 @@ assert.equal(
   false,
   'Express 500 responses must not expose raw exception messages',
 );
-assertIncludes(server, "error: INTERNAL_ERROR_MESSAGE", 'Express internal error response');
-assertIncludes(edgeApi, "error: INTERNAL_ERROR_MESSAGE", 'Edge internal error response');
-for (const file of [
-  'src/lib/wordAudio.ts',
-  'src/lib/exampleAudio.ts',
-  'src/components/import/ImportView.tsx',
+for (const forbiddenPattern of [
+  /status\(500\)\.json\(\{\s*error:\s*(?:message|e|err|error)/,
+  /status\(500\)\.send\(/,
 ]) {
-  assert.equal(
-    read(file).includes('requiresAuth: false'),
-    false,
-    `${file} must send auth for expensive API calls`,
-  );
+  assert.equal(forbiddenPattern.test(server), false, `Express 500 responses must not match ${forbiddenPattern}`);
+}
+assertIncludes(server, 'error: INTERNAL_ERROR_MESSAGE', 'Express internal error response');
+assertIncludes(server, 'const expressErrorHandler: ErrorRequestHandler', 'Express fallback error handler');
+assertIncludes(server, 'app.use(expressErrorHandler)', 'Express fallback error handler registration');
+assertIncludes(edgeApi, 'error: INTERNAL_ERROR_MESSAGE', 'Edge internal error response');
+assertIncludes(edgeApi, 'if (status === 500)', 'Edge 500 sanitizer');
+for (const file of ['src/lib/wordAudio.ts', 'src/lib/exampleAudio.ts', 'src/components/import/ImportView.tsx']) {
+  assert.equal(read(file).includes('requiresAuth: false'), false, `${file} must send auth for expensive API calls`);
 }
 
 // Behavioral checks for the shared rate limiter (not just source-string presence).
@@ -285,7 +292,10 @@ assert.equal(overUser.allowed, false, '4th ai_article request must exceed per-us
 if (!overUser.allowed) {
   assert.equal(overUser.scope, 'user', 'per-user limit should trip first');
   assert.equal(overUser.window, 'minute', 'minute window should be the binding window');
-  assert.ok(overUser.retryAfterSeconds > 0 && overUser.retryAfterSeconds <= 60, 'retryAfterSeconds within minute window');
+  assert.ok(
+    overUser.retryAfterSeconds > 0 && overUser.retryAfterSeconds <= 60,
+    'retryAfterSeconds within minute window',
+  );
 }
 
 // A different user on the same IP is independent until the IP fallback (3x) is hit.
@@ -327,7 +337,11 @@ for (const orphan of ['gemini.ts', 'review.ts', 'vocab.ts', 'home.ts', 'library.
     `server/${orphan} must not be reintroduced — import from shared/server/ instead`,
   );
 }
-assertIncludes(read('supabase/functions/deno.json'), '@supabase/supabase-js', 'Edge import map maps the supabase npm specifier');
+assertIncludes(
+  read('supabase/functions/deno.json'),
+  '@supabase/supabase-js',
+  'Edge import map maps the supabase npm specifier',
+);
 assert.equal(
   read('package.json').includes('@google/genai'),
   false,

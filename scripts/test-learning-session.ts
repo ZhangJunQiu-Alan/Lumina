@@ -39,7 +39,9 @@ const words: Word[] = [
     pos_tags: ['v'],
     ner_entities: [],
     chinese_definition: '分配',
-    senses: [{ pos: 'v', meaning_zh: '分配', example_sentence: 'Allocate the budget wisely.', example_translation_zh: '' }],
+    senses: [
+      { pos: 'v', meaning_zh: '分配', example_sentence: 'Allocate the budget wisely.', example_translation_zh: '' },
+    ],
     example_sentences: ['Allocate the budget wisely.'],
     ...emptyWordExtras,
   },
@@ -50,7 +52,14 @@ const words: Word[] = [
     pos_tags: ['adj'],
     ner_entities: [],
     chinese_definition: '可持续的',
-    senses: [{ pos: 'adj', meaning_zh: '可持续的', example_sentence: 'A sustainable plan matters.', example_translation_zh: '' }],
+    senses: [
+      {
+        pos: 'adj',
+        meaning_zh: '可持续的',
+        example_sentence: 'A sustainable plan matters.',
+        example_translation_zh: '',
+      },
+    ],
     example_sentences: ['A sustainable plan matters.'],
     ...emptyWordExtras,
   },
@@ -61,21 +70,22 @@ const words: Word[] = [
     pos_tags: ['n'],
     ner_entities: [],
     chinese_definition: '基础设施',
-    senses: [{ pos: 'n', meaning_zh: '基础设施', example_sentence: 'Infrastructure needs investment.', example_translation_zh: '' }],
+    senses: [
+      {
+        pos: 'n',
+        meaning_zh: '基础设施',
+        example_sentence: 'Infrastructure needs investment.',
+        example_translation_zh: '',
+      },
+    ],
     example_sentences: ['Infrastructure needs investment.'],
     ...emptyWordExtras,
   },
 ];
 
-assert.deepEqual(
-  normalizeSessionQueueWordIds(['w2', null, 'w1', 42, '', 'w2']),
-  ['w2', 'w1', 'w2'],
-);
+assert.deepEqual(normalizeSessionQueueWordIds(['w2', null, 'w1', 42, '', 'w2']), ['w2', 'w1', 'w2']);
 
-assert.deepEqual(
-  normalizeSessionRound1ConfirmedWordIds(['w2', null, 'w1', 42, '', 'w2', ' w3 ']),
-  ['w2', 'w1', 'w3'],
-);
+assert.deepEqual(normalizeSessionRound1ConfirmedWordIds(['w2', null, 'w1', 42, '', 'w2', ' w3 ']), ['w2', 'w1', 'w3']);
 
 assert.equal(clampSessionIndex(-3, 4), 0);
 assert.equal(clampSessionIndex(99, 3), 2);
@@ -92,33 +102,39 @@ assert.deepEqual(
   ['w1', 'w3'],
 );
 
-const normalized = normalizePersistedLearningSession({
-  groupId: 'g1',
-  round: 'round2',
-  currentIndex: 8,
-  queueWordIds: ['w2', 'missing', 'w2'],
-  passedQueueIndices: [0, 99],
-  round1ConfirmedWordIds: ['w2', 'missing', 'w1', 'w2'],
-  lastActiveAt: '2026-04-18T00:00:00.000Z',
-  groupCompleted: false,
-  completedAt: null,
-}, words);
+const normalized = normalizePersistedLearningSession(
+  {
+    groupId: 'g1',
+    round: 'round2',
+    currentIndex: 8,
+    queueWordIds: ['w2', 'missing', 'w2'],
+    passedQueueIndices: [0, 99],
+    round1ConfirmedWordIds: ['w2', 'missing', 'w1', 'w2'],
+    lastActiveAt: '2026-04-18T00:00:00.000Z',
+    groupCompleted: false,
+    completedAt: null,
+  },
+  words,
+);
 assert.equal(normalized.currentIndex, 1);
 assert.deepEqual(normalized.queueWordIds, ['w2', 'w2']);
 assert.deepEqual(normalized.passedQueueIndices, [0]);
 assert.deepEqual(normalized.round1ConfirmedWordIds, ['w2', 'w1']);
 
-const fallback = normalizePersistedLearningSession({
-  groupId: 'g1',
-  round: 'round3',
-  currentIndex: 99,
-  queueWordIds: ['missing-only'],
-  passedQueueIndices: [0, 1, 3],
-  round1ConfirmedWordIds: ['w3'],
-  lastActiveAt: '2026-04-18T00:00:00.000Z',
-  groupCompleted: true,
-  completedAt: '2026-04-18T00:10:00.000Z',
-}, words);
+const fallback = normalizePersistedLearningSession(
+  {
+    groupId: 'g1',
+    round: 'round3',
+    currentIndex: 99,
+    queueWordIds: ['missing-only'],
+    passedQueueIndices: [0, 1, 3],
+    round1ConfirmedWordIds: ['w3'],
+    lastActiveAt: '2026-04-18T00:00:00.000Z',
+    groupCompleted: true,
+    completedAt: '2026-04-18T00:10:00.000Z',
+  },
+  words,
+);
 assert.equal(fallback.currentIndex, 2);
 assert.deepEqual(fallback.queueWordIds, ['w1', 'w2', 'w3']);
 assert.deepEqual(fallback.passedQueueIndices, [0, 1]);
@@ -157,40 +173,48 @@ const candidate = createResumeCandidate({
 assert.equal(candidate.currentIndex, 0);
 assert.equal(candidate.queueLength, 2);
 
-const reconciledRound2 = reconcileSessionWithRound2History({
-  groupId: 'g-stale',
-  round: 'round1',
-  currentIndex: 1,
-  queueWordIds: ['w1', 'w2', 'w3'],
-  passedQueueIndices: [0],
-  round1ConfirmedWordIds: ['w1', 'w2'],
-  lastActiveAt: '2026-04-18T00:00:00.000Z',
-  groupCompleted: false,
-  completedAt: null,
-}, words, {
-  correctWordIds: ['w1', 'w2'],
-  lastAttemptAt: '2026-04-18T00:05:00.000Z',
-});
+const reconciledRound2 = reconcileSessionWithRound2History(
+  {
+    groupId: 'g-stale',
+    round: 'round1',
+    currentIndex: 1,
+    queueWordIds: ['w1', 'w2', 'w3'],
+    passedQueueIndices: [0],
+    round1ConfirmedWordIds: ['w1', 'w2'],
+    lastActiveAt: '2026-04-18T00:00:00.000Z',
+    groupCompleted: false,
+    completedAt: null,
+  },
+  words,
+  {
+    correctWordIds: ['w1', 'w2'],
+    lastAttemptAt: '2026-04-18T00:05:00.000Z',
+  },
+);
 assert.equal(reconciledRound2.round, 'round2');
 assert.equal(reconciledRound2.currentIndex, 2);
 assert.deepEqual(reconciledRound2.queueWordIds, ['w1', 'w2', 'w3']);
 assert.deepEqual(reconciledRound2.passedQueueIndices, [0, 1]);
 assert.equal(reconciledRound2.lastActiveAt, '2026-04-18T00:05:00.000Z');
 
-const reconciledComplete = reconcileSessionWithRound2History({
-  groupId: 'g-complete-stale',
-  round: 'round1',
-  currentIndex: 2,
-  queueWordIds: ['w1', 'w2', 'w3'],
-  passedQueueIndices: [0, 1],
-  round1ConfirmedWordIds: ['w1', 'w2', 'w3'],
-  lastActiveAt: '2026-04-18T00:00:00.000Z',
-  groupCompleted: false,
-  completedAt: null,
-}, words, {
-  correctWordIds: ['w1', 'w2', 'w3'],
-  lastAttemptAt: '2026-04-18T00:10:00.000Z',
-});
+const reconciledComplete = reconcileSessionWithRound2History(
+  {
+    groupId: 'g-complete-stale',
+    round: 'round1',
+    currentIndex: 2,
+    queueWordIds: ['w1', 'w2', 'w3'],
+    passedQueueIndices: [0, 1],
+    round1ConfirmedWordIds: ['w1', 'w2', 'w3'],
+    lastActiveAt: '2026-04-18T00:00:00.000Z',
+    groupCompleted: false,
+    completedAt: null,
+  },
+  words,
+  {
+    correctWordIds: ['w1', 'w2', 'w3'],
+    lastAttemptAt: '2026-04-18T00:10:00.000Z',
+  },
+);
 assert.equal(reconciledComplete.round, 'round3');
 assert.equal(reconciledComplete.groupCompleted, true);
 assert.equal(reconciledComplete.completedAt, '2026-04-18T00:10:00.000Z');
@@ -249,21 +273,30 @@ assert.deepEqual(
   [],
 );
 
-assert.equal(isCoreLearningComplete({
-  status: 'active',
-  completedAt: null,
-  sessionRound: 'round2',
-}), false);
-assert.equal(isCoreLearningComplete({
-  status: 'completed',
-  completedAt: null,
-  sessionRound: 'round2',
-}), true);
-assert.equal(isCoreLearningComplete({
-  status: 'active',
-  completedAt: null,
-  sessionRound: 'round3',
-}), true);
+assert.equal(
+  isCoreLearningComplete({
+    status: 'active',
+    completedAt: null,
+    sessionRound: 'round2',
+  }),
+  false,
+);
+assert.equal(
+  isCoreLearningComplete({
+    status: 'completed',
+    completedAt: null,
+    sessionRound: 'round2',
+  }),
+  true,
+);
+assert.equal(
+  isCoreLearningComplete({
+    status: 'active',
+    completedAt: null,
+    sessionRound: 'round3',
+  }),
+  true,
+);
 
 const officialGroups = [
   {

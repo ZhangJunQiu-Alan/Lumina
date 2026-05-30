@@ -55,7 +55,9 @@ export async function submitReviewAttempt(input: SubmitReviewAttemptInput): Prom
   return parseResponse<ReviewAttemptResponse>(response);
 }
 
-export async function submitBatchReviewAttempts(attempts: SubmitReviewAttemptInput[]): Promise<ReviewAttemptResponse[]> {
+export async function submitBatchReviewAttempts(
+  attempts: SubmitReviewAttemptInput[],
+): Promise<ReviewAttemptResponse[]> {
   const response = await apiFetch('/api/review/batch-attempt', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

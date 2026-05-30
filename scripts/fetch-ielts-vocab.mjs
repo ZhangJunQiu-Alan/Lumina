@@ -66,11 +66,7 @@ function normalizeChapters(rawVocabulary) {
 }
 
 function countUniqueWords(chapters) {
-  return new Set(
-    chapters
-      .flatMap((chapter) => chapter.words)
-      .map((word) => word.trim().toLowerCase()),
-  ).size;
+  return new Set(chapters.flatMap((chapter) => chapter.words).map((word) => word.trim().toLowerCase())).size;
 }
 
 function renderTypeScript(chapters, sourceUrl) {

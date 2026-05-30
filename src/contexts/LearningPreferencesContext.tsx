@@ -1,12 +1,4 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type PropsWithChildren,
-} from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 import { useAuth } from './AuthContext';
 import type { LearningPreferences } from '../types';
 import {
@@ -57,41 +49,43 @@ export function LearningPreferencesProvider({ children }: PropsWithChildren) {
     void reloadPreferences();
   }, [reloadPreferences]);
 
-  const handleSavePreferences = useCallback(async (patch: Partial<LearningPreferences>) => {
-    const previousPreferences = preferences;
-    const optimisticPreferences = mergeLearningPreferences(previousPreferences, patch);
-    setPreferences(optimisticPreferences);
+  const handleSavePreferences = useCallback(
+    async (patch: Partial<LearningPreferences>) => {
+      const previousPreferences = preferences;
+      const optimisticPreferences = mergeLearningPreferences(previousPreferences, patch);
+      setPreferences(optimisticPreferences);
 
-    if (!user) {
-      return optimisticPreferences;
-    }
+      if (!user) {
+        return optimisticPreferences;
+      }
 
-    try {
-      const persisted = await saveLearningPreferences(user.id, optimisticPreferences);
-      setPreferences(persisted);
-      setLoadError('');
-      return persisted;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '学习设置保存失败';
-      setPreferences(previousPreferences);
-      setLoadError(message);
-      throw error;
-    }
-  }, [preferences, user]);
-
-  const value = useMemo<LearningPreferencesContextValue>(() => ({
-    preferences,
-    isLoading,
-    loadError,
-    savePreferences: handleSavePreferences,
-    reloadPreferences,
-  }), [handleSavePreferences, isLoading, loadError, preferences, reloadPreferences]);
-
-  return (
-    <LearningPreferencesContext.Provider value={value}>
-      {children}
-    </LearningPreferencesContext.Provider>
+      try {
+        const persisted = await saveLearningPreferences(user.id, optimisticPreferences);
+        setPreferences(persisted);
+        setLoadError('');
+        return persisted;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '学习设置保存失败';
+        setPreferences(previousPreferences);
+        setLoadError(message);
+        throw error;
+      }
+    },
+    [preferences, user],
   );
+
+  const value = useMemo<LearningPreferencesContextValue>(
+    () => ({
+      preferences,
+      isLoading,
+      loadError,
+      savePreferences: handleSavePreferences,
+      reloadPreferences,
+    }),
+    [handleSavePreferences, isLoading, loadError, preferences, reloadPreferences],
+  );
+
+  return <LearningPreferencesContext.Provider value={value}>{children}</LearningPreferencesContext.Provider>;
 }
 
 export function useLearningPreferences() {

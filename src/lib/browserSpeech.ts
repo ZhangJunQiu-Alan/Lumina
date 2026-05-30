@@ -4,9 +4,7 @@ let activeSpeechFinish: ((didFinish: boolean) => void) | null = null;
 
 export function isBrowserSpeechSupported(): boolean {
   return (
-    typeof window !== 'undefined'
-    && 'speechSynthesis' in window
-    && typeof SpeechSynthesisUtterance !== 'undefined'
+    typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined'
   );
 }
 
@@ -24,11 +22,7 @@ export function normalizeSpeechText(text: string): string {
     .trim();
 }
 
-export function speakTextViaBrowser(
-  text: string,
-  locale: PronunciationLocale,
-  rate = 0.85,
-): Promise<boolean> {
+export function speakTextViaBrowser(text: string, locale: PronunciationLocale, rate = 0.85): Promise<boolean> {
   if (!isBrowserSpeechSupported()) {
     return Promise.resolve(false);
   }

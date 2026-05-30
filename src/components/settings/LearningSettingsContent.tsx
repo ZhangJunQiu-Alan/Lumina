@@ -74,10 +74,7 @@ function SegmentedOptionGroup<T extends string | number>({
   disabled?: boolean;
 }) {
   return (
-    <div
-      className="grid gap-3"
-      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
-    >
+    <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
       {options.map((option) => {
         const active = option.value === value;
         return (
@@ -90,8 +87,8 @@ function SegmentedOptionGroup<T extends string | number>({
               disabled
                 ? 'cursor-not-allowed border-white/60 bg-white/38 text-text-secondary/45'
                 : active
-                ? 'border-apple-blue bg-apple-blue text-white shadow-[0_18px_34px_rgba(25,200,185,0.25)]'
-                : 'border-white/80 bg-white/78 text-text-primary shadow-[0_10px_24px_rgba(14,26,56,0.06)] hover:-translate-y-0.5 hover:bg-white'
+                  ? 'border-apple-blue bg-apple-blue text-white shadow-[0_18px_34px_rgba(25,200,185,0.25)]'
+                  : 'border-white/80 bg-white/78 text-text-primary shadow-[0_10px_24px_rgba(14,26,56,0.06)] hover:-translate-y-0.5 hover:bg-white'
             }`}
           >
             <span className="text-base font-black">{option.label}</span>
@@ -102,13 +99,7 @@ function SegmentedOptionGroup<T extends string | number>({
   );
 }
 
-function ToggleControl({
-  checked,
-  onChange,
-}: {
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
+function ToggleControl({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) {
   return (
     <button
       type="button"
@@ -175,15 +166,20 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
   const feedbackTimeoutsRef = useRef<Partial<Record<PreferenceKey, ReturnType<typeof setTimeout>>>>({});
   const resetFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => () => {
-    for (const timeout of Object.values(feedbackTimeoutsRef.current) as Array<ReturnType<typeof setTimeout> | undefined>) {
-      if (timeout) clearTimeout(timeout);
-    }
+  useEffect(
+    () => () => {
+      for (const timeout of Object.values(feedbackTimeoutsRef.current) as Array<
+        ReturnType<typeof setTimeout> | undefined
+      >) {
+        if (timeout) clearTimeout(timeout);
+      }
 
-    if (resetFeedbackTimeoutRef.current) {
-      clearTimeout(resetFeedbackTimeoutRef.current);
-    }
-  }, []);
+      if (resetFeedbackTimeoutRef.current) {
+        clearTimeout(resetFeedbackTimeoutRef.current);
+      }
+    },
+    [],
+  );
 
   const setTransientSaved = (key: PreferenceKey) => {
     if (feedbackTimeoutsRef.current[key]) {
@@ -286,16 +282,18 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
         title="默认口音"
         description="自动朗读优先使用的口音"
         feedback={feedbackByKey.defaultPronunciationLocale}
-        control={(
+        control={
           <SegmentedOptionGroup<PronunciationLocale>
             options={[
               { label: 'UK', value: 'uk' },
               { label: 'US', value: 'us' },
             ]}
             value={preferences.defaultPronunciationLocale}
-            onChange={(next) => { void handleSave('defaultPronunciationLocale', { defaultPronunciationLocale: next }); }}
+            onChange={(next) => {
+              void handleSave('defaultPronunciationLocale', { defaultPronunciationLocale: next });
+            }}
           />
-        )}
+        }
       />
 
       <SettingItem
@@ -303,16 +301,18 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
         title="朗读速度"
         description="学习卡片里的单词和例句朗读速度"
         feedback={feedbackByKey.speechPlaybackRate}
-        control={(
+        control={
           <SegmentedOptionGroup<number>
             options={SPEECH_PLAYBACK_RATE_OPTIONS.map((rate) => ({
               label: `${rate}倍`,
               value: rate,
             }))}
             value={preferences.speechPlaybackRate}
-            onChange={(next) => { void handleSave('speechPlaybackRate', { speechPlaybackRate: next as SpeechPlaybackRate }); }}
+            onChange={(next) => {
+              void handleSave('speechPlaybackRate', { speechPlaybackRate: next as SpeechPlaybackRate });
+            }}
           />
-        )}
+        }
       />
 
       <SettingItem
@@ -320,12 +320,14 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
         title="自动朗读"
         description="进入新词时自动朗读"
         feedback={feedbackByKey.autoPlayEnabled}
-        control={(
+        control={
           <ToggleControl
             checked={preferences.autoPlayEnabled}
-            onChange={(checked) => { void handleSave('autoPlayEnabled', { autoPlayEnabled: checked }); }}
+            onChange={(checked) => {
+              void handleSave('autoPlayEnabled', { autoPlayEnabled: checked });
+            }}
           />
-        )}
+        }
       />
 
       <SettingItem
@@ -333,12 +335,14 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
         title="查词浮窗自动朗读"
         description="点开查词浮窗时自动朗读这个词"
         feedback={feedbackByKey.popoverAutoPlayEnabled}
-        control={(
+        control={
           <ToggleControl
             checked={preferences.popoverAutoPlayEnabled}
-            onChange={(checked) => { void handleSave('popoverAutoPlayEnabled', { popoverAutoPlayEnabled: checked }); }}
+            onChange={(checked) => {
+              void handleSave('popoverAutoPlayEnabled', { popoverAutoPlayEnabled: checked });
+            }}
           />
-        )}
+        }
       />
 
       <SettingItem
@@ -346,12 +350,14 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
         title="句子默认朗读"
         description="复习轮和 Round 2 答对后自动朗读完整句"
         feedback={feedbackByKey.clozeSentenceAutoPlayEnabled}
-        control={(
+        control={
           <ToggleControl
             checked={preferences.clozeSentenceAutoPlayEnabled}
-            onChange={(checked) => { void handleSave('clozeSentenceAutoPlayEnabled', { clozeSentenceAutoPlayEnabled: checked }); }}
+            onChange={(checked) => {
+              void handleSave('clozeSentenceAutoPlayEnabled', { clozeSentenceAutoPlayEnabled: checked });
+            }}
           />
-        )}
+        }
       />
 
       <SettingItem
@@ -359,12 +365,14 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
         title="记忆锦囊"
         description="学习和查看词条时显示记忆提示"
         feedback={feedbackByKey.memoryTipEnabled}
-        control={(
+        control={
           <ToggleControl
             checked={preferences.memoryTipEnabled}
-            onChange={(checked) => { void handleSave('memoryTipEnabled', { memoryTipEnabled: checked }); }}
+            onChange={(checked) => {
+              void handleSave('memoryTipEnabled', { memoryTipEnabled: checked });
+            }}
           />
-        )}
+        }
       />
 
       <SettingItem
@@ -372,16 +380,18 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
         title="朗读次数"
         description="每个单词自动朗读的次数"
         feedback={feedbackByKey.autoPlayRepeatCount}
-        control={(
+        control={
           <SegmentedOptionGroup<number>
             options={AUTO_PLAY_REPEAT_OPTIONS.map((count) => ({
               label: `${count}次`,
               value: count,
             }))}
             value={preferences.autoPlayRepeatCount}
-            onChange={(next) => { void handleSave('autoPlayRepeatCount', { autoPlayRepeatCount: next as 1 | 2 | 3 }); }}
+            onChange={(next) => {
+              void handleSave('autoPlayRepeatCount', { autoPlayRepeatCount: next as 1 | 2 | 3 });
+            }}
           />
-        )}
+        }
       />
 
       <SettingItem
@@ -390,7 +400,7 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
         description="自动朗读之间的间隔"
         feedback={feedbackByKey.autoPlayRepeatGapMs}
         disabled={preferences.autoPlayRepeatCount === 1}
-        control={(
+        control={
           <SegmentedOptionGroup<number>
             options={AUTO_PLAY_GAP_OPTIONS.map((gap) => ({
               label: `${(gap / 1000).toFixed(1)}秒`,
@@ -398,9 +408,11 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
             }))}
             value={preferences.autoPlayRepeatGapMs}
             disabled={preferences.autoPlayRepeatCount === 1}
-            onChange={(next) => { void handleSave('autoPlayRepeatGapMs', { autoPlayRepeatGapMs: next }); }}
+            onChange={(next) => {
+              void handleSave('autoPlayRepeatGapMs', { autoPlayRepeatGapMs: next });
+            }}
           />
-        )}
+        }
       />
 
       <SettingItem
@@ -408,16 +420,18 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
         title="答对反馈时间"
         description="Round 2 和复习轮答对后反馈停留的时间"
         feedback={feedbackByKey.correctAnswerRevealMs}
-        control={(
+        control={
           <SegmentedOptionGroup<number>
             options={CORRECT_ANSWER_REVEAL_OPTIONS.map((duration) => ({
               label: `${duration / 1000}秒`,
               value: duration,
             }))}
             value={preferences.correctAnswerRevealMs}
-            onChange={(next) => { void handleSave('correctAnswerRevealMs', { correctAnswerRevealMs: next as 800 | 1000 | 1500 | 2000 }); }}
+            onChange={(next) => {
+              void handleSave('correctAnswerRevealMs', { correctAnswerRevealMs: next as 800 | 1000 | 1500 | 2000 });
+            }}
           />
-        )}
+        }
       />
 
       <SettingItem
@@ -425,16 +439,18 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
         title="答错答案停留"
         description="答错后正确答案停留的时间"
         feedback={feedbackByKey.wrongAnswerRevealMs}
-        control={(
+        control={
           <SegmentedOptionGroup<number>
             options={WRONG_ANSWER_REVEAL_OPTIONS.map((duration) => ({
               label: `${duration / 1000}秒`,
               value: duration,
             }))}
             value={preferences.wrongAnswerRevealMs}
-            onChange={(next) => { void handleSave('wrongAnswerRevealMs', { wrongAnswerRevealMs: next as 3000 | 5000 | 8000 }); }}
+            onChange={(next) => {
+              void handleSave('wrongAnswerRevealMs', { wrongAnswerRevealMs: next as 3000 | 5000 | 8000 });
+            }}
           />
-        )}
+        }
       />
 
       <SettingItem
@@ -442,12 +458,14 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
         title="第三轮练习"
         description="完成第二轮后继续强化"
         feedback={feedbackByKey.reinforcementRound3Enabled}
-        control={(
+        control={
           <ToggleControl
             checked={preferences.reinforcementRound3Enabled}
-            onChange={(checked) => { void handleSave('reinforcementRound3Enabled', { reinforcementRound3Enabled: checked }); }}
+            onChange={(checked) => {
+              void handleSave('reinforcementRound3Enabled', { reinforcementRound3Enabled: checked });
+            }}
           />
-        )}
+        }
       />
 
       {AI_CONTENT_FEATURES_ENABLED && (
@@ -456,19 +474,23 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
           title="文章巩固"
           description="用短文把单词放回语境"
           feedback={feedbackByKey.reinforcementArticleEnabled}
-          control={(
+          control={
             <ToggleControl
               checked={preferences.reinforcementArticleEnabled}
-              onChange={(checked) => { void handleSave('reinforcementArticleEnabled', { reinforcementArticleEnabled: checked }); }}
+              onChange={(checked) => {
+                void handleSave('reinforcementArticleEnabled', { reinforcementArticleEnabled: checked });
+              }}
             />
-          )}
+          }
         />
       )}
 
       <div className="border-t border-black/6 pt-2">
         <button
           type="button"
-          onClick={() => { void handleResetDefaults(); }}
+          onClick={() => {
+            void handleResetDefaults();
+          }}
           disabled={resetFeedback.status === 'saving'}
           className="flex w-full items-center justify-between gap-4 rounded-[18px] px-3 py-3 text-left text-sm font-black text-text-primary transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-60"
         >

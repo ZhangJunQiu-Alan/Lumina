@@ -13,12 +13,7 @@ type LearningRoundType = 'round1' | 'round2' | 'round3' | 'article';
 type RoutineStepKey = 'review' | 'round1' | 'round2';
 type RoutineCardState = 'not_started' | 'in_progress' | 'completed';
 type RoutineVisibleStepStatus = 'completed' | 'current' | 'upcoming';
-type RoutineCardCtaMode =
-  | 'start_review'
-  | 'continue_review'
-  | 'start_learning'
-  | 'continue_learning'
-  | 'open_library';
+type RoutineCardCtaMode = 'start_review' | 'continue_review' | 'start_learning' | 'continue_learning' | 'open_library';
 
 interface ResumeCandidatePayload {
   groupId: string;
@@ -174,11 +169,7 @@ const ROUTINE_STEP_LABELS: Record<RoutineStepKey, string> = {
 };
 const formatterCache = new Map<string, Intl.DateTimeFormat>();
 
-function getFormatter(
-  locale: string,
-  timeZone: string,
-  options: Intl.DateTimeFormatOptions,
-) {
+function getFormatter(locale: string, timeZone: string, options: Intl.DateTimeFormatOptions) {
   const key = `${locale}:${timeZone}:${JSON.stringify(options)}`;
   const cached = formatterCache.get(key);
   if (cached) return cached;
@@ -313,10 +304,10 @@ function isCoreLearningComplete(input: {
   const round = input.round ?? input.sessionRound ?? null;
 
   return (
-    input.groupCompleted === true
-    || input.status === 'completed'
-    || Boolean(input.completedAt)
-    || isReinforcementRound(round)
+    input.groupCompleted === true ||
+    input.status === 'completed' ||
+    Boolean(input.completedAt) ||
+    isReinforcementRound(round)
   );
 }
 
@@ -380,9 +371,9 @@ function reconcileLearningGroupWithRound2History(
   progress: Round2GroupProgress | undefined,
 ): LearningGroupRow {
   if (
-    !progress
-    || progress.correctWordIds.size === 0
-    || isCoreLearningComplete({
+    !progress ||
+    progress.correctWordIds.size === 0 ||
+    isCoreLearningComplete({
       status: group.status,
       completedAt: group.completed_at,
       sessionRound: group.session_round,
@@ -396,10 +387,8 @@ function reconcileLearningGroupWithRound2History(
     return group;
   }
 
-  const lastActiveAt = latestIso(
-    group.session_last_active_at ?? group.created_at,
-    progress.lastAttemptAt,
-  ) ?? group.session_last_active_at;
+  const lastActiveAt =
+    latestIso(group.session_last_active_at ?? group.created_at, progress.lastAttemptAt) ?? group.session_last_active_at;
   const firstPendingIndex = queueWordIds.findIndex((wordId) => !progress.correctWordIds.has(wordId));
 
   if (firstPendingIndex === -1) {
@@ -443,11 +432,13 @@ function countDueWords(states: Map<string, ReconstructedWordState>, dayKey: stri
 async function fetchRecentDailyRoutineProgress(userId: string, dateKeys: string[]) {
   const { data, error } = await supabaseAdmin
     .from('daily_routine_progress')
-    .select(`
+    .select(
+      `
       id,
       local_date,
       status
-    `)
+    `,
+    )
     .eq('user_id', userId)
     .in('local_date', dateKeys);
 
@@ -473,13 +464,7 @@ function resolveDayStatus(input: {
   protectedByCard: boolean;
   routineStatus: string | null;
 }): OrbitDayStatus {
-  const {
-    dueAtEndCount,
-    reviewWordCount,
-    learnedWordCount,
-    protectedByCard,
-    routineStatus,
-  } = input;
+  const { dueAtEndCount, reviewWordCount, learnedWordCount, protectedByCard, routineStatus } = input;
 
   // 核心原则：如果有 Routine 记录，必须 Completed 才是完美
   if (routineStatus) {
@@ -495,7 +480,7 @@ function resolveDayStatus(input: {
     const reviewCleared = dueAtEndCount === 0;
     // 显著学习：学了 5 个以上或者清空了复习
     const significantLearning = learnedWordCount >= 5 || (reviewWordCount > 0 && reviewCleared);
-    
+
     if (significantLearning) {
       return 'perfect';
     }
@@ -533,15 +518,22 @@ function buildRoutineStepOrder(startingDueCount: number) {
 }
 
 function inferCompletedLearningSteps(
-  source: Pick<LearningGroupRow, 'status' | 'completed_at' | 'session_round'> | ResumeCandidatePayload | null | undefined,
+  source:
+    | Pick<LearningGroupRow, 'status' | 'completed_at' | 'session_round'>
+    | ResumeCandidatePayload
+    | null
+    | undefined,
 ) {
   if (!source) return [];
 
-  if ('completed_at' in source && isCoreLearningComplete({
-    status: source.status,
-    completedAt: source.completed_at,
-    sessionRound: source.session_round,
-  })) {
+  if (
+    'completed_at' in source &&
+    isCoreLearningComplete({
+      status: source.status,
+      completedAt: source.completed_at,
+      sessionRound: source.session_round,
+    })
+  ) {
     return ['round1', 'round2'] as RoutineStepKey[];
   }
 
@@ -613,9 +605,7 @@ function buildVisibleRoutineSteps(stepOrder: RoutineStepKey[], completedSteps: R
   }
 
   const visibleCount = Math.min(2, stepOrder.length);
-  const windowStart = stepOrder.length > 2
-    ? Math.min(firstIncompleteIndex, stepOrder.length - visibleCount)
-    : 0;
+  const windowStart = stepOrder.length > 2 ? Math.min(firstIncompleteIndex, stepOrder.length - visibleCount) : 0;
   const currentStep = stepOrder[firstIncompleteIndex];
 
   return stepOrder.slice(windowStart, windowStart + visibleCount).map((step) => ({
@@ -624,8 +614,8 @@ function buildVisibleRoutineSteps(stepOrder: RoutineStepKey[], completedSteps: R
     status: (completedSet.has(step)
       ? 'completed'
       : step === currentStep
-      ? 'current'
-      : 'upcoming') as RoutineVisibleStepStatus,
+        ? 'current'
+        : 'upcoming') as RoutineVisibleStepStatus,
   }));
 }
 
@@ -641,7 +631,9 @@ function buildCompletedSubtitle(todaySummary: DailySummary | undefined) {
   return `今天已完成复习 ${todaySummary.reviewWordCount} 词 · 新学 ${todaySummary.learnedWordCount} 词`;
 }
 
-function getLearningGroupActivityTime(group: Pick<LearningGroupRow, 'created_at' | 'completed_at' | 'session_last_active_at'>) {
+function getLearningGroupActivityTime(
+  group: Pick<LearningGroupRow, 'created_at' | 'completed_at' | 'session_last_active_at'>,
+) {
   return Math.max(
     Date.parse(group.session_last_active_at ?? '') || 0,
     Date.parse(group.completed_at ?? '') || 0,
@@ -656,9 +648,7 @@ interface LastUsedOfficialLibraryRef {
   title: string;
 }
 
-function resolveLastUsedOfficialLibrary(
-  learningGroups: LearningGroupRow[],
-): LastUsedOfficialLibraryRef | null {
+function resolveLastUsedOfficialLibrary(learningGroups: LearningGroupRow[]): LastUsedOfficialLibraryRef | null {
   const sorted = [...learningGroups].sort((left, right) => {
     const leftActive = getLearningGroupActivityTime(left);
     const rightActive = getLearningGroupActivityTime(right);
@@ -772,17 +762,20 @@ function buildHomeOfficialLibraryOptions(
         if (rightActive !== leftActive) return rightActive - leftActive;
         return Date.parse(right.created_at) - Date.parse(left.created_at);
       });
-      const activeGroup = sortedGroups.find((group) => (
-        isCoreLearningRound(group.session_round)
-        && !isCoreLearningComplete({
-          status: group.status,
-          completedAt: group.completed_at,
-          sessionRound: group.session_round,
-        })
-      )) ?? null;
+      const activeGroup =
+        sortedGroups.find(
+          (group) =>
+            isCoreLearningRound(group.session_round) &&
+            !isCoreLearningComplete({
+              status: group.status,
+              completedAt: group.completed_at,
+              sessionRound: group.session_round,
+            }),
+        ) ?? null;
       const referenceGroup = activeGroup ?? sortedGroups[0] ?? null;
       const loadedWordCount = activeGroup
-        ? learningGroupWordCounts.get(activeGroup.id) ?? normalizeSessionQueueWordIds(activeGroup.session_queue_word_ids).length
+        ? (learningGroupWordCounts.get(activeGroup.id) ??
+          normalizeSessionQueueWordIds(activeGroup.session_queue_word_ids).length)
         : sortedGroups.reduce((count, group) => count + (learningGroupWordCounts.get(group.id) ?? 0), 0);
       const confirmedWordCount = activeGroup ? getRound1ConfirmedCount(activeGroup) : loadedWordCount;
 
@@ -842,11 +835,12 @@ function buildRoutineCard(input: {
 
   const routineCompletedSteps = normalizeRoutineSteps(routineProgress?.completed_steps_json);
   const boundLearningGroupId = routineProgress?.main_learning_group_id ?? resumeCandidate?.groupId ?? null;
-  const boundGroup = boundLearningGroupId ? learningGroupsById.get(boundLearningGroupId) ?? null : null;
+  const boundGroup = boundLearningGroupId ? (learningGroupsById.get(boundLearningGroupId) ?? null) : null;
   const inferredLearningSteps = boundGroup
     ? inferCompletedLearningSteps(boundGroup)
     : inferCompletedLearningSteps(resumeCandidate);
-  const inferredReviewSteps = stepOrder.includes('review') && todayReviewCount === 0 ? (['review'] as RoutineStepKey[]) : [];
+  const inferredReviewSteps =
+    stepOrder.includes('review') && todayReviewCount === 0 ? (['review'] as RoutineStepKey[]) : [];
   const completedSteps = mergeRoutineSteps(
     stepOrder,
     routineCompletedSteps,
@@ -863,7 +857,7 @@ function buildRoutineCard(input: {
   const lastUsedOfficialGroupCount = lastUsedOfficialLibrary?.groupCount ?? 0;
   const selectedOfficialLibraryId = officialLibraryOptions[0]?.libraryId ?? lastUsedOfficialLibraryId;
   const lastUsedOfficialTitle = lastUsedOfficialLibrary
-    ? OFFICIAL_LIBRARY_TITLES[lastUsedOfficialLibrary.libraryId] ?? lastUsedOfficialLibrary.title
+    ? (OFFICIAL_LIBRARY_TITLES[lastUsedOfficialLibrary.libraryId] ?? lastUsedOfficialLibrary.title)
     : null;
 
   if (state === 'completed') {
@@ -1002,7 +996,8 @@ async function fetchLearningGroups(userId: string) {
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await supabaseAdmin
       .from('learning_groups')
-      .select(`
+      .select(
+        `
         id,
         group_name,
         source_type,
@@ -1015,7 +1010,8 @@ async function fetchLearningGroups(userId: string) {
         session_queue_word_ids,
         session_round1_confirmed_word_ids,
         session_last_active_at
-      `)
+      `,
+      )
       .eq('user_id', userId)
       .order('created_at', { ascending: true })
       .range(from, from + PAGE_SIZE - 1);
@@ -1070,10 +1066,7 @@ async function fetchLearningGroupWordCounts(groupIds: string[]) {
   return counts;
 }
 
-async function fetchOfficialCompletedMemoryCounts(
-  userId: string,
-  learningGroups: LearningGroupRow[],
-) {
+async function fetchOfficialCompletedMemoryCounts(userId: string, learningGroups: LearningGroupRow[]) {
   const officialGroups = learningGroups
     .map((group) => ({
       group,
@@ -1176,7 +1169,8 @@ function isMissingDailyRoutineProgressError(error: { message?: string } | null |
 async function fetchDailyRoutineProgress(userId: string, localDate: string) {
   const result = await supabaseAdmin
     .from('daily_routine_progress')
-    .select(`
+    .select(
+      `
       id,
       local_date,
       timezone,
@@ -1186,7 +1180,8 @@ async function fetchDailyRoutineProgress(userId: string, localDate: string) {
       step_order_json,
       completed_steps_json,
       status
-    `)
+    `,
+    )
     .eq('user_id', userId)
     .eq('local_date', localDate)
     .maybeSingle();
@@ -1210,31 +1205,25 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
   const nowIso = now.toISOString();
   const todayKey = toRoutineDateKey(now, timeZone);
 
-  const [
-    reviewEvents,
-    learningGroups,
-    protectionEvents,
-    routineProgress,
-    masteredWordCountResult,
-    dueCountResult,
-  ] = await Promise.all([
-    fetchReviewEvents(userId),
-    fetchLearningGroups(userId),
-    fetchStreakProtectionEvents(userId),
-    fetchDailyRoutineProgress(userId, todayKey),
-    supabaseAdmin
-      .from('review_states')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .in('memory_state', ['stable_recall', 'mastered']),
-    supabaseAdmin
-      .from('review_states')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .neq('memory_state', 'mastered')
-      .not('next_review_at', 'is', null)
-      .lte('next_review_at', nowIso),
-  ]);
+  const [reviewEvents, learningGroups, protectionEvents, routineProgress, masteredWordCountResult, dueCountResult] =
+    await Promise.all([
+      fetchReviewEvents(userId),
+      fetchLearningGroups(userId),
+      fetchStreakProtectionEvents(userId),
+      fetchDailyRoutineProgress(userId, todayKey),
+      supabaseAdmin
+        .from('review_states')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .in('memory_state', ['stable_recall', 'mastered']),
+      supabaseAdmin
+        .from('review_states')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .neq('memory_state', 'mastered')
+        .not('next_review_at', 'is', null)
+        .lte('next_review_at', nowIso),
+    ]);
 
   if (masteredWordCountResult.error) {
     throw new Error(`review_states mastered word count failed: ${masteredWordCountResult.error.message}`);
@@ -1248,10 +1237,7 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
   const reconciledLearningGroups = learningGroups.map((group) =>
     reconcileLearningGroupWithRound2History(group, round2ProgressByGroupId.get(group.id)),
   );
-  const officialCompletedMemoryCounts = await fetchOfficialCompletedMemoryCounts(
-    userId,
-    reconciledLearningGroups,
-  );
+  const officialCompletedMemoryCounts = await fetchOfficialCompletedMemoryCounts(userId, reconciledLearningGroups);
   const learningGroupsById = new Map(reconciledLearningGroups.map((group) => [group.id, group]));
   const reviewWordIdsByDate = new Map<string, Set<string>>();
   const learnedWordIdsByDate = new Map<string, Set<string>>();
@@ -1264,7 +1250,7 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
   );
 
   const relevantDateKeys = [todayKey];
-  
+
   // 核心逻辑改进：从 review_events 中精准统计
   const eventsWithDateKey = reviewEvents.map((event) => {
     const dayKey = dateKeyFromIso(event.created_at, timeZone) ?? todayKey;
@@ -1301,7 +1287,7 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
 
   const startDateKey = [...relevantDateKeys].sort()[0] ?? todayKey;
   const dateKeys = buildDateRange(startDateKey, todayKey);
-  
+
   // 批量获取这些日期的 Routine 进度状态
   const recentRoutineStatusMap = await fetchRecentDailyRoutineProgress(userId, dateKeys);
 
@@ -1344,20 +1330,21 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     });
   }
 
-  const resumeCandidate = [...reconciledLearningGroups]
-    .filter((group) => isLearningRoundType(group.session_round))
-    .sort((left, right) => {
-      const leftActive = getLearningGroupActivityTime(left);
-      const rightActive = getLearningGroupActivityTime(right);
-      if (rightActive !== leftActive) {
-        return rightActive - leftActive;
-      }
-      return Date.parse(right.created_at) - Date.parse(left.created_at);
-    })
-    .map(buildResumeCandidate)
-    .find((candidate): candidate is ResumeCandidatePayload => (
-      Boolean(candidate && isCoreLearningRound(candidate.round) && !candidate.groupCompleted)
-    )) ?? null;
+  const resumeCandidate =
+    [...reconciledLearningGroups]
+      .filter((group) => isLearningRoundType(group.session_round))
+      .sort((left, right) => {
+        const leftActive = getLearningGroupActivityTime(left);
+        const rightActive = getLearningGroupActivityTime(right);
+        if (rightActive !== leftActive) {
+          return rightActive - leftActive;
+        }
+        return Date.parse(right.created_at) - Date.parse(left.created_at);
+      })
+      .map(buildResumeCandidate)
+      .find((candidate): candidate is ResumeCandidatePayload =>
+        Boolean(candidate && isCoreLearningRound(candidate.round) && !candidate.groupCompleted),
+      ) ?? null;
 
   const lastUsedOfficialLibrary = resolveLastUsedOfficialLibrary(reconciledLearningGroups);
   const officialLibraryOptions = buildHomeOfficialLibraryOptions(
@@ -1384,7 +1371,7 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
 
   let perfectCheckinDays = 0;
   let streak = 0;
-  
+
   // 计算完美打卡总数 (perfect 状态)
   for (const dateKey of dateKeys) {
     const summary = dailySummaries.get(dateKey);
@@ -1440,7 +1427,8 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
       learnedWordCount: summary.learnedWordCount,
       attemptCount: summary.attemptCount,
       correctAttemptCount: summary.correctAttemptCount,
-      accuracy: summary.attemptCount > 0 ? Math.round((summary.correctAttemptCount / summary.attemptCount) * 100) : null,
+      accuracy:
+        summary.attemptCount > 0 ? Math.round((summary.correctAttemptCount / summary.attemptCount) * 100) : null,
     };
   });
 

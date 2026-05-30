@@ -34,16 +34,12 @@ export function SavedWordsProvider({ children }: { children: ReactNode }) {
     const channelName = `vocab-updates-${user.id}-${Math.random().toString(36).slice(2)}`;
     const channel = supabase
       .channel(channelName)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'vocabulary_items' },
-        (payload) => {
-          const word = typeof payload.new?.word === 'string' ? payload.new.word : '';
-          if (word) {
-            invalidateWord(word);
-          }
-        },
-      )
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'vocabulary_items' }, (payload) => {
+        const word = typeof payload.new?.word === 'string' ? payload.new.word : '';
+        if (word) {
+          invalidateWord(word);
+        }
+      })
       .subscribe();
 
     return () => {
@@ -51,63 +47,68 @@ export function SavedWordsProvider({ children }: { children: ReactNode }) {
     };
   }, [user]);
 
-  const saveWord = useCallback(async (vocabularyItemId: string, source: SavedWordSource = 'reading_popup') => {
-    const response = await apiFetch('/api/library/saved-words', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vocabularyItemId, source }),
-    });
+  const saveWord = useCallback(
+    async (vocabularyItemId: string, source: SavedWordSource = 'reading_popup') => {
+      const response = await apiFetch('/api/library/saved-words', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vocabularyItemId, source }),
+      });
 
-    if (!response.ok) {
-      throw new Error(await readApiError(response));
-    }
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
 
-    const payload = await response.json().catch(() => ({ data: {} as SaveWordResponse }));
-    const result = (payload as { data?: SaveWordResponse }).data;
+      const payload = await response.json().catch(() => ({ data: {} as SaveWordResponse }));
+      const result = (payload as { data?: SaveWordResponse }).data;
 
-    if (result?.saved === false || result?.skippedReason === 'non_new_state') {
+      if (result?.saved === false || result?.skippedReason === 'non_new_state') {
+        updateCachedLookup(vocabularyItemId, (current) => ({
+          ...current,
+          in_user_library: false,
+        }));
+        invalidateLibraryCache(user?.id);
+        return result ?? { saved: false, skippedReason: 'non_new_state' };
+      }
+
+      updateCachedLookup(vocabularyItemId, (current) => ({
+        ...current,
+        in_user_library: true,
+      }));
+      invalidateLibraryCache(user?.id);
+      return result ?? { saved: true };
+    },
+    [user?.id],
+  );
+
+  const removeWord = useCallback(
+    async (vocabularyItemId: string) => {
+      const response = await apiFetch(`/api/library/saved-words/${encodeURIComponent(vocabularyItemId)}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+
       updateCachedLookup(vocabularyItemId, (current) => ({
         ...current,
         in_user_library: false,
       }));
       invalidateLibraryCache(user?.id);
-      return result ?? { saved: false, skippedReason: 'non_new_state' };
-    }
-
-    updateCachedLookup(vocabularyItemId, (current) => ({
-      ...current,
-      in_user_library: true,
-    }));
-    invalidateLibraryCache(user?.id);
-    return result ?? { saved: true };
-  }, [user?.id]);
-
-  const removeWord = useCallback(async (vocabularyItemId: string) => {
-    const response = await apiFetch(`/api/library/saved-words/${encodeURIComponent(vocabularyItemId)}`, {
-      method: 'DELETE',
-    });
-
-    if (!response.ok) {
-      throw new Error(await readApiError(response));
-    }
-
-    updateCachedLookup(vocabularyItemId, (current) => ({
-      ...current,
-      in_user_library: false,
-    }));
-    invalidateLibraryCache(user?.id);
-  }, [user?.id]);
-
-  const value = useMemo(() => ({
-    saveWord,
-    removeWord,
-  }), [removeWord, saveWord]);
-
-  return (
-    <SavedWordsContext.Provider value={value}>
-      {children}
-    </SavedWordsContext.Provider>
+    },
+    [user?.id],
   );
+
+  const value = useMemo(
+    () => ({
+      saveWord,
+      removeWord,
+    }),
+    [removeWord, saveWord],
+  );
+
+  return <SavedWordsContext.Provider value={value}>{children}</SavedWordsContext.Provider>;
 }
 
 export function useSavedWords() {

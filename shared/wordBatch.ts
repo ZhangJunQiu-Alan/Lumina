@@ -35,10 +35,7 @@ export function normalizeWordKey(word: string): string {
   return sanitizeWordInput(word).toLowerCase();
 }
 
-export function analyzeWordBatch(
-  words: string[],
-  options: AnalyzeWordBatchOptions = {},
-): AnalyzeWordBatchResult {
+export function analyzeWordBatch(words: string[], options: AnalyzeWordBatchOptions = {}): AnalyzeWordBatchResult {
   const preparedWords = words
     .map(sanitizeWordInput)
     .filter(Boolean)
@@ -102,17 +99,11 @@ export function collapseCanonicalWordBatch(entries: CanonicalWordBatchEntry[]): 
 }
 
 export function compareWordBatches(expectedWords: string[], actualWords: string[]): WordBatchMismatch {
-  const expectedWordByKey = new Map(
-    expectedWords.map((word) => [normalizeWordKey(word), sanitizeWordInput(word)]),
-  );
-  const actualWordByKey = new Map(
-    actualWords.map((word) => [normalizeWordKey(word), sanitizeWordInput(word)]),
-  );
+  const expectedWordByKey = new Map(expectedWords.map((word) => [normalizeWordKey(word), sanitizeWordInput(word)]));
+  const actualWordByKey = new Map(actualWords.map((word) => [normalizeWordKey(word), sanitizeWordInput(word)]));
 
   return {
-    missingWords: [...expectedWordByKey.entries()]
-      .filter(([key]) => !actualWordByKey.has(key))
-      .map(([, word]) => word),
+    missingWords: [...expectedWordByKey.entries()].filter(([key]) => !actualWordByKey.has(key)).map(([, word]) => word),
     unexpectedWords: [...actualWordByKey.entries()]
       .filter(([key]) => !expectedWordByKey.has(key))
       .map(([, word]) => word),
@@ -123,10 +114,7 @@ export function formatDuplicateWordsMessage(duplicateWords: string[]): string {
   return `检测到重复词：${duplicateWords.join('、')}。同一批里不能重复，系统会忽略大小写和多余空格，请改一下再继续。`;
 }
 
-export function formatWordBatchMismatchMessage({
-  missingWords,
-  unexpectedWords,
-}: WordBatchMismatch): string {
+export function formatWordBatchMismatchMessage({ missingWords, unexpectedWords }: WordBatchMismatch): string {
   const parts: string[] = [];
 
   if (missingWords.length > 0) {

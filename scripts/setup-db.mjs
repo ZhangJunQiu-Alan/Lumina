@@ -4,8 +4,11 @@ import { readFileSync } from 'fs';
 const env = Object.fromEntries(
   readFileSync('.env', 'utf8')
     .split('\n')
-    .filter(l => l.includes('='))
-    .map(l => { const i = l.indexOf('='); return [l.slice(0,i).trim(), l.slice(i+1).trim()]; })
+    .filter((l) => l.includes('='))
+    .map((l) => {
+      const i = l.indexOf('=');
+      return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
+    }),
 );
 
 const supabase = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_PUBLISHABLE_KEY);

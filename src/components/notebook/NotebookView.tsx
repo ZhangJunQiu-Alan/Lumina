@@ -1,31 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  AlertCircle,
-  BookMarked,
-  Clock3,
-  Loader2,
-  CalendarDays,
-  X,
-  Volume2,
-} from 'lucide-react';
-import {
-  LibraryGroupWord,
-  MemoryState,
-  ReviewResultType,
-} from '../../types';
+import { AlertCircle, BookMarked, Clock3, Loader2, CalendarDays, X, Volume2 } from 'lucide-react';
+import { LibraryGroupWord, MemoryState, ReviewResultType } from '../../types';
 import { toConfusingPairs, toWordMorphology, toWordRelations } from '../../types';
 import { ExampleSentenceList } from '../shared/ExampleSentenceList';
-import {
-  cancelBrowserSpeech,
-  isBrowserSpeechSupported,
-  speakTextViaBrowser,
-} from '../../lib/browserSpeech';
+import { cancelBrowserSpeech, isBrowserSpeechSupported, speakTextViaBrowser } from '../../lib/browserSpeech';
 import { fetchDifficultWords } from '../../lib/libraryApi';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
 import { LibrarySkeleton } from '../shared/Skeleton';
-
 
 const memoryStateLabel: Record<MemoryState, string> = {
   new: '新词',
@@ -52,8 +35,9 @@ function mapDifficultWord(row: any): LibraryGroupWord | null {
   const vocabularyItem = asArray(row.vocabulary_items)[0];
   if (!vocabularyItem) return null;
 
-  const relations = [...(vocabularyItem.vocabulary_relations ?? [])]
-    .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0));
+  const relations = [...(vocabularyItem.vocabulary_relations ?? [])].sort(
+    (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0),
+  );
   const confusingPairs = toConfusingPairs(
     [...(vocabularyItem.confused_words ?? [])]
       .sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0))
@@ -64,7 +48,7 @@ function mapDifficultWord(row: any): LibraryGroupWord | null {
   ).filter((pair) => pair.word);
   const confusingWord = confusingPairs[0];
 
-  const mapRelations = (type: 'derived' | 'synonym' | 'antonym'): any[] => (
+  const mapRelations = (type: 'derived' | 'synonym' | 'antonym'): any[] =>
     relations
       .filter((relation) => relation.relation_type === type)
       .map((relation) => ({
@@ -72,8 +56,7 @@ function mapDifficultWord(row: any): LibraryGroupWord | null {
         meaning_zh: relation.meaning_zh ?? '',
         note_zh: relation.note_zh ?? '',
       }))
-      .filter((relation) => relation.word)
-  );
+      .filter((relation) => relation.word);
 
   return {
     id: vocabularyItem.id,
@@ -143,27 +126,33 @@ export function NotebookView() {
     setActiveExampleKey(null);
   }, []);
 
-  const playExampleSentence = useCallback(async (sentence: string, key: string) => {
-    if (!canPlayExampleAudio) return;
+  const playExampleSentence = useCallback(
+    async (sentence: string, key: string) => {
+      if (!canPlayExampleAudio) return;
 
-    if (activeExampleKey === key) {
+      if (activeExampleKey === key) {
+        stopPlayback();
+        return;
+      }
+
       stopPlayback();
-      return;
-    }
+      const runId = playbackRunIdRef.current;
+      setActiveExampleKey(key);
+      await speakTextViaBrowser(sentence, preferences.defaultPronunciationLocale);
 
-    stopPlayback();
-    const runId = playbackRunIdRef.current;
-    setActiveExampleKey(key);
-    await speakTextViaBrowser(sentence, preferences.defaultPronunciationLocale);
+      if (runId === playbackRunIdRef.current) {
+        setActiveExampleKey(null);
+      }
+    },
+    [activeExampleKey, canPlayExampleAudio, preferences.defaultPronunciationLocale, stopPlayback],
+  );
 
-    if (runId === playbackRunIdRef.current) {
-      setActiveExampleKey(null);
-    }
-  }, [activeExampleKey, canPlayExampleAudio, preferences.defaultPronunciationLocale, stopPlayback]);
-
-  useEffect(() => () => {
-    stopPlayback();
-  }, [stopPlayback]);
+  useEffect(
+    () => () => {
+      stopPlayback();
+    },
+    [stopPlayback],
+  );
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -185,9 +174,7 @@ export function NotebookView() {
 
   const handlePlayAudio = (word: LibraryGroupWord) => {
     const locale = preferences.defaultPronunciationLocale;
-    const url = locale === 'us'
-      ? (word.audioUsUrl || word.audioUkUrl)
-      : (word.audioUkUrl || word.audioUsUrl);
+    const url = locale === 'us' ? word.audioUsUrl || word.audioUkUrl : word.audioUkUrl || word.audioUsUrl;
 
     if (url) {
       const audio = new Audio(url);
@@ -215,7 +202,9 @@ export function NotebookView() {
           <p className="text-sm text-text-secondary">{errorMsg}</p>
         </div>
         <button
-          onClick={() => { void loadData(); }}
+          onClick={() => {
+            void loadData();
+          }}
           className="mt-2 rounded-2xl bg-apple-blue px-6 py-3 text-sm font-bold text-white shadow-lg shadow-apple-blue/20 transition-transform active:scale-95"
         >
           重试一下
@@ -292,14 +281,14 @@ export function NotebookView() {
                           <Volume2 className="h-4 w-4" />
                         </button>
                       </div>
-                      <p className="mt-1 truncate text-sm text-text-secondary font-medium">
-                        {word.meaning}
-                      </p>
+                      <p className="mt-1 truncate text-sm text-text-secondary font-medium">{word.meaning}</p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-3 shrink-0">
-                    <div className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wider ${memoryStateStyle[word.memoryState]}`}>
+                    <div
+                      className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wider ${memoryStateStyle[word.memoryState]}`}
+                    >
                       {memoryStateLabel[word.memoryState]}
                     </div>
                     <div className="hidden sm:flex items-center gap-1.5 rounded-full bg-black/5 px-3 py-1 text-[11px] font-bold text-text-secondary">
@@ -327,7 +316,9 @@ export function NotebookView() {
 
                         {word.examples.length > 0 && (
                           <div>
-                            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-4">精选语境</p>
+                            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-4">
+                              精选语境
+                            </p>
                             <ExampleSentenceList
                               items={word.examples.map((example, index) => ({
                                 key: `${word.id}-example-${index}`,
@@ -337,7 +328,9 @@ export function NotebookView() {
                               locale={preferences.defaultPronunciationLocale}
                               activeExampleKey={activeExampleKey}
                               canPlayAudio={canPlayExampleAudio}
-                              onPlayExample={({ sentence, key }) => { void playExampleSentence(sentence, key); }}
+                              onPlayExample={({ sentence, key }) => {
+                                void playExampleSentence(sentence, key);
+                              }}
                               emptyMessage="目前还没有例句。"
                             />
                           </div>
@@ -347,10 +340,15 @@ export function NotebookView() {
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                             {word.synonyms.length > 0 && (
                               <div>
-                                <p className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-3">近义关联</p>
+                                <p className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-3">
+                                  近义关联
+                                </p>
                                 <div className="flex flex-wrap gap-2">
                                   {word.synonyms.map((s, idx) => (
-                                    <span key={idx} className="rounded-lg bg-black/5 px-2.5 py-1 text-xs font-bold text-text-primary">
+                                    <span
+                                      key={idx}
+                                      className="rounded-lg bg-black/5 px-2.5 py-1 text-xs font-bold text-text-primary"
+                                    >
                                       {s.word}
                                     </span>
                                   ))}
@@ -359,10 +357,15 @@ export function NotebookView() {
                             )}
                             {word.antonyms.length > 0 && (
                               <div>
-                                <p className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-3">反义对照</p>
+                                <p className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-3">
+                                  反义对照
+                                </p>
                                 <div className="flex flex-wrap gap-2">
                                   {word.antonyms.map((a, idx) => (
-                                    <span key={idx} className="rounded-lg bg-black/5 px-2.5 py-1 text-xs font-bold text-text-primary">
+                                    <span
+                                      key={idx}
+                                      className="rounded-lg bg-black/5 px-2.5 py-1 text-xs font-bold text-text-primary"
+                                    >
                                       {a.word}
                                     </span>
                                   ))}
