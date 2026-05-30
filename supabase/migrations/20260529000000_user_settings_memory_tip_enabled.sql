@@ -1,0 +1,2 @@
+ALTER TABLE user_settings
+  ADD COLUMN IF NOT EXISTS memory_tip_enabled BOOLEAN NOT NULL DEFAULT TRUE;

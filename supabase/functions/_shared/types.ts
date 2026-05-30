@@ -30,6 +30,7 @@ export interface ArticleSentence {
 
 export type MemoryState = 'new' | 'fuzzy' | 'slow_recall' | 'stable_recall' | 'mastered';
 export type ReviewAttemptSource = 'round2' | 'review';
+export type ReviewEventSource = ReviewAttemptSource | 'manual_mastered';
 export type LearningRoundType = 'round1' | 'round2' | 'round3' | 'article';
 export type OfficialLibraryId =
   | 'ielts-vocab'
@@ -41,3 +42,16 @@ export type OfficialLibraryId =
   | 'tem4-vocab'
   | 'tem8-vocab';
 export type OfficialStudyMode = 'sequential' | 'shuffle';
+
+export interface HomeOfficialLibraryOption {
+  libraryId: OfficialLibraryId;
+  title: string;
+  mode: OfficialStudyMode;
+  existingGroupCount: number;
+  activeGroupId: string | null;
+  activeRound: LearningRoundType | null;
+  confirmedWordCount: number;
+  loadedWordCount: number;
+  completedMemoryWordCount: number;
+  totalWordCount: number;
+}

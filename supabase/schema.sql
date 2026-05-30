@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS confused_words (
   sort_order            INTEGER DEFAULT 0
 );
 
--- 30-word study groups
+-- Study groups
 CREATE TABLE IF NOT EXISTS learning_groups (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id       TEXT DEFAULT 'demo',
@@ -174,6 +174,7 @@ CREATE TABLE IF NOT EXISTS learning_groups (
   session_current_index INTEGER,
   session_queue_word_ids JSONB,
   session_passed_queue_indices JSONB,
+  session_round1_confirmed_word_ids JSONB,
   session_last_active_at TIMESTAMPTZ,
   created_at    TIMESTAMPTZ DEFAULT NOW(),
   completed_at  TIMESTAMPTZ,
@@ -222,10 +223,37 @@ CREATE TABLE IF NOT EXISTS review_events (
   next_state            TEXT NOT NULL,
   next_review_at        TIMESTAMPTZ,
   created_at            TIMESTAMPTZ DEFAULT NOW(),
-  CHECK (source IN ('round2', 'review')),
+  CHECK (source IN ('round2', 'review', 'manual_mastered')),
   CHECK (previous_state IS NULL OR previous_state IN ('new', 'fuzzy', 'slow_recall', 'stable_recall', 'mastered')),
   CHECK (next_state IN ('new', 'fuzzy', 'slow_recall', 'stable_recall', 'mastered'))
 );
+
+CREATE TABLE IF NOT EXISTS vocabulary_issue_reports (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id            TEXT NOT NULL,
+  vocabulary_item_id UUID NOT NULL REFERENCES vocabulary_items(id) ON DELETE CASCADE,
+  word_snapshot      TEXT,
+  learning_group_id  UUID REFERENCES learning_groups(id) ON DELETE SET NULL,
+  session_round      TEXT,
+  issue_type         TEXT NOT NULL,
+  note               TEXT,
+  route_path         TEXT,
+  user_agent         TEXT,
+  status             TEXT NOT NULL DEFAULT 'open',
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (issue_type IN ('definition', 'example', 'pronunciation', 'other')),
+  CHECK (status IN ('open', 'reviewing', 'resolved', 'ignored')),
+  CHECK (session_round IS NULL OR session_round IN ('review', 'round1', 'round2', 'round3', 'article'))
+);
+
+CREATE INDEX IF NOT EXISTS vocabulary_issue_reports_status_idx
+  ON vocabulary_issue_reports (status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS vocabulary_issue_reports_user_idx
+  ON vocabulary_issue_reports (user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS vocabulary_issue_reports_vocabulary_item_idx
+  ON vocabulary_issue_reports (vocabulary_item_id, created_at DESC);
 
 -- AI-generated reading articles (one per learning group)
 CREATE TABLE IF NOT EXISTS generated_articles (
@@ -875,11 +903,7 @@ DECLARE
   v_user_id TEXT := NULLIF(BTRIM(COALESCE(p_user_id, '')), '');
   v_source_type TEXT := COALESCE(NULLIF(BTRIM(COALESCE(p_source_type, '')), ''), 'custom');
   v_library_id TEXT := NULLIF(BTRIM(COALESCE(p_library_id, '')), '');
-  v_target_library_key TEXT;
   v_group_id UUID;
-  v_conflicting_group_ids UUID[] := ARRAY[]::UUID[];
-  v_conflicting_word_ids UUID[] := ARRAY[]::UUID[];
-  v_orphan_word_ids UUID[] := ARRAY[]::UUID[];
 BEGIN
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'p_user_id is required';
@@ -923,112 +947,7 @@ BEGIN
     RAISE EXCEPTION 'p_vocabulary_item_ids must not contain duplicates';
   END IF;
 
-  v_target_library_key := CASE
-    WHEN v_source_type = 'system' THEN 'official:' || v_library_id
-    ELSE 'custom'
-  END;
-
   PERFORM pg_advisory_xact_lock(hashtext(v_user_id)::BIGINT);
-
-  SELECT COALESCE(array_agg(group_id), ARRAY[]::UUID[])
-  INTO v_conflicting_group_ids
-  FROM (
-    SELECT id AS group_id
-    FROM public.learning_groups
-    WHERE user_id = v_user_id
-      AND completed_at IS NULL
-      AND status IS DISTINCT FROM 'completed'
-      AND (
-        CASE
-          WHEN source_type = 'system' THEN 'official:' || COALESCE(NULLIF(BTRIM(COALESCE(library_id, '')), ''), '__legacy__')
-          ELSE 'custom'
-        END
-      ) <> v_target_library_key
-    FOR UPDATE
-  ) AS locked_groups;
-
-  IF cardinality(v_conflicting_group_ids) > 0 THEN
-    SELECT COALESCE(array_agg(DISTINCT vocabulary_item_id), ARRAY[]::UUID[])
-    INTO v_conflicting_word_ids
-    FROM public.learning_group_words
-    WHERE learning_group_id = ANY(v_conflicting_group_ids);
-
-    SELECT COALESCE(array_agg(conflicted.vocabulary_item_id), ARRAY[]::UUID[])
-    INTO v_orphan_word_ids
-    FROM unnest(v_conflicting_word_ids) AS conflicted(vocabulary_item_id)
-    WHERE NOT EXISTS (
-      SELECT 1
-      FROM public.learning_group_words AS shared_words
-      INNER JOIN public.learning_groups AS shared_groups
-        ON shared_groups.id = shared_words.learning_group_id
-      WHERE shared_groups.user_id = v_user_id
-        AND shared_words.vocabulary_item_id = conflicted.vocabulary_item_id
-        AND NOT (shared_groups.id = ANY(v_conflicting_group_ids))
-    );
-
-    IF cardinality(v_orphan_word_ids) > 0 THEN
-      DELETE FROM public.review_events
-      WHERE user_id = v_user_id
-        AND vocabulary_item_id = ANY(v_orphan_word_ids);
-
-      DELETE FROM public.review_states
-      WHERE user_id = v_user_id
-        AND vocabulary_item_id = ANY(v_orphan_word_ids);
-    END IF;
-
-    WITH affected AS (
-      SELECT
-        id,
-        step_order_json,
-        CASE
-          WHEN jsonb_typeof(step_order_json) = 'array'
-            AND jsonb_typeof(completed_steps_json) = 'array'
-            AND EXISTS (
-              SELECT 1
-              FROM jsonb_array_elements_text(step_order_json) AS step(value)
-              WHERE step.value = 'review'
-            )
-            AND EXISTS (
-              SELECT 1
-              FROM jsonb_array_elements_text(completed_steps_json) AS step(value)
-              WHERE step.value = 'review'
-            )
-          THEN '["review"]'::JSONB
-          ELSE '[]'::JSONB
-        END AS next_completed_steps
-      FROM public.daily_routine_progress
-      WHERE user_id = v_user_id
-        AND main_learning_group_id = ANY(v_conflicting_group_ids)
-    ),
-    resolved AS (
-      SELECT
-        id,
-        next_completed_steps,
-        CASE
-          WHEN jsonb_array_length(next_completed_steps) = 0 THEN 'not_started'
-          WHEN (
-            CASE
-              WHEN jsonb_typeof(step_order_json) = 'array' THEN jsonb_array_length(step_order_json)
-              ELSE 0
-            END
-          ) = jsonb_array_length(next_completed_steps) THEN 'completed'
-          ELSE 'in_progress'
-        END AS next_status
-      FROM affected
-    )
-    UPDATE public.daily_routine_progress AS progress
-    SET
-      main_learning_group_id = NULL,
-      completed_steps_json = resolved.next_completed_steps,
-      status = resolved.next_status,
-      updated_at = NOW()
-    FROM resolved
-    WHERE progress.id = resolved.id;
-
-    DELETE FROM public.learning_groups
-    WHERE user_id = v_user_id
-      AND id = ANY(v_conflicting_group_ids);
-  END IF;
 
   INSERT INTO public.learning_groups (
     user_id,
@@ -1096,163 +1015,6 @@ AS $$
   END;
 $$;
 
-CREATE OR REPLACE FUNCTION public.discard_conflicting_active_learning_groups(
-  p_user_id TEXT,
-  p_target_source_type TEXT,
-  p_target_library_id TEXT DEFAULT NULL,
-  p_excluded_group_id UUID DEFAULT NULL
-)
-RETURNS INTEGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_user_id TEXT := NULLIF(BTRIM(COALESCE(p_user_id, '')), '');
-  v_target_library_key TEXT := public.learning_group_library_key(p_target_source_type, p_target_library_id);
-  v_conflicting_group_ids UUID[] := ARRAY[]::UUID[];
-  v_conflicting_word_ids UUID[] := ARRAY[]::UUID[];
-  v_orphan_word_ids UUID[] := ARRAY[]::UUID[];
-  v_deleted_count INTEGER := 0;
-BEGIN
-  IF v_user_id IS NULL THEN
-    RETURN 0;
-  END IF;
-
-  PERFORM pg_advisory_xact_lock(hashtext(v_user_id)::BIGINT);
-
-  SELECT COALESCE(array_agg(group_id), ARRAY[]::UUID[])
-  INTO v_conflicting_group_ids
-  FROM (
-    SELECT id AS group_id
-    FROM public.learning_groups
-    WHERE user_id = v_user_id
-      AND completed_at IS NULL
-      AND status IS DISTINCT FROM 'completed'
-      AND (p_excluded_group_id IS NULL OR id <> p_excluded_group_id)
-      AND public.learning_group_library_key(source_type, library_id) <> v_target_library_key
-    FOR UPDATE
-  ) AS locked_groups;
-
-  IF cardinality(v_conflicting_group_ids) = 0 THEN
-    RETURN 0;
-  END IF;
-
-  SELECT COALESCE(array_agg(DISTINCT vocabulary_item_id), ARRAY[]::UUID[])
-  INTO v_conflicting_word_ids
-  FROM public.learning_group_words
-  WHERE learning_group_id = ANY(v_conflicting_group_ids);
-
-  SELECT COALESCE(array_agg(conflicted.vocabulary_item_id), ARRAY[]::UUID[])
-  INTO v_orphan_word_ids
-  FROM unnest(v_conflicting_word_ids) AS conflicted(vocabulary_item_id)
-  WHERE NOT EXISTS (
-    SELECT 1
-    FROM public.learning_group_words AS shared_words
-    INNER JOIN public.learning_groups AS shared_groups
-      ON shared_groups.id = shared_words.learning_group_id
-    WHERE shared_groups.user_id = v_user_id
-      AND shared_words.vocabulary_item_id = conflicted.vocabulary_item_id
-      AND NOT (shared_groups.id = ANY(v_conflicting_group_ids))
-  );
-
-  IF cardinality(v_orphan_word_ids) > 0 THEN
-    DELETE FROM public.review_events
-    WHERE user_id = v_user_id
-      AND vocabulary_item_id = ANY(v_orphan_word_ids);
-
-    DELETE FROM public.review_states
-    WHERE user_id = v_user_id
-      AND vocabulary_item_id = ANY(v_orphan_word_ids);
-  END IF;
-
-  WITH affected AS (
-    SELECT
-      id,
-      step_order_json,
-      CASE
-        WHEN jsonb_typeof(step_order_json) = 'array'
-          AND jsonb_typeof(completed_steps_json) = 'array'
-          AND EXISTS (
-            SELECT 1
-            FROM jsonb_array_elements_text(step_order_json) AS step(value)
-            WHERE step.value = 'review'
-          )
-          AND EXISTS (
-            SELECT 1
-            FROM jsonb_array_elements_text(completed_steps_json) AS step(value)
-            WHERE step.value = 'review'
-          )
-        THEN '["review"]'::JSONB
-        ELSE '[]'::JSONB
-      END AS next_completed_steps
-    FROM public.daily_routine_progress
-    WHERE user_id = v_user_id
-      AND main_learning_group_id = ANY(v_conflicting_group_ids)
-  ),
-  resolved AS (
-    SELECT
-      id,
-      next_completed_steps,
-      CASE
-        WHEN jsonb_array_length(next_completed_steps) = 0 THEN 'not_started'
-        WHEN (
-          CASE
-            WHEN jsonb_typeof(step_order_json) = 'array' THEN jsonb_array_length(step_order_json)
-            ELSE 0
-          END
-        ) = jsonb_array_length(next_completed_steps) THEN 'completed'
-        ELSE 'in_progress'
-      END AS next_status
-    FROM affected
-  )
-  UPDATE public.daily_routine_progress AS progress
-  SET
-    main_learning_group_id = NULL,
-    completed_steps_json = resolved.next_completed_steps,
-    status = resolved.next_status,
-    updated_at = NOW()
-  FROM resolved
-  WHERE progress.id = resolved.id;
-
-  DELETE FROM public.learning_groups
-  WHERE user_id = v_user_id
-    AND id = ANY(v_conflicting_group_ids);
-
-  GET DIAGNOSTICS v_deleted_count = ROW_COUNT;
-  RETURN v_deleted_count;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.enforce_exclusive_active_learning_library()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  IF NEW.completed_at IS NULL AND NEW.status IS DISTINCT FROM 'completed' THEN
-    PERFORM public.discard_conflicting_active_learning_groups(
-      NEW.user_id,
-      NEW.source_type,
-      NEW.library_id,
-      NEW.id
-    );
-  END IF;
-
-  RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS enforce_exclusive_active_learning_library_insert ON public.learning_groups;
-CREATE TRIGGER enforce_exclusive_active_learning_library_insert
-  BEFORE INSERT ON public.learning_groups
-  FOR EACH ROW
-  EXECUTE FUNCTION public.enforce_exclusive_active_learning_library();
-
-REVOKE ALL ON FUNCTION public.discard_conflicting_active_learning_groups(TEXT, TEXT, TEXT, UUID) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.enforce_exclusive_active_learning_library() FROM PUBLIC;
-
 -- Per-user saved words library, independent from active SRS groups
 CREATE TABLE IF NOT EXISTS user_saved_words (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1309,6 +1071,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
   reinforcement_article_enabled  BOOLEAN NOT NULL DEFAULT true,
   popover_auto_play_enabled      BOOLEAN NOT NULL DEFAULT false,
   cloze_sentence_auto_play_enabled BOOLEAN NOT NULL DEFAULT true,
+  memory_tip_enabled             BOOLEAN NOT NULL DEFAULT true,
   updated_at                     TIMESTAMPTZ DEFAULT NOW(),
   CHECK (default_pronunciation_locale IN ('uk', 'us')),
   CHECK (speech_playback_rate IN (0.6, 0.8, 1.0)),
@@ -1332,6 +1095,7 @@ ALTER TABLE learning_groups        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE learning_group_words   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE review_states          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE review_events          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vocabulary_issue_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE generated_articles     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ielts_reading_books    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ielts_reading_tests    ENABLE ROW LEVEL SECURITY;
@@ -1436,6 +1200,15 @@ CREATE POLICY "review_events_owner_insert" ON review_events
 CREATE POLICY "review_events_owner_update" ON review_events
   FOR UPDATE USING (auth.uid()::text = user_id) WITH CHECK (auth.uid()::text = user_id);
 CREATE POLICY "review_events_owner_delete" ON review_events
+  FOR DELETE USING (auth.uid()::text = user_id);
+
+CREATE POLICY "vocabulary_issue_reports_owner_select" ON vocabulary_issue_reports
+  FOR SELECT USING (auth.uid()::text = user_id);
+CREATE POLICY "vocabulary_issue_reports_owner_insert" ON vocabulary_issue_reports
+  FOR INSERT WITH CHECK (auth.uid()::text = user_id);
+CREATE POLICY "vocabulary_issue_reports_owner_update" ON vocabulary_issue_reports
+  FOR UPDATE USING (auth.uid()::text = user_id) WITH CHECK (auth.uid()::text = user_id);
+CREATE POLICY "vocabulary_issue_reports_owner_delete" ON vocabulary_issue_reports
   FOR DELETE USING (auth.uid()::text = user_id);
 
 CREATE POLICY "generated_articles_owner_select" ON generated_articles

@@ -54,6 +54,25 @@ export interface FullEnrichmentQueueResult {
   reason?: 'not_found' | 'already_full' | 'already_queued';
 }
 
+export type VocabularyIssueType = 'definition' | 'example' | 'pronunciation' | 'other';
+
+export interface ReportVocabularyIssueInput {
+  vocabularyItemId: string;
+  wordSnapshot?: string | null;
+  learningGroupId?: string | null;
+  sessionRound?: string | null;
+  issueType: VocabularyIssueType;
+  note?: string | null;
+  routePath?: string | null;
+  userAgent?: string | null;
+}
+
+export interface ReportVocabularyIssueResult {
+  id: string;
+  status: string;
+  createdAt: string;
+}
+
 export type VocabularySourceType = 'custom' | 'system';
 
 export interface PersistedFullVocabularyEntry extends GeminiWordResult {
@@ -151,6 +170,14 @@ const fullVocabularyEntrySelect = `
     sort_order
   )
 `;
+
+const VOCABULARY_ISSUE_TYPES = new Set<VocabularyIssueType>(['definition', 'example', 'pronunciation', 'other']);
+
+function truncateNullable(value: string | null | undefined, maxLength: number) {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, maxLength);
+}
 
 const fullEnrichmentInflight = new Map<string, Promise<void>>();
 
@@ -714,6 +741,46 @@ export async function lookupWordForPopover(userId: string, word: string): Promis
     senses,
     in_user_library: inUserLibrary,
     srs_state: srsState,
+  };
+}
+
+export async function reportVocabularyIssue(
+  userId: string,
+  input: ReportVocabularyIssueInput,
+): Promise<ReportVocabularyIssueResult> {
+  const vocabularyItemId = input.vocabularyItemId?.trim();
+  if (!vocabularyItemId) {
+    throw new Error('Missing vocabulary item ID');
+  }
+
+  if (!VOCABULARY_ISSUE_TYPES.has(input.issueType)) {
+    throw new Error('Invalid vocabulary issue type');
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('vocabulary_issue_reports')
+    .insert({
+      user_id: userId,
+      vocabulary_item_id: vocabularyItemId,
+      word_snapshot: truncateNullable(input.wordSnapshot, 120),
+      learning_group_id: truncateNullable(input.learningGroupId, 80),
+      session_round: truncateNullable(input.sessionRound, 24),
+      issue_type: input.issueType,
+      note: truncateNullable(input.note, 1000),
+      route_path: truncateNullable(input.routePath, 500),
+      user_agent: truncateNullable(input.userAgent, 500),
+    })
+    .select('id, status, created_at')
+    .single<{ id: string; status: string; created_at: string }>();
+
+  if (error) {
+    throw new Error(`vocabulary_issue_reports insert failed: ${error.message}`);
+  }
+
+  return {
+    id: data.id,
+    status: data.status,
+    createdAt: data.created_at,
   };
 }
 

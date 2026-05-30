@@ -1,5 +1,6 @@
 import { supabaseAdmin } from './supabase.js';
 import {
+  getOfficialLibraryDefinition,
   isOfficialLibraryId,
   resolveOfficialLibraryId,
   resolveOfficialStudyModeFromGroupName,
@@ -56,6 +57,19 @@ interface RoutineVisibleStepPayload {
   status: RoutineVisibleStepStatus;
 }
 
+interface HomeOfficialLibraryOptionPayload {
+  libraryId: OfficialLibraryId;
+  title: string;
+  mode: OfficialStudyMode;
+  existingGroupCount: number;
+  activeGroupId: string | null;
+  activeRound: LearningRoundType | null;
+  confirmedWordCount: number;
+  loadedWordCount: number;
+  completedMemoryWordCount: number;
+  totalWordCount: number;
+}
+
 interface RoutineCardPayload {
   state: RoutineCardState;
   title: string;
@@ -67,6 +81,8 @@ interface RoutineCardPayload {
   lastUsedOfficialLibraryId: OfficialLibraryId | null;
   lastUsedOfficialMode: OfficialStudyMode | null;
   lastUsedOfficialGroupCount: number;
+  selectedOfficialLibraryId: OfficialLibraryId | null;
+  officialLibraryOptions: HomeOfficialLibraryOptionPayload[];
 }
 
 export interface HomeOverviewPayload {
@@ -105,6 +121,7 @@ interface LearningGroupRow {
   session_round: string | null;
   session_current_index: number | null;
   session_queue_word_ids: unknown;
+  session_round1_confirmed_word_ids?: unknown;
   session_last_active_at: string | null;
 }
 
@@ -246,6 +263,22 @@ function formatShortDateLabel(dateKey: string, timeZone: string) {
 function normalizeSessionQueueWordIds(value: unknown) {
   if (!Array.isArray(value)) return [];
   return value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0);
+}
+
+function normalizeRound1ConfirmedWordIds(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const entry of value) {
+    if (typeof entry !== 'string') continue;
+    const trimmed = entry.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+
+  return result;
 }
 
 function latestIso(left: string | null | undefined, right: string | null | undefined) {
@@ -682,6 +715,93 @@ const OFFICIAL_LIBRARY_TITLES: Record<OfficialLibraryId, string> = {
   'gaokao-vocab': '高考英语核心词汇',
 };
 
+function resolveOfficialGroupLibraryId(group: LearningGroupRow) {
+  return isOfficialLibraryId(group.library_id)
+    ? group.library_id
+    : resolveOfficialLibraryId(group.library_id, group.group_name, group.source_type);
+}
+
+function getRound1ConfirmedCount(group: LearningGroupRow) {
+  const confirmedIds = normalizeRound1ConfirmedWordIds(group.session_round1_confirmed_word_ids);
+  if (confirmedIds.length > 0) return confirmedIds.length;
+
+  const queueWordIds = normalizeSessionQueueWordIds(group.session_queue_word_ids);
+  if (group.session_round === 'round1') {
+    return Math.min(Math.max(group.session_current_index ?? 0, 0), queueWordIds.length);
+  }
+
+  if (isCoreLearningRound(group.session_round) || isReinforcementRound(group.session_round)) {
+    return queueWordIds.length;
+  }
+
+  return 0;
+}
+
+function buildHomeOfficialLibraryOptions(
+  learningGroups: LearningGroupRow[],
+  learningGroupWordCounts: Map<string, number>,
+  officialCompletedMemoryCounts: Map<OfficialLibraryId, number>,
+): HomeOfficialLibraryOptionPayload[] {
+  const groupsByLibrary = new Map<OfficialLibraryId, LearningGroupRow[]>();
+
+  for (const group of learningGroups) {
+    const libraryId = resolveOfficialGroupLibraryId(group);
+    if (!libraryId) continue;
+    const groups = groupsByLibrary.get(libraryId) ?? [];
+    groups.push(group);
+    groupsByLibrary.set(libraryId, groups);
+  }
+
+  return [...groupsByLibrary.entries()]
+    .map(([libraryId, groups]) => {
+      const sortedGroups = [...groups].sort((left, right) => {
+        const leftActive = getLearningGroupActivityTime(left);
+        const rightActive = getLearningGroupActivityTime(right);
+        if (rightActive !== leftActive) return rightActive - leftActive;
+        return Date.parse(right.created_at) - Date.parse(left.created_at);
+      });
+      const activeGroup = sortedGroups.find((group) => (
+        isCoreLearningRound(group.session_round)
+        && !isCoreLearningComplete({
+          status: group.status,
+          completedAt: group.completed_at,
+          sessionRound: group.session_round,
+        })
+      )) ?? null;
+      const referenceGroup = activeGroup ?? sortedGroups[0] ?? null;
+      const loadedWordCount = activeGroup
+        ? learningGroupWordCounts.get(activeGroup.id) ?? normalizeSessionQueueWordIds(activeGroup.session_queue_word_ids).length
+        : sortedGroups.reduce((count, group) => count + (learningGroupWordCounts.get(group.id) ?? 0), 0);
+      const confirmedWordCount = activeGroup ? getRound1ConfirmedCount(activeGroup) : loadedWordCount;
+
+      return {
+        libraryId,
+        title: OFFICIAL_LIBRARY_TITLES[libraryId],
+        mode: referenceGroup
+          ? resolveOfficialStudyModeFromGroupName(libraryId, referenceGroup.group_name)
+          : 'sequential',
+        existingGroupCount: groups.length,
+        activeGroupId: activeGroup?.id ?? null,
+        activeRound: isLearningRoundType(activeGroup?.session_round) ? activeGroup.session_round : null,
+        confirmedWordCount,
+        loadedWordCount,
+        completedMemoryWordCount: officialCompletedMemoryCounts.get(libraryId) ?? 0,
+        totalWordCount: getOfficialLibraryDefinition(libraryId).words.length,
+      } satisfies HomeOfficialLibraryOptionPayload;
+    })
+    .sort((left, right) => {
+      const leftActivity = Math.max(
+        ...(groupsByLibrary.get(left.libraryId) ?? []).map(getLearningGroupActivityTime),
+        0,
+      );
+      const rightActivity = Math.max(
+        ...(groupsByLibrary.get(right.libraryId) ?? []).map(getLearningGroupActivityTime),
+        0,
+      );
+      return rightActivity - leftActivity;
+    });
+}
+
 function buildRoutineCard(input: {
   todayReviewCount: number;
   todaySummary: DailySummary | undefined;
@@ -689,6 +809,7 @@ function buildRoutineCard(input: {
   routineProgress: DailyRoutineProgressRow | null;
   learningGroupsById: Map<string, LearningGroupRow>;
   lastUsedOfficialLibrary: LastUsedOfficialLibraryRef | null;
+  officialLibraryOptions: HomeOfficialLibraryOptionPayload[];
 }) {
   const {
     todayReviewCount,
@@ -697,6 +818,7 @@ function buildRoutineCard(input: {
     routineProgress,
     learningGroupsById,
     lastUsedOfficialLibrary,
+    officialLibraryOptions,
   } = input;
 
   const provisionalStepOrder = buildRoutineStepOrder(routineProgress?.starting_due_count ?? todayReviewCount);
@@ -727,6 +849,7 @@ function buildRoutineCard(input: {
   const lastUsedOfficialLibraryId = lastUsedOfficialLibrary?.libraryId ?? null;
   const lastUsedOfficialMode = lastUsedOfficialLibrary?.mode ?? null;
   const lastUsedOfficialGroupCount = lastUsedOfficialLibrary?.groupCount ?? 0;
+  const selectedOfficialLibraryId = officialLibraryOptions[0]?.libraryId ?? lastUsedOfficialLibraryId;
   const lastUsedOfficialTitle = lastUsedOfficialLibrary
     ? OFFICIAL_LIBRARY_TITLES[lastUsedOfficialLibrary.libraryId] ?? lastUsedOfficialLibrary.title
     : null;
@@ -736,7 +859,7 @@ function buildRoutineCard(input: {
       return {
         state,
         title: '继续主线学习',
-        subtitle: `${lastUsedOfficialTitle} · 抽下一组 30 词`,
+        subtitle: `${lastUsedOfficialTitle} · 抽下一组 40 词`,
         ctaLabel: '继续学习',
         ctaMode: 'continue_learning',
         boundLearningGroupId: null,
@@ -744,6 +867,8 @@ function buildRoutineCard(input: {
         lastUsedOfficialLibraryId,
         lastUsedOfficialMode,
         lastUsedOfficialGroupCount,
+        selectedOfficialLibraryId,
+        officialLibraryOptions,
       } satisfies RoutineCardPayload;
     }
 
@@ -758,6 +883,8 @@ function buildRoutineCard(input: {
       lastUsedOfficialLibraryId,
       lastUsedOfficialMode,
       lastUsedOfficialGroupCount,
+      selectedOfficialLibraryId,
+      officialLibraryOptions,
     } satisfies RoutineCardPayload;
   }
 
@@ -773,6 +900,8 @@ function buildRoutineCard(input: {
       lastUsedOfficialLibraryId,
       lastUsedOfficialMode,
       lastUsedOfficialGroupCount,
+      selectedOfficialLibraryId,
+      officialLibraryOptions,
     } satisfies RoutineCardPayload;
   }
 
@@ -788,6 +917,8 @@ function buildRoutineCard(input: {
       lastUsedOfficialLibraryId,
       lastUsedOfficialMode,
       lastUsedOfficialGroupCount,
+      selectedOfficialLibraryId,
+      officialLibraryOptions,
     } satisfies RoutineCardPayload;
   }
 
@@ -797,7 +928,7 @@ function buildRoutineCard(input: {
     return {
       state,
       title: '继续主线学习',
-      subtitle: `${lastUsedOfficialTitle} · 抽下一组 30 词`,
+      subtitle: `${lastUsedOfficialTitle} · 抽下一组 40 词`,
       ctaLabel: '继续学习',
       ctaMode: 'continue_learning',
       boundLearningGroupId: null,
@@ -805,6 +936,8 @@ function buildRoutineCard(input: {
       lastUsedOfficialLibraryId,
       lastUsedOfficialMode,
       lastUsedOfficialGroupCount,
+      selectedOfficialLibraryId,
+      officialLibraryOptions,
     } satisfies RoutineCardPayload;
   }
 
@@ -819,6 +952,8 @@ function buildRoutineCard(input: {
     lastUsedOfficialLibraryId,
     lastUsedOfficialMode,
     lastUsedOfficialGroupCount,
+    selectedOfficialLibraryId,
+    officialLibraryOptions,
   } satisfies RoutineCardPayload;
 }
 
@@ -866,6 +1001,7 @@ async function fetchLearningGroups(userId: string) {
         session_round,
         session_current_index,
         session_queue_word_ids,
+        session_round1_confirmed_word_ids,
         session_last_active_at
       `)
       .eq('user_id', userId)
@@ -920,6 +1056,79 @@ async function fetchLearningGroupWordCounts(groupIds: string[]) {
   }
 
   return counts;
+}
+
+async function fetchOfficialCompletedMemoryCounts(
+  userId: string,
+  learningGroups: LearningGroupRow[],
+) {
+  const officialGroups = learningGroups
+    .map((group) => ({
+      group,
+      libraryId: resolveOfficialGroupLibraryId(group),
+    }))
+    .filter((entry): entry is { group: LearningGroupRow; libraryId: OfficialLibraryId } => Boolean(entry.libraryId));
+  const groupIds = officialGroups.map((entry) => entry.group.id);
+  if (groupIds.length === 0) return new Map<OfficialLibraryId, number>();
+
+  const libraryByGroupId = new Map(officialGroups.map((entry) => [entry.group.id, entry.libraryId]));
+  const vocabularyIdsByLibrary = new Map<OfficialLibraryId, Set<string>>();
+  const allVocabularyIds = new Set<string>();
+
+  for (let offset = 0; offset < groupIds.length; offset += GROUP_ID_CHUNK_SIZE) {
+    const chunk = groupIds.slice(offset, offset + GROUP_ID_CHUNK_SIZE);
+    const { data, error } = await supabaseAdmin
+      .from('learning_group_words')
+      .select('learning_group_id, vocabulary_item_id')
+      .in('learning_group_id', chunk);
+
+    if (error) {
+      throw new Error(`official learning_group_words lookup failed: ${error.message}`);
+    }
+
+    for (const row of (data ?? []) as Array<{ learning_group_id: string; vocabulary_item_id: string | null }>) {
+      const libraryId = libraryByGroupId.get(row.learning_group_id);
+      const vocabularyItemId = row.vocabulary_item_id;
+      if (!libraryId || !vocabularyItemId) continue;
+      const ids = vocabularyIdsByLibrary.get(libraryId) ?? new Set<string>();
+      ids.add(vocabularyItemId);
+      vocabularyIdsByLibrary.set(libraryId, ids);
+      allVocabularyIds.add(vocabularyItemId);
+    }
+  }
+
+  if (allVocabularyIds.size === 0) return new Map<OfficialLibraryId, number>();
+
+  const completedIds = new Set<string>();
+  const allVocabularyIdList = [...allVocabularyIds];
+  for (let offset = 0; offset < allVocabularyIdList.length; offset += GROUP_ID_CHUNK_SIZE) {
+    const chunk = allVocabularyIdList.slice(offset, offset + GROUP_ID_CHUNK_SIZE);
+    const { data, error } = await supabaseAdmin
+      .from('review_states')
+      .select('vocabulary_item_id')
+      .eq('user_id', userId)
+      .in('vocabulary_item_id', chunk)
+      .in('memory_state', ['stable_recall', 'mastered']);
+
+    if (error) {
+      throw new Error(`official review_states completion lookup failed: ${error.message}`);
+    }
+
+    for (const row of (data ?? []) as Array<{ vocabulary_item_id: string | null }>) {
+      if (row.vocabulary_item_id) completedIds.add(row.vocabulary_item_id);
+    }
+  }
+
+  const result = new Map<OfficialLibraryId, number>();
+  for (const [libraryId, vocabularyIds] of vocabularyIdsByLibrary.entries()) {
+    let count = 0;
+    for (const vocabularyItemId of vocabularyIds) {
+      if (completedIds.has(vocabularyItemId)) count += 1;
+    }
+    result.set(libraryId, count);
+  }
+
+  return result;
 }
 
 async function fetchStreakProtectionEvents(userId: string) {
@@ -1022,9 +1231,14 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     throw new Error(`review_states due count failed: ${dueCountResult.error.message}`);
   }
 
+  const learningGroupWordCounts = await fetchLearningGroupWordCounts(learningGroups.map((group) => group.id));
   const round2ProgressByGroupId = buildRound2ProgressByGroupId(reviewEvents);
   const reconciledLearningGroups = learningGroups.map((group) =>
     reconcileLearningGroupWithRound2History(group, round2ProgressByGroupId.get(group.id)),
+  );
+  const officialCompletedMemoryCounts = await fetchOfficialCompletedMemoryCounts(
+    userId,
+    reconciledLearningGroups,
   );
   const learningGroupsById = new Map(reconciledLearningGroups.map((group) => [group.id, group]));
   const reviewWordIdsByDate = new Map<string, Set<string>>();
@@ -1134,6 +1348,11 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     )) ?? null;
 
   const lastUsedOfficialLibrary = resolveLastUsedOfficialLibrary(reconciledLearningGroups);
+  const officialLibraryOptions = buildHomeOfficialLibraryOptions(
+    reconciledLearningGroups,
+    learningGroupWordCounts,
+    officialCompletedMemoryCounts,
+  );
 
   const routineCard = buildRoutineCard({
     todayReviewCount: dueCountResult.count ?? 0,
@@ -1142,6 +1361,7 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     routineProgress,
     learningGroupsById,
     lastUsedOfficialLibrary,
+    officialLibraryOptions,
   });
 
   // 如果今天的 Routine 状态因为实时操作变成了 Completed，同步更新 summary

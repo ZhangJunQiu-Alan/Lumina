@@ -8,6 +8,8 @@ import {
   getOfficialNextBatch,
   getOfficialWordPosition,
   isOfficialGroupName,
+  OFFICIAL_BATCH_SIZE,
+  OFFICIAL_PREFETCH_REMAINING_THRESHOLD,
   resolveOfficialStudyModeFromGroupName,
   resolveOfficialLibraryStartMode,
   sortWordsByOfficialOrder,
@@ -18,9 +20,9 @@ import type { LibraryGroupSummary, OfficialResumeTargets, ResumeCandidate } from
 function makeGroupSummary(overrides: Partial<LibraryGroupSummary> = {}): LibraryGroupSummary {
   return {
     id: overrides.id ?? 'g',
-    title: overrides.title ?? formatOfficialGroupName('ielts-vocab', 0, 30),
+    title: overrides.title ?? formatOfficialGroupName('ielts-vocab', 0, OFFICIAL_BATCH_SIZE),
     createdAt: overrides.createdAt ?? '2026-04-18T00:00:00.000Z',
-    wordCount: overrides.wordCount ?? 30,
+    wordCount: overrides.wordCount ?? OFFICIAL_BATCH_SIZE,
     sourceType: overrides.sourceType ?? 'system',
     status: overrides.status ?? 'active',
     libraryId: overrides.libraryId ?? 'ielts-vocab',
@@ -31,33 +33,33 @@ function makeGroupSummary(overrides: Partial<LibraryGroupSummary> = {}): Library
 
 assert.equal(new Set(IELTS_WORDS_FLAT.map((word) => word.trim().toLowerCase())).size, IELTS_WORDS_FLAT.length);
 assert.equal(new Set(GRE_ZHENKAO_V7_WORDS.map((word) => word.trim().toLowerCase())).size, GRE_ZHENKAO_V7_WORDS.length);
+assert.equal(OFFICIAL_BATCH_SIZE, 40);
+assert.equal(OFFICIAL_PREFETCH_REMAINING_THRESHOLD, 5);
 
 const officialGroups: LibraryGroupSummary[] = [
   makeGroupSummary({
     id: 'g1',
-    title: formatOfficialGroupName('ielts-vocab', 0, 30),
+    title: formatOfficialGroupName('ielts-vocab', 0, OFFICIAL_BATCH_SIZE),
     status: 'completed',
     sessionRound: 'round3',
     completedAt: '2026-04-18T00:20:00.000Z',
   }),
   makeGroupSummary({
     id: 'g2',
-    // legacy title, no library_id directly, but mapGroupSummary uses resolveOfficialLibraryId
-    title: '雅思词汇真经 · 0031-0060',
+    title: formatOfficialGroupName('ielts-vocab', OFFICIAL_BATCH_SIZE, OFFICIAL_BATCH_SIZE),
     createdAt: '2026-04-19T00:00:00.000Z',
     status: 'active',
     sessionRound: 'article',
-    libraryId: resolveOfficialLibraryId(null, '雅思词汇真经 · 0031-0060', 'system'),
   }),
 ];
 
-const lastBatchStart = Math.floor((IELTS_WORDS_FLAT.length - 1) / 30) * 30;
+const lastBatchStart = Math.floor((IELTS_WORDS_FLAT.length - 1) / OFFICIAL_BATCH_SIZE) * OFFICIAL_BATCH_SIZE;
 const lastBatchSize = IELTS_WORDS_FLAT.length - lastBatchStart;
 
 const summaryWithoutResume = buildOfficialLibrarySummary('ielts-vocab', officialGroups, null);
-assert.equal(summaryWithoutResume.progress, 60);
-assert.equal(summaryWithoutResume.nextBatchSize, 30);
-assert.equal(summaryWithoutResume.unlockedWordCount, 60);
+assert.equal(summaryWithoutResume.progress, 80);
+assert.equal(summaryWithoutResume.nextBatchSize, OFFICIAL_BATCH_SIZE);
+assert.equal(summaryWithoutResume.unlockedWordCount, 80);
 assert.equal(summaryWithoutResume.completed, false);
 assert.equal(resolveOfficialLibraryStartMode(summaryWithoutResume), 'new');
 
@@ -69,6 +71,7 @@ const resumeCandidate: ResumeCandidate = {
   currentIndex: 6,
   queueWordIds: ['w1', 'w2', 'w3'],
   passedQueueIndices: [0, 1],
+  round1ConfirmedWordIds: ['w1', 'w2'],
   queueLength: 3,
   lastActiveAt: '2026-04-20T00:00:00.000Z',
   groupCompleted: false,
@@ -114,7 +117,7 @@ assert.equal(getOfficialWordPosition('ielts-vocab', IELTS_WORDS_FLAT[5]), 5);
 const greGroups: LibraryGroupSummary[] = [
   makeGroupSummary({
     id: 'g-gre',
-    title: formatOfficialGroupName('gre-zhenkao-v7', 0, 30),
+    title: formatOfficialGroupName('gre-zhenkao-v7', 0, OFFICIAL_BATCH_SIZE),
     createdAt: '2026-04-21T00:00:00.000Z',
     sourceType: 'system',
     status: 'active',
@@ -124,44 +127,45 @@ const greGroups: LibraryGroupSummary[] = [
 ];
 const greSummary = buildOfficialLibrarySummary('gre-zhenkao-v7', greGroups, null);
 assert.equal(greSummary.progress, 0);
-assert.equal(greSummary.nextBatchSize, 30);
+assert.equal(greSummary.nextBatchSize, OFFICIAL_BATCH_SIZE);
 assert.equal(greSummary.unlockedWordCount, 0);
 
 // New counter-pattern group names are recognized as official.
 assert.equal(
-  isOfficialGroupName(formatOfficialCounterGroupName('ielts-vocab', 'sequential', 1, 30)),
+  isOfficialGroupName(formatOfficialCounterGroupName('ielts-vocab', 'sequential', 1, OFFICIAL_BATCH_SIZE)),
   true,
 );
 assert.equal(
-  isOfficialGroupName(formatOfficialCounterGroupName('ielts-vocab', 'shuffle', 2, 30)),
+  isOfficialGroupName(formatOfficialCounterGroupName('ielts-vocab', 'shuffle', 2, OFFICIAL_BATCH_SIZE)),
   true,
 );
 assert.equal(
-  resolveOfficialLibraryId(null, formatOfficialCounterGroupName('gre-zhenkao-v7', 'shuffle', 1, 30), 'system'),
+  resolveOfficialLibraryId(null, formatOfficialCounterGroupName('gre-zhenkao-v7', 'shuffle', 1, OFFICIAL_BATCH_SIZE), 'system'),
   'gre-zhenkao-v7',
 );
 assert.equal(
-  resolveOfficialLibraryId(null, formatOfficialCounterGroupName('gre-zhenkao-v7', 'sequential', 2, 30), 'system'),
+  resolveOfficialLibraryId(null, formatOfficialCounterGroupName('gre-zhenkao-v7', 'sequential', 2, OFFICIAL_BATCH_SIZE), 'system'),
   'gre-zhenkao-v7',
 );
 assert.equal(
-  resolveOfficialStudyModeFromGroupName('ielts-vocab', formatOfficialCounterGroupName('ielts-vocab', 'shuffle', 2, 30)),
+  resolveOfficialStudyModeFromGroupName('ielts-vocab', formatOfficialCounterGroupName('ielts-vocab', 'shuffle', 2, OFFICIAL_BATCH_SIZE)),
   'shuffle',
 );
 assert.equal(resolveOfficialStudyModeFromGroupName('ielts-vocab', '雅思词汇真经 · 0001-0030'), 'sequential');
 // Legacy range-format groups still recognized.
 assert.equal(isOfficialGroupName('雅思词汇真经 · 0001-0030'), true);
+assert.equal(resolveOfficialLibraryId(null, '雅思词汇真经 · 0031-0060', 'system'), 'ielts-vocab');
 
 // getOfficialNextBatch — sequential picks first unlearned in book order.
 const learnedFirstFive = new Set(IELTS_WORDS_FLAT.slice(0, 5).map((w) => w.trim().toLowerCase()));
 const seqBatch = getOfficialNextBatch('ielts-vocab', learnedFirstFive, 'sequential', 1, 5);
 assert.ok(seqBatch);
-assert.equal(seqBatch.words.length, 30);
+assert.equal(seqBatch.words.length, OFFICIAL_BATCH_SIZE);
 assert.equal(seqBatch.words[0], IELTS_WORDS_FLAT[5]);
-assert.equal(seqBatch.words[29], IELTS_WORDS_FLAT[34]);
+assert.equal(seqBatch.words[39], IELTS_WORDS_FLAT[44]);
 assert.equal(
   seqBatch.groupName,
-  formatOfficialGroupName('ielts-vocab', 5, 30),
+  formatOfficialGroupName('ielts-vocab', 5, OFFICIAL_BATCH_SIZE),
 );
 
 // Sequential skips sparse learned-word holes and falls back to counter naming
@@ -175,20 +179,20 @@ assert.equal(seqHoleBatch.words[10], IELTS_WORDS_FLAT[11]);
 assert.equal(seqHoleBatch.words.includes(IELTS_WORDS_FLAT[10]), false);
 assert.equal(
   seqHoleBatch.groupName,
-  formatOfficialCounterGroupName('ielts-vocab', 'sequential', 1, 30),
+  formatOfficialCounterGroupName('ielts-vocab', 'sequential', 1, OFFICIAL_BATCH_SIZE),
 );
 
 // Shuffle picks only from unlearned and never repeats learned words.
 const learnedHalf = new Set(IELTS_WORDS_FLAT.slice(0, Math.floor(IELTS_WORDS_FLAT.length / 2)).map((w) => w.trim().toLowerCase()));
 const shuffleBatch = getOfficialNextBatch('ielts-vocab', learnedHalf, 'shuffle', 5, 0);
 assert.ok(shuffleBatch);
-assert.equal(shuffleBatch.words.length, 30);
+assert.equal(shuffleBatch.words.length, OFFICIAL_BATCH_SIZE);
 for (const word of shuffleBatch.words) {
   assert.equal(learnedHalf.has(word.trim().toLowerCase()), false);
 }
 assert.equal(
   shuffleBatch.groupName,
-  formatOfficialCounterGroupName('ielts-vocab', 'shuffle', 6, 30),
+  formatOfficialCounterGroupName('ielts-vocab', 'shuffle', 6, OFFICIAL_BATCH_SIZE),
 );
 
 // Exhaustion returns null.

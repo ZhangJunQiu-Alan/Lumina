@@ -10,6 +10,7 @@ import {
   resolveReviewState,
   resolveRound2State,
   ReviewAttemptSource,
+  ReviewEventSource,
   ReviewResultType,
   ReviewScheduleRow,
   sortDueReviewRows,
@@ -34,6 +35,12 @@ export interface MarkVocabularyUnknownInput {
   timestamp?: number;
 }
 
+export interface MarkVocabularyMasteredInput {
+  userId: string;
+  vocabularyItemId: string;
+  learningGroupId?: string | null;
+}
+
 export async function recordBatchReviewAttempts(
   userId: string,
   attempts: Omit<ReviewAttemptInput, 'userId'>[]
@@ -42,6 +49,10 @@ export async function recordBatchReviewAttempts(
 
   // Sequential processing to maintain SRS logic consistency per word
   for (const attempt of attempts) {
+    if (attempt.source !== 'round2' && attempt.source !== 'review') {
+      throw new Error(`Invalid review attempt source: ${attempt.source}`);
+    }
+
     const result = await recordReviewAttempt({
       userId,
       ...attempt,
@@ -60,7 +71,7 @@ export interface ReviewAttemptResponse {
   transition: {
     from: MemoryState | null;
     to: MemoryState;
-    source: ReviewAttemptSource;
+    source: ReviewEventSource;
     result: ReviewResultType;
     graduated: boolean;
     nextReviewAt: string | null;
@@ -82,7 +93,7 @@ interface ReviewStateRow {
 interface ReviewEventTransitionRow {
   previous_state: MemoryState | null;
   next_state: MemoryState;
-  source: ReviewAttemptSource;
+  source: ReviewEventSource;
   was_correct: boolean;
   elapsed_ms: number | null;
   next_review_at: string | null;
@@ -500,6 +511,94 @@ export async function markVocabularyUnknown(input: MarkVocabularyUnknownInput): 
       source,
       result,
       graduated: false,
+      nextReviewAt,
+    },
+  };
+}
+
+export async function markVocabularyMastered(input: MarkVocabularyMasteredInput): Promise<ReviewAttemptResponse> {
+  const now = new Date();
+  const assessedAt = now.toISOString();
+  const source: ReviewEventSource = 'manual_mastered';
+  const result: ReviewResultType = 'fast_correct';
+  const nextState: MemoryState = 'mastered';
+  const nextReviewAt = toNextReviewAt(nextState, now);
+
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from('review_states')
+    .select('user_id, vocabulary_item_id, memory_state, review_count, lapse_count, last_reviewed_at, next_review_at, ease_factor, graduated_at, last_assessed_at')
+    .eq('user_id', input.userId)
+    .eq('vocabulary_item_id', input.vocabularyItemId)
+    .maybeSingle<ReviewStateRow & { last_assessed_at: string | null }>();
+
+  if (existingError) {
+    throw new Error(`review_states lookup failed: ${existingError.message}`);
+  }
+
+  const previousState = existing?.memory_state ?? null;
+  const graduated = previousState !== 'mastered';
+
+  const { error: upsertError } = await supabaseAdmin
+    .from('review_states')
+    .upsert({
+      user_id: input.userId,
+      vocabulary_item_id: input.vocabularyItemId,
+      ease_factor: existing?.ease_factor ?? 2.5,
+      interval_days: intervalForState(nextState),
+      last_reviewed_at: assessedAt,
+      next_review_at: nextReviewAt,
+      review_count: existing?.review_count ?? 0,
+      lapse_count: existing?.lapse_count ?? 0,
+      memory_state: nextState,
+      last_result: result,
+      last_elapsed_ms: 0,
+      last_assessed_at: assessedAt,
+      graduated_at: existing?.graduated_at ?? assessedAt,
+    }, { onConflict: 'user_id,vocabulary_item_id' });
+
+  if (upsertError) {
+    throw new Error(`review_states mastered mark failed: ${upsertError.message}`);
+  }
+
+  const { error: eventError } = await supabaseAdmin
+    .from('review_events')
+    .insert({
+      user_id: input.userId,
+      vocabulary_item_id: input.vocabularyItemId,
+      learning_group_id: input.learningGroupId ?? null,
+      source,
+      was_correct: true,
+      elapsed_ms: 0,
+      previous_state: previousState,
+      next_state: nextState,
+      next_review_at: nextReviewAt,
+      created_at: assessedAt,
+    });
+
+  if (eventError) {
+    throw new Error(`review_events mastered mark failed: ${eventError.message}`);
+  }
+
+  const { error: savedWordDeleteError } = await supabaseAdmin
+    .from('user_saved_words')
+    .delete()
+    .eq('user_id', input.userId)
+    .eq('vocabulary_item_id', input.vocabularyItemId);
+
+  if (savedWordDeleteError) {
+    throw new Error(`user_saved_words mastered cleanup failed: ${savedWordDeleteError.message}`);
+  }
+
+  return {
+    memoryState: nextState,
+    nextReviewAt,
+    graduated,
+    transition: {
+      from: previousState,
+      to: nextState,
+      source,
+      result,
+      graduated,
       nextReviewAt,
     },
   };

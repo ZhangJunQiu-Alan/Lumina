@@ -35,6 +35,7 @@ interface LearningGroupDiscardRow {
   session_round: string | null;
   session_current_index: number | null;
   session_queue_word_ids: unknown;
+  session_round1_confirmed_word_ids: unknown;
 }
 
 function isSystemLibraryGroup(sourceType: string | null, libraryId: string | null, groupName: string | null) {
@@ -349,7 +350,8 @@ async function fetchDiscardGroup(userId: string, groupId: string) {
       completed_at,
       session_round,
       session_current_index,
-      session_queue_word_ids
+      session_queue_word_ids,
+      session_round1_confirmed_word_ids
     `)
     .eq('id', groupId)
     .eq('user_id', userId)
@@ -645,6 +647,7 @@ export async function discardActiveOfficialLearningGroup(
     currentIndex: group.session_current_index,
     queueWordIds: group.session_queue_word_ids,
     fallbackWordIds: groupWordIds,
+    round1ConfirmedWordIds: group.session_round1_confirmed_word_ids,
     round2AttemptWordIds,
   }).filter((wordId) => groupWordIdSet.has(wordId));
   const learnedWordIdSet = new Set(learnedWordIds);
