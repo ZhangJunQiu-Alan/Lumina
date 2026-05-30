@@ -5,9 +5,8 @@ import {
   persistEnrichedVocabularyEntries,
   type PersistedVocabularyEntry,
 } from './importFlow';
-import { getOfficialNextBatch, type OfficialStudyMode } from './officialLibrary';
-import { fetchOfficialLearnedWords } from './libraryApi';
-import { invalidateLibraryCache, refreshOfficialLearnedWords } from './libraryCache';
+import { buildOfficialBatchFromRows, getOfficialLibraryDefinition, type OfficialStudyMode } from './officialLibrary';
+import { invalidateLibraryCache } from './libraryCache';
 import { AI_CONTENT_FEATURES_ENABLED } from './aiFeatures';
 import { supabase } from './supabase';
 import { toWord, type EnrichedWord, type OfficialLibraryId, type Word } from '../types';
@@ -45,11 +44,23 @@ async function prepareNextOfficialBatchEntries({
   mode,
   existingGroupCount,
 }: Pick<StartNextOfficialBatchInput, 'userId' | 'libraryId' | 'mode' | 'existingGroupCount'>) {
-  const learnedSet = await refreshOfficialLearnedWords(userId, libraryId, () =>
-    fetchOfficialLearnedWords(userId, libraryId),
-  );
+  const { data, error } = await supabase.rpc('official_next_batch', {
+    p_user_id: userId,
+    p_library_id: libraryId,
+    p_mode: mode,
+    p_limit: getOfficialLibraryDefinition(libraryId).batchSize,
+  });
 
-  const nextBatch = getOfficialNextBatch(libraryId, learnedSet, mode, existingGroupCount, 0);
+  if (error) {
+    throw new Error(`official_next_batch failed: ${error.message}`);
+  }
+
+  const rows = ((data ?? []) as Array<{ word: string; word_position: number }>).map((row) => ({
+    word: row.word,
+    position: row.word_position,
+  }));
+
+  const nextBatch = buildOfficialBatchFromRows(libraryId, rows, mode, existingGroupCount);
   if (!nextBatch) return null;
 
   const { existing, missing } = await fetchVocabularyEntriesByWords(nextBatch.words);

@@ -41,9 +41,6 @@ const officialResumeRequests = new Map<string, Promise<OfficialResumeMap>>();
 const officialDetailCache = new Map<string, CacheEntry<OfficialLibraryDetailCacheData>>();
 const officialDetailRequests = new Map<string, Promise<OfficialLibraryDetailCacheData>>();
 
-const officialLearnedCache = new Map<string, CacheEntry<Set<string>>>();
-const officialLearnedRequests = new Map<string, Promise<Set<string>>>();
-
 const officialCompletionCache = new Map<string, CacheEntry<OfficialLibraryCompletionCounts>>();
 const officialCompletionRequests = new Map<string, Promise<OfficialLibraryCompletionCounts>>();
 
@@ -168,35 +165,6 @@ export function getCachedOfficialLibraryDetail(userId: string, libraryId: Offici
   return officialDetailCache.get(buildOfficialDetailKey(userId, libraryId)) ?? null;
 }
 
-export function getCachedOfficialLearnedWords(userId: string, libraryId: OfficialLibraryId) {
-  return officialLearnedCache.get(buildOfficialDetailKey(userId, libraryId)) ?? null;
-}
-
-export async function refreshOfficialLearnedWords(
-  userId: string,
-  libraryId: OfficialLibraryId,
-  loader: () => Promise<Set<string>>,
-) {
-  const key = buildOfficialDetailKey(userId, libraryId);
-  const existingRequest = officialLearnedRequests.get(key);
-  if (existingRequest) return existingRequest;
-
-  const request = loader()
-    .then((data) => {
-      officialLearnedCache.set(key, {
-        data,
-        cachedAt: Date.now(),
-      });
-      return data;
-    })
-    .finally(() => {
-      officialLearnedRequests.delete(key);
-    });
-
-  officialLearnedRequests.set(key, request);
-  return request;
-}
-
 export function getCachedOfficialCompletionCounts(userId: string) {
   return officialCompletionCache.get(userId) ?? null;
 }
@@ -259,8 +227,6 @@ export function invalidateLibraryCache(userId?: string) {
     officialResumeRequests.clear();
     officialDetailCache.clear();
     officialDetailRequests.clear();
-    officialLearnedCache.clear();
-    officialLearnedRequests.clear();
     officialCompletionCache.clear();
     officialCompletionRequests.clear();
     savedWordsCache.clear();
@@ -298,18 +264,6 @@ export function invalidateLibraryCache(userId?: string) {
   for (const key of officialDetailRequests.keys()) {
     if (key.startsWith(`${userId}:`)) {
       officialDetailRequests.delete(key);
-    }
-  }
-
-  for (const key of officialLearnedCache.keys()) {
-    if (key.startsWith(`${userId}:`)) {
-      officialLearnedCache.delete(key);
-    }
-  }
-
-  for (const key of officialLearnedRequests.keys()) {
-    if (key.startsWith(`${userId}:`)) {
-      officialLearnedRequests.delete(key);
     }
   }
 }

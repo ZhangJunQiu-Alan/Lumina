@@ -12,8 +12,8 @@ import {
   rebuildSessionQueue,
 } from '../src/lib/learningSession.js';
 import {
+  buildOfficialBatchFromRows,
   buildOfficialLibrarySummary,
-  getOfficialNextBatch,
   resolveOfficialLibraryStartMode,
 } from '../src/lib/officialLibrary.js';
 import { IELTS_WORDS_FLAT } from '../src/data/ielts-vocab.js';
@@ -356,12 +356,14 @@ assert.equal(officialSummary.activeResumeCandidate?.groupId, 'g3');
 assert.equal(officialSummary.reinforcementCandidate?.groupId, 'g4');
 assert.equal(resolveOfficialLibraryStartMode(officialSummary), 'resume');
 
-const nextSequentialBatch = getOfficialNextBatch(
+const nextSequentialBatch = buildOfficialBatchFromRows(
   'ielts-vocab',
-  new Set(IELTS_WORDS_FLAT.slice(0, officialSummary.progress).map((word) => word.trim().toLowerCase())),
+  Array.from({ length: 40 }, (_, k) => ({
+    word: IELTS_WORDS_FLAT[officialSummary.progress + k],
+    position: officialSummary.progress + k,
+  })),
   'sequential',
   3,
-  officialSummary.progress,
 );
 assert.equal(nextSequentialBatch?.groupName, '雅思词汇真经 · 0071-0110');
 

@@ -13,6 +13,7 @@
     "fetch:ielts-vocab": "node scripts/fetch-ielts-vocab.mjs",
     "fetch:gaokao-vocab": "node scripts/fetch-gaokao-vocab.mjs",
     "seed:official-vocab": "node --import tsx scripts/preload-official-vocab.ts",
+    "seed:official-vocab-list": "node --import tsx --env-file=.env scripts/seed-official-vocab-list.ts",
     "seed:official-audio": "node --import tsx scripts/prewarm-official-audio.ts",
     "migrate:saved-words": "node --import tsx scripts/migrate-learning-groups-to-saved-words.ts",
     "cleanup:saved-library": "node --import tsx --env-file=.env scripts/cleanup-saved-library.ts",

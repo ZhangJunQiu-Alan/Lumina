@@ -1,11 +1,7 @@
 import { supabase } from './supabase';
 import { apiFetch } from './api';
 import { prepareVocabularyItemsForSavedWords } from './savedWordsReviewState';
-import {
-  OFFICIAL_LIBRARY_DEFINITIONS,
-  getOfficialLibraryDefinition,
-  resolveLibraryGroupSourceType,
-} from './officialLibrary';
+import { OFFICIAL_LIBRARY_DEFINITIONS, resolveLibraryGroupSourceType } from './officialLibrary';
 import type { MemoryState, OfficialLibraryId, OfficialLibraryCompletionCounts, ReviewResultType } from '../types';
 
 interface GroupWordRow {
@@ -210,65 +206,63 @@ export async function fetchActiveLearningGroupWordIds(
   const groupIds = ((activeGroups ?? []) as Array<{ id: string }>).map((group) => group.id).filter(Boolean);
   if (groupIds.length === 0) return new Set();
 
-  const { data: groupWords, error: groupWordsError } = await supabase
-    .from('learning_group_words')
-    .select('vocabulary_item_id')
-    .in('learning_group_id', groupIds);
+  const groupWords = await fetchAllRows<GroupWordRow>((from, to) =>
+    supabase
+      .from('learning_group_words')
+      .select('vocabulary_item_id')
+      .in('learning_group_id', groupIds)
+      .range(from, to),
+  );
 
-  if (groupWordsError) {
-    throw new Error(groupWordsError.message);
-  }
-
-  return new Set(((groupWords ?? []) as GroupWordRow[]).map((row) => row.vocabulary_item_id).filter(Boolean));
+  return new Set(groupWords.map((row) => row.vocabulary_item_id).filter(Boolean));
 }
 
 export async function fetchSavedWords(userId: string): Promise<SavedWordEntry[]> {
-  const [savedResult, activeWordIds] = await Promise.all([
-    supabase
-      .from('user_saved_words')
-      .select(
-        `
-        id,
-        vocabulary_item_id,
-        source,
-        saved_at,
-        vocabulary_items!inner (
+  const [savedRows, activeWordIds] = await Promise.all([
+    fetchAllRows<SavedWordRow>((from, to) =>
+      supabase
+        .from('user_saved_words')
+        .select(
+          `
           id,
-          word,
-          ipa_uk,
-          primary_meaning_zh,
-          enrichment_level,
-          vocabulary_senses (
-            example_sentence
+          vocabulary_item_id,
+          source,
+          saved_at,
+          vocabulary_items!inner (
+            id,
+            word,
+            ipa_uk,
+            primary_meaning_zh,
+            enrichment_level,
+            vocabulary_senses (
+              example_sentence
+            )
           )
+        `,
         )
-      `,
-      )
-      .eq('user_id', userId)
-      .order('saved_at', { ascending: true }),
+        .eq('user_id', userId)
+        .order('saved_at', { ascending: true })
+        .range(from, to),
+    ),
     fetchActiveLearningGroupWordIds(userId, { sourceType: 'custom' }),
   ]);
 
-  if (savedResult.error) {
-    throw new Error(savedResult.error.message);
-  }
-
-  const savedRows = (savedResult.data ?? []) as unknown as SavedWordRow[];
   const vocabularyItemIds = Array.from(new Set(savedRows.map((row) => row.vocabulary_item_id).filter(Boolean)));
 
-  let reviewStates: SavedWordReviewStateRow[] = [];
-  if (vocabularyItemIds.length > 0) {
+  const reviewStates: SavedWordReviewStateRow[] = [];
+  for (let i = 0; i < vocabularyItemIds.length; i += IN_FILTER_CHUNK_SIZE) {
+    const chunk = vocabularyItemIds.slice(i, i + IN_FILTER_CHUNK_SIZE);
     const { data, error } = await supabase
       .from('review_states')
       .select('vocabulary_item_id, memory_state, next_review_at, last_result')
       .eq('user_id', userId)
-      .in('vocabulary_item_id', vocabularyItemIds);
+      .in('vocabulary_item_id', chunk);
 
     if (error) {
       throw new Error(error.message);
     }
 
-    reviewStates = (data ?? []) as SavedWordReviewStateRow[];
+    reviewStates.push(...((data ?? []) as SavedWordReviewStateRow[]));
   }
 
   const reviewStateByWordId = new Map(reviewStates.map((row) => [row.vocabulary_item_id, row]));
@@ -380,19 +374,29 @@ export async function deleteSavedWord(vocabularyItemId: string): Promise<void> {
   }
 }
 
-interface LearnedWordRow {
-  vocabulary_items: { word: string | null } | { word: string | null }[] | null;
-}
-
-interface LearnedReviewStateRow {
-  vocabulary_items: { word: string | null } | { word: string | null }[] | null;
-}
-
 interface CompletionReviewStateRow {
   vocabulary_items: { word: string | null } | { word: string | null }[] | null;
 }
 
 const OFFICIAL_COMPLETION_PAGE_SIZE = 1000;
+const SUPABASE_PAGE_SIZE = 1000;
+const IN_FILTER_CHUNK_SIZE = 500;
+
+// PostgREST silently caps every response at 1000 rows, so any user-scoped collection
+// fetch must page through with .range() instead of assuming a single call is complete.
+async function fetchAllRows<T>(
+  buildPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += SUPABASE_PAGE_SIZE) {
+    const { data, error } = await buildPage(from, from + SUPABASE_PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < SUPABASE_PAGE_SIZE) break;
+  }
+  return rows;
+}
 
 const officialLibraryIdsByWord = (() => {
   const result = new Map<string, OfficialLibraryId[]>();
@@ -417,48 +421,6 @@ export function buildEmptyOfficialCompletionCounts(): OfficialLibraryCompletionC
   return Object.fromEntries(
     OFFICIAL_LIBRARY_DEFINITIONS.map((definition) => [definition.id, 0]),
   ) as OfficialLibraryCompletionCounts;
-}
-
-export async function fetchOfficialLearnedWords(userId: string, libraryId: OfficialLibraryId): Promise<Set<string>> {
-  const officialWordSet = new Set(
-    getOfficialLibraryDefinition(libraryId).words.map((word) => word.trim().toLowerCase()),
-  );
-  const [groupResult, reviewStateResult] = await Promise.all([
-    supabase
-      .from('learning_group_words')
-      .select('vocabulary_items!inner(word), learning_groups!inner(user_id, source_type, library_id)')
-      .eq('learning_groups.user_id', userId)
-      .eq('learning_groups.source_type', 'system')
-      .eq('learning_groups.library_id', libraryId),
-    supabase
-      .from('review_states')
-      .select('vocabulary_items!inner(word)')
-      .eq('user_id', userId)
-      .neq('memory_state', 'new'),
-  ]);
-
-  if (groupResult.error) {
-    throw new Error(groupResult.error.message);
-  }
-
-  if (reviewStateResult.error) {
-    throw new Error(reviewStateResult.error.message);
-  }
-
-  const result = new Set<string>();
-  for (const row of (groupResult.data ?? []) as LearnedWordRow[]) {
-    const vocab = Array.isArray(row.vocabulary_items) ? row.vocabulary_items[0] : row.vocabulary_items;
-    const word = vocab?.word?.trim().toLowerCase();
-    if (word) result.add(word);
-  }
-
-  for (const row of (reviewStateResult.data ?? []) as LearnedReviewStateRow[]) {
-    const vocab = Array.isArray(row.vocabulary_items) ? row.vocabulary_items[0] : row.vocabulary_items;
-    const word = vocab?.word?.trim().toLowerCase();
-    if (word && officialWordSet.has(word)) result.add(word);
-  }
-
-  return result;
 }
 
 export async function fetchOfficialCompletionCounts(userId: string): Promise<OfficialLibraryCompletionCounts> {

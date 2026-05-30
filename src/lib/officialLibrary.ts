@@ -331,7 +331,6 @@ export function getOfficialBatchWords(libraryId: OfficialLibraryId, progress: nu
 }
 
 export function getOfficialBatchPlan(libraryId: OfficialLibraryId, progress: number): OfficialBatchPlan | null {
-  const definition = getOfficialLibraryDefinition(libraryId);
   const words = getOfficialBatchWords(libraryId, progress);
   if (words.length === 0) return null;
 
@@ -342,35 +341,29 @@ export function getOfficialBatchPlan(libraryId: OfficialLibraryId, progress: num
   };
 }
 
-export function getOfficialNextBatch(
+export interface OfficialNextBatchRow {
+  word: string;
+  position: number;
+}
+
+// Builds the group payload from the next-batch rows returned by the
+// `official_next_batch` RPC (already anti-joined against the user's learned words,
+// ordered, and limited server-side). Naming is identical to the previous in-browser
+// selection: a contiguous sequential run becomes "0001-0040", anything with holes or
+// any shuffle becomes "顺序/乱序 · 第N组".
+export function buildOfficialBatchFromRows(
   libraryId: OfficialLibraryId,
-  learnedLowercase: ReadonlySet<string>,
+  rows: OfficialNextBatchRow[],
   mode: OfficialStudyMode,
   existingGroupCount: number,
-  progress: number,
 ): { words: string[]; groupName: string } | null {
-  const definition = getOfficialLibraryDefinition(libraryId);
-  const remaining = definition.words.filter((word) => !learnedLowercase.has(word.trim().toLowerCase()));
+  if (rows.length === 0) return null;
 
-  if (remaining.length === 0) return null;
-
-  const picked =
-    mode === 'sequential'
-      ? remaining.slice(0, definition.batchSize)
-      : (() => {
-          const pool = [...remaining];
-          for (let i = pool.length - 1; i > 0; i -= 1) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [pool[i], pool[j]] = [pool[j], pool[i]];
-          }
-          return pool.slice(0, definition.batchSize);
-        })();
+  const picked = rows.map((row) => row.word);
 
   if (mode === 'sequential') {
-    const positions = picked.map((word) => getOfficialWordPosition(libraryId, word));
-    const isContiguous = positions.every(
-      (position, index) => position !== Number.MAX_SAFE_INTEGER && position === positions[0] + index,
-    );
+    const positions = rows.map((row) => row.position);
+    const isContiguous = positions.every((position, index) => position === positions[0] + index);
 
     if (isContiguous) {
       return {
@@ -381,7 +374,6 @@ export function getOfficialNextBatch(
   }
 
   const groupIndex = existingGroupCount + 1;
-  void progress;
   return {
     words: picked,
     groupName: formatOfficialCounterGroupName(libraryId, mode, groupIndex, picked.length),
