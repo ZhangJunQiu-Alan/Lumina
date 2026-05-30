@@ -1492,7 +1492,7 @@ export const LearningEngine = ({
       </AnimatePresence>
     </div>
   );
-  const mobileWordActionMenu = renderWordActionMenu('!absolute right-3 top-3 z-30 sm:hidden', mobileActionMenuRef);
+  const mobileWordActionMenu = renderWordActionMenu('!absolute right-3 top-3 !z-30 sm:hidden', mobileActionMenuRef);
   const desktopWordActionMenu = renderWordActionMenu('relative z-30', desktopActionMenuRef);
   const actionFeedbackToast = (
     <AnimatePresence>

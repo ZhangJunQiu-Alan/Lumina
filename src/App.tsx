@@ -1004,16 +1004,20 @@ export default function App() {
 
   const handleSessionWordMastered = useCallback(
     (wordId: string) => {
-      const nextWords = activeWordsRef.current.filter((word) => word.id !== wordId);
-      activeWordsRef.current = nextWords;
-      setActiveWords(nextWords);
+      // 复习轮没有 session seed，改写 activeWords 会让 LearningEngine 的 words 重置 effect
+      // 把进度清零、从头重放。引擎已在本地队列里删掉该词，这里就别再动 activeWords。
+      if (round !== 'review') {
+        const nextWords = activeWordsRef.current.filter((word) => word.id !== wordId);
+        activeWordsRef.current = nextWords;
+        setActiveWords(nextWords);
+      }
 
       if (user) {
         invalidateLibraryCache(user.id);
         void fetchStats();
       }
     },
-    [fetchStats, user],
+    [fetchStats, round, user],
   );
 
   const handleRoundComplete = useCallback(
