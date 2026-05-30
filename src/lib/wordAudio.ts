@@ -38,9 +38,7 @@ export function fetchWordAudioUrl(word: string, locale: PronunciationLocale): Pr
   const existing = inflight.get(key);
   if (existing) return existing;
 
-  const request = apiFetch(`/api/audio/${encodeURIComponent(trimmed)}?locale=${locale}`, {
-    requiresAuth: false,
-  })
+  const request = apiFetch(`/api/audio/${encodeURIComponent(trimmed)}?locale=${locale}`)
     .then(async (response) => {
       if (!response.ok) {
         failureCache.set(key, Date.now());

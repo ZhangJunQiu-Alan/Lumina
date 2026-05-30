@@ -5,7 +5,7 @@ import {
   EnrichmentServiceUnavailableError,
   generateArticle,
 } from '../_shared/server/gemini.ts';
-import { fetchDueReviewWords, markVocabularyUnknown, recordBatchReviewAttempts, recordReviewAttempt } from '../_shared/server/review.ts';
+import { fetchDueReviewWords, markVocabularyMastered, markVocabularyUnknown, recordBatchReviewAttempts, recordReviewAttempt } from '../_shared/server/review.ts';
 import { batchGenerateAudio, getOrCreateAudio } from '../_shared/server/audio.ts';
 import { ExampleAudioValidationError, getOrCreateExampleAudio } from '../_shared/server/exampleAudio.ts';
 import {
@@ -25,12 +25,20 @@ import {
   lookupWordForPopover,
   persistFullVocabularyEntries,
   queueFullEnrichmentForWord,
+  reportVocabularyIssue,
   sanitizeLookupWord,
 } from '../_shared/server/vocab.ts';
 import { isOfficialLibraryId } from '../_shared/officialLibraryLite.ts';
 
 const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3001',
+  'http://localhost:3002',
+  'http://127.0.0.1:3002',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
   'https://lumina-1oi.pages.dev',
   'https://primoria-english.pages.dev',
   'https://lumina.college',
@@ -45,14 +53,32 @@ const allowedOrigins = new Set([...DEFAULT_ALLOWED_ORIGINS, ...configuredOrigins
 const aiContentFeaturesEnabled = (Deno.env.get('LUMINA_AI_FEATURES_ENABLED') ?? '').toLowerCase() === 'true';
 const requestIdHeader = 'X-Request-Id';
 const requestIds = new WeakMap<Request, string>();
-const AI_FEATURE_PATHS = new Set([
-  '/api/vocab/enrich',
-  '/api/vocab/lite-enrich',
-  '/api/vocab/lemmatize',
-  '/api/vocab/lemmatize-batch',
-  '/api/vocab/full-enrich',
-  '/api/vocab/article',
-]);
+const INTERNAL_ERROR_MESSAGE = 'Internal server error';
+
+type ExpensiveApiGroup = 'ai_vocab' | 'ai_article' | 'tts';
+type RateWindowName = 'minute' | 'hour' | 'day';
+type ApiGateResult =
+  | { userId: string; response?: undefined; status?: undefined }
+  | { response: Response; status: number; userId?: undefined };
+type QuotaGateResult =
+  | { response?: undefined; status?: undefined }
+  | { response: Response; status: number };
+
+const RATE_WINDOWS: Record<RateWindowName, number> = {
+  minute: 60 * 1000,
+  hour: 60 * 60 * 1000,
+  day: 24 * 60 * 60 * 1000,
+};
+
+const DEFAULT_RATE_LIMITS: Record<ExpensiveApiGroup, Record<RateWindowName, number>> = {
+  ai_vocab: { minute: 20, hour: 200, day: 1000 },
+  ai_article: { minute: 3, hour: 20, day: 80 },
+  tts: { minute: 60, hour: 500, day: 2000 },
+};
+
+const IP_RATE_LIMIT_MULTIPLIER = 3;
+const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
+let rateLimitRequestCount = 0;
 
 function resolveRequestId(value: string | null) {
   const trimmed = value?.trim();
@@ -102,11 +128,11 @@ function emptyResponse(request: Request, status = 204) {
 }
 
 function errorResponse(request: Request, error: string, status = 500) {
-  return jsonResponse(request, { error }, status);
-}
+  if (status === 500) {
+    return jsonResponse(request, { error: INTERNAL_ERROR_MESSAGE, request_id: getRequestId(request) }, status);
+  }
 
-function isAiFeaturePath(path: string) {
-  return AI_FEATURE_PATHS.has(path);
+  return jsonResponse(request, { error }, status);
 }
 
 function validateOrigin(request: Request) {
@@ -141,7 +167,164 @@ function readBearerToken(headerValue: string | null) {
   return token;
 }
 
-async function requireUser(request: Request) {
+function parsePositiveIntEnv(name: string, fallback: number) {
+  const raw = Deno.env.get(name)?.trim();
+  if (!raw) return fallback;
+
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function rateLimitFor(group: ExpensiveApiGroup, windowName: RateWindowName) {
+  const envName = `LUMINA_RATE_LIMIT_${group.toUpperCase()}_${windowName.toUpperCase()}`;
+  return parsePositiveIntEnv(envName, DEFAULT_RATE_LIMITS[group][windowName]);
+}
+
+function normalizeRateLimitWeight(value: number) {
+  return Math.max(1, Math.ceil(Number.isFinite(value) ? value : 1));
+}
+
+function compactRateLimitBuckets(now: number) {
+  rateLimitRequestCount += 1;
+  if (rateLimitRequestCount % 100 !== 0) return;
+
+  for (const [key, bucket] of rateLimitBuckets.entries()) {
+    if (now >= bucket.resetAt) {
+      rateLimitBuckets.delete(key);
+    }
+  }
+}
+
+function readRateLimitBucket(key: string, now: number, windowMs: number) {
+  const existing = rateLimitBuckets.get(key);
+  if (!existing || now >= existing.resetAt) {
+    return { count: 0, resetAt: now + windowMs };
+  }
+
+  return existing;
+}
+
+function consumeExpensiveRateLimit({
+  group,
+  userId,
+  ip,
+  weight,
+}: {
+  group: ExpensiveApiGroup;
+  userId: string;
+  ip: string;
+  weight: number;
+}) {
+  const now = Date.now();
+  const normalizedWeight = normalizeRateLimitWeight(weight);
+  compactRateLimitBuckets(now);
+
+  const checks = [
+    { scope: 'user', key: userId, multiplier: 1 },
+    { scope: 'ip', key: ip, multiplier: IP_RATE_LIMIT_MULTIPLIER },
+  ].flatMap((subject) => (
+    (Object.keys(RATE_WINDOWS) as RateWindowName[]).map((windowName) => {
+      const windowMs = RATE_WINDOWS[windowName];
+      const limit = rateLimitFor(group, windowName) * subject.multiplier;
+      const bucketKey = `${subject.scope}:${group}:${windowName}:${subject.key}`;
+      const bucket = readRateLimitBucket(bucketKey, now, windowMs);
+      return {
+        ...subject,
+        windowName,
+        windowMs,
+        limit,
+        bucketKey,
+        bucket,
+      };
+    })
+  ));
+
+  const exceeded = checks.find((check) => check.bucket.count + normalizedWeight > check.limit);
+  if (exceeded) {
+    return {
+      allowed: false as const,
+      retryAfterSeconds: Math.max(1, Math.ceil((exceeded.bucket.resetAt - now) / 1000)),
+      scope: exceeded.scope,
+      window: exceeded.windowName,
+      limit: exceeded.limit,
+      weight: normalizedWeight,
+    };
+  }
+
+  for (const check of checks) {
+    rateLimitBuckets.set(check.bucketKey, {
+      count: check.bucket.count + normalizedWeight,
+      resetAt: check.bucket.resetAt,
+    });
+  }
+
+  return { allowed: true as const, weight: normalizedWeight };
+}
+
+function resolveClientIp(request: Request) {
+  const forwardedFor = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+  return request.headers.get('cf-connecting-ip')?.trim()
+    || forwardedFor
+    || request.headers.get('x-real-ip')?.trim()
+    || 'unknown';
+}
+
+function rateLimitExceededResponse(request: Request, retryAfterSeconds: number) {
+  const headers = corsHeaders(request);
+  headers.set('Content-Type', 'application/json');
+  headers.set('Retry-After', String(retryAfterSeconds));
+  return new Response(JSON.stringify({
+    error: 'Rate limit exceeded',
+    request_id: getRequestId(request),
+    retry_after_seconds: retryAfterSeconds,
+  }), { status: 429, headers });
+}
+
+function enforceExpensiveQuota(request: Request, userId: string, group: ExpensiveApiGroup, weight: number): QuotaGateResult {
+  const result = consumeExpensiveRateLimit({
+    group,
+    userId,
+    ip: resolveClientIp(request),
+    weight,
+  });
+
+  if (result.allowed) return {};
+
+  logger.warn('Expensive API rate limit exceeded', requestLogContext(request, {
+    user_id: userId,
+    group,
+    scope: result.scope,
+    window: result.window,
+    limit: result.limit,
+    weight: result.weight,
+  }));
+  return {
+    response: rateLimitExceededResponse(request, result.retryAfterSeconds),
+    status: 429,
+  };
+}
+
+async function requireExpensiveUser(request: Request, group: ExpensiveApiGroup, weight: number): Promise<ApiGateResult> {
+  const auth = await requireUser(request);
+  if (auth.response) return auth;
+
+  if (!aiContentFeaturesEnabled && (group === 'ai_vocab' || group === 'ai_article')) {
+    return { response: errorResponse(request, 'AI 内容功能暂时关闭。', 503), status: 503 };
+  }
+
+  const quota = enforceExpensiveQuota(request, auth.userId, group, weight);
+  if (quota.response) return quota;
+
+  return { userId: auth.userId };
+}
+
+function countStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item) => typeof item === 'string' && item.trim()).length
+    : 1;
+}
+
+async function requireUser(request: Request): Promise<ApiGateResult> {
   const accessToken = readBearerToken(request.headers.get('Authorization'));
   if (!accessToken) {
     return { response: errorResponse(request, 'Missing bearer token', 401), status: 401 };
@@ -201,14 +384,14 @@ Deno.serve(async (request) => {
       return jsonResponse(request, { status: 'ok', timestamp: new Date().toISOString() }, status);
     }
 
-    if (!aiContentFeaturesEnabled && isAiFeaturePath(path)) {
-      status = 503;
-      return errorResponse(request, 'AI 内容功能暂时关闭。', status);
-    }
-
     const body = await readJsonBody(request);
 
     if (method === 'POST' && path === '/api/vocab/enrich') {
+      const auth = await requireExpensiveUser(request, 'ai_vocab', countStringArray(body?.words));
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
       const source = resolveGeminiSource(body?.source, 'manual_api');
       if (!Array.isArray(body?.words) || body.words.length === 0) {
         status = 400;
@@ -226,6 +409,11 @@ Deno.serve(async (request) => {
     }
 
     if (method === 'POST' && path === '/api/vocab/lite-enrich') {
+      const auth = await requireExpensiveUser(request, 'ai_vocab', 1);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
       const word = sanitizeLookupWord(body?.word);
       const source = resolveGeminiSource(body?.source, 'manual_api');
       if (!word) {
@@ -244,6 +432,11 @@ Deno.serve(async (request) => {
     }
 
     if (method === 'POST' && path === '/api/vocab/lemmatize') {
+      const auth = await requireExpensiveUser(request, 'ai_vocab', 1);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
       const word = sanitizeLookupWord(body?.word);
       const source = resolveGeminiSource(body?.source, 'import_lemmatize');
       if (!word) {
@@ -283,8 +476,43 @@ Deno.serve(async (request) => {
       }
     }
 
-    if (method === 'POST' && path === '/api/vocab/full-enrich') {
+    if (method === 'POST' && path === '/api/vocab/report') {
       const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      if (typeof body?.vocabularyItemId !== 'string' || body.vocabularyItemId.trim().length === 0) {
+        status = 400;
+        return errorResponse(request, 'Missing vocabulary item ID', status);
+      }
+      try {
+        const data = await reportVocabularyIssue(auth.userId, {
+          vocabularyItemId: body.vocabularyItemId,
+          wordSnapshot: typeof body.wordSnapshot === 'string' ? body.wordSnapshot : null,
+          learningGroupId: typeof body.learningGroupId === 'string' ? body.learningGroupId : null,
+          sessionRound: typeof body.sessionRound === 'string' ? body.sessionRound : null,
+          issueType: body.issueType,
+          note: typeof body.note === 'string' ? body.note : null,
+          routePath: typeof body.routePath === 'string' ? body.routePath : null,
+          userAgent: typeof body.userAgent === 'string' ? body.userAgent : null,
+        });
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error('API Error: /api/vocab/report', error, requestLogContext(request, {
+          endpoint: '/api/vocab/report',
+          user_id: auth.userId,
+          vocabulary_item_id: body.vocabularyItemId,
+          issue_type: body.issueType,
+        }));
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    if (method === 'POST' && path === '/api/vocab/full-enrich') {
+      const auth = await requireExpensiveUser(request, 'ai_vocab', 1);
       if (auth.response) {
         status = auth.status ?? 401;
         return auth.response;
@@ -310,6 +538,11 @@ Deno.serve(async (request) => {
     }
 
     if (method === 'POST' && path === '/api/vocab/lemmatize-batch') {
+      const auth = await requireExpensiveUser(request, 'ai_vocab', countStringArray(body?.words));
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
       const words = Array.isArray(body?.words)
         ? body.words.map(sanitizeLookupWord).filter(Boolean)
         : [];
@@ -361,6 +594,11 @@ Deno.serve(async (request) => {
     }
 
     if (method === 'POST' && path === '/api/vocab/article') {
+      const auth = await requireExpensiveUser(request, 'ai_article', 1);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
       if (!Array.isArray(body?.words) || body.words.length === 0) {
         status = 400;
         return errorResponse(request, 'Missing words array', status);
@@ -383,7 +621,7 @@ Deno.serve(async (request) => {
         status = auth.status ?? 401;
         return auth.response;
       }
-      if (!body?.vocabularyItemId || !body?.source || typeof body?.wasCorrect !== 'boolean') {
+      if (!body?.vocabularyItemId || (body.source !== 'round2' && body.source !== 'review') || typeof body?.wasCorrect !== 'boolean') {
         status = 400;
         return errorResponse(request, 'Missing required attempt fields', status);
       }
@@ -448,6 +686,36 @@ Deno.serve(async (request) => {
       } catch (error) {
         status = 500;
         logger.error('API Error: /api/review/unknown', error, requestLogContext(request, { endpoint: '/api/review/unknown', user_id: auth.userId }));
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    if (method === 'POST' && path === '/api/review/mastered') {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      if (!body?.vocabularyItemId) {
+        status = 400;
+        return errorResponse(request, 'Missing vocabularyItemId', status);
+      }
+      try {
+        const data = await markVocabularyMastered({
+          userId: auth.userId,
+          vocabularyItemId: body.vocabularyItemId,
+          learningGroupId: body.learningGroupId,
+        });
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error('API Error: /api/review/mastered', error, requestLogContext(request, {
+          endpoint: '/api/review/mastered',
+          user_id: auth.userId,
+          vocabulary_item_id: body.vocabularyItemId,
+          learning_group_id: body.learningGroupId,
+        }));
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
     }
@@ -675,6 +943,11 @@ Deno.serve(async (request) => {
 
     const audioMatch = /^\/api\/audio\/([^/]+)$/.exec(path);
     if (method === 'GET' && audioMatch) {
+      const auth = await requireExpensiveUser(request, 'tts', 1);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
       const word = decodeURIComponent(audioMatch[1]);
       const rawLocale = url.searchParams.get('locale');
       const locale = rawLocale === 'us' ? 'us' : 'uk';
@@ -694,6 +967,11 @@ Deno.serve(async (request) => {
     }
 
     if (method === 'POST' && path === '/api/audio/batch') {
+      const auth = await requireExpensiveUser(request, 'tts', Math.min(countStringArray(body?.words), 30) * 2);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
       if (!Array.isArray(body?.words)) {
         status = 400;
         return errorResponse(request, 'Missing words array', status);
@@ -711,6 +989,11 @@ Deno.serve(async (request) => {
     }
 
     if (method === 'POST' && path === '/api/example-audio') {
+      const auth = await requireExpensiveUser(request, 'tts', 1);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
       if (typeof body?.text !== 'string') {
         status = 400;
         return errorResponse(request, 'Missing example text', status);

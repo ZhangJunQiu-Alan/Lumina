@@ -138,6 +138,33 @@ assertIncludes(
   'exclusive learning trigger keying',
 );
 
+const parallelOfficialLearningMigration = read('supabase/migrations/20260529020000_parallel_official_learning_stream.sql');
+for (const sql of [
+  'ADD COLUMN IF NOT EXISTS session_round1_confirmed_word_ids',
+  'DROP TRIGGER IF EXISTS enforce_exclusive_active_learning_library_insert',
+  'DROP FUNCTION IF EXISTS public.enforce_exclusive_active_learning_library',
+  'DROP FUNCTION IF EXISTS public.discard_conflicting_active_learning_groups',
+  'CREATE OR REPLACE FUNCTION public.create_learning_group_exclusive',
+  'INSERT INTO public.learning_groups',
+  'INSERT INTO public.learning_group_words',
+  'INSERT INTO public.review_states',
+]) {
+  assertIncludes(parallelOfficialLearningMigration, sql, 'parallel official learning migration');
+}
+assert.equal(
+  /DELETE FROM public\.learning_groups/.test(parallelOfficialLearningMigration),
+  false,
+  'parallel official learning migration must not delete other active official groups',
+);
+
+const schema = read('supabase/schema.sql');
+assertIncludes(schema, 'session_round1_confirmed_word_ids JSONB', 'schema learning session persistence');
+assert.equal(
+  schema.includes('CREATE TRIGGER enforce_exclusive_active_learning_library_insert'),
+  false,
+  'schema must not keep exclusive active official trigger',
+);
+
 const importFlow = read('src/lib/importFlow.ts');
 const directVocabularyWrites = /\.(?:from)\('(?:vocabulary_(?:items|senses|item_forms|morphology_parts|relations)|confused_words)'\)\s*\n\s*\.(?:insert|upsert|delete|update)/g;
 assert.equal(
@@ -184,5 +211,51 @@ assert.equal(
 const server = read('server/index.ts');
 assertIncludes(server, 'X-Request-Id', 'Express API');
 assertIncludes(edgeApi, 'X-Request-Id', 'Edge API');
+assertIncludes(server, 'const DEFAULT_RATE_LIMITS', 'Express expensive API rate limits');
+assertIncludes(edgeApi, 'const DEFAULT_RATE_LIMITS', 'Edge expensive API rate limits');
+assertIncludes(server, 'IP_RATE_LIMIT_MULTIPLIER = 3', 'Express IP fallback rate limit');
+assertIncludes(edgeApi, 'IP_RATE_LIMIT_MULTIPLIER = 3', 'Edge IP fallback rate limit');
+for (const [route, middleware] of [
+  ["/api/vocab/enrich", 'requireAuth, requireAiContentFeatures, aiVocabQuota'],
+  ["/api/vocab/lite-enrich", 'requireAuth, requireAiContentFeatures, aiVocabSingleQuota'],
+  ["/api/vocab/lemmatize", 'requireAuth, requireAiContentFeatures, aiVocabSingleQuota'],
+  ["/api/vocab/lemmatize-batch", 'requireAuth, requireAiContentFeatures, aiVocabQuota'],
+  ["/api/vocab/full-enrich", 'requireAuth, requireAiContentFeatures, aiVocabSingleQuota'],
+  ["/api/vocab/article", 'requireAuth, requireAiContentFeatures, aiArticleQuota'],
+  ["/api/audio/:word", 'requireAuth, ttsSingleQuota'],
+  ["/api/audio/batch", 'requireAuth, ttsBatchQuota'],
+  ["/api/example-audio", 'requireAuth, ttsSingleQuota'],
+]) {
+  assertIncludes(server, `'${route}', ${middleware}`, `Express expensive route ${route}`);
+}
+assertIncludes(server, 'function requireAiContentFeatures', 'Express AI feature gate');
+assertIncludes(edgeApi, "group === 'ai_vocab' || group === 'ai_article'", 'Edge AI feature gate');
+for (const [group, weight] of [
+  ["'ai_vocab'", 'countStringArray(body?.words)'],
+  ["'ai_vocab'", '1'],
+  ["'ai_article'", '1'],
+  ["'tts'", '1'],
+  ["'tts'", 'Math.min(countStringArray(body?.words), 30) * 2'],
+]) {
+  assertIncludes(edgeApi, `requireExpensiveUser(request, ${group}, ${weight})`, `Edge expensive quota ${group}`);
+}
+assert.equal(
+  server.includes('res.status(500).json({ error: message })'),
+  false,
+  'Express 500 responses must not expose raw exception messages',
+);
+assertIncludes(server, "error: INTERNAL_ERROR_MESSAGE", 'Express internal error response');
+assertIncludes(edgeApi, "error: INTERNAL_ERROR_MESSAGE", 'Edge internal error response');
+for (const file of [
+  'src/lib/wordAudio.ts',
+  'src/lib/exampleAudio.ts',
+  'src/components/import/ImportView.tsx',
+]) {
+  assert.equal(
+    read(file).includes('requiresAuth: false'),
+    false,
+    `${file} must send auth for expensive API calls`,
+  );
+}
 
 console.log('enterprise hardening contract checks passed');

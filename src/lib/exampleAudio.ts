@@ -34,7 +34,6 @@ export function fetchExampleAudioUrl(text: string, locale: PronunciationLocale):
 
   const request = apiFetch('/api/example-audio', {
     method: 'POST',
-    requiresAuth: false,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text: normalizedText, locale }),
   })

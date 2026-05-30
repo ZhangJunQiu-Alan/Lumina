@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
-import express, { type Response } from 'express';
+import express, { type NextFunction, type Response } from 'express';
 import { logger } from './logger.js';
 import {
   enrichWords,
@@ -8,7 +8,7 @@ import {
   EnrichmentServiceUnavailableError,
   generateArticle,
 } from './gemini.js';
-import { fetchDueReviewWords, markVocabularyUnknown, recordReviewAttempt, recordBatchReviewAttempts } from './review.js';
+import { fetchDueReviewWords, markVocabularyMastered, markVocabularyUnknown, recordReviewAttempt, recordBatchReviewAttempts } from './review.js';
 import { getOrCreateAudio, batchGenerateAudio } from './audio.js';
 import { ExampleAudioValidationError, getOrCreateExampleAudio } from './exampleAudio.js';
 import {
@@ -29,6 +29,7 @@ import {
   lookupWordForPopover,
   persistFullVocabularyEntries,
   queueFullEnrichmentForWord,
+  reportVocabularyIssue,
   sanitizeLookupWord,
   type VocabularySourceType,
 } from './vocab.js';
@@ -74,16 +75,212 @@ app.use((req, res, next) => {
 });
 
 const appOrigin = process.env.APP_ORIGIN?.trim();
-const allowedOrigins = new Set(['http://localhost:3000', appOrigin].filter(Boolean));
+const defaultAllowedOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3001',
+  'http://localhost:3002',
+  'http://127.0.0.1:3002',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+];
+const configuredOrigins = (process.env.LUMINA_APP_ORIGINS ?? '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowedOrigins = new Set([...defaultAllowedOrigins, ...configuredOrigins, appOrigin].filter(Boolean));
 const aiContentFeaturesEnabled = process.env.LUMINA_AI_FEATURES_ENABLED === 'true';
-const AI_FEATURE_PATHS = new Set([
-  '/api/vocab/enrich',
-  '/api/vocab/lite-enrich',
-  '/api/vocab/lemmatize',
-  '/api/vocab/lemmatize-batch',
-  '/api/vocab/full-enrich',
-  '/api/vocab/article',
-]);
+const INTERNAL_ERROR_MESSAGE = 'Internal server error';
+
+type ExpensiveApiGroup = 'ai_vocab' | 'ai_article' | 'tts';
+type RateWindowName = 'minute' | 'hour' | 'day';
+
+const RATE_WINDOWS: Record<RateWindowName, number> = {
+  minute: 60 * 1000,
+  hour: 60 * 60 * 1000,
+  day: 24 * 60 * 60 * 1000,
+};
+
+const DEFAULT_RATE_LIMITS: Record<ExpensiveApiGroup, Record<RateWindowName, number>> = {
+  ai_vocab: { minute: 20, hour: 200, day: 1000 },
+  ai_article: { minute: 3, hour: 20, day: 80 },
+  tts: { minute: 60, hour: 500, day: 2000 },
+};
+
+const IP_RATE_LIMIT_MULTIPLIER = 3;
+const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
+let rateLimitRequestCount = 0;
+
+function parsePositiveIntEnv(name: string, fallback: number) {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function rateLimitFor(group: ExpensiveApiGroup, windowName: RateWindowName) {
+  const envName = `LUMINA_RATE_LIMIT_${group.toUpperCase()}_${windowName.toUpperCase()}`;
+  return parsePositiveIntEnv(envName, DEFAULT_RATE_LIMITS[group][windowName]);
+}
+
+function normalizeRateLimitWeight(value: number) {
+  return Math.max(1, Math.ceil(Number.isFinite(value) ? value : 1));
+}
+
+function compactRateLimitBuckets(now: number) {
+  rateLimitRequestCount += 1;
+  if (rateLimitRequestCount % 100 !== 0) return;
+
+  for (const [key, bucket] of rateLimitBuckets.entries()) {
+    if (now >= bucket.resetAt) {
+      rateLimitBuckets.delete(key);
+    }
+  }
+}
+
+function readRateLimitBucket(key: string, now: number, windowMs: number) {
+  const existing = rateLimitBuckets.get(key);
+  if (!existing || now >= existing.resetAt) {
+    return { count: 0, resetAt: now + windowMs };
+  }
+
+  return existing;
+}
+
+function consumeExpensiveRateLimit({
+  group,
+  userId,
+  ip,
+  weight,
+}: {
+  group: ExpensiveApiGroup;
+  userId: string;
+  ip: string;
+  weight: number;
+}) {
+  const now = Date.now();
+  const normalizedWeight = normalizeRateLimitWeight(weight);
+  compactRateLimitBuckets(now);
+
+  const checks = [
+    { scope: 'user', key: userId, multiplier: 1 },
+    { scope: 'ip', key: ip, multiplier: IP_RATE_LIMIT_MULTIPLIER },
+  ].flatMap((subject) => (
+    (Object.keys(RATE_WINDOWS) as RateWindowName[]).map((windowName) => {
+      const windowMs = RATE_WINDOWS[windowName];
+      const limit = rateLimitFor(group, windowName) * subject.multiplier;
+      const bucketKey = `${subject.scope}:${group}:${windowName}:${subject.key}`;
+      const bucket = readRateLimitBucket(bucketKey, now, windowMs);
+      return {
+        ...subject,
+        windowName,
+        windowMs,
+        limit,
+        bucketKey,
+        bucket,
+      };
+    })
+  ));
+
+  const exceeded = checks.find((check) => check.bucket.count + normalizedWeight > check.limit);
+  if (exceeded) {
+    return {
+      allowed: false as const,
+      retryAfterSeconds: Math.max(1, Math.ceil((exceeded.bucket.resetAt - now) / 1000)),
+      scope: exceeded.scope,
+      window: exceeded.windowName,
+      limit: exceeded.limit,
+      weight: normalizedWeight,
+    };
+  }
+
+  for (const check of checks) {
+    rateLimitBuckets.set(check.bucketKey, {
+      count: check.bucket.count + normalizedWeight,
+      resetAt: check.bucket.resetAt,
+    });
+  }
+
+  return { allowed: true as const, weight: normalizedWeight };
+}
+
+function resolveClientIp(req: AuthenticatedRequest) {
+  const forwardedFor = req.header('x-forwarded-for')?.split(',')[0]?.trim();
+  return forwardedFor || req.ip || req.socket.remoteAddress || 'unknown';
+}
+
+function sendInternalError(res: Response) {
+  return res.status(500).json({
+    error: INTERNAL_ERROR_MESSAGE,
+    request_id: res.locals.requestId,
+  });
+}
+
+function sendRateLimitExceeded(res: Response, retryAfterSeconds: number) {
+  res.setHeader('Retry-After', String(retryAfterSeconds));
+  return res.status(429).json({
+    error: 'Rate limit exceeded',
+    request_id: res.locals.requestId,
+    retry_after_seconds: retryAfterSeconds,
+  });
+}
+
+function requireAiContentFeatures(_req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  if (!aiContentFeaturesEnabled) {
+    res.status(503).json({ error: 'AI 内容功能暂时关闭。' });
+    return;
+  }
+
+  next();
+}
+
+function countStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item) => typeof item === 'string' && item.trim()).length
+    : 1;
+}
+
+function requireExpensiveQuota(
+  group: ExpensiveApiGroup,
+  resolveWeight: (req: AuthenticatedRequest) => number = () => 1,
+) {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const userId = req.authUserId;
+    if (!userId) {
+      return sendInternalError(res);
+    }
+
+    const result = consumeExpensiveRateLimit({
+      group,
+      userId,
+      ip: resolveClientIp(req),
+      weight: resolveWeight(req),
+    });
+
+    if (!result.allowed) {
+      logger.warn('Expensive API rate limit exceeded', requestLogContext(res, {
+        endpoint: req.path,
+        user_id: userId,
+        group,
+        scope: result.scope,
+        window: result.window,
+        limit: result.limit,
+        weight: result.weight,
+      }));
+      return sendRateLimitExceeded(res, result.retryAfterSeconds);
+    }
+
+    next();
+  };
+}
+
+const aiVocabQuota = requireExpensiveQuota('ai_vocab', (req) => countStringArray(req.body?.words));
+const aiVocabSingleQuota = requireExpensiveQuota('ai_vocab');
+const aiArticleQuota = requireExpensiveQuota('ai_article');
+const ttsSingleQuota = requireExpensiveQuota('tts');
+const ttsBatchQuota = requireExpensiveQuota('tts', (req) => Math.min(countStringArray(req.body?.words), 30) * 2);
 
 app.use((req, res, next) => {
   const origin = req.header('Origin');
@@ -117,15 +314,6 @@ app.options('*', (req, res) => {
   res.sendStatus(204);
 });
 
-app.use((req, res, next) => {
-  if (!aiContentFeaturesEnabled && AI_FEATURE_PATHS.has(req.path)) {
-    res.status(503).json({ error: 'AI 内容功能暂时关闭。' });
-    return;
-  }
-
-  next();
-});
-
 function resolveSavedWordSource(value: unknown): SavedWordSource | null {
   if (value === undefined || value === null) return 'reading_popup';
   if (value === 'reading_popup' || value === 'manual') return value;
@@ -144,7 +332,7 @@ function resolveVocabularySourceType(value: unknown): VocabularySourceType {
 }
 
 // POST /api/vocab/enrich
-app.post('/api/vocab/enrich', async (req, res) => {
+app.post('/api/vocab/enrich', requireAuth, requireAiContentFeatures, aiVocabQuota, async (req, res) => {
   const { words } = req.body;
   const source = resolveGeminiSource(req.body?.source, 'manual_api');
   if (!Array.isArray(words) || words.length === 0) {
@@ -167,12 +355,12 @@ app.post('/api/vocab/enrich', async (req, res) => {
     if (e instanceof EnrichmentServiceUnavailableError) {
       return res.status(e.statusCode).json({ error: message });
     }
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
 // POST /api/vocab/lite-enrich
-app.post('/api/vocab/lite-enrich', async (req, res) => {
+app.post('/api/vocab/lite-enrich', requireAuth, requireAiContentFeatures, aiVocabSingleQuota, async (req, res) => {
   const word = sanitizeLookupWord(req.body?.word);
   const source = resolveGeminiSource(req.body?.source, 'manual_api');
   if (!word) {
@@ -192,12 +380,12 @@ app.post('/api/vocab/lite-enrich', async (req, res) => {
     if (e instanceof EnrichmentServiceUnavailableError) {
       return res.status(e.statusCode).json({ error: message });
     }
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
 // POST /api/vocab/lemmatize
-app.post('/api/vocab/lemmatize', async (req, res) => {
+app.post('/api/vocab/lemmatize', requireAuth, requireAiContentFeatures, aiVocabSingleQuota, async (req, res) => {
   const word = sanitizeLookupWord(req.body?.word);
   const source = resolveGeminiSource(req.body?.source, 'import_lemmatize');
   if (!word) {
@@ -217,12 +405,12 @@ app.post('/api/vocab/lemmatize', async (req, res) => {
     if (e instanceof EnrichmentServiceUnavailableError) {
       return res.status(e.statusCode).json({ error: message });
     }
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
 // POST /api/vocab/lemmatize-batch
-app.post('/api/vocab/lemmatize-batch', async (req, res) => {
+app.post('/api/vocab/lemmatize-batch', requireAuth, requireAiContentFeatures, aiVocabQuota, async (req, res) => {
   const words = Array.isArray(req.body?.words)
     ? req.body.words.map(sanitizeLookupWord).filter(Boolean)
     : [];
@@ -248,7 +436,7 @@ app.post('/api/vocab/lemmatize-batch', async (req, res) => {
     if (e instanceof EnrichmentServiceUnavailableError) {
       return res.status(e.statusCode).json({ error: message });
     }
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
@@ -273,12 +461,54 @@ app.post('/api/vocab/lookup', requireAuth, async (req: AuthenticatedRequest, res
     if (e instanceof EnrichmentServiceUnavailableError) {
       return res.status(e.statusCode).json({ error: message });
     }
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
+  }
+});
+
+// POST /api/vocab/report
+app.post('/api/vocab/report', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.authUserId!;
+  const {
+    vocabularyItemId,
+    wordSnapshot,
+    learningGroupId,
+    sessionRound,
+    issueType,
+    note,
+    routePath,
+    userAgent,
+  } = req.body ?? {};
+
+  if (typeof vocabularyItemId !== 'string' || vocabularyItemId.trim().length === 0) {
+    return res.status(400).json({ error: 'Missing vocabulary item ID' });
+  }
+
+  try {
+    const data = await reportVocabularyIssue(userId, {
+      vocabularyItemId,
+      wordSnapshot: typeof wordSnapshot === 'string' ? wordSnapshot : null,
+      learningGroupId: typeof learningGroupId === 'string' ? learningGroupId : null,
+      sessionRound: typeof sessionRound === 'string' ? sessionRound : null,
+      issueType,
+      note: typeof note === 'string' ? note : null,
+      routePath: typeof routePath === 'string' ? routePath : null,
+      userAgent: typeof userAgent === 'string' ? userAgent : null,
+    });
+    res.json({ data });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/vocab/report', e, requestLogContext(res, {
+      endpoint: '/api/vocab/report',
+      user_id: userId,
+      vocabulary_item_id: vocabularyItemId,
+      issue_type: issueType,
+    }));
+    return sendInternalError(res);
   }
 });
 
 // POST /api/vocab/full-enrich
-app.post('/api/vocab/full-enrich', requireAuth, async (req: AuthenticatedRequest, res) => {
+app.post('/api/vocab/full-enrich', requireAuth, requireAiContentFeatures, aiVocabSingleQuota, async (req: AuthenticatedRequest, res) => {
   const word = sanitizeLookupWord(req.body?.word);
   if (!word) {
     return res.status(400).json({ error: 'Missing word' });
@@ -295,7 +525,7 @@ app.post('/api/vocab/full-enrich', requireAuth, async (req: AuthenticatedRequest
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     logger.error('API Error: /api/vocab/full-enrich', e, requestLogContext(res, { endpoint: '/api/vocab/full-enrich', user_id: userId, word }));
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
@@ -320,12 +550,12 @@ app.post('/api/vocab/persist', requireAuth, async (req: AuthenticatedRequest, re
       source_type: sourceType,
       entry_count: entries.length,
     }));
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
 // POST /api/vocab/article
-app.post('/api/vocab/article', async (req, res) => {
+app.post('/api/vocab/article', requireAuth, requireAiContentFeatures, aiArticleQuota, async (req, res) => {
   const { words } = req.body;
   if (!Array.isArray(words) || words.length === 0) {
     return res.status(400).json({ error: 'Missing words array' });
@@ -344,7 +574,7 @@ app.post('/api/vocab/article', async (req, res) => {
       endpoint: '/api/vocab/article',
       word_count: cleaned.length,
     }));
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
@@ -358,7 +588,7 @@ app.post('/api/review/attempt', requireAuth, async (req: AuthenticatedRequest, r
     elapsedMs,
   } = req.body;
 
-  if (!vocabularyItemId || !source || typeof wasCorrect !== 'boolean') {
+  if (!vocabularyItemId || (source !== 'round2' && source !== 'review') || typeof wasCorrect !== 'boolean') {
     return res.status(400).json({ error: 'Missing required attempt fields' });
   }
 
@@ -376,7 +606,7 @@ app.post('/api/review/attempt', requireAuth, async (req: AuthenticatedRequest, r
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     logger.error('API Error: /api/review/attempt', e, requestLogContext(res, { endpoint: '/api/review/attempt', user_id: userId }));
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
@@ -394,7 +624,7 @@ app.post('/api/review/batch-attempt', requireAuth, async (req: AuthenticatedRequ
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     logger.error('API Error: /api/review/batch-attempt', e, requestLogContext(res, { endpoint: '/api/review/batch-attempt', user_id: userId }));
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
@@ -417,7 +647,34 @@ app.post('/api/review/unknown', requireAuth, async (req: AuthenticatedRequest, r
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     logger.error('API Error: /api/review/unknown', e, requestLogContext(res, { endpoint: '/api/review/unknown', user_id: userId }));
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
+  }
+});
+
+// POST /api/review/mastered
+app.post('/api/review/mastered', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { vocabularyItemId, learningGroupId } = req.body;
+  if (!vocabularyItemId) {
+    return res.status(400).json({ error: 'Missing vocabularyItemId' });
+  }
+
+  const userId = req.authUserId!;
+  try {
+    const result = await markVocabularyMastered({
+      userId,
+      vocabularyItemId,
+      learningGroupId,
+    });
+    res.json({ data: result });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/review/mastered', e, requestLogContext(res, {
+      endpoint: '/api/review/mastered',
+      user_id: userId,
+      vocabulary_item_id: vocabularyItemId,
+      learning_group_id: learningGroupId,
+    }));
+    return sendInternalError(res);
   }
 });
 
@@ -437,7 +694,7 @@ app.post('/api/ielts/reading/attempts', requireAuth, async (req: AuthenticatedRe
       test_id: req.body?.testId,
       response_count: responseCount,
     }));
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
@@ -457,7 +714,7 @@ app.post('/api/ielts/listening/attempts', requireAuth, async (req: Authenticated
       test_id: req.body?.testId,
       response_count: responseCount,
     }));
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
@@ -472,7 +729,7 @@ app.get('/api/review/due', requireAuth, async (req: AuthenticatedRequest, res) =
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     logger.error('API Error: /api/review/due', e, { endpoint: '/api/review/due', user_id: userId, timezone: timeZone });
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
@@ -491,7 +748,7 @@ app.get('/api/home/overview', requireAuth, async (req: AuthenticatedRequest, res
       user_id: userId,
       timezone: timeZone,
     });
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
@@ -523,7 +780,7 @@ app.post('/api/library/official/:libraryId/discard-active', requireAuth, async (
       user_id: userId,
       group_id: groupId,
     });
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
@@ -552,7 +809,7 @@ app.post('/api/library/saved-words', requireAuth, async (req: AuthenticatedReque
       vocabulary_item_id: vocabularyItemId,
       source,
     });
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
@@ -574,7 +831,7 @@ app.post('/api/library/saved-words/cleanup', requireAuth, async (req: Authentica
       endpoint: '/api/library/saved-words/cleanup',
       user_id: userId,
     });
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
@@ -596,7 +853,7 @@ app.delete('/api/library/saved-words/:vocabularyItemId', requireAuth, async (req
       user_id: userId,
       vocabulary_item_id: vocabularyItemId,
     });
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
@@ -612,12 +869,12 @@ app.delete('/api/library/groups/:groupId', requireAuth, async (req: Authenticate
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     logger.error(`API Error: /api/library/groups/${groupId}`, e, { endpoint: `/api/library/groups/${groupId}`, user_id: userId });
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
 // GET /api/audio/:word
-app.get('/api/audio/:word', async (req, res) => {
+app.get('/api/audio/:word', requireAuth, ttsSingleQuota, async (req, res) => {
   const { word } = req.params;
   const locale = (req.query.locale as 'uk' | 'us') || 'uk';
 
@@ -629,12 +886,12 @@ app.get('/api/audio/:word', async (req, res) => {
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     logger.error(`API Error: /api/audio/${word}`, e, { endpoint: `/api/audio/${word}`, locale });
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
 // POST /api/audio/batch
-app.post('/api/audio/batch', async (req, res) => {
+app.post('/api/audio/batch', requireAuth, ttsBatchQuota, async (req, res) => {
   const { words } = req.body;
   if (!Array.isArray(words)) return res.status(400).json({ error: 'Missing words array' });
 
@@ -649,12 +906,12 @@ app.post('/api/audio/batch', async (req, res) => {
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     logger.error('API Error: /api/audio/batch', e, { endpoint: '/api/audio/batch' });
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 
 // POST /api/example-audio
-app.post('/api/example-audio', async (req, res) => {
+app.post('/api/example-audio', requireAuth, ttsSingleQuota, async (req, res) => {
   const { text, locale } = req.body ?? {};
 
   if (typeof text !== 'string') {
@@ -675,7 +932,7 @@ app.post('/api/example-audio', async (req, res) => {
     }
 
     logger.error('API Error: /api/example-audio', e, { endpoint: '/api/example-audio', locale });
-    res.status(500).json({ error: message });
+    return sendInternalError(res);
   }
 });
 

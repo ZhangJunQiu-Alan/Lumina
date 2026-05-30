@@ -60,7 +60,6 @@ async function lemmatizeImportWords(words: string[], signal: AbortSignal): Promi
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ words, source: 'import_lemmatize' }),
     signal,
-    requiresAuth: false,
   });
 
   if (!res.ok) {
