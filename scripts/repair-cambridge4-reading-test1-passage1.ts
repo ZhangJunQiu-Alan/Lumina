@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../server/supabase.ts';
+import { supabaseAdmin } from '../shared/server/supabase.ts';
 import { normalizeIeltsPassageBody } from '../src/lib/ieltsReadingText.ts';
 
 type Option = { key: string; text: string };

@@ -2,7 +2,12 @@
  * 工业级极简日志系统
  * 基于原生 Console 封装，支持多级日志、结构化 JSON 输出和异常自动格式化。
  * 旨在作为 Winston/Pino 的零依赖替代方案，同时保持 API 兼容。
+ *
+ * Note: when NODE_ENV is unset we default to production (JSON) output so the
+ * Edge runtime emits structured logs without extra config; set
+ * NODE_ENV=development locally for the pretty console format.
  */
+import { getEnv } from '../runtime.ts';
 
 type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
@@ -11,7 +16,7 @@ interface LogContext {
 }
 
 class Logger {
-  private level: LogLevel = (Deno.env.get('LOG_LEVEL') as LogLevel) || 'info';
+  private level: LogLevel = (getEnv('LOG_LEVEL') as LogLevel) || 'info';
 
   private shouldLog(targetLevel: LogLevel): boolean {
     const levels: LogLevel[] = ['debug', 'info', 'warn', 'error'];
@@ -28,7 +33,7 @@ class Logger {
     };
 
     // 生产环境输出 JSON，方便 ELK/Winston 等系统收集
-    if ((Deno.env.get('NODE_ENV') ?? 'production') === 'production') {
+    if ((getEnv('NODE_ENV') ?? 'production') === 'production') {
       return JSON.stringify(entry);
     }
 

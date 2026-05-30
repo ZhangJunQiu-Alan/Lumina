@@ -10,7 +10,7 @@ import {
   toNextReviewAt,
   toReviewDateKey,
   toResultType,
-} from '../server/review-domain.js';
+} from '../shared/server/review-domain.ts';
 
 const BASE_TIME = new Date('2026-04-15T00:00:00.000Z');
 

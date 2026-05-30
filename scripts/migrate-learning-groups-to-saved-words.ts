@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { supabaseAdmin } from '../server/supabase.ts';
+import { supabaseAdmin } from '../shared/server/supabase.ts';
 
 const READ_PAGE_SIZE = 1000;
 const UPSERT_BATCH_SIZE = 500;

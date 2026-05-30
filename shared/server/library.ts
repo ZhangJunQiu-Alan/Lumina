@@ -1,17 +1,17 @@
-import { supabaseAdmin } from './supabase.js';
-import { intervalForState, toNextReviewAt, type MemoryState, type ReviewResultType } from './review-domain.js';
-import { queueFullEnrichmentForVocabularyItemId } from './vocab.js';
+import { supabaseAdmin } from './supabase.ts';
+import { intervalForState, toNextReviewAt, type MemoryState, type ReviewResultType } from './review-domain.ts';
+import { queueFullEnrichmentForVocabularyItemId } from './vocab.ts';
 import {
   isOfficialLibraryId,
   resolveLibraryGroupSourceType,
   resolveOfficialLibraryId,
-} from '../src/lib/officialLibrary.js';
-import { isCoreLearningComplete } from '../src/lib/learningSession.js';
-import type { OfficialLibraryId } from '../src/types.js';
+} from '../officialLibraryLite.ts';
+import { isCoreLearningComplete } from '../learningSessionLite.ts';
+import type { OfficialLibraryId } from '../types.ts';
 import {
   isOfficialDiscardableRound,
   resolveActuallyLearnedWordIds,
-} from '../shared/officialDiscard.js';
+} from '../officialDiscard.ts';
 
 const ROUTINE_DAY_RESET_HOUR = 5;
 

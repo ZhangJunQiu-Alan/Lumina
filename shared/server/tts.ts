@@ -1,4 +1,6 @@
-const GOOGLE_TTS_KEY = Deno.env.get('GOOGLE_TTS_API_KEY')!;
+import { getEnv } from '../runtime.ts';
+
+const GOOGLE_TTS_KEY = getEnv('GOOGLE_TTS_API_KEY')!;
 
 // Neural2 voices — natural, dictionary-quality pronunciation
 const LOCALE_VOICE: Record<'uk' | 'us', { languageCode: string; name: string }> = {

@@ -1642,7 +1642,7 @@ async function writeDryRunOutput(book: ImportedBook, report: ImportReport, outPa
 }
 
 async function applyBook(book: ImportedBook) {
-  const { supabaseAdmin } = await import('../server/supabase.ts');
+  const { supabaseAdmin } = await import('../shared/server/supabase.ts');
 
   const { data: bookRow, error: bookError } = await supabaseAdmin
     .from('ielts_reading_books')
@@ -1728,7 +1728,7 @@ async function applyBook(book: ImportedBook) {
 }
 
 async function applyBookPassagesOnly(book: ImportedBook) {
-  const { supabaseAdmin } = await import('../server/supabase.ts');
+  const { supabaseAdmin } = await import('../shared/server/supabase.ts');
 
   const { data: bookRow, error: bookError } = await supabaseAdmin
     .from('ielts_reading_books')

@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { cleanupSavedLibrary } from '../server/savedLibraryCleanup.ts';
+import { cleanupSavedLibrary } from '../shared/server/savedLibraryCleanup.ts';
 
 interface CliOptions {
   apply: boolean;

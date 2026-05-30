@@ -1,23 +1,23 @@
-import { logger } from '../_shared/server/logger.ts';
+import { logger } from '../../../shared/server/logger.ts';
 import {
   enrichWords,
   EnrichmentResponseValidationError,
   EnrichmentServiceUnavailableError,
   generateArticle,
-} from '../_shared/server/gemini.ts';
-import { fetchDueReviewWords, markVocabularyMastered, markVocabularyUnknown, recordBatchReviewAttempts, recordReviewAttempt } from '../_shared/server/review.ts';
-import { batchGenerateAudio, getOrCreateAudio } from '../_shared/server/audio.ts';
-import { ExampleAudioValidationError, getOrCreateExampleAudio } from '../_shared/server/exampleAudio.ts';
+} from '../../../shared/server/gemini.ts';
+import { fetchDueReviewWords, markVocabularyMastered, markVocabularyUnknown, recordBatchReviewAttempts, recordReviewAttempt } from '../../../shared/server/review.ts';
+import { batchGenerateAudio, getOrCreateAudio } from '../../../shared/server/audio.ts';
+import { ExampleAudioValidationError, getOrCreateExampleAudio } from '../../../shared/server/exampleAudio.ts';
 import {
   deleteLearningGroup,
   discardActiveOfficialLearningGroup,
   removeWordFromLibrary,
   saveWordToLibrary,
-} from '../_shared/server/library.ts';
-import { cleanupSavedLibrary } from '../_shared/server/savedLibraryCleanup.ts';
-import { getHomeOverview } from '../_shared/server/home.ts';
-import { submitIeltsListeningAttempt, submitIeltsReadingAttempt } from '../_shared/server/ieltsAttempts.ts';
-import { supabaseAdmin } from '../_shared/server/supabase.ts';
+} from '../../../shared/server/library.ts';
+import { cleanupSavedLibrary } from '../../../shared/server/savedLibraryCleanup.ts';
+import { getHomeOverview } from '../../../shared/server/home.ts';
+import { submitIeltsListeningAttempt, submitIeltsReadingAttempt } from '../../../shared/server/ieltsAttempts.ts';
+import { supabaseAdmin } from '../../../shared/server/supabase.ts';
 import {
   ensureLiteVocabularyEntry,
   lemmatizeVocabularyWord,
@@ -27,8 +27,8 @@ import {
   queueFullEnrichmentForWord,
   reportVocabularyIssue,
   sanitizeLookupWord,
-} from '../_shared/server/vocab.ts';
-import { isOfficialLibraryId } from '../_shared/officialLibraryLite.ts';
+} from '../../../shared/server/vocab.ts';
+import { isOfficialLibraryId } from '../../../shared/officialLibraryLite.ts';
 import { isAiContentFeaturesEnabled } from '../../../shared/runtime.ts';
 import {
   consumeExpensiveRateLimit,

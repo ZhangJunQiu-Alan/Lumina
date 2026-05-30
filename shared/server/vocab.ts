@@ -7,7 +7,7 @@ import {
   formatDuplicateWordsMessage,
   normalizeWordKey,
   sanitizeWordInput,
-} from '../shared/wordBatch.ts';
+} from '../wordBatch.ts';
 
 export type EnrichmentLevel = 'lite' | 'full';
 

@@ -1,27 +1,27 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import express, { type NextFunction, type Response } from 'express';
-import { logger } from './logger.js';
+import { logger } from '../shared/server/logger.ts';
 import {
   enrichWords,
   EnrichmentResponseValidationError,
   EnrichmentServiceUnavailableError,
   generateArticle,
-} from './gemini.js';
-import { fetchDueReviewWords, markVocabularyMastered, markVocabularyUnknown, recordReviewAttempt, recordBatchReviewAttempts } from './review.js';
-import { getOrCreateAudio, batchGenerateAudio } from './audio.js';
-import { ExampleAudioValidationError, getOrCreateExampleAudio } from './exampleAudio.js';
+} from '../shared/server/gemini.ts';
+import { fetchDueReviewWords, markVocabularyMastered, markVocabularyUnknown, recordReviewAttempt, recordBatchReviewAttempts } from '../shared/server/review.ts';
+import { getOrCreateAudio, batchGenerateAudio } from '../shared/server/audio.ts';
+import { ExampleAudioValidationError, getOrCreateExampleAudio } from '../shared/server/exampleAudio.ts';
 import {
   deleteLearningGroup,
   discardActiveOfficialLearningGroup,
   removeWordFromLibrary,
   saveWordToLibrary,
   type SavedWordSource,
-} from './library.js';
-import { cleanupSavedLibrary } from './savedLibraryCleanup.js';
+} from '../shared/server/library.ts';
+import { cleanupSavedLibrary } from '../shared/server/savedLibraryCleanup.ts';
 import { requireAuth, type AuthenticatedRequest } from './auth.js';
-import { getHomeOverview } from './home.js';
-import { submitIeltsListeningAttempt, submitIeltsReadingAttempt } from './ieltsAttempts.js';
+import { getHomeOverview } from '../shared/server/home.ts';
+import { submitIeltsListeningAttempt, submitIeltsReadingAttempt } from '../shared/server/ieltsAttempts.ts';
 import {
   ensureLiteVocabularyEntry,
   lemmatizeVocabularyWord,
@@ -32,8 +32,8 @@ import {
   reportVocabularyIssue,
   sanitizeLookupWord,
   type VocabularySourceType,
-} from './vocab.js';
-import { isOfficialLibraryId } from '../src/lib/officialLibrary.js';
+} from '../shared/server/vocab.ts';
+import { isOfficialLibraryId } from '../shared/officialLibraryLite.ts';
 import { analyzeWordBatch, formatDuplicateWordsMessage } from '../shared/wordBatch.js';
 import { isAiContentFeaturesEnabled } from '../shared/runtime.ts';
 import {

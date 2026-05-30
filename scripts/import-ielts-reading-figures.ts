@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { supabaseAdmin } from '../server/supabase.ts';
+import { supabaseAdmin } from '../shared/server/supabase.ts';
 
 const execFileAsync = promisify(execFile);
 const FIGURE_BUCKET = 'ielts-reading-figures';

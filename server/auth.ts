@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { supabaseAdmin } from './supabase.js';
+import { supabaseAdmin } from '../shared/server/supabase.ts';
 
 export interface AuthenticatedRequest extends Request {
   authUserId?: string;

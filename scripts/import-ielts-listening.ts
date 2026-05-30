@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { supabaseAdmin } from '../server/supabase.ts';
+import { supabaseAdmin } from '../shared/server/supabase.ts';
 import type {
   IeltsListeningOption,
   IeltsListeningPaperHotspot,

@@ -1,6 +1,6 @@
 import 'dotenv/config';
-import { enrichFormsOnly } from '../server/gemini.ts';
-import { supabaseAdmin } from '../server/supabase.ts';
+import { enrichFormsOnly } from '../shared/server/gemini.ts';
+import { supabaseAdmin } from '../shared/server/supabase.ts';
 import { normalizeWordKey } from '../shared/wordBatch.ts';
 
 interface CliOptions {

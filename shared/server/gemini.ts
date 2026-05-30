@@ -4,7 +4,8 @@ import {
   formatWordBatchMismatchMessage,
   normalizeWordKey,
   sanitizeWordInput,
-} from '../shared/wordBatch.ts';
+} from '../wordBatch.ts';
+import { getEnv } from '../runtime.ts';
 import { logger } from './logger.ts';
 import type {
   ArticleSentence,
@@ -15,17 +16,17 @@ import type {
   MorphologyPartKind,
 } from '../types.ts';
 
-const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY') ?? '';
+const GEMINI_API_KEY = getEnv('GEMINI_API_KEY') ?? '';
 function readPositiveIntEnv(name: string, fallback: number) {
-  const raw = Deno.env.get(name)?.trim();
+  const raw = getEnv(name)?.trim();
   if (!raw) return fallback;
 
   const parsed = Number.parseInt(raw, 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-const ENRICH_MODEL = Deno.env.get('GEMINI_ENRICH_MODEL')?.trim() || 'gemini-2.5-flash';
-const ARTICLE_MODEL = Deno.env.get('GEMINI_ARTICLE_MODEL')?.trim() || 'gemini-2.5-flash';
+const ENRICH_MODEL = getEnv('GEMINI_ENRICH_MODEL')?.trim() || 'gemini-2.5-flash';
+const ARTICLE_MODEL = getEnv('GEMINI_ARTICLE_MODEL')?.trim() || 'gemini-2.5-flash';
 const DEFAULT_ENRICH_CHUNK_SIZE = readPositiveIntEnv('GEMINI_ENRICH_BATCH_SIZE', 10);
 const DEFAULT_ENRICH_MAX_CONCURRENCY = readPositiveIntEnv('GEMINI_ENRICH_MAX_CONCURRENCY', 15);
 const ENRICH_MAX_OUTPUT_TOKENS = readPositiveIntEnv('GEMINI_ENRICH_MAX_OUTPUT_TOKENS', 8192);

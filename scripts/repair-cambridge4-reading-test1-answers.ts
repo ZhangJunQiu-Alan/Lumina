@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../server/supabase.ts';
+import { supabaseAdmin } from '../shared/server/supabase.ts';
 import type { IeltsReadingQuestionType } from '../src/types.ts';
 import {
   isIeltsQuestionCorrect,

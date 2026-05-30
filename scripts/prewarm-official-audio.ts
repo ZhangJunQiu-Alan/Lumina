@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { OFFICIAL_LIBRARY_DEFINITIONS } from '../src/lib/officialLibrary.ts';
-import { getOrCreateAudio } from '../server/audio.ts';
-import { supabaseAdmin } from '../server/supabase.ts';
+import { getOrCreateAudio } from '../shared/server/audio.ts';
+import { supabaseAdmin } from '../shared/server/supabase.ts';
 import { normalizeWordKey } from '../shared/wordBatch.ts';
 
 const ALL_OFFICIAL_WORDS = Array.from(

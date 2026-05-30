@@ -6,6 +6,8 @@ import {
   countStringArray,
   __resetExpensiveRateLimitForTests,
 } from '../shared/expensiveRateLimit.ts';
+import { OFFICIAL_LIBRARY_DEFINITIONS } from '../src/lib/officialLibrary.ts';
+import { existsSync } from 'node:fs';
 
 const root = process.cwd();
 
@@ -311,5 +313,44 @@ assert.equal(heavy.allowed, false, 'weight 4 exceeds ai_article minute limit of 
 assert.equal(countStringArray(['a', '', '  ', 'b']), 2, 'countStringArray ignores empty/whitespace entries');
 assert.equal(countStringArray('not-an-array'), 1, 'countStringArray falls back to 1 for non-arrays');
 __resetExpensiveRateLimitForTests();
+
+// Single-source guard: the server/edge twin trees must stay collapsed.
+assert.equal(
+  existsSync(join(root, 'supabase/functions/_shared')),
+  false,
+  'supabase/functions/_shared must not return — shared server logic lives in shared/server/',
+);
+for (const orphan of ['gemini.ts', 'review.ts', 'vocab.ts', 'home.ts', 'library.ts', 'supabase.ts', 'logger.ts']) {
+  assert.equal(
+    existsSync(join(root, 'server', orphan)),
+    false,
+    `server/${orphan} must not be reintroduced — import from shared/server/ instead`,
+  );
+}
+assertIncludes(read('supabase/functions/deno.json'), '@supabase/supabase-js', 'Edge import map maps the supabase npm specifier');
+assert.equal(
+  read('package.json').includes('@google/genai'),
+  false,
+  '@google/genai dependency must stay removed (Gemini calls use REST fetch)',
+);
+
+// Latent-bug guard: home.ts hardcodes official totals (Edge cannot load vocab arrays);
+// they must match the real word counts so the two never silently diverge.
+const homeSource = read('shared/server/home.ts');
+const totalsBlock = /OFFICIAL_LIBRARY_TOTALS[^{]*\{([^}]*)\}/.exec(homeSource);
+assert.ok(totalsBlock, 'home.ts should declare OFFICIAL_LIBRARY_TOTALS');
+const hardcodedTotals = new Map<string, number>();
+for (const [, id, count] of totalsBlock![1].matchAll(/'([^']+)'\s*:\s*(\d+)/g)) {
+  hardcodedTotals.set(id, Number(count));
+}
+const realCounts = new Map(OFFICIAL_LIBRARY_DEFINITIONS.map((d) => [d.id, d.words.length]));
+assert.equal(hardcodedTotals.size, realCounts.size, 'home.ts totals must cover every official library');
+for (const [id, real] of realCounts) {
+  assert.equal(
+    hardcodedTotals.get(id),
+    real,
+    `home.ts OFFICIAL_LIBRARY_TOTALS['${id}'] (${hardcodedTotals.get(id)}) must equal the real word count (${real})`,
+  );
+}
 
 console.log('enterprise hardening contract checks passed');

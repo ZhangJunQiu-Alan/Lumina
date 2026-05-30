@@ -714,7 +714,9 @@ const OFFICIAL_LIBRARY_TITLES: Record<OfficialLibraryId, string> = {
   'gaokao-vocab': '高考英语核心词汇',
 };
 
-const OFFICIAL_LIBRARY_TOTALS: Record<OfficialLibraryId, number> = {
+// Hardcoded because the Edge runtime cannot load the multi-MB src/data vocab arrays.
+// Guarded against the real counts by scripts/test-enterprise-hardening-contracts.ts.
+export const OFFICIAL_LIBRARY_TOTALS: Record<OfficialLibraryId, number> = {
   'ielts-vocab': 3631,
   'gre-zhenkao-v7': 1351,
   'cet4-vocab': 4530,

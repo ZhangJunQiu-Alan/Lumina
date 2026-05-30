@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { normalizeGeminiWordResult } from '../server/gemini.ts';
+import { normalizeGeminiWordResult } from '../shared/server/gemini.ts';
 
 const normalized = normalizeGeminiWordResult({
   word: 'Granite',

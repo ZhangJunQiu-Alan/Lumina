@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { OFFICIAL_LIBRARY_DEFINITIONS } from '../src/lib/officialLibrary.ts';
-import { enrichWords, type GeminiWordResult } from '../server/gemini.ts';
-import { supabaseAdmin } from '../server/supabase.ts';
+import { enrichWords, type GeminiWordResult } from '../shared/server/gemini.ts';
+import { supabaseAdmin } from '../shared/server/supabase.ts';
 import { analyzeWordBatch, formatDuplicateWordsMessage, normalizeWordKey, sanitizeWordInput } from '../shared/wordBatch.ts';
 
 interface CliOptions {
