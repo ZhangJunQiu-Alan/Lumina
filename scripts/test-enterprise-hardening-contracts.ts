@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import {
+  consumeExpensiveRateLimit,
+  countStringArray,
+  __resetExpensiveRateLimitForTests,
+} from '../shared/expensiveRateLimit.ts';
 
 const root = process.cwd();
 
@@ -211,10 +216,18 @@ assert.equal(
 const server = read('server/index.ts');
 assertIncludes(server, 'X-Request-Id', 'Express API');
 assertIncludes(edgeApi, 'X-Request-Id', 'Edge API');
-assertIncludes(server, 'const DEFAULT_RATE_LIMITS', 'Express expensive API rate limits');
-assertIncludes(edgeApi, 'const DEFAULT_RATE_LIMITS', 'Edge expensive API rate limits');
-assertIncludes(server, 'IP_RATE_LIMIT_MULTIPLIER = 3', 'Express IP fallback rate limit');
-assertIncludes(edgeApi, 'IP_RATE_LIMIT_MULTIPLIER = 3', 'Edge IP fallback rate limit');
+// Rate-limit policy is single-sourced in shared/expensiveRateLimit.ts; server and edge must import it, not redeclare it.
+const rateLimitCore = read('shared/expensiveRateLimit.ts');
+assertIncludes(rateLimitCore, 'const DEFAULT_RATE_LIMITS', 'shared rate-limit policy');
+assertIncludes(rateLimitCore, 'IP_RATE_LIMIT_MULTIPLIER = 3', 'shared IP fallback rate limit');
+for (const [label, source] of [['Express', server], ['Edge', edgeApi]] as const) {
+  assertIncludes(source, "shared/expensiveRateLimit.ts'", `${label} imports shared rate-limit core`);
+  assert.equal(
+    source.includes('const DEFAULT_RATE_LIMITS'),
+    false,
+    `${label} must not redeclare rate-limit policy (single source in shared/expensiveRateLimit.ts)`,
+  );
+}
 for (const [route, middleware] of [
   ["/api/vocab/enrich", 'requireAuth, requireAiContentFeatures, aiVocabQuota'],
   ["/api/vocab/lite-enrich", 'requireAuth, requireAiContentFeatures, aiVocabSingleQuota'],
@@ -257,5 +270,46 @@ for (const file of [
     `${file} must send auth for expensive API calls`,
   );
 }
+
+// Behavioral checks for the shared rate limiter (not just source-string presence).
+// Defaults: ai_article minute=3; IP fallback = 3x => 9 per minute.
+__resetExpensiveRateLimitForTests();
+for (let i = 0; i < 3; i += 1) {
+  const r = consumeExpensiveRateLimit({ group: 'ai_article', userId: 'u1', ip: '10.0.0.1', weight: 1 });
+  assert.equal(r.allowed, true, `ai_article request ${i + 1} within per-user limit should be allowed`);
+}
+const overUser = consumeExpensiveRateLimit({ group: 'ai_article', userId: 'u1', ip: '10.0.0.1', weight: 1 });
+assert.equal(overUser.allowed, false, '4th ai_article request must exceed per-user minute limit');
+if (!overUser.allowed) {
+  assert.equal(overUser.scope, 'user', 'per-user limit should trip first');
+  assert.equal(overUser.window, 'minute', 'minute window should be the binding window');
+  assert.ok(overUser.retryAfterSeconds > 0 && overUser.retryAfterSeconds <= 60, 'retryAfterSeconds within minute window');
+}
+
+// A different user on the same IP is independent until the IP fallback (3x) is hit.
+__resetExpensiveRateLimitForTests();
+for (const user of ['a', 'b', 'c']) {
+  for (let i = 0; i < 3; i += 1) {
+    assert.equal(
+      consumeExpensiveRateLimit({ group: 'ai_article', userId: user, ip: '10.0.0.9', weight: 1 }).allowed,
+      true,
+      `${user} request ${i + 1} should be allowed under its own limit`,
+    );
+  }
+}
+const overIp = consumeExpensiveRateLimit({ group: 'ai_article', userId: 'd', ip: '10.0.0.9', weight: 1 });
+assert.equal(overIp.allowed, false, 'IP fallback limit (3x) must trip after 9 requests share an IP');
+if (!overIp.allowed) {
+  assert.equal(overIp.scope, 'ip', 'IP fallback should be the tripped scope');
+}
+
+// Weight accounting: a single weighted call can exceed the limit in one shot.
+__resetExpensiveRateLimitForTests();
+const heavy = consumeExpensiveRateLimit({ group: 'ai_article', userId: 'w', ip: '10.0.0.2', weight: 4 });
+assert.equal(heavy.allowed, false, 'weight 4 exceeds ai_article minute limit of 3 in one call');
+
+assert.equal(countStringArray(['a', '', '  ', 'b']), 2, 'countStringArray ignores empty/whitespace entries');
+assert.equal(countStringArray('not-an-array'), 1, 'countStringArray falls back to 1 for non-arrays');
+__resetExpensiveRateLimitForTests();
 
 console.log('enterprise hardening contract checks passed');

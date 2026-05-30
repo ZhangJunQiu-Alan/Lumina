@@ -29,6 +29,14 @@ import {
   sanitizeLookupWord,
 } from '../_shared/server/vocab.ts';
 import { isOfficialLibraryId } from '../_shared/officialLibraryLite.ts';
+import { isAiContentFeaturesEnabled } from '../../../shared/runtime.ts';
+import {
+  consumeExpensiveRateLimit,
+  countStringArray,
+  type ExpensiveApiGroup,
+  INTERNAL_ERROR_MESSAGE,
+  isRateLimitExceeded,
+} from '../../../shared/expensiveRateLimit.ts';
 
 const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:3000',
@@ -50,35 +58,16 @@ const configuredOrigins = (Deno.env.get('LUMINA_APP_ORIGINS') ?? '')
   .filter(Boolean);
 
 const allowedOrigins = new Set([...DEFAULT_ALLOWED_ORIGINS, ...configuredOrigins]);
-const aiContentFeaturesEnabled = (Deno.env.get('LUMINA_AI_FEATURES_ENABLED') ?? '').toLowerCase() === 'true';
+const aiContentFeaturesEnabled = isAiContentFeaturesEnabled();
 const requestIdHeader = 'X-Request-Id';
 const requestIds = new WeakMap<Request, string>();
-const INTERNAL_ERROR_MESSAGE = 'Internal server error';
 
-type ExpensiveApiGroup = 'ai_vocab' | 'ai_article' | 'tts';
-type RateWindowName = 'minute' | 'hour' | 'day';
 type ApiGateResult =
   | { userId: string; response?: undefined; status?: undefined }
   | { response: Response; status: number; userId?: undefined };
 type QuotaGateResult =
   | { response?: undefined; status?: undefined }
   | { response: Response; status: number };
-
-const RATE_WINDOWS: Record<RateWindowName, number> = {
-  minute: 60 * 1000,
-  hour: 60 * 60 * 1000,
-  day: 24 * 60 * 60 * 1000,
-};
-
-const DEFAULT_RATE_LIMITS: Record<ExpensiveApiGroup, Record<RateWindowName, number>> = {
-  ai_vocab: { minute: 20, hour: 200, day: 1000 },
-  ai_article: { minute: 3, hour: 20, day: 80 },
-  tts: { minute: 60, hour: 500, day: 2000 },
-};
-
-const IP_RATE_LIMIT_MULTIPLIER = 3;
-const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
-let rateLimitRequestCount = 0;
 
 function resolveRequestId(value: string | null) {
   const trimmed = value?.trim();
@@ -167,100 +156,6 @@ function readBearerToken(headerValue: string | null) {
   return token;
 }
 
-function parsePositiveIntEnv(name: string, fallback: number) {
-  const raw = Deno.env.get(name)?.trim();
-  if (!raw) return fallback;
-
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function rateLimitFor(group: ExpensiveApiGroup, windowName: RateWindowName) {
-  const envName = `LUMINA_RATE_LIMIT_${group.toUpperCase()}_${windowName.toUpperCase()}`;
-  return parsePositiveIntEnv(envName, DEFAULT_RATE_LIMITS[group][windowName]);
-}
-
-function normalizeRateLimitWeight(value: number) {
-  return Math.max(1, Math.ceil(Number.isFinite(value) ? value : 1));
-}
-
-function compactRateLimitBuckets(now: number) {
-  rateLimitRequestCount += 1;
-  if (rateLimitRequestCount % 100 !== 0) return;
-
-  for (const [key, bucket] of rateLimitBuckets.entries()) {
-    if (now >= bucket.resetAt) {
-      rateLimitBuckets.delete(key);
-    }
-  }
-}
-
-function readRateLimitBucket(key: string, now: number, windowMs: number) {
-  const existing = rateLimitBuckets.get(key);
-  if (!existing || now >= existing.resetAt) {
-    return { count: 0, resetAt: now + windowMs };
-  }
-
-  return existing;
-}
-
-function consumeExpensiveRateLimit({
-  group,
-  userId,
-  ip,
-  weight,
-}: {
-  group: ExpensiveApiGroup;
-  userId: string;
-  ip: string;
-  weight: number;
-}) {
-  const now = Date.now();
-  const normalizedWeight = normalizeRateLimitWeight(weight);
-  compactRateLimitBuckets(now);
-
-  const checks = [
-    { scope: 'user', key: userId, multiplier: 1 },
-    { scope: 'ip', key: ip, multiplier: IP_RATE_LIMIT_MULTIPLIER },
-  ].flatMap((subject) => (
-    (Object.keys(RATE_WINDOWS) as RateWindowName[]).map((windowName) => {
-      const windowMs = RATE_WINDOWS[windowName];
-      const limit = rateLimitFor(group, windowName) * subject.multiplier;
-      const bucketKey = `${subject.scope}:${group}:${windowName}:${subject.key}`;
-      const bucket = readRateLimitBucket(bucketKey, now, windowMs);
-      return {
-        ...subject,
-        windowName,
-        windowMs,
-        limit,
-        bucketKey,
-        bucket,
-      };
-    })
-  ));
-
-  const exceeded = checks.find((check) => check.bucket.count + normalizedWeight > check.limit);
-  if (exceeded) {
-    return {
-      allowed: false as const,
-      retryAfterSeconds: Math.max(1, Math.ceil((exceeded.bucket.resetAt - now) / 1000)),
-      scope: exceeded.scope,
-      window: exceeded.windowName,
-      limit: exceeded.limit,
-      weight: normalizedWeight,
-    };
-  }
-
-  for (const check of checks) {
-    rateLimitBuckets.set(check.bucketKey, {
-      count: check.bucket.count + normalizedWeight,
-      resetAt: check.bucket.resetAt,
-    });
-  }
-
-  return { allowed: true as const, weight: normalizedWeight };
-}
-
 function resolveClientIp(request: Request) {
   const forwardedFor = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
   return request.headers.get('cf-connecting-ip')?.trim()
@@ -288,7 +183,7 @@ function enforceExpensiveQuota(request: Request, userId: string, group: Expensiv
     weight,
   });
 
-  if (result.allowed) return {};
+  if (!isRateLimitExceeded(result)) return {};
 
   logger.warn('Expensive API rate limit exceeded', requestLogContext(request, {
     user_id: userId,
@@ -316,12 +211,6 @@ async function requireExpensiveUser(request: Request, group: ExpensiveApiGroup, 
   if (quota.response) return quota;
 
   return { userId: auth.userId };
-}
-
-function countStringArray(value: unknown) {
-  return Array.isArray(value)
-    ? value.filter((item) => typeof item === 'string' && item.trim()).length
-    : 1;
 }
 
 async function requireUser(request: Request): Promise<ApiGateResult> {
