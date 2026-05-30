@@ -404,6 +404,8 @@ export const HomeView = ({
   );
   const [selectedMode, setSelectedMode] = useState<OfficialStudyMode>(routineCard.lastUsedOfficialMode ?? 'sequential');
   const hasUserSelectedModeRef = useRef(false);
+  const isModeSelectionLocked = Boolean(selectedOfficialOption?.activeGroupId);
+  const displayedMode = isModeSelectionLocked ? (selectedOfficialOption?.mode ?? selectedMode) : selectedMode;
 
   useEffect(() => {
     if (officialOptions.length === 0) {
@@ -606,10 +608,10 @@ export const HomeView = ({
                   )}
                   <RoutineDropdown
                     label="选择发放顺序"
-                    value={selectedMode}
+                    value={displayedMode}
                     options={modeDropdownOptions}
                     onChange={handleModeChange}
-                    disabled={officialOptions.length === 0}
+                    disabled={officialOptions.length === 0 || isModeSelectionLocked}
                     className="sm:w-[9.5rem]"
                   />
                 </div>

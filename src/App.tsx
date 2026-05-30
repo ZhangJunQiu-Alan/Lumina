@@ -133,6 +133,26 @@ interface HomeStartSelection {
   mode?: OfficialStudyMode | null;
 }
 
+function areArraysEqual<T>(left: readonly T[] = [], right: readonly T[] = []) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function isSameLearningProgressSnapshot(
+  current: PersistedLearningSession | null,
+  next: LearningSessionSnapshot,
+  groupId: string,
+) {
+  if (!current || current.groupId !== groupId) return false;
+
+  return (
+    current.round === next.round &&
+    current.currentIndex === next.currentIndex &&
+    areArraysEqual(current.queueWordIds, next.queueWordIds) &&
+    areArraysEqual(current.passedQueueIndices, next.passedQueueIndices) &&
+    areArraysEqual(current.round1ConfirmedWordIds, next.round1ConfirmedWordIds)
+  );
+}
+
 function AmbientBackground() {
   return (
     <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
@@ -909,6 +929,10 @@ export default function App() {
       if (!activeLearningGroupId || !user) return;
 
       const currentSeed = activeSessionSeedRef.current;
+      if (isSameLearningProgressSnapshot(currentSeed, session, activeLearningGroupId)) {
+        return;
+      }
+
       const lastActiveAt = new Date().toISOString();
       const sessionSeed: PersistedLearningSession = {
         groupId: activeLearningGroupId,
