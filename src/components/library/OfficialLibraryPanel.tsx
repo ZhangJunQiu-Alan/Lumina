@@ -1,14 +1,10 @@
-import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   AlertCircle,
-  AlertTriangle,
   ArrowRight,
   BookOpen,
-  ListOrdered,
   Loader2,
-  Shuffle,
   GraduationCap,
   Award,
   Library,
@@ -16,50 +12,22 @@ import {
   Medal,
   Sparkles,
 } from 'lucide-react';
-import { apiFetch } from '../../lib/api';
-import { attemptBuffer } from '../../lib/attemptBuffer';
-import { resolveBrowserTimeZone } from '../../lib/homeApi';
+import { useNavigate } from 'react-router-dom';
 import {
-  createLearningGroupFromVocabularyEntries,
-  fetchVocabularyEntriesByWords,
-  persistEnrichedVocabularyEntries,
-  type PersistedVocabularyEntry,
-} from '../../lib/importFlow';
-import {
-  getCachedOfficialLearnedWords,
-  invalidateLibraryCache,
-  isLibraryCacheFresh,
-  refreshOfficialLearnedWords,
-} from '../../lib/libraryCache';
-import { fetchOfficialLearnedWords } from '../../lib/libraryApi';
-import { AI_CONTENT_FEATURES_ENABLED } from '../../lib/aiFeatures';
-import {
-  getOfficialNextBatch,
   type OfficialLibraryDefinition,
-  type OfficialStudyMode,
   resolveOfficialLibraryStartMode,
-  resolveOfficialStudyModeFromGroupName,
 } from '../../lib/officialLibrary';
-import { useAuth } from '../../contexts/AuthContext';
-import type { EnrichedWord, OfficialLibrarySummary, Word } from '../../types';
-import { normalizeWordKey } from '../../../shared/wordBatch';
+import type { OfficialLibrarySummary, Word } from '../../types';
 
-type Stage = 'idle' | 'preparing' | 'resuming' | 'error';
+type Stage = 'idle' | 'resuming' | 'error';
 
 interface OfficialLibraryPanelProps {
   definition: OfficialLibraryDefinition;
   summary: OfficialLibrarySummary;
-  existingGroupCount: number;
   onStartLearning: (groupId: string, words?: Word[]) => Promise<void> | void;
   onOpenDetail?: () => void | Promise<void>;
-  onLibraryMutated?: () => void | Promise<void>;
   showOpenDetailAction?: boolean;
 }
-
-const officialStudyModeLabel: Record<OfficialStudyMode, string> = {
-  sequential: '顺序',
-  shuffle: '随机',
-};
 
 const ICON_MAP: Record<string, any> = {
   BookOpen,
@@ -91,7 +59,7 @@ function CompletionProgressRing({
 
   return (
     <div
-      className="relative h-[132px] w-[132px] shrink-0"
+      className="relative h-[118px] w-[118px] shrink-0 sm:h-[124px] sm:w-[124px]"
       aria-label={`完成度 ${percentage}%，${completedMemoryWordCount} / ${totalWordCount} 词`}
     >
       <svg viewBox="0 0 132 132" className="h-full w-full -rotate-90">
@@ -130,212 +98,28 @@ function CompletionProgressRing({
   );
 }
 
-function SwitchOfficialModeDialog({
-  currentMode,
-  nextMode,
-  groupTitle,
-  isConfirming,
-  onCancel,
-  onConfirm,
-}: {
-  currentMode: OfficialStudyMode;
-  nextMode: OfficialStudyMode;
-  groupTitle: string;
-  isConfirming: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <>
-      <motion.button
-        type="button"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={isConfirming ? undefined : onCancel}
-        className="fixed inset-0 z-[60] bg-black/25 backdrop-blur-sm"
-      />
-      <motion.div
-        initial={{ opacity: 0, y: 18, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 12, scale: 0.98 }}
-        className="fixed inset-x-6 top-1/2 z-[70] mx-auto w-full max-w-xl -translate-y-1/2 rounded-[32px] border border-white/70 bg-white/90 p-7 shadow-[0_30px_80px_rgba(0,0,0,0.16)] backdrop-blur-2xl"
-      >
-        <div className="flex items-start gap-4">
-          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-apple-red/10 text-apple-red">
-            <AlertTriangle className="h-6 w-6" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">切换学习顺序</p>
-            <h3 className="mt-3 text-2xl font-black text-text-primary">切换前要放弃未完成的一组吗？</h3>
-            <p className="mt-3 text-sm leading-7 text-text-secondary">
-              当前是{officialStudyModeLabel[currentMode]}学习，切到{officialStudyModeLabel[nextMode]}后，
-              上一组未完成进度会被丢掉。已经实际学过的词会保留为模糊状态进入复习计划，没学过的词会回到官方词池。
-            </p>
-            <p className="mt-4 rounded-2xl bg-black/5 px-4 py-3 text-sm font-bold text-text-primary">
-              {groupTitle}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-7 flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isConfirming}
-            className="rounded-[22px] bg-black/5 px-5 py-3 text-sm font-bold text-text-secondary transition-colors hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            继续上一组
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={isConfirming}
-            className="inline-flex items-center gap-2 rounded-[22px] bg-apple-red px-5 py-3 text-sm font-black text-white shadow-[0_18px_34px_rgba(224,90,90,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:scale-100"
-          >
-            {isConfirming && <Loader2 className="h-4 w-4 animate-spin" />}
-            确认切换到{officialStudyModeLabel[nextMode]}
-          </button>
-        </div>
-      </motion.div>
-    </>
-  );
-}
-
 export function OfficialLibraryPanel({
   definition,
   summary,
-  existingGroupCount,
   onStartLearning,
   onOpenDetail,
-  onLibraryMutated,
   showOpenDetailAction = true,
 }: OfficialLibraryPanelProps) {
-  const { user } = useAuth();
+  const navigate = useNavigate();
   const [stage, setStage] = useState<Stage>('idle');
   const [errorMsg, setErrorMsg] = useState('');
-  const [mode, setMode] = useState<OfficialStudyMode>('sequential');
-  const [pendingSwitchMode, setPendingSwitchMode] = useState<OfficialStudyMode | null>(null);
-  const [isSwitchingMode, setIsSwitchingMode] = useState(false);
 
   const LibraryIcon = ICON_MAP[definition.icon || 'BookOpen'] || BookOpen;
 
   const startMode = resolveOfficialLibraryStartMode(summary);
   const actionDisabled = startMode === 'completed';
   const resumeActive = startMode === 'resume';
-  const activeResumeMode = summary.activeResumeCandidate
-    ? resolveOfficialStudyModeFromGroupName(definition.id, summary.activeResumeCandidate.groupTitle)
-    : null;
-
-  useEffect(() => {
-    if (!summary.activeResumeCandidate || !activeResumeMode) return;
-    setMode(activeResumeMode);
-  }, [activeResumeMode, summary.activeResumeCandidate?.groupId]);
 
   const ctaButtonLabel = actionDisabled
     ? '已完结'
     : resumeActive
       ? '继续学习'
-      : '开始学习';
-
-  const resolveLearnedWords = async (userId: string): Promise<Set<string>> => {
-    const cached = getCachedOfficialLearnedWords(userId, definition.id);
-    if (cached && isLibraryCacheFresh(cached)) {
-      return cached.data;
-    }
-    return refreshOfficialLearnedWords(userId, definition.id, () =>
-      fetchOfficialLearnedWords(userId, definition.id),
-    );
-  };
-
-  const startNextOfficialBatch = async (
-    selectedMode: OfficialStudyMode,
-    groupCountForNaming = existingGroupCount,
-  ) => {
-    if (!user) {
-      setErrorMsg('先登录，再添加官方词库。');
-      setStage('error');
-      return;
-    }
-
-    setErrorMsg('');
-    try {
-      setStage('preparing');
-
-      const learnedSet = await resolveLearnedWords(user.id);
-      const nextBatch = getOfficialNextBatch(
-        definition.id,
-        learnedSet,
-        selectedMode,
-        groupCountForNaming,
-        summary.progress,
-      );
-      if (!nextBatch) {
-        setStage('idle');
-        return;
-      }
-
-      const { existing, missing } = await fetchVocabularyEntriesByWords(nextBatch.words);
-      const existingByWord = new Map(
-        existing.map((entry) => [normalizeWordKey(entry.word), entry]),
-      );
-
-      let persistedEntries = existing;
-
-      if (missing.length > 0) {
-        if (!AI_CONTENT_FEATURES_ENABLED) {
-          throw new Error('这批官方词还没预置完成，暂时不能自动补齐。');
-        }
-
-        const res = await apiFetch('/api/vocab/enrich', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ words: missing, source: 'official_library' }),
-        });
-
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({ error: 'Unknown error' }));
-          throw new Error(err.error ?? `HTTP ${res.status}`);
-        }
-
-        const { data } = await res.json() as { data: EnrichedWord[] };
-        const persistedMissingEntries = await persistEnrichedVocabularyEntries(data, {
-          sourceType: 'system',
-        });
-        const missingByWord = new Map(
-          persistedMissingEntries.map((entry) => [normalizeWordKey(entry.word), entry]),
-        );
-
-        persistedEntries = nextBatch.words.map((word) => {
-          const normalizedWord = normalizeWordKey(word);
-          return existingByWord.get(normalizedWord) ?? missingByWord.get(normalizedWord);
-        }).filter((entry): entry is PersistedVocabularyEntry => Boolean(entry));
-
-        if (persistedEntries.length !== nextBatch.words.length) {
-          throw new Error('这批官方词暂时没整理完整，再试一次。');
-        }
-      }
-
-      const result = await createLearningGroupFromVocabularyEntries(user.id, persistedEntries, {
-        groupName: nextBatch.groupName,
-        groupSourceType: 'system',
-        libraryId: definition.id,
-      });
-
-      invalidateLibraryCache(user.id);
-
-      try {
-        await onLibraryMutated?.();
-      } catch {
-        // Stats refresh should never block the learning flow.
-      }
-
-      await onStartLearning(result.groupId, result.words);
-    } catch (error) {
-      setErrorMsg(error instanceof Error ? error.message : String(error));
-      setStage('error');
-    }
-  };
+      : '开始记忆';
 
   const handleStartOfficial = async () => {
     if (startMode === 'resume' && summary.activeResumeCandidate) {
@@ -351,65 +135,7 @@ export function OfficialLibraryPanel({
     }
 
     if (startMode === 'completed') return;
-    await startNextOfficialBatch(mode);
-  };
-
-  const handleModeOptionClick = (option: OfficialStudyMode) => {
-    if (actionDisabled || option === mode) return;
-
-    if (resumeActive && summary.activeResumeCandidate) {
-      setErrorMsg('');
-      setPendingSwitchMode(option);
-      return;
-    }
-
-    setMode(option);
-  };
-
-  const parseApiError = async (response: Response) => {
-    const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-    return (payload as { error?: string }).error ?? `HTTP ${response.status}`;
-  };
-
-  const handleConfirmSwitchMode = async () => {
-    if (!user || !summary.activeResumeCandidate || !pendingSwitchMode) return;
-
-    const selectedMode = pendingSwitchMode;
-    setIsSwitchingMode(true);
-    setErrorMsg('');
-
-    try {
-      await attemptBuffer.flush();
-      const response = await apiFetch(`/api/library/official/${definition.id}/discard-active`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          groupId: summary.activeResumeCandidate.groupId,
-          timeZone: resolveBrowserTimeZone(),
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(await parseApiError(response));
-      }
-
-      invalidateLibraryCache(user.id);
-
-      try {
-        await onLibraryMutated?.();
-      } catch {
-        // Stats refresh should never block the learning flow.
-      }
-
-      setPendingSwitchMode(null);
-      setMode(selectedMode);
-      await startNextOfficialBatch(selectedMode, Math.max(existingGroupCount - 1, 0));
-    } catch (error) {
-      setErrorMsg(error instanceof Error ? error.message : String(error));
-      setStage('error');
-    } finally {
-      setIsSwitchingMode(false);
-    }
+    navigate(`/app/home?officialLibraryId=${definition.id}`);
   };
 
   return (
@@ -420,11 +146,11 @@ export function OfficialLibraryPanel({
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -12 }}
-          className="relative w-full overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.84),rgba(240,246,255,0.72))] p-5 sm:p-7 jelly-shadow"
+          className="relative w-full overflow-hidden rounded-[30px] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.84),rgba(240,246,255,0.72))] p-5 sm:p-6 jelly-shadow"
         >
           <div className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-[linear-gradient(180deg,rgba(255,249,230,0.72),transparent)]" />
           <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-[linear-gradient(180deg,transparent,rgba(130,213,187,0.12))]" />
-          <div className="relative space-y-5 sm:space-y-6">
+          <div className="relative space-y-4 sm:space-y-5">
             <div className="flex items-center gap-3 sm:gap-4">
               <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[24px] bg-white text-apple-blue shadow-[0_14px_30px_rgba(25,200,185,0.10)] sm:h-16 sm:w-16">
                 <LibraryIcon className="h-6 w-6 sm:h-8 sm:w-8" />
@@ -434,67 +160,34 @@ export function OfficialLibraryPanel({
               </h3>
             </div>
 
-            <div className="flex items-center gap-2">
-              {showOpenDetailAction && onOpenDetail && (
-                <button
-                  type="button"
-                  onClick={() => { void onOpenDetail(); }}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/88 px-3 py-1.5 text-[11px] font-bold text-text-secondary shadow-[0_8px_20px_rgba(0,0,0,0.05)] transition-colors hover:text-text-primary sm:px-4 sm:py-2 sm:text-sm"
-                >
-                  查看词库
-                  <ArrowRight className="h-3 w-3 sm:h-4 sm:w-4" />
-                </button>
-              )}
-
-              <div
-                role="tablist"
-                aria-label="选择发放顺序"
-                className="inline-flex min-w-0 items-center gap-0.5 rounded-full bg-white/78 p-0.5 shadow-[0_8px_18px_rgba(0,0,0,0.05)] sm:p-1"
-              >
-                {(['sequential', 'shuffle'] as OfficialStudyMode[]).map((option) => {
-                  const active = mode === option;
-                  const label = option === 'shuffle' ? '随机' : '顺序';
-                  const Icon = option === 'shuffle' ? Shuffle : ListOrdered;
-                  const hint = option === 'shuffle' ? '从没学过的词里抽下一批' : '按官方顺序取下一批';
-                  return (
-                    <button
-                      key={option}
-                      type="button"
-                      role="tab"
-                      aria-selected={active}
-                      title={hint}
-                      onClick={() => handleModeOptionClick(option)}
-                      disabled={actionDisabled}
-                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-colors sm:px-4 sm:text-sm ${
-                        active
-                          ? 'bg-apple-blue text-white shadow-[0_8px_16px_rgba(25,200,185,0.24)]'
-                          : 'text-text-secondary hover:text-text-primary'
-                      } ${actionDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
-                    >
-                      <Icon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between gap-4 pt-1">
+            <div className="flex items-center justify-between gap-4 pt-0">
               <CompletionProgressRing
                 completedMemoryWordCount={summary.completedMemoryWordCount}
                 totalWordCount={summary.totalWordCount}
               />
-              <button
-                type="button"
-                onClick={() => {
-                  void handleStartOfficial();
-                }}
-                disabled={actionDisabled}
-                className="inline-flex h-14 min-w-[118px] flex-1 items-center justify-center gap-2 rounded-[18px] bg-apple-blue px-4 text-sm font-black text-white shadow-[0_16px_34px_rgba(25,200,185,0.25)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 sm:h-16 sm:min-w-[146px] sm:flex-none sm:rounded-[22px] sm:text-base"
-              >
-                {ctaButtonLabel}
-                {!actionDisabled && <ArrowRight className="h-4 w-4" />}
-              </button>
+              <div className="flex min-w-[126px] flex-1 flex-col items-stretch gap-3 sm:min-w-[150px] sm:flex-none">
+                {showOpenDetailAction && onOpenDetail && (
+                  <button
+                    type="button"
+                    onClick={() => { void onOpenDetail(); }}
+                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-white/88 px-3 text-[12px] font-bold text-text-secondary shadow-[0_8px_20px_rgba(0,0,0,0.05)] transition-colors hover:text-text-primary sm:h-11 sm:px-4 sm:text-sm"
+                  >
+                    查看词库
+                    <ArrowRight className="h-3 w-3 sm:h-4 sm:w-4" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleStartOfficial();
+                  }}
+                  disabled={actionDisabled}
+                  className="inline-flex h-14 items-center justify-center gap-2 rounded-[18px] bg-apple-blue px-4 text-sm font-black text-white shadow-[0_16px_34px_rgba(25,200,185,0.25)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 sm:h-16 sm:rounded-[22px] sm:text-base"
+                >
+                  {ctaButtonLabel}
+                  {!actionDisabled && <ArrowRight className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
 
             {stage === 'error' && (
@@ -507,24 +200,10 @@ export function OfficialLibraryPanel({
             )}
           </div>
 
-          {pendingSwitchMode && summary.activeResumeCandidate && typeof document !== 'undefined' && createPortal(
-            <SwitchOfficialModeDialog
-              currentMode={activeResumeMode ?? mode}
-              nextMode={pendingSwitchMode}
-              groupTitle={summary.activeResumeCandidate.groupTitle}
-              isConfirming={isSwitchingMode}
-              onCancel={() => {
-                if (isSwitchingMode) return;
-                setPendingSwitchMode(null);
-              }}
-              onConfirm={() => { void handleConfirmSwitchMode(); }}
-            />,
-            document.body,
-          )}
         </motion.div>
       )}
 
-      {(stage === 'preparing' || stage === 'resuming') && (
+      {stage === 'resuming' && (
         <motion.div
           key={`official-${definition.id}-${stage}`}
           initial={{ opacity: 0, y: 12 }}
@@ -536,12 +215,10 @@ export function OfficialLibraryPanel({
             <Loader2 className="h-10 w-10 animate-spin text-apple-blue" />
             <div>
               <p className="text-xl font-black text-text-primary">
-                {stage === 'resuming' ? '正在打开上次那一组…' : '这批官方词正在整理中…'}
+                正在打开上次那一组…
               </p>
               <p className="mt-1 text-sm text-text-secondary">
-                {stage === 'resuming'
-                  ? '会直接回到上次那一轮、那个词位。'
-                  : '先检查已有词条，缺的再补齐；准备好就直接开始。'}
+                会直接回到上次那一轮、那个词位。
               </p>
             </div>
           </div>

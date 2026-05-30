@@ -1610,6 +1610,17 @@ select:focus-visible {
   scrollbar-width: thin;
 }
 
+.learning-card-scrollarea {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.learning-card-scrollarea::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 .prose,
 .prose-serif {
   font-family: var(--font-sans);

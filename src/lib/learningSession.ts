@@ -62,6 +62,22 @@ export function normalizeSessionPassedQueueIndices(value: unknown, queueLength: 
   return [...indices].sort((left, right) => left - right);
 }
 
+export function normalizeSessionRound1ConfirmedWordIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const entry of value) {
+    if (typeof entry !== 'string') continue;
+    const trimmed = entry.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+
+  return result;
+}
+
 export function clampSessionIndex(currentIndex: number, queueLength: number) {
   if (queueLength <= 0) return 0;
   if (!Number.isFinite(currentIndex)) return 0;
@@ -73,6 +89,12 @@ export function rebuildSessionQueue(words: Word[], queueWordIds: string[]) {
   return queueWordIds
     .map((wordId) => wordMap.get(wordId))
     .filter((word): word is Word => Boolean(word));
+}
+
+export function filterMasteredSessionWords(words: Word[], masteredWordIds: Iterable<string>) {
+  const masteredIds = new Set(masteredWordIds);
+  if (masteredIds.size === 0) return words;
+  return words.filter((word) => !masteredIds.has(word.id));
 }
 
 export function normalizePersistedLearningSession(
@@ -92,6 +114,8 @@ export function normalizePersistedLearningSession(
       effectiveQueue.length,
       currentIndex,
     ),
+    round1ConfirmedWordIds: normalizeSessionRound1ConfirmedWordIds(session.round1ConfirmedWordIds)
+      .filter((wordId) => words.some((word) => word.id === wordId)),
   };
 }
 
@@ -110,6 +134,7 @@ export function createInitialLearningSession(
     currentIndex: 0,
     queueWordIds: words.map((word) => word.id),
     passedQueueIndices: [],
+    round1ConfirmedWordIds: [],
     lastActiveAt: new Date().toISOString(),
     groupCompleted: options.groupCompleted ?? false,
     completedAt: options.completedAt ?? null,

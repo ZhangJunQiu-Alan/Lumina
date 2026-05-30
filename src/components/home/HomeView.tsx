@@ -1,20 +1,22 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Icon as IslandIcon, type IconName } from 'animal-island-ui';
 import {
   BookOpen,
   CheckCircle2,
+  ChevronDown,
   Sparkles,
   Zap,
   Shield,
   type LucideIcon,
 } from 'lucide-react';
-import type { OrbitDay, OrbitDayStatus, UserStats } from '../../types';
+import type { OfficialLibraryId, OfficialStudyMode, OrbitDay, OrbitDayStatus, UserStats } from '../../types';
 import { LuminaLogo } from '../brand/LuminaLogo';
 
 interface HomeViewProps {
   stats: UserStats;
   onSelectOrbitDate: (date: string) => void;
-  onStart: () => void;
+  onStart: (selection?: { libraryId?: OfficialLibraryId | null; mode?: OfficialStudyMode | null }) => void;
   isLoading?: boolean;
 }
 
@@ -221,10 +223,166 @@ function RoutineStepRow({
   );
 }
 
+interface RoutineDropdownOption<T extends string> {
+  value: T;
+  label: string;
+}
+
+function RoutineDropdown<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  disabled = false,
+  className = '',
+}: {
+  label: string;
+  value: T;
+  options: RoutineDropdownOption<T>[];
+  onChange: (value: T) => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const selectedOption = options.find((option) => option.value === value) ?? options[0] ?? null;
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    return () => window.removeEventListener('pointerdown', handlePointerDown);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (disabled) {
+      setIsOpen(false);
+    }
+  }, [disabled]);
+
+  return (
+    <div ref={rootRef} className={cx('relative min-w-0', className)}>
+      <span className="sr-only">{label}</span>
+      <button
+        type="button"
+        onClick={() => setIsOpen((current) => !current)}
+        disabled={disabled || options.length === 0}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        className={cx(
+          'group flex h-11 w-full items-center justify-between gap-2 rounded-[17px] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,250,238,0.88))] px-4 text-left text-sm font-black text-[#5b4932] shadow-[0_10px_24px_rgba(90,70,42,0.10),inset_0_-2px_0_rgba(149,117,68,0.08)] outline-none transition-all hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_14px_30px_rgba(90,70,42,0.13),inset_0_-2px_0_rgba(149,117,68,0.08)] focus-visible:ring-4 focus-visible:ring-[#f1c45d]/25 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 sm:h-12',
+          isOpen && 'border-[#e2c982] ring-4 ring-[#f1c45d]/18',
+        )}
+      >
+        <span className="min-w-0 truncate">{selectedOption?.label ?? label}</span>
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#f6edda] text-[#9b7a45] transition-transform group-hover:bg-[#f1e0bb]">
+          <ChevronDown className={cx('h-4 w-4 transition-transform duration-200', isOpen && 'rotate-180')} />
+        </span>
+      </button>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0, y: -4, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -4, scale: 0.98 }}
+          transition={{ duration: 0.14 }}
+          className="absolute left-0 right-0 top-[calc(100%+0.45rem)] z-30 overflow-hidden rounded-[18px] border border-white/85 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,250,239,0.96))] p-1.5 text-left shadow-[0_18px_40px_rgba(72,55,29,0.18)] backdrop-blur-xl"
+          role="listbox"
+        >
+          {options.map((option) => {
+            const isSelected = option.value === selectedOption?.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                onClick={() => {
+                  onChange(option.value);
+                  setIsOpen(false);
+                }}
+                className={cx(
+                  'flex h-10 w-full items-center justify-between gap-3 rounded-[13px] px-3 text-sm font-black text-[#5b4932] transition-colors hover:bg-[#fff2cf] focus-visible:bg-[#fff2cf] focus-visible:outline-none',
+                  isSelected && 'bg-[#fff0c2] text-[#2f261d]',
+                )}
+              >
+                <span className="min-w-0 truncate">{option.label}</span>
+                {isSelected && <CheckCircle2 className="h-4 w-4 shrink-0 text-[#cf8922]" />}
+              </button>
+            );
+          })}
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
 // --- Main View ---
 
 export const HomeView = ({ stats, onSelectOrbitDate, onStart, isLoading = false }: HomeViewProps) => {
   const routineCard = stats.routineCard;
+  const officialOptions = routineCard.officialLibraryOptions ?? [];
+  const shouldShowOfficialControls = officialOptions.length > 0 || routineCard.ctaMode === 'start_learning';
+  const defaultLibraryId = routineCard.selectedOfficialLibraryId ?? officialOptions[0]?.libraryId ?? '';
+  const libraryDropdownOptions = useMemo(
+    () => officialOptions.map((option) => ({
+      value: option.libraryId,
+      label: option.title,
+    })),
+    [officialOptions],
+  );
+  const modeDropdownOptions = useMemo<RoutineDropdownOption<OfficialStudyMode>[]>(
+    () => [
+      { value: 'sequential', label: '顺序' },
+      { value: 'shuffle', label: '乱序' },
+    ],
+    [],
+  );
+  const [selectedLibraryId, setSelectedLibraryId] = useState<string>(defaultLibraryId);
+  const selectedOfficialOption = useMemo(
+    () => officialOptions.find((option) => option.libraryId === selectedLibraryId) ?? officialOptions[0] ?? null,
+    [officialOptions, selectedLibraryId],
+  );
+  const [selectedMode, setSelectedMode] = useState<OfficialStudyMode>(
+    routineCard.lastUsedOfficialMode ?? 'sequential',
+  );
+  const hasUserSelectedModeRef = useRef(false);
+
+  useEffect(() => {
+    if (officialOptions.length === 0) {
+      setSelectedLibraryId('');
+      return;
+    }
+
+    if (!officialOptions.some((option) => option.libraryId === selectedLibraryId)) {
+      setSelectedLibraryId(defaultLibraryId);
+    }
+  }, [defaultLibraryId, officialOptions, selectedLibraryId]);
+
+  useEffect(() => {
+    if (!hasUserSelectedModeRef.current && routineCard.lastUsedOfficialMode) {
+      setSelectedMode(routineCard.lastUsedOfficialMode);
+    }
+  }, [routineCard.lastUsedOfficialMode]);
+
+  const handleModeChange = (mode: OfficialStudyMode) => {
+    hasUserSelectedModeRef.current = true;
+    setSelectedMode(mode);
+  };
+
+  const handleStart = () => {
+    onStart(selectedOfficialOption
+      ? {
+          libraryId: selectedOfficialOption.libraryId,
+          mode: selectedMode,
+        }
+      : undefined);
+  };
 
   return (
     <motion.div
@@ -355,9 +513,43 @@ export const HomeView = ({ stats, onSelectOrbitDate, onStart, isLoading = false 
               <h2 className="home-routine-title text-[28px] font-black leading-[1.1] tracking-tight text-[#2f261d] prose-serif sm:text-[34px] md:text-[38px] xl:text-[40px]">
                 {routineCard.title}
               </h2>
-              <div className="home-routine-subtitle mt-2 text-[12px] font-bold text-[#cf8922] sm:mt-3 xl:mt-4 xl:text-[14px]">
-                {routineCard.subtitle}
-              </div>
+              {shouldShowOfficialControls ? (
+                <div className="mt-3 flex flex-col items-stretch justify-center gap-2.5 sm:flex-row xl:mt-4">
+                  {officialOptions.length > 0 ? (
+                    <RoutineDropdown
+                      label="选择已学习官方词库"
+                      value={(selectedOfficialOption?.libraryId ?? '') as OfficialLibraryId}
+                      options={libraryDropdownOptions}
+                      onChange={setSelectedLibraryId}
+                      className="flex-1 sm:min-w-[15rem]"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => onStart()}
+                      className="relative flex h-11 min-w-0 flex-1 items-center rounded-[17px] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,250,238,0.88))] px-4 pr-10 text-left text-sm font-black text-[#5b4932] shadow-[0_10px_24px_rgba(90,70,42,0.10),inset_0_-2px_0_rgba(149,117,68,0.08)] outline-none transition-all hover:-translate-y-0.5 hover:bg-white focus-visible:ring-4 focus-visible:ring-[#f1c45d]/25 sm:h-12 sm:min-w-[15rem]"
+                      aria-haspopup="listbox"
+                    >
+                      <span className="min-w-0 truncate">去官方词库挑选并加入</span>
+                      <span className="absolute right-3 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-[#f6edda] text-[#9b7a45]">
+                        <ChevronDown className="h-4 w-4" />
+                      </span>
+                    </button>
+                  )}
+                  <RoutineDropdown
+                    label="选择发放顺序"
+                    value={selectedMode}
+                    options={modeDropdownOptions}
+                    onChange={handleModeChange}
+                    disabled={officialOptions.length === 0}
+                    className="sm:w-[9.5rem]"
+                  />
+                </div>
+              ) : (
+                <div className="home-routine-subtitle mt-2 text-[12px] font-bold text-[#cf8922] sm:mt-3 xl:mt-4 xl:text-[14px]">
+                  {routineCard.subtitle}
+                </div>
+              )}
             </div>
           </div>
 
@@ -372,7 +564,7 @@ export const HomeView = ({ stats, onSelectOrbitDate, onStart, isLoading = false 
           </div>
 
           <button
-            onClick={onStart}
+            onClick={handleStart}
             disabled={isLoading}
             className="home-cta relative mt-5 flex w-full items-center justify-center overflow-hidden rounded-[26px] border-2 border-[#ffcc00] bg-[#ffcc00] py-3.5 text-[16px] font-black text-[#3d2f1c] shadow-[0_6px_0_0_#e0b800] transition-all hover:brightness-105 active:translate-y-1 active:shadow-[0_2px_0_0_#e0b800] disabled:opacity-50 sm:py-4 sm:text-[18px] xl:mt-10 xl:rounded-[30px] xl:py-6 xl:text-[22px]"
           >

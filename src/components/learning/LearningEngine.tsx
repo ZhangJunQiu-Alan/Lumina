@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, ChevronLeft, ChevronRight, Loader2, Volume2, XCircle } from 'lucide-react';
+import { BookMarked, CheckCircle2, ChevronLeft, ChevronRight, Flag, Loader2, MoreHorizontal, Volume2, X, XCircle } from 'lucide-react';
 import { 
   getWordPhonetic,
   LearningRoundType, 
@@ -11,6 +11,7 @@ import {
   Word 
 } from '../../types';
 import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
+import { useSavedWords } from '../../contexts/SavedWordsContext';
 import { useWordPopover } from '../../contexts/WordPopoverContext';
 import { cancelBrowserSpeech, isBrowserSpeechSupported, speakTextViaBrowser } from '../../lib/browserSpeech';
 import { fetchExampleAudioUrl } from '../../lib/exampleAudio';
@@ -29,9 +30,18 @@ import { ClickableText, type WordClickHandler } from '../shared/ClickableText';
 import { buildClozePrompt, type ClozePrompt } from '../../lib/cloze';
 import { Round2ClozePrompt } from './Round2ClozePrompt';
 import { attemptBuffer } from '../../lib/attemptBuffer';
-import { markReviewWordUnknown } from '../../lib/reviewApi';
+import { markReviewWordMastered, markReviewWordUnknown } from '../../lib/reviewApi';
+import { reportVocabularyIssue, type VocabularyIssueType } from '../../lib/vocabReportApi';
 
 // --- Sub-components for Round 1 ---
+
+export interface LearningSessionSnapshot {
+  round: LearningRoundType;
+  currentIndex: number;
+  queueWordIds: string[];
+  passedQueueIndices: number[];
+  round1ConfirmedWordIds: string[];
+}
 
 type Round1LookupProps = {
   targetWords?: ReadonlySet<string>;
@@ -397,24 +407,28 @@ const InputSessionShell = ({
   main: React.ReactNode;
 }) => (
   <div className="input-session-shell mx-auto flex h-full min-h-0 w-full max-w-[1400px] flex-col gap-3 sm:gap-4">
-    <header className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[3.5rem_minmax(0,1fr)_3.5rem] sm:gap-3">
-      <div className="flex min-w-0 items-center gap-2">
+    <header className="grid shrink-0 grid-cols-[minmax(0,1fr)] items-center sm:grid-cols-[3.5rem_minmax(0,1fr)_3.5rem] sm:gap-3">
+      <div className="hidden sm:block" />
+      <div className="flex min-w-0 items-center gap-3">
         {sessionLeadingAction && (
           <div className="shrink-0 lg:hidden">
             {sessionLeadingAction}
           </div>
         )}
-        <RoundIndicator type={type} className="min-w-0" showConnector={false} />
+        <RoundIndicator type={type} className="min-w-0 shrink-0" showConnector={false} />
+        <SessionProgress
+          currentIndex={currentIndex}
+          queueLength={queueLength}
+          type={type}
+          className="min-w-0 flex-1"
+        />
+        {sessionActions && (
+          <div className="flex h-6 shrink-0 items-center justify-end">
+            {sessionActions}
+          </div>
+        )}
       </div>
-      <SessionProgress
-        currentIndex={currentIndex}
-        queueLength={queueLength}
-        type={type}
-        className="min-w-0 justify-self-stretch"
-      />
-      <div className="flex shrink-0 items-center justify-end">
-        {sessionActions}
-      </div>
+      <div className="hidden sm:block" />
     </header>
 
     <div className="input-session-shell__body min-w-0 flex-1 min-h-0">
@@ -453,6 +467,20 @@ type PlaybackTarget =
   | { kind: 'pronunciation'; locale: PronunciationLocale }
   | { kind: 'example'; key: string };
 
+type SessionActionKind = 'mastered' | 'save' | 'report';
+
+type ActionFeedback = {
+  tone: 'success' | 'error';
+  text: string;
+};
+
+const VOCABULARY_ISSUE_OPTIONS: Array<{ type: VocabularyIssueType; label: string }> = [
+  { type: 'definition', label: '释义问题' },
+  { type: 'example', label: '例句/拆解问题' },
+  { type: 'pronunciation', label: '发音/音标问题' },
+  { type: 'other', label: '其他' },
+];
+
 // --- Main LearningEngine ---
 
 const stripDiacritics = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '');
@@ -472,23 +500,21 @@ export const LearningEngine = ({
   initialSession,
   onComplete,
   onSessionChange,
+  onWordMastered,
   sessionLeadingAction,
   sessionActions,
 }: {
   type: RoundType;
   words: Word[];
   initialSession?: PersistedLearningSession | null;
-  onComplete: () => void | Promise<void>;
-  onSessionChange?: (session: {
-    round: LearningRoundType;
-    currentIndex: number;
-    queueWordIds: string[];
-    passedQueueIndices: number[];
-  }) => void;
+  onComplete: (session?: LearningSessionSnapshot) => void | Promise<void>;
+  onSessionChange?: (session: LearningSessionSnapshot) => void;
+  onWordMastered?: (wordId: string) => void;
   sessionLeadingAction?: React.ReactNode;
   sessionActions?: React.ReactNode;
 }) => {
   const { preferences } = useLearningPreferences();
+  const { saveWord } = useSavedWords();
   const { openPopover } = useWordPopover();
   const initialEngineState = useMemo(() => {
     const hasMatchingSession = initialSession && initialSession.round === type;
@@ -521,8 +547,22 @@ export const LearningEngine = ({
     for (const word of queue.slice(0, currentIndex)) {
       if (!pendingIds.has(word.id)) initialCompletedIds.add(word.id);
     }
+    const initialRound1ConfirmedIds = type === 'round1'
+      ? new Set(
+          (initialSession?.round1ConfirmedWordIds?.length
+            ? initialSession.round1ConfirmedWordIds
+            : [...initialCompletedIds]
+          ).filter((wordId) => wordMap.has(wordId)),
+        )
+      : new Set<string>();
 
-    return { queue, currentIndex, initialCompletedIds, initialPassedQueueIndices };
+    return {
+      queue,
+      currentIndex,
+      initialCompletedIds,
+      initialPassedQueueIndices,
+      initialRound1ConfirmedIds,
+    };
   }, [initialSession, type, words]);
 
   const [queue, setQueue] = useState<Word[]>(initialEngineState.queue);
@@ -540,6 +580,9 @@ export const LearningEngine = ({
   const [passedQueueIndices, setPassedQueueIndices] = useState<Set<number>>(
     () => new Set(initialEngineState.initialPassedQueueIndices),
   );
+  const [round1ConfirmedWordIds, setRound1ConfirmedWordIds] = useState<Set<string>>(
+    () => new Set(initialEngineState.initialRound1ConfirmedIds),
+  );
 
   // 计算进度：分母固定为初始单词数，分子为已正确完成的单词数 + 1（代表当前正在进行的第几个）
   const initialUniqueCount = words.length;
@@ -552,10 +595,27 @@ export const LearningEngine = ({
     () => [...passedQueueIndices].sort((left, right) => left - right),
     [passedQueueIndices],
   );
+  const round1ConfirmedWordIdsArray = useMemo(
+    () => words
+      .map((word) => word.id)
+      .filter((wordId) => round1ConfirmedWordIds.has(wordId)),
+    [round1ConfirmedWordIds, words],
+  );
 
   const [audioLocale, setAudioLocale] = useState<PronunciationLocale>(preferences.defaultPronunciationLocale);
   const [playbackTarget, setPlaybackTarget] = useState<PlaybackTarget | null>(null);
+  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+  const [activeActionKind, setActiveActionKind] = useState<SessionActionKind | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
+  const [isReportSheetOpen, setIsReportSheetOpen] = useState(false);
+  const [reportTargetWord, setReportTargetWord] = useState<Word | null>(null);
+  const [reportIssueType, setReportIssueType] = useState<VocabularyIssueType>('definition');
+  const [reportNote, setReportNote] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const mobileActionMenuRef = useRef<HTMLDivElement | null>(null);
+  const desktopActionMenuRef = useRef<HTMLDivElement | null>(null);
+  const round3ActionMenuRef = useRef<HTMLDivElement | null>(null);
+  const actionFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const promptStartedAtRef = useRef<number>(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const answerRevealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -653,8 +713,16 @@ export const LearningEngine = ({
     setShowAnswer(false);
     setIsSubmittingAttempt(false);
     setSubmitError('');
+    setIsActionMenuOpen(false);
+    setIsReportSheetOpen(false);
+    setActionFeedback(null);
+    setActiveActionKind(null);
+    setReportTargetWord(null);
+    setReportIssueType('definition');
+    setReportNote('');
     setCompletedWordIds(new Set(initialEngineState.initialCompletedIds));
     setPassedQueueIndices(new Set(initialEngineState.initialPassedQueueIndices));
+    setRound1ConfirmedWordIds(new Set(initialEngineState.initialRound1ConfirmedIds));
     queueRef.current = initialEngineState.queue;
     currentIndexRef.current = initialEngineState.currentIndex;
   }, [clearAnswerRevealTimeout, initialEngineState, stopPlayback, type, words]);
@@ -663,6 +731,12 @@ export const LearningEngine = ({
     clearAnswerRevealTimeout();
     stopPlayback();
   }, [clearAnswerRevealTimeout, stopPlayback]);
+
+  useEffect(() => () => {
+    if (actionFeedbackTimeoutRef.current !== null) {
+      clearTimeout(actionFeedbackTimeoutRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     if (viewIndex === currentIndex) {
@@ -947,15 +1021,21 @@ export const LearningEngine = ({
     }
   }, [currentIndex, passedQueueIndices, queue.length, type, viewIndex]);
 
+  const buildSessionSnapshot = useCallback((
+    overrides: Partial<LearningSessionSnapshot> = {},
+  ): LearningSessionSnapshot => ({
+    round: type as LearningRoundType,
+    currentIndex,
+    queueWordIds: queue.map((word) => word.id),
+    passedQueueIndices: passedQueueIndicesArray,
+    round1ConfirmedWordIds: round1ConfirmedWordIdsArray,
+    ...overrides,
+  }), [currentIndex, passedQueueIndicesArray, queue, round1ConfirmedWordIdsArray, type]);
+
   useEffect(() => {
     if (!onSessionChange || type === 'review') return;
-    onSessionChange({
-      round: type,
-      currentIndex,
-      queueWordIds: queue.map((word) => word.id),
-      passedQueueIndices: passedQueueIndicesArray,
-    });
-  }, [currentIndex, onSessionChange, passedQueueIndicesArray, queue, type]);
+    onSessionChange(buildSessionSnapshot());
+  }, [buildSessionSnapshot, onSessionChange, type]);
 
   const markCurrentQueueIndexPassed = useCallback(() => {
     const passedIndex = currentIndexRef.current;
@@ -981,11 +1061,19 @@ export const LearningEngine = ({
       setShowAnswer(false);
       setSubmitError('');
     } else {
+      if (type === 'round1') {
+        setSubmitError('已到达当前预载末尾。可以点击“结束新词”进入 Round 2，或稍等下一批新词预载。');
+        return;
+      }
+
       // 学习一轮结束，强制触发一次同步
       void attemptBuffer.flush();
-      void onComplete();
+      void onComplete(type === 'review' ? undefined : buildSessionSnapshot({
+        currentIndex: currentIndexRef.current,
+        queueWordIds: queueRef.current.map((word) => word.id),
+      }));
     }
-  }, [clearAnswerRevealTimeout, onComplete, stopPlayback]);
+  }, [buildSessionSnapshot, clearAnswerRevealTimeout, onComplete, stopPlayback, type]);
 
   const navigableQueueIndices = useMemo(() => {
     if (type === 'article' || !currentWord) return [];
@@ -1019,6 +1107,247 @@ export const LearningEngine = ({
     setSubmitError('');
     setViewIndex(nextViewIndex);
   }, [isCardNavigationLocked, navigableQueueIndices, stopPlayback, viewIndex]);
+
+  const showSessionActionFeedback = useCallback((feedback: ActionFeedback) => {
+    if (actionFeedbackTimeoutRef.current !== null) {
+      clearTimeout(actionFeedbackTimeoutRef.current);
+    }
+
+    setActionFeedback(feedback);
+    actionFeedbackTimeoutRef.current = setTimeout(() => {
+      setActionFeedback(null);
+      actionFeedbackTimeoutRef.current = null;
+    }, 2400);
+  }, []);
+
+  useEffect(() => {
+    if (!isActionMenuOpen) return undefined;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      const isInsideActionMenu = [
+        mobileActionMenuRef.current,
+        desktopActionMenuRef.current,
+        round3ActionMenuRef.current,
+      ].some((node) => node?.contains(target));
+      if (!target || isInsideActionMenu) return;
+      setIsActionMenuOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsActionMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isActionMenuOpen]);
+
+  const removeWordFromCurrentSession = useCallback((wordId: string) => {
+    clearAnswerRevealTimeout();
+    stopPlayback();
+    onWordMastered?.(wordId);
+
+    const previousQueue = queueRef.current;
+    const filteredQueue = previousQueue.filter((word) => word.id !== wordId);
+    if (filteredQueue.length === previousQueue.length) return;
+
+    setCompletedWordIds((prev) => {
+      const next = new Set(prev);
+      next.add(wordId);
+      return next;
+    });
+    setRound1ConfirmedWordIds((prev) => {
+      if (!prev.has(wordId)) return prev;
+      const next = new Set(prev);
+      next.delete(wordId);
+      return next;
+    });
+
+    const indexMap = new Map<number, number>();
+    previousQueue.forEach((word, index) => {
+      if (word.id !== wordId) {
+        indexMap.set(index, indexMap.size);
+      }
+    });
+
+    queueRef.current = filteredQueue;
+    setQueue(filteredQueue);
+
+    if (filteredQueue.length === 0) {
+      currentIndexRef.current = 0;
+      setCurrentIndex(0);
+      setViewIndex(0);
+      setInputValue('');
+      setIsWrong(false);
+      setLastWrongInput(null);
+      setShowAnswer(false);
+      setSubmitError('');
+      setPassedQueueIndices(new Set());
+      void attemptBuffer.flush();
+      void onComplete(type === 'review' ? undefined : buildSessionSnapshot({
+        currentIndex: 0,
+        queueWordIds: [],
+        passedQueueIndices: [],
+        round1ConfirmedWordIds: round1ConfirmedWordIdsArray.filter((id) => id !== wordId),
+      }));
+      return;
+    }
+
+    const currentQueueIndex = currentIndexRef.current;
+    const removedBeforeCurrent = previousQueue
+      .slice(0, currentQueueIndex)
+      .filter((word) => word.id === wordId)
+      .length;
+    const nextCurrentIndex = Math.min(
+      Math.max(currentQueueIndex - removedBeforeCurrent, 0),
+      filteredQueue.length - 1,
+    );
+    const nextViewIndex = indexMap.get(viewIndex) ?? nextCurrentIndex;
+
+    currentIndexRef.current = nextCurrentIndex;
+    setCurrentIndex(nextCurrentIndex);
+    setViewIndex(nextViewIndex);
+    setInputValue('');
+    setIsWrong(false);
+    setLastWrongInput(null);
+    setShowAnswer(false);
+    setSubmitError('');
+    setPassedQueueIndices((prev) => {
+      const next = new Set<number>();
+      for (const index of prev) {
+        const mappedIndex = indexMap.get(index);
+        if (typeof mappedIndex === 'number' && mappedIndex < nextCurrentIndex) {
+          next.add(mappedIndex);
+        }
+      }
+      return next;
+    });
+  }, [
+    buildSessionSnapshot,
+    clearAnswerRevealTimeout,
+    onComplete,
+    onWordMastered,
+    round1ConfirmedWordIdsArray,
+    stopPlayback,
+    type,
+    viewIndex,
+  ]);
+
+  const handleMarkViewedWordMastered = useCallback(async () => {
+    if (activeActionKind || !viewedWord) return;
+
+    setIsActionMenuOpen(false);
+    setActiveActionKind('mastered');
+    setSubmitError('');
+
+    try {
+      await markReviewWordMastered({
+        vocabularyItemId: viewedWord.id,
+        learningGroupId: initialSession?.groupId ?? null,
+      });
+      removeWordFromCurrentSession(viewedWord.id);
+      showSessionActionFeedback({ tone: 'success', text: `已掌握 ${viewedWord.word}` });
+    } catch (error) {
+      showSessionActionFeedback({
+        tone: 'error',
+        text: error instanceof Error ? error.message : '标记已掌握失败，请稍后再试。',
+      });
+    } finally {
+      setActiveActionKind(null);
+    }
+  }, [
+    activeActionKind,
+    initialSession?.groupId,
+    removeWordFromCurrentSession,
+    showSessionActionFeedback,
+    viewedWord,
+  ]);
+
+  const handleSaveViewedWord = useCallback(async () => {
+    if (activeActionKind || !viewedWord) return;
+
+    setIsActionMenuOpen(false);
+    setActiveActionKind('save');
+    setSubmitError('');
+
+    try {
+      const result = await saveWord(viewedWord.id, 'manual');
+      if (result.saved === false || result.skippedReason === 'non_new_state') {
+        showSessionActionFeedback({
+          tone: 'error',
+          text: '这个词已有学习进度，不重复加入个人词库。',
+        });
+        return;
+      }
+
+      showSessionActionFeedback({
+        tone: 'success',
+        text: result.inserted === false ? '已经在个人词库里' : `已加入个人词库 ${viewedWord.word}`,
+      });
+    } catch (error) {
+      showSessionActionFeedback({
+        tone: 'error',
+        text: error instanceof Error ? error.message : '加入个人词库失败，请稍后再试。',
+      });
+    } finally {
+      setActiveActionKind(null);
+    }
+  }, [activeActionKind, saveWord, showSessionActionFeedback, viewedWord]);
+
+  const handleOpenReportSheet = useCallback(() => {
+    if (!viewedWord) return;
+    setIsActionMenuOpen(false);
+    setReportTargetWord(viewedWord);
+    setReportIssueType('definition');
+    setReportNote('');
+    setIsReportSheetOpen(true);
+  }, [viewedWord]);
+
+  const handleSubmitReport = useCallback(async () => {
+    const targetWord = reportTargetWord ?? viewedWord;
+    if (activeActionKind || !targetWord) return;
+
+    setActiveActionKind('report');
+    try {
+      await reportVocabularyIssue({
+        vocabularyItemId: targetWord.id,
+        wordSnapshot: targetWord.word,
+        learningGroupId: initialSession?.groupId ?? null,
+        sessionRound: type,
+        issueType: reportIssueType,
+        note: reportNote,
+        routePath: typeof window === 'undefined'
+          ? null
+          : `${window.location.pathname}${window.location.search}${window.location.hash}`,
+        userAgent: typeof navigator === 'undefined' ? null : navigator.userAgent,
+      });
+      setIsReportSheetOpen(false);
+      setReportTargetWord(null);
+      setReportNote('');
+      showSessionActionFeedback({ tone: 'success', text: '已收到反馈' });
+    } catch (error) {
+      showSessionActionFeedback({
+        tone: 'error',
+        text: error instanceof Error ? error.message : '报告问题失败，请稍后再试。',
+      });
+    } finally {
+      setActiveActionKind(null);
+    }
+  }, [
+    activeActionKind,
+    initialSession?.groupId,
+    reportIssueType,
+    reportNote,
+    reportTargetWord,
+    showSessionActionFeedback,
+    type,
+    viewedWord,
+  ]);
 
   const swipeStartRef = useRef<{ x: number; y: number; valid: boolean } | null>(null);
   const handleCardTouchStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
@@ -1147,6 +1476,14 @@ export const LearningEngine = ({
         next.add(currentWord.id);
         return next;
       });
+      if (type === 'round1') {
+        setRound1ConfirmedWordIds((prev) => {
+          if (prev.has(currentWord.id)) return prev;
+          const next = new Set(prev);
+          next.add(currentWord.id);
+          return next;
+        });
+      }
 
       if (type === 'round2' || type === 'review' || type === 'round1') {
         setShowAnswer(true);
@@ -1207,6 +1544,39 @@ export const LearningEngine = ({
       }, preferences.wrongAnswerRevealMs);
     }
   }, [showAnswer, isSubmittingAttempt, isViewingHistory, inputValue, expectedInput, persistAttempt, currentWord, type, nextWord, clearAnswerRevealTimeout, queue, currentIndex, preferences.clozeSentenceAutoPlayEnabled, preferences.correctAnswerRevealMs, preferences.wrongAnswerRevealMs, clozePrompt, playExampleSentence, markCurrentQueueIndexPassed]);
+
+  const finishRound1WithConfirmedWords = useCallback(() => {
+    if (type !== 'round1' || isSubmittingAttempt || showAnswer || isViewingHistory) return;
+    if (round1ConfirmedWordIdsArray.length === 0) {
+      setSubmitError('至少确认 1 个词后，才能进入 Round 2。');
+      return;
+    }
+
+    clearAnswerRevealTimeout();
+    stopPlayback();
+    setSubmitError('');
+    void attemptBuffer.flush();
+    void onComplete(buildSessionSnapshot({
+      round: 'round1',
+      currentIndex,
+      queueWordIds: queue.map((word) => word.id),
+      passedQueueIndices: passedQueueIndicesArray,
+      round1ConfirmedWordIds: round1ConfirmedWordIdsArray,
+    }));
+  }, [
+    buildSessionSnapshot,
+    clearAnswerRevealTimeout,
+    currentIndex,
+    isSubmittingAttempt,
+    isViewingHistory,
+    onComplete,
+    passedQueueIndicesArray,
+    queue,
+    round1ConfirmedWordIdsArray,
+    showAnswer,
+    stopPlayback,
+    type,
+  ]);
 
   useEffect(() => {
     if (type !== 'round3') return;
@@ -1284,10 +1654,10 @@ export const LearningEngine = ({
       : '提交这次判断';
   const allowLiveCorrectTint = type === 'round1' || type === 'round2';
   const inputIsCorrect = !isWrong && allowLiveCorrectTint && isCorrect;
-  const contentAreaClassName = 'flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7 sm:py-7 lg:px-8 lg:py-7';
+  const contentAreaClassName = 'learning-card-scrollarea flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7 sm:py-7 lg:px-8 lg:py-7';
   const inputDockClassName = 'shrink-0 border-t border-black/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(247,249,253,0.92))] px-4 py-4 shadow-[0_-18px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl sm:px-7 sm:py-5 lg:px-8';
   const round1InputDockClassName = 'shrink-0 border-t border-black/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.76),rgba(247,249,253,0.94))] px-4 pt-2 pb-3 shadow-[0_-18px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl sm:px-7 sm:pt-3 sm:pb-4 lg:px-8';
-  const round1MemoryTip = trimDisplayText(viewedWord.memory_tip);
+  const round1MemoryTip = preferences.memoryTipEnabled ? trimDisplayText(viewedWord.memory_tip) : '';
   const showRound1MorphologyCard = hasRound1MorphologyContent(viewedWord);
   const showRound1RelationsCard = hasRound1RelationsContent(viewedWord);
   const showRound1ContextCard = hasRound1ContextContent(viewedWord);
@@ -1427,10 +1797,179 @@ export const LearningEngine = ({
   const shouldShowRound3Answer = isViewingHistory || showAnswer;
   const round3ExampleSentence = viewedWord.example_sentences[0] ?? '';
   const round3ExampleKey = `${viewedWord.id}:${viewIndex}:round3-example-0`;
+  const renderWordActionMenu = (
+    className = '!absolute right-3 top-3 z-30',
+    ref: React.RefObject<HTMLDivElement | null> = mobileActionMenuRef,
+  ) => (
+    <div
+      ref={ref}
+      className={className}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        aria-label="更多操作"
+        aria-expanded={isActionMenuOpen}
+        onClick={() => setIsActionMenuOpen((prev) => !prev)}
+        className={cx(
+          'flex h-11 w-11 items-center justify-center rounded-[18px] border border-white/85 bg-white/82 text-[#8f826d] shadow-[0_12px_26px_rgba(61,52,40,0.10)] backdrop-blur-xl transition-all active:scale-95 sm:h-12 sm:w-12',
+          isActionMenuOpen && 'text-[#4f46e5] shadow-[0_14px_30px_rgba(79,70,229,0.14)]',
+        )}
+      >
+        <MoreHorizontal className="h-5 w-5" strokeWidth={2.7} />
+      </button>
+
+      <AnimatePresence>
+        {isActionMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            transition={{ duration: 0.14, ease: 'easeOut' }}
+            className="absolute right-0 top-[3.25rem] w-52 overflow-hidden rounded-[22px] border border-white/85 bg-white/92 p-1.5 text-left shadow-[0_22px_56px_rgba(61,52,40,0.18)] backdrop-blur-xl"
+          >
+            <button
+              type="button"
+              onClick={() => { void handleMarkViewedWordMastered(); }}
+              disabled={Boolean(activeActionKind)}
+              className="flex min-h-11 w-full items-center gap-3 rounded-[17px] px-3.5 text-sm font-black text-apple-red transition-colors hover:bg-apple-red/8 disabled:cursor-wait disabled:opacity-60"
+            >
+              {activeActionKind === 'mastered' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              标记已掌握
+            </button>
+            <button
+              type="button"
+              onClick={() => { void handleSaveViewedWord(); }}
+              disabled={Boolean(activeActionKind)}
+              className="flex min-h-11 w-full items-center gap-3 rounded-[17px] px-3.5 text-sm font-black text-text-primary transition-colors hover:bg-black/5 disabled:cursor-wait disabled:opacity-60"
+            >
+              {activeActionKind === 'save' ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookMarked className="h-4 w-4" />}
+              加入个人词库
+            </button>
+            <button
+              type="button"
+              onClick={handleOpenReportSheet}
+              disabled={Boolean(activeActionKind)}
+              className="flex min-h-11 w-full items-center gap-3 rounded-[17px] px-3.5 text-sm font-black text-text-primary transition-colors hover:bg-black/5 disabled:cursor-wait disabled:opacity-60"
+            >
+              <Flag className="h-4 w-4" />
+              报告问题
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+  const mobileWordActionMenu = renderWordActionMenu('!absolute right-3 top-3 z-30 sm:hidden', mobileActionMenuRef);
+  const desktopWordActionMenu = renderWordActionMenu('relative z-30', desktopActionMenuRef);
+  const actionFeedbackToast = (
+    <AnimatePresence>
+      {actionFeedback && (
+        <motion.div
+          initial={{ opacity: 0, y: 14, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 10, scale: 0.98 }}
+          className={cx(
+            'fixed bottom-[calc(env(safe-area-inset-bottom)+1.25rem)] left-1/2 z-[110] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-[18px] px-4 py-3 text-sm font-black text-white shadow-[0_20px_52px_rgba(0,0,0,0.22)]',
+            actionFeedback.tone === 'error' ? 'bg-apple-red' : 'bg-[#222222]',
+          )}
+        >
+          {actionFeedback.tone === 'error' ? <XCircle className="h-4 w-4 shrink-0" /> : <CheckCircle2 className="h-4 w-4 shrink-0 text-[#7ddc8a]" />}
+          <span className="min-w-0 truncate">{actionFeedback.text}</span>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+  const reportIssueSheet = (
+    <AnimatePresence>
+      {isReportSheetOpen && (
+        <motion.div
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/18 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur-[2px]"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={() => {
+            if (activeActionKind !== 'report') {
+              setIsReportSheetOpen(false);
+            }
+          }}
+        >
+          <motion.div
+            initial={{ y: 24, scale: 0.98 }}
+            animate={{ y: 0, scale: 1 }}
+            exit={{ y: 24, scale: 0.98 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="w-full max-w-md rounded-[28px] border border-white/85 bg-white/95 p-4 shadow-[0_28px_70px_rgba(61,52,40,0.22)] backdrop-blur-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-black text-text-primary">报告问题</p>
+                <p className="mt-0.5 truncate text-xs font-bold text-text-secondary">
+                  {reportTargetWord?.word ?? viewedWord.word}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsReportSheetOpen(false)}
+                disabled={activeActionKind === 'report'}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/5 text-text-secondary transition-colors hover:bg-black/8 disabled:opacity-50"
+                aria-label="关闭报告问题"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {VOCABULARY_ISSUE_OPTIONS.map((option) => (
+                <button
+                  key={option.type}
+                  type="button"
+                  onClick={() => setReportIssueType(option.type)}
+                  disabled={activeActionKind === 'report'}
+                  className={cx(
+                    'min-h-10 rounded-[15px] px-3 text-sm font-black transition-all disabled:opacity-60',
+                    reportIssueType === option.type
+                      ? 'bg-[#4f46e5] text-white shadow-[0_12px_26px_rgba(79,70,229,0.18)]'
+                      : 'bg-black/5 text-text-primary hover:bg-black/8',
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            <textarea
+              value={reportNote}
+              onChange={(event) => setReportNote(event.target.value.slice(0, 1000))}
+              disabled={activeActionKind === 'report'}
+              rows={4}
+              className="mt-3 w-full resize-none rounded-[18px] border border-black/8 bg-white/75 px-3 py-3 text-sm font-bold leading-6 text-text-primary outline-none transition-colors placeholder:text-text-secondary/50 focus:border-[#4f46e5]/35 disabled:opacity-60"
+              placeholder="哪里不对？可选"
+            />
+
+            <button
+              type="button"
+              onClick={() => { void handleSubmitReport(); }}
+              disabled={activeActionKind === 'report'}
+              className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-[18px] bg-[#4f46e5] px-4 text-sm font-black text-white shadow-[0_16px_34px_rgba(79,70,229,0.20)] transition-all active:scale-[0.98] disabled:cursor-wait disabled:opacity-70"
+            >
+              {activeActionKind === 'report' && <Loader2 className="h-4 w-4 animate-spin" />}
+              提交
+            </button>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
 
   if (type === 'round3') {
     return (
-      <div className="w-full max-w-4xl mx-auto flex h-full min-h-0 flex-col items-center">
+      <div className="relative w-full max-w-4xl mx-auto flex h-full min-h-0 flex-col items-center">
+        {renderWordActionMenu('!absolute right-3 top-12 z-30', round3ActionMenuRef)}
+        {actionFeedbackToast}
+        {reportIssueSheet}
         <div className="flex w-full max-w-3xl items-center gap-2">
           {sessionLeadingAction && (
             <div className="shrink-0 lg:hidden">
@@ -1561,13 +2100,16 @@ export const LearningEngine = ({
   }
 
   return (
-    <InputSessionShell
-      type={type}
-      currentIndex={displayProgressIndex}
-      queueLength={initialUniqueCount}
-      sessionLeadingAction={sessionLeadingAction}
-      sessionActions={sessionActions}
-      main={(
+    <>
+      {actionFeedbackToast}
+      {reportIssueSheet}
+      <InputSessionShell
+        type={type}
+        currentIndex={displayProgressIndex}
+        queueLength={initialUniqueCount}
+        sessionLeadingAction={sessionLeadingAction}
+        sessionActions={sessionActions}
+        main={(
         <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)] items-stretch gap-2 sm:grid-cols-[3.5rem_minmax(0,1fr)_3.5rem] sm:gap-3">
           <div className="hidden items-center sm:flex">
             {leftNavigationButton}
@@ -1580,8 +2122,9 @@ export const LearningEngine = ({
           onTouchEnd={handleCardTouchEnd}
           onTouchCancel={() => { swipeStartRef.current = null; }}
           style={type === 'round1' ? { touchAction: 'pan-y' } : undefined}
-          className="glass flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] sm:rounded-[30px] shadow-[0_24px_64px_rgba(14,26,56,0.08)]"
+          className="glass relative flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] shadow-[0_24px_64px_rgba(14,26,56,0.08)] sm:rounded-[30px]"
         >
+          {mobileWordActionMenu}
           {type === 'round1' ? (
             <div className="flex h-full min-h-0 flex-col">
               <div className={cx(contentAreaClassName, 'pb-4 sm:pb-5')}>
@@ -1712,6 +2255,20 @@ export const LearningEngine = ({
                           </button>
                         </div>
                       </div>
+                      <button
+                        type="button"
+                        onClick={finishRound1WithConfirmedWords}
+                        disabled={
+                          actionDisabled
+                          || showAnswer
+                          || isViewingHistory
+                          || round1ConfirmedWordIdsArray.length === 0
+                        }
+                        className="mt-2 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-[18px] border border-[#cf8922]/20 bg-[#fff6e2]/85 px-4 text-sm font-black text-[#b76f12] shadow-[0_10px_24px_rgba(207,137,34,0.10)] transition-all hover:bg-[#ffefc2] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#fff6e2]/85"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        结束新词 · {round1ConfirmedWordIdsArray.length} 词进入 Round 2
+                      </button>
                       {submitErrorBanner && <div className="mt-2">{submitErrorBanner}</div>}
                     </>
                   )}
@@ -1812,11 +2369,15 @@ export const LearningEngine = ({
             </div>
           )}
         </motion.div>
-          <div className="hidden items-center sm:flex">
+          <div className="relative hidden items-center justify-center sm:flex">
+            <div className="absolute left-1/2 top-3 -translate-x-1/2">
+              {desktopWordActionMenu}
+            </div>
             {rightNavigationButton}
           </div>
         </div>
-      )}
-    />
+        )}
+      />
+    </>
   );
 };

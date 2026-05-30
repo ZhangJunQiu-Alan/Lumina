@@ -7,6 +7,7 @@ import {
   Loader2,
   Repeat2,
   RotateCcw,
+  Sparkles,
   Volume2,
   type LucideIcon,
 } from 'lucide-react';
@@ -349,6 +350,19 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
           <ToggleControl
             checked={preferences.clozeSentenceAutoPlayEnabled}
             onChange={(checked) => { void handleSave('clozeSentenceAutoPlayEnabled', { clozeSentenceAutoPlayEnabled: checked }); }}
+          />
+        )}
+      />
+
+      <SettingItem
+        icon={Sparkles}
+        title="记忆锦囊"
+        description="学习和查看词条时显示记忆提示"
+        feedback={feedbackByKey.memoryTipEnabled}
+        control={(
+          <ToggleControl
+            checked={preferences.memoryTipEnabled}
+            onChange={(checked) => { void handleSave('memoryTipEnabled', { memoryTipEnabled: checked }); }}
           />
         )}
       />

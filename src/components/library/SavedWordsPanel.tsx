@@ -435,7 +435,7 @@ export function SavedWordsPanel({
             <div>
               <h3 className="text-2xl font-black text-text-primary">我的词库</h3>
               <p className="mt-2 text-sm leading-7 text-text-secondary">
-                官方词库和自己保存的词会放在这里。凑够 30 个可用词，就能开始一组。
+                自己保存的词会放在这里。凑够 30 个可用词，就能开始一组。
               </p>
             </div>
           </div>

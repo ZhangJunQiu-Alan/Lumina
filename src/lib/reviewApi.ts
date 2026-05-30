@@ -21,6 +21,11 @@ interface MarkReviewWordUnknownInput {
   timestamp?: number;
 }
 
+interface MarkReviewWordMasteredInput {
+  vocabularyItemId: string;
+  learningGroupId?: string | null;
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
   if (!response.ok) {
@@ -62,6 +67,16 @@ export async function submitBatchReviewAttempts(attempts: SubmitReviewAttemptInp
 
 export async function markReviewWordUnknown(input: MarkReviewWordUnknownInput): Promise<ReviewAttemptResponse> {
   const response = await apiFetch('/api/review/unknown', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+
+  return parseResponse<ReviewAttemptResponse>(response);
+}
+
+export async function markReviewWordMastered(input: MarkReviewWordMasteredInput): Promise<ReviewAttemptResponse> {
+  const response = await apiFetch('/api/review/mastered', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),

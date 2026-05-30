@@ -153,6 +153,7 @@ export interface LearningPreferences {
   reinforcementArticleEnabled: boolean;
   popoverAutoPlayEnabled: boolean;
   clozeSentenceAutoPlayEnabled: boolean;
+  memoryTipEnabled: boolean;
 }
 
 // Convert EnrichedWord → Word for the learning engine
@@ -184,6 +185,7 @@ export function toWord(e: EnrichedWord): Word {
 
 export type MemoryState = 'new' | 'fuzzy' | 'slow_recall' | 'stable_recall' | 'mastered';
 export type ReviewAttemptSource = 'round2' | 'review';
+export type ReviewEventSource = ReviewAttemptSource | 'manual_mastered';
 export type ReviewResultType = 'wrong' | 'slow_correct' | 'fast_correct';
 export type LearningRoundType = 'round1' | 'round2' | 'round3' | 'article';
 export type RoundType = 'review' | LearningRoundType;
@@ -437,7 +439,7 @@ export interface IeltsListeningResponseResult {
 export interface ReviewTransition {
   from: MemoryState | null;
   to: MemoryState;
-  source: ReviewAttemptSource;
+  source: ReviewEventSource;
   result: ReviewResultType;
   graduated: boolean;
   nextReviewAt: string | null;
@@ -510,10 +512,12 @@ export interface PersistedLearningSession {
   currentIndex: number;
   queueWordIds: string[];
   passedQueueIndices: number[];
+  round1ConfirmedWordIds: string[];
   lastActiveAt: string;
   groupCompleted: boolean;
   completedAt: string | null;
   libraryId?: OfficialLibraryId | null;
+  officialMode?: OfficialStudyMode | null;
   article?: string | null;
 }
 
@@ -580,6 +584,19 @@ export interface RoutineVisibleStep {
 
 export type OfficialStudyMode = 'sequential' | 'shuffle';
 
+export interface HomeOfficialLibraryOption {
+  libraryId: OfficialLibraryId;
+  title: string;
+  mode: OfficialStudyMode;
+  existingGroupCount: number;
+  activeGroupId: string | null;
+  activeRound: LearningRoundType | null;
+  confirmedWordCount: number;
+  loadedWordCount: number;
+  completedMemoryWordCount: number;
+  totalWordCount: number;
+}
+
 export interface RoutineCard {
   state: RoutineCardState;
   title: string;
@@ -591,6 +608,8 @@ export interface RoutineCard {
   lastUsedOfficialLibraryId: OfficialLibraryId | null;
   lastUsedOfficialMode: OfficialStudyMode | null;
   lastUsedOfficialGroupCount: number;
+  selectedOfficialLibraryId: OfficialLibraryId | null;
+  officialLibraryOptions: HomeOfficialLibraryOption[];
 }
 
 export interface UserStats {

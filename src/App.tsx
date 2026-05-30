@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useEffect, useCallback, Suspense, lazy } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
 import { motion } from 'motion/react';
 import {
   AlertCircle,
@@ -16,7 +16,10 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import {
   ActivityDay,
   ArticleSentence,
+  HomeOfficialLibraryOption,
   LearningRoundType,
+  OfficialLibraryId,
+  OfficialStudyMode,
   PersistedLearningSession,
   ReviewSummaryItem,
   RoundType,
@@ -34,12 +37,17 @@ import { SavedWordsProvider } from './contexts/SavedWordsContext';
 import { WordPopoverProvider } from './contexts/WordPopoverContext';
 import { apiFetch } from './lib/api';
 import { invalidateLibraryCache } from './lib/libraryCache';
-import { createInitialLearningSession, isCoreLearningRound } from './lib/learningSession';
+import {
+  createInitialLearningSession,
+  isCoreLearningRound,
+  normalizeSessionRound1ConfirmedWordIds,
+} from './lib/learningSession';
 import {
   clearLearningGroupSession,
   fetchGeneratedArticle,
   fetchLearningGroupSession,
   persistLearningGroupSession,
+  trimLearningGroupToWordIds,
   upsertGeneratedArticle,
 } from './lib/learningSessionApi';
 import { getCachedArticle, setCachedArticle } from './lib/articleCache';
@@ -49,13 +57,22 @@ import {
   markRoutineStepCompleted,
 } from './lib/dailyRoutineApi';
 import { cx } from './components/shared/LearningUI';
-import { IslandButton, IslandIconButton } from './components/shared/AnimalPrimitives';
+import { IslandButton } from './components/shared/AnimalPrimitives';
 import { LibrarySkeleton } from './components/shared/Skeleton';
 import { useDeferredLoading } from './hooks/useDeferredLoading';
 import { fetchHomeOverview, resolveBrowserTimeZone } from './lib/homeApi';
-import { startNextOfficialBatch } from './lib/officialLibraryStart';
+import {
+  appendNextOfficialBatchToLearningGroup,
+  startNextOfficialBatch,
+} from './lib/officialLibraryStart';
+import {
+  getOfficialLibraryDefinition,
+  isOfficialLibraryId,
+  OFFICIAL_PREFETCH_REMAINING_THRESHOLD,
+} from './lib/officialLibrary';
 import { toRoutineDateKey } from './lib/routineDate';
 import { AI_CONTENT_FEATURES_ENABLED, PERSONAL_VOCAB_IMPORT_ENABLED } from './lib/aiFeatures';
+import type { LearningSessionSnapshot } from './components/learning/LearningEngine';
 
 // --- Lazy loaded views ---
 const HomeView = lazy(() => import('./components/home/HomeView').then(m => ({ default: m.HomeView })));
@@ -91,6 +108,16 @@ interface ArticleGenerationJob {
   timerId: ReturnType<typeof setTimeout> | null;
   controller: AbortController | null;
   exhausted: boolean;
+}
+
+interface OpenLearningGroupOptions {
+  libraryId?: OfficialLibraryId | null;
+  officialMode?: OfficialStudyMode | null;
+}
+
+interface HomeStartSelection {
+  libraryId?: OfficialLibraryId | null;
+  mode?: OfficialStudyMode | null;
 }
 
 function AmbientBackground() {
@@ -238,6 +265,8 @@ function buildEmptyStats(): UserStats {
       lastUsedOfficialLibraryId: null,
       lastUsedOfficialMode: null,
       lastUsedOfficialGroupCount: 0,
+      selectedOfficialLibraryId: null,
+      officialLibraryOptions: [],
       visibleSteps: [
         { key: 'round1', label: 'Round 1 · 明示关联', status: 'current' },
         { key: 'round2', label: 'Round 2 · 语境复现', status: 'upcoming' },
@@ -255,14 +284,16 @@ export default function App() {
   const activeLearningGroupIdRef = useRef<string | null>(null);
   const sessionAutoRestoreRef = useRef<string | null>(null);
   const lastNonSessionAppPathRef = useRef('/app/home');
+  const officialPrefetchKeyRef = useRef<string | null>(null);
   const articleGenerationRef = useRef<ArticleGenerationJob | null>(null);
   const articleGenerationRunIdRef = useRef(0);
   const activeWordsRef = useRef<Word[]>([]);
+  const activeSessionSeedRef = useRef<PersistedLearningSession | null>(null);
   const userIdRef = useRef<string | null>(null);
   const [round, setRound] = useState<RoundType>('round1');
   const [activeWords, setActiveWords] = useState<Word[]>([]);
   const [activeLearningGroupId, setActiveLearningGroupId] = useState<string | null>(null);
-  const [activeSessionSeed, setActiveSessionSeed] = useState<PersistedLearningSession | null>(null);
+  const [activeSessionSeed, setActiveSessionSeedState] = useState<PersistedLearningSession | null>(null);
   const [articleSentences, setArticleSentences] = useState<ArticleSentence[] | null>(null);
   const [articleGenerationError, setArticleGenerationError] = useState('');
   const [isStartingSession, setIsStartingSession] = useState(false);
@@ -276,6 +307,65 @@ export default function App() {
     || location.pathname.startsWith('/app/ielts-listening/test/');
   const articleReinforcementEnabled = AI_CONTENT_FEATURES_ENABLED
     && learningPreferences.reinforcementArticleEnabled;
+  const requestedOfficialLibraryId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const value = params.get('officialLibraryId');
+    return isOfficialLibraryId(value) ? value : null;
+  }, [location.search]);
+  const homeStats = useMemo(() => {
+    if (!isHomeRoute || !requestedOfficialLibraryId) return stats;
+
+    const existingOption = stats.routineCard.officialLibraryOptions.find(
+      (option) => option.libraryId === requestedOfficialLibraryId,
+    );
+    const definition = getOfficialLibraryDefinition(requestedOfficialLibraryId);
+    const injectedOption: HomeOfficialLibraryOption = existingOption ?? {
+      libraryId: requestedOfficialLibraryId,
+      title: definition.title,
+      mode: stats.routineCard.lastUsedOfficialLibraryId === requestedOfficialLibraryId
+        ? stats.routineCard.lastUsedOfficialMode ?? 'sequential'
+        : 'sequential',
+      existingGroupCount: stats.routineCard.lastUsedOfficialLibraryId === requestedOfficialLibraryId
+        ? stats.routineCard.lastUsedOfficialGroupCount
+        : 0,
+      activeGroupId: null,
+      activeRound: null,
+      confirmedWordCount: 0,
+      loadedWordCount: 0,
+      completedMemoryWordCount: 0,
+      totalWordCount: definition.words.length,
+    };
+
+    return {
+      ...stats,
+      routineCard: {
+        ...stats.routineCard,
+        ctaLabel: stats.routineCard.ctaMode === 'open_library'
+          ? '开始学习'
+          : stats.routineCard.ctaLabel,
+        ctaMode: stats.routineCard.ctaMode === 'open_library'
+          ? 'start_learning'
+          : stats.routineCard.ctaMode,
+        selectedOfficialLibraryId: requestedOfficialLibraryId,
+        officialLibraryOptions: [
+          injectedOption,
+          ...stats.routineCard.officialLibraryOptions.filter(
+            (option) => option.libraryId !== requestedOfficialLibraryId,
+          ),
+        ],
+      },
+    };
+  }, [isHomeRoute, requestedOfficialLibraryId, stats]);
+
+  const setActiveSessionSeed = useCallback((next: React.SetStateAction<PersistedLearningSession | null>) => {
+    setActiveSessionSeedState((current) => {
+      const resolved = typeof next === 'function'
+        ? (next as (value: PersistedLearningSession | null) => PersistedLearningSession | null)(current)
+        : next;
+      activeSessionSeedRef.current = resolved;
+      return resolved;
+    });
+  }, []);
 
   useEffect(() => {
     activeLearningGroupIdRef.current = activeLearningGroupId;
@@ -283,6 +373,9 @@ export default function App() {
   useEffect(() => {
     activeWordsRef.current = activeWords;
   }, [activeWords]);
+  useEffect(() => {
+    activeSessionSeedRef.current = activeSessionSeed;
+  }, [activeSessionSeed]);
 
   useEffect(() => {
     if (!isSessionRoute && location.pathname.startsWith('/app')) {
@@ -541,7 +634,11 @@ export default function App() {
     }
   }, [cancelArticleGeneration, user]);
 
-  const openLearningGroup = useCallback(async (groupId: string, preloadedWords?: Word[]) => {
+  const openLearningGroup = useCallback(async (
+    groupId: string,
+    preloadedWords?: Word[],
+    options: OpenLearningGroupOptions = {},
+  ) => {
     if (!user) return;
 
     setIsStartingSession(true);
@@ -558,21 +655,38 @@ export default function App() {
 
         words = groupSession.words;
         restoredSession = groupSession.session;
+      } else if (!options.libraryId || !options.officialMode) {
+        const groupSession = await fetchLearningGroupSession(user.id, groupId).catch((error) => {
+          console.error('Failed to hydrate preloaded learning group metadata:', error);
+          return null;
+        });
+        restoredSession = groupSession?.session ?? null;
       }
 
       if (words.length === 0) {
         throw new Error('这组词还没有可学习的内容。');
       }
 
-      const restoredOrInitialSession = {
-        ...(restoredSession ?? createInitialLearningSession(groupId, words)),
+      const restoredOrInitialSession: PersistedLearningSession = {
+        ...(restoredSession ?? {
+          ...createInitialLearningSession(groupId, words),
+          libraryId: options.libraryId ?? null,
+          officialMode: options.officialMode ?? null,
+        }),
+        libraryId: restoredSession?.libraryId ?? options.libraryId ?? null,
+        officialMode: restoredSession?.officialMode ?? options.officialMode ?? null,
         lastActiveAt: new Date().toISOString(),
       };
       const nextSession = !AI_CONTENT_FEATURES_ENABLED && restoredOrInitialSession.round === 'article'
-        ? createInitialLearningSession(groupId, words, 'round3', {
-          groupCompleted: restoredOrInitialSession.groupCompleted ?? true,
-          completedAt: restoredOrInitialSession.completedAt ?? new Date().toISOString(),
-        })
+        ? {
+            ...createInitialLearningSession(groupId, words, 'round3', {
+              groupCompleted: restoredOrInitialSession.groupCompleted ?? true,
+              completedAt: restoredOrInitialSession.completedAt ?? new Date().toISOString(),
+            }),
+            round1ConfirmedWordIds: restoredOrInitialSession.round1ConfirmedWordIds,
+            libraryId: restoredOrInitialSession.libraryId ?? null,
+            officialMode: restoredOrInitialSession.officialMode ?? null,
+          }
         : restoredOrInitialSession;
 
       setReviewSummary([]);
@@ -618,16 +732,21 @@ export default function App() {
     }
   }, [articleReinforcementEnabled, ensureArticleForGroup, navigate, user]);
 
-  const handleStart = async () => {
+  const handleStart = async (selection: HomeStartSelection = {}) => {
     if (!user) return;
 
     setSessionStartError('');
-    if (stats.routineCard.ctaMode === 'open_library') {
+    const routineCard = homeStats.routineCard;
+    const selectedOfficialOption = selection.libraryId
+      ? routineCard.officialLibraryOptions.find((option) => option.libraryId === selection.libraryId) ?? null
+      : null;
+
+    if (routineCard.ctaMode === 'open_library') {
       navigate('/app/library');
       return;
     }
 
-    if (stats.routineCard.ctaMode === 'start_review' || stats.routineCard.ctaMode === 'continue_review') {
+    if (routineCard.ctaMode === 'start_review' || routineCard.ctaMode === 'continue_review') {
       setIsStartingSession(true);
       try {
         const dueWords = await fetchDueReviewWords();
@@ -661,22 +780,55 @@ export default function App() {
       return;
     }
 
-    if (stats.routineCard.ctaMode === 'continue_learning') {
-      const targetGroupId = stats.routineCard.boundLearningGroupId;
+    if (routineCard.ctaMode === 'continue_learning') {
+      if (selectedOfficialOption) {
+        if (selectedOfficialOption.activeGroupId) {
+          await openLearningGroup(selectedOfficialOption.activeGroupId);
+          return;
+        }
+
+        setIsStartingSession(true);
+        try {
+          const result = await startNextOfficialBatch({
+            userId: user.id,
+            libraryId: selectedOfficialOption.libraryId,
+            mode: selection.mode ?? selectedOfficialOption.mode,
+            existingGroupCount: selectedOfficialOption.existingGroupCount,
+          });
+
+          if (!result) {
+            navigate('/app/library?tab=system');
+            return;
+          }
+
+          await openLearningGroup(result.groupId, result.words, {
+            libraryId: result.libraryId,
+            officialMode: result.mode,
+          });
+        } catch (error) {
+          console.error('Failed to auto-start selected official batch:', error);
+          setSessionStartError(error instanceof Error ? error.message : '开始下一组官方词时出了点问题，请再试一次。');
+        } finally {
+          setIsStartingSession(false);
+        }
+        return;
+      }
+
+      const targetGroupId = routineCard.boundLearningGroupId;
       if (targetGroupId) {
         await openLearningGroup(targetGroupId);
         return;
       }
 
-      const libraryId = stats.routineCard.lastUsedOfficialLibraryId;
+      const libraryId = routineCard.lastUsedOfficialLibraryId;
       if (libraryId) {
         setIsStartingSession(true);
         try {
           const result = await startNextOfficialBatch({
             userId: user.id,
             libraryId,
-            mode: stats.routineCard.lastUsedOfficialMode ?? 'sequential',
-            existingGroupCount: stats.routineCard.lastUsedOfficialGroupCount,
+            mode: routineCard.lastUsedOfficialMode ?? 'sequential',
+            existingGroupCount: routineCard.lastUsedOfficialGroupCount,
           });
 
           if (!result) {
@@ -684,7 +836,10 @@ export default function App() {
             return;
           }
 
-          await openLearningGroup(result.groupId, result.words);
+          await openLearningGroup(result.groupId, result.words, {
+            libraryId: result.libraryId,
+            officialMode: result.mode,
+          });
         } catch (error) {
           console.error('Failed to auto-start next official batch:', error);
           setSessionStartError(error instanceof Error ? error.message : '开始下一组官方词时出了点问题，请再试一次。');
@@ -695,7 +850,31 @@ export default function App() {
       }
     }
 
-    if (stats.routineCard.ctaMode === 'start_learning') {
+    if (routineCard.ctaMode === 'start_learning') {
+      if (selectedOfficialOption) {
+        setIsStartingSession(true);
+        try {
+          const result = await startNextOfficialBatch({
+            userId: user.id,
+            libraryId: selectedOfficialOption.libraryId,
+            mode: selection.mode ?? selectedOfficialOption.mode,
+            existingGroupCount: selectedOfficialOption.existingGroupCount,
+          });
+
+          if (result) {
+            await openLearningGroup(result.groupId, result.words, {
+              libraryId: result.libraryId,
+              officialMode: result.mode,
+            });
+            return;
+          }
+        } catch (error) {
+          console.error('Failed to start selected official batch:', error);
+          setSessionStartError(error instanceof Error ? error.message : '开始官方词库时出了点问题，请再试一次。');
+        } finally {
+          setIsStartingSession(false);
+        }
+      }
       navigate('/app/library');
       return;
     }
@@ -707,26 +886,29 @@ export default function App() {
     await openLearningGroup(groupId, words);
   }, [openLearningGroup]);
 
-  const handleLearningSessionChange = useCallback((session: {
-    round: LearningRoundType;
-    currentIndex: number;
-    queueWordIds: string[];
-    passedQueueIndices: number[];
-  }) => {
+  const handleLearningSessionChange = useCallback((session: LearningSessionSnapshot) => {
     if (!activeLearningGroupId || !user) return;
 
+    const currentSeed = activeSessionSeedRef.current;
     const lastActiveAt = new Date().toISOString();
-
-    void persistLearningGroupSession(user.id, {
+    const sessionSeed: PersistedLearningSession = {
       groupId: activeLearningGroupId,
       round: session.round,
       currentIndex: session.currentIndex,
       queueWordIds: session.queueWordIds,
       passedQueueIndices: session.passedQueueIndices,
+      round1ConfirmedWordIds: session.round1ConfirmedWordIds,
       lastActiveAt,
-      groupCompleted: activeSessionSeed?.groupCompleted ?? false,
-      completedAt: activeSessionSeed?.completedAt ?? null,
-    }).catch((error) => {
+      groupCompleted: currentSeed?.groupCompleted ?? false,
+      completedAt: currentSeed?.completedAt ?? null,
+      libraryId: currentSeed?.libraryId ?? null,
+      officialMode: currentSeed?.officialMode ?? null,
+      article: currentSeed?.article ?? null,
+    };
+
+    setActiveSessionSeed(sessionSeed);
+
+    void persistLearningGroupSession(user.id, sessionSeed).catch((error) => {
       console.error('Failed to persist learning session snapshot:', error);
     });
 
@@ -739,9 +921,75 @@ export default function App() {
         console.error('Failed to refresh daily routine main learning group:', error);
       });
     }
-  }, [activeLearningGroupId, activeSessionSeed?.completedAt, activeSessionSeed?.groupCompleted, user]);
 
-  const handleRoundComplete = useCallback(async () => {
+    const libraryId = sessionSeed.libraryId;
+    const mode = sessionSeed.officialMode;
+    const confirmedCount = session.round1ConfirmedWordIds.length;
+    const remainingLoadedCount = session.queueWordIds.length - confirmedCount;
+    const prefetchKey = `${activeLearningGroupId}:${session.queueWordIds.length}`;
+    if (
+      session.round === 'round1'
+      && libraryId
+      && mode
+      && remainingLoadedCount <= OFFICIAL_PREFETCH_REMAINING_THRESHOLD
+      && officialPrefetchKeyRef.current !== prefetchKey
+    ) {
+      const option = stats.routineCard.officialLibraryOptions.find((item) => item.libraryId === libraryId);
+      officialPrefetchKeyRef.current = prefetchKey;
+      void appendNextOfficialBatchToLearningGroup({
+        userId: user.id,
+        groupId: activeLearningGroupId,
+        libraryId,
+        mode,
+        existingGroupCount: option?.existingGroupCount ?? stats.routineCard.lastUsedOfficialGroupCount,
+      }).then((result) => {
+        const appendedWords = result?.appendedWords ?? [];
+        if (appendedWords.length === 0) return;
+        setActiveWords((currentWords) => {
+          const currentIds = new Set(currentWords.map((word) => word.id));
+          const nextWords = [
+            ...currentWords,
+            ...appendedWords.filter((word) => !currentIds.has(word.id)),
+          ];
+          activeWordsRef.current = nextWords;
+          return nextWords;
+        });
+        setActiveSessionSeed((current) => current && current.groupId === activeLearningGroupId
+          ? {
+              ...current,
+              queueWordIds: [
+                ...current.queueWordIds,
+                ...appendedWords.map((word) => word.id).filter((wordId) => !current.queueWordIds.includes(wordId)),
+              ],
+              lastActiveAt: new Date().toISOString(),
+            }
+          : current);
+        invalidateLibraryCache(user.id);
+      }).catch((error) => {
+        officialPrefetchKeyRef.current = null;
+        console.error('Failed to prefetch next official batch:', error);
+      });
+    }
+  }, [
+    activeLearningGroupId,
+    stats.routineCard.lastUsedOfficialGroupCount,
+    stats.routineCard.officialLibraryOptions,
+    stats.routineCard,
+    user,
+  ]);
+
+  const handleSessionWordMastered = useCallback((wordId: string) => {
+    const nextWords = activeWordsRef.current.filter((word) => word.id !== wordId);
+    activeWordsRef.current = nextWords;
+    setActiveWords(nextWords);
+
+    if (user) {
+      invalidateLibraryCache(user.id);
+      void fetchStats();
+    }
+  }, [fetchStats, user]);
+
+  const handleRoundComplete = useCallback(async (completedSession?: LearningSessionSnapshot) => {
     if (round === 'review') {
       await attemptBuffer.flush();
 
@@ -761,8 +1009,49 @@ export default function App() {
       return;
     }
 
+    const currentActiveWords = activeWordsRef.current;
+
+    if (currentActiveWords.length === 0) {
+      await clearLearningGroupSession(user.id, activeLearningGroupId, { markCompleted: true }).catch((error) => {
+        console.error('Failed to close all-mastered learning session:', error);
+      });
+      invalidateLibraryCache(user.id);
+      resetActiveLearningState();
+      navigate('/app/home');
+      void fetchStats();
+      return;
+    }
+
     if (round === 'round1') {
-      const nextSession = createInitialLearningSession(activeLearningGroupId, activeWords, 'round2');
+      const confirmedWordIds = normalizeSessionRound1ConfirmedWordIds(
+        completedSession?.round1ConfirmedWordIds
+          ?? activeSessionSeed?.round1ConfirmedWordIds
+          ?? [],
+      );
+      const confirmedWordIdSet = new Set(confirmedWordIds);
+      const nextWords = currentActiveWords.filter((word) => confirmedWordIdSet.has(word.id));
+
+      if (nextWords.length === 0) {
+        setSessionStartError('至少确认 1 个词后，才能进入 Round 2。');
+        return;
+      }
+
+      if (activeSessionSeed?.libraryId) {
+        await trimLearningGroupToWordIds(user.id, activeLearningGroupId, nextWords.map((word) => word.id)).catch((error) => {
+          console.error('Failed to trim unconfirmed official words:', error);
+          throw error;
+        });
+      }
+
+      activeWordsRef.current = nextWords;
+      setActiveWords(nextWords);
+
+      const nextSession: PersistedLearningSession = {
+        ...createInitialLearningSession(activeLearningGroupId, nextWords, 'round2'),
+        round1ConfirmedWordIds: nextWords.map((word) => word.id),
+        libraryId: activeSessionSeed?.libraryId ?? null,
+        officialMode: activeSessionSeed?.officialMode ?? null,
+      };
 
       void markRoutineStepCompleted(user.id, {
         step: 'round1',
@@ -791,11 +1080,16 @@ export default function App() {
     };
 
     const advanceToArticle = (completedAt: string, groupCompleted: boolean) => {
-      const nextSession = createInitialLearningSession(activeLearningGroupId, activeWords, 'article', {
-        groupCompleted,
-        completedAt,
-      });
-      const cachedArticle = getCachedArticle(activeLearningGroupId, activeWords);
+      const nextSession: PersistedLearningSession = {
+        ...createInitialLearningSession(activeLearningGroupId, currentActiveWords, 'article', {
+          groupCompleted,
+          completedAt,
+        }),
+        round1ConfirmedWordIds: activeSessionSeed?.round1ConfirmedWordIds ?? currentActiveWords.map((word) => word.id),
+        libraryId: activeSessionSeed?.libraryId ?? null,
+        officialMode: activeSessionSeed?.officialMode ?? null,
+      };
+      const cachedArticle = getCachedArticle(activeLearningGroupId, currentActiveWords);
       setActiveSessionSeed(nextSession);
       setRound('article');
       setArticleSentences(cachedArticle);
@@ -804,7 +1098,7 @@ export default function App() {
         console.error('Failed to persist article transition:', error);
       });
       if (!cachedArticle) {
-        void ensureArticleForGroup(activeLearningGroupId, activeWords);
+        void ensureArticleForGroup(activeLearningGroupId, currentActiveWords);
       }
     };
 
@@ -820,10 +1114,15 @@ export default function App() {
       });
 
       if (learningPreferences.reinforcementRound3Enabled) {
-        const nextSession = createInitialLearningSession(activeLearningGroupId, activeWords, 'round3', {
-          groupCompleted: true,
-          completedAt,
-        });
+        const nextSession: PersistedLearningSession = {
+          ...createInitialLearningSession(activeLearningGroupId, currentActiveWords, 'round3', {
+            groupCompleted: true,
+            completedAt,
+          }),
+          round1ConfirmedWordIds: activeSessionSeed?.round1ConfirmedWordIds ?? currentActiveWords.map((word) => word.id),
+          libraryId: activeSessionSeed?.libraryId ?? null,
+          officialMode: activeSessionSeed?.officialMode ?? null,
+        };
 
         setActiveSessionSeed(nextSession);
         setRound('round3');
@@ -832,7 +1131,7 @@ export default function App() {
           console.error('Failed to persist reinforcement transition:', error);
         });
         if (articleReinforcementEnabled) {
-          void ensureArticleForGroup(activeLearningGroupId, activeWords);
+          void ensureArticleForGroup(activeLearningGroupId, currentActiveWords);
         }
         return;
       }
@@ -864,7 +1163,6 @@ export default function App() {
     activeLearningGroupId,
     activeSessionSeed?.completedAt,
     activeSessionSeed?.groupCompleted,
-    activeWords,
     articleReinforcementEnabled,
     ensureArticleForGroup,
     fetchStats,
@@ -956,7 +1254,7 @@ export default function App() {
   }, [isSessionSettingsOpen]);
 
   const sessionSettingsButton = isSessionRoute ? (
-    <IslandIconButton
+    <button
       type="button"
       data-session-settings-toggle
       aria-label={isSessionSettingsOpen ? '关闭学习节奏设置' : '打开学习节奏设置'}
@@ -967,12 +1265,12 @@ export default function App() {
         setIsSessionSettingsOpen((prev) => !prev);
       }}
       className={cx(
-        '!h-6 !w-6 shrink-0 !rounded-lg !shadow-none text-apple-blue hover:!translate-y-0 hover:!shadow-none active:!translate-y-0 active:!shadow-none',
-        isSessionSettingsOpen && 'bg-apple-blue text-white',
+        'flex h-6 w-6 shrink-0 items-center justify-center text-[#8f826d] transition-colors hover:text-[#4f46e5] active:text-[#4f46e5]',
+        isSessionSettingsOpen && 'text-[#4f46e5]',
       )}
     >
-      <Settings className="h-3.5 w-3.5" strokeWidth={2.6} />
-    </IslandIconButton>
+      <Settings className="h-6 w-6" strokeWidth={2.25} />
+    </button>
   ) : null;
 
   const sessionBackButton = isSessionRoute ? (
@@ -1107,9 +1405,9 @@ export default function App() {
                     path="home"
                     element={(
                       <HomeView
-                        stats={stats}
+                        stats={homeStats}
                         onSelectOrbitDate={handleSelectOrbitDate}
-                        onStart={() => { void handleStart(); }}
+                        onStart={(selection) => { void handleStart(selection); }}
                         isLoading={isStartingSession}
                       />
                     )}
@@ -1199,7 +1497,7 @@ export default function App() {
                         )
                       ) : (
                         <React.Fragment
-                          key={`${activeLearningGroupId ?? 'review'}:${round}:${activeSessionSeed?.lastActiveAt ?? activeWords.map((word) => word.id).join('|')}`}
+                          key={`${activeLearningGroupId ?? 'review'}:${round}`}
                         >
                           <LearningEngine
                             type={round}
@@ -1207,6 +1505,7 @@ export default function App() {
                             initialSession={activeSessionSeed}
                             onComplete={handleRoundComplete}
                             onSessionChange={handleLearningSessionChange}
+                            onWordMastered={handleSessionWordMastered}
                             sessionLeadingAction={sessionBackButton}
                             sessionActions={sessionSettingsButton}
                           />

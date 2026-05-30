@@ -14,6 +14,7 @@ interface LearningPreferencesRow {
   reinforcement_article_enabled: boolean;
   popover_auto_play_enabled: boolean;
   cloze_sentence_auto_play_enabled: boolean;
+  memory_tip_enabled: boolean;
   updated_at: string;
 }
 
@@ -29,6 +30,7 @@ export const LEARNING_PREFERENCES_DEFAULTS: LearningPreferences = {
   reinforcementArticleEnabled: false,
   popoverAutoPlayEnabled: false,
   clozeSentenceAutoPlayEnabled: true,
+  memoryTipEnabled: true,
 };
 
 export const SPEECH_PLAYBACK_RATE_OPTIONS = [0.6, 0.8, 1] as const;
@@ -107,6 +109,9 @@ function normalizeLearningPreferences(
   const clozeSentenceAutoPlayValue = hasCamelCaseShape
     ? (input as Partial<LearningPreferences>).clozeSentenceAutoPlayEnabled
     : (input as LearningPreferencesRow | null | undefined)?.cloze_sentence_auto_play_enabled;
+  const memoryTipValue = hasCamelCaseShape
+    ? (input as Partial<LearningPreferences>).memoryTipEnabled
+    : (input as LearningPreferencesRow | null | undefined)?.memory_tip_enabled;
 
   return {
     defaultPronunciationLocale: isValidLocale(localeValue)
@@ -134,6 +139,10 @@ function normalizeLearningPreferences(
       typeof clozeSentenceAutoPlayValue === 'boolean'
         ? clozeSentenceAutoPlayValue
         : LEARNING_PREFERENCES_DEFAULTS.clozeSentenceAutoPlayEnabled,
+    memoryTipEnabled:
+      typeof memoryTipValue === 'boolean'
+        ? memoryTipValue
+        : LEARNING_PREFERENCES_DEFAULTS.memoryTipEnabled,
   };
 }
 
@@ -151,6 +160,7 @@ function toDatabaseRow(userId: string, preferences: LearningPreferences): Omit<L
     reinforcement_article_enabled: preferences.reinforcementArticleEnabled,
     popover_auto_play_enabled: preferences.popoverAutoPlayEnabled,
     cloze_sentence_auto_play_enabled: preferences.clozeSentenceAutoPlayEnabled,
+    memory_tip_enabled: preferences.memoryTipEnabled,
   };
 }
 
@@ -160,6 +170,7 @@ function isMissingUserSettingsTableError(error: { message?: string } | null | un
     || message.includes('correct_answer_reveal_ms')
     || message.includes('popover_auto_play_enabled')
     || message.includes('cloze_sentence_auto_play_enabled')
+    || message.includes('memory_tip_enabled')
     || message.includes('speech_playback_rate')
     || message.includes('schema cache');
 }
@@ -207,6 +218,7 @@ export async function getLearningPreferences(userId: string): Promise<LearningPr
       reinforcement_article_enabled,
       popover_auto_play_enabled,
       cloze_sentence_auto_play_enabled,
+      memory_tip_enabled,
       updated_at
     `)
     .eq('user_id', userId)
@@ -253,6 +265,7 @@ export async function saveLearningPreferences(
       reinforcement_article_enabled,
       popover_auto_play_enabled,
       cloze_sentence_auto_play_enabled,
+      memory_tip_enabled,
       updated_at
     `)
     .single();

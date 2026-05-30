@@ -15,10 +15,12 @@ import {
   OFFICIAL_LIBRARY_DEFINITIONS,
   resolveLibraryGroupSourceType,
   resolveOfficialLibraryId,
+  resolveOfficialStudyModeFromGroupName,
 } from './officialLibrary';
 import {
   clampSessionIndex,
   createResumeCandidate,
+  filterMasteredSessionWords,
   isCoreLearningComplete,
   isCoreLearningRound,
   isLearningRoundType,
@@ -26,6 +28,7 @@ import {
   normalizePersistedLearningSession,
   normalizeSessionPassedQueueIndices,
   normalizeSessionQueueWordIds,
+  normalizeSessionRound1ConfirmedWordIds,
   reconcileSessionWithRound2History,
 } from './learningSession';
 
@@ -41,6 +44,7 @@ interface LearningGroupSessionRow {
   session_current_index: number | null;
   session_queue_word_ids: unknown;
   session_passed_queue_indices?: unknown;
+  session_round1_confirmed_word_ids?: unknown;
   session_last_active_at: string | null;
 }
 
@@ -64,6 +68,11 @@ interface GroupRound2AttemptRow {
   vocabulary_item_id: string;
   was_correct: boolean;
   created_at: string;
+}
+
+interface GroupReviewStateRow {
+  vocabulary_item_id: string;
+  memory_state: string | null;
 }
 
 interface VocabularySenseRow {
@@ -126,12 +135,17 @@ function isMissingLearningSessionColumnError(error: { message?: string } | null 
     'session_current_index',
     'session_queue_word_ids',
     'session_passed_queue_indices',
+    'session_round1_confirmed_word_ids',
     'session_last_active_at',
   ].some((column) => message.includes(column));
 }
 
 function isMissingPassedQueueIndicesColumnError(error: { message?: string } | null | undefined) {
   return (error?.message ?? '').includes('session_passed_queue_indices');
+}
+
+function isMissingRound1ConfirmedColumnError(error: { message?: string } | null | undefined) {
+  return (error?.message ?? '').includes('session_round1_confirmed_word_ids');
 }
 
 function isMissingRichVocabularySchemaError(error: { message?: string } | null | undefined) {
@@ -266,6 +280,9 @@ function toPersistedLearningSession(
       normalizeSessionQueueWordIds(row.session_queue_word_ids).length,
       row.session_current_index ?? 0,
     ),
+    round1ConfirmedWordIds: normalizeSessionRound1ConfirmedWordIds(
+      row.session_round1_confirmed_word_ids,
+    ),
     lastActiveAt: row.session_last_active_at ?? row.created_at,
     groupCompleted: isCoreLearningComplete({
       status: row.status,
@@ -274,6 +291,12 @@ function toPersistedLearningSession(
     }),
     completedAt: row.completed_at,
     libraryId: resolveOfficialLibraryId(row.library_id, row.group_name, row.source_type),
+    officialMode: resolveOfficialLibraryId(row.library_id, row.group_name, row.source_type)
+      ? resolveOfficialStudyModeFromGroupName(
+          resolveOfficialLibraryId(row.library_id, row.group_name, row.source_type)!,
+          row.group_name,
+        )
+      : null,
     article,
   }, words);
 
@@ -301,6 +324,9 @@ function toResumeCandidate(row: LearningGroupLookupRow): ResumeCandidate | null 
       normalizeSessionQueueWordIds(row.session_queue_word_ids).length,
       row.session_current_index ?? 0,
     ),
+    round1ConfirmedWordIds: normalizeSessionRound1ConfirmedWordIds(
+      row.session_round1_confirmed_word_ids,
+    ),
     lastActiveAt: row.session_last_active_at ?? row.created_at,
     groupCompleted: isCoreLearningComplete({
       status: row.status,
@@ -309,6 +335,12 @@ function toResumeCandidate(row: LearningGroupLookupRow): ResumeCandidate | null 
     }),
     completedAt: row.completed_at,
     libraryId: resolveOfficialLibraryId(row.library_id, row.group_name, row.source_type),
+    officialMode: resolveOfficialLibraryId(row.library_id, row.group_name, row.source_type)
+      ? resolveOfficialStudyModeFromGroupName(
+          resolveOfficialLibraryId(row.library_id, row.group_name, row.source_type)!,
+          row.group_name,
+        )
+      : null,
     article: null,
   });
 }
@@ -378,6 +410,7 @@ async function fetchLearningGroupRow(
       session_current_index,
       session_queue_word_ids,
       session_passed_queue_indices,
+      session_round1_confirmed_word_ids,
       session_last_active_at
     `)
     .eq('id', groupId)
@@ -459,6 +492,7 @@ async function fetchResumeCandidateBySource(
       session_current_index,
       session_queue_word_ids,
       session_passed_queue_indices,
+      session_round1_confirmed_word_ids,
       session_last_active_at
     `)
     .eq('user_id', userId)
@@ -534,6 +568,7 @@ export async function fetchOfficialResumeTargets(
       session_current_index,
       session_queue_word_ids,
       session_passed_queue_indices,
+      session_round1_confirmed_word_ids,
       session_last_active_at
     `)
     .eq('user_id', userId)
@@ -598,6 +633,7 @@ export async function fetchOfficialResumeCandidates(userId: string) {
       session_current_index,
       session_queue_word_ids,
       session_passed_queue_indices,
+      session_round1_confirmed_word_ids,
       session_last_active_at
     `)
     .eq('user_id', userId)
@@ -792,6 +828,23 @@ export async function fetchLearningGroupSession(
   const words = wordRows
     .map(mapGroupWord)
     .filter((word): word is Word => Boolean(word));
+  const wordIds = words.map((word) => word.id);
+  const reviewStatesResult = wordIds.length > 0
+    ? await supabase
+        .from('review_states')
+        .select('vocabulary_item_id, memory_state')
+        .eq('user_id', userId)
+        .in('vocabulary_item_id', wordIds)
+    : { data: [], error: null };
+
+  if (reviewStatesResult.error) {
+    throw new Error(`review_states lookup failed: ${reviewStatesResult.error.message}`);
+  }
+
+  const masteredWordIds = ((reviewStatesResult.data ?? []) as GroupReviewStateRow[])
+    .filter((row) => row.memory_state === 'mastered')
+    .map((row) => row.vocabulary_item_id);
+  const activeWords = filterMasteredSessionWords(words, masteredWordIds);
   const group = groupData;
   const article = articleResult.data?.content ?? null;
   const round2Attempts = (round2AttemptResult.data ?? []) as GroupRound2AttemptRow[];
@@ -799,13 +852,13 @@ export async function fetchLearningGroupSession(
     .filter((attempt) => attempt.was_correct)
     .map((attempt) => attempt.vocabulary_item_id);
   const lastRound2AttemptAt = round2Attempts.at(-1)?.created_at ?? null;
-  const session = toPersistedLearningSession(group, words, article);
+  const session = toPersistedLearningSession(group, activeWords, article);
 
   return {
     groupTitle: resolveGroupTitle(group),
-    words,
+    words: activeWords,
     session: session
-      ? reconcileSessionWithRound2History(session, words, {
+      ? reconcileSessionWithRound2History(session, activeWords, {
           correctWordIds,
           lastAttemptAt: lastRound2AttemptAt,
         })
@@ -911,6 +964,9 @@ export async function persistLearningGroupSession(userId: string, session: Persi
         session.queueWordIds.length,
         session.currentIndex,
       ),
+      session_round1_confirmed_word_ids: normalizeSessionRound1ConfirmedWordIds(
+        session.round1ConfirmedWordIds,
+      ),
       session_last_active_at: session.lastActiveAt,
     })
     .eq('id', session.groupId)
@@ -923,6 +979,38 @@ export async function persistLearningGroupSession(userId: string, session: Persi
 
   if (!error) {
     return;
+  }
+
+  if (isMissingRound1ConfirmedColumnError(error)) {
+    let legacyConfirmedQuery = supabase
+      .from('learning_groups')
+      .update({
+        status: session.groupCompleted ? 'completed' : 'active',
+        completed_at: completedAt,
+        session_round: session.round,
+        session_current_index: clampSessionIndex(session.currentIndex, session.queueWordIds.length),
+        session_queue_word_ids: session.queueWordIds,
+        session_passed_queue_indices: normalizeSessionPassedQueueIndices(
+          session.passedQueueIndices,
+          session.queueWordIds.length,
+          session.currentIndex,
+        ),
+        session_last_active_at: session.lastActiveAt,
+      })
+      .eq('id', session.groupId)
+      .eq('user_id', userId);
+    if (staleSafeFilter) {
+      legacyConfirmedQuery = legacyConfirmedQuery.or(staleSafeFilter).is('completed_at', null);
+    }
+
+    const legacyConfirmedResult = await legacyConfirmedQuery;
+    if (!legacyConfirmedResult.error) {
+      return;
+    }
+
+    if (!isMissingPassedQueueIndicesColumnError(legacyConfirmedResult.error)) {
+      throw new Error(`learning_groups session update failed: ${legacyConfirmedResult.error.message}`);
+    }
   }
 
   if (isMissingPassedQueueIndicesColumnError(error)) {
@@ -988,6 +1076,7 @@ export async function clearLearningGroupSession(
     session_current_index: null,
     session_queue_word_ids: null,
     session_passed_queue_indices: null,
+    session_round1_confirmed_word_ids: null,
     session_last_active_at: null,
   };
 
@@ -1009,6 +1098,7 @@ export async function clearLearningGroupSession(
   if (isMissingPassedQueueIndicesColumnError(error)) {
     const legacyPayload = { ...updatePayload };
     delete legacyPayload.session_passed_queue_indices;
+    delete legacyPayload.session_round1_confirmed_word_ids;
 
     const legacyResult = await supabase
       .from('learning_groups')
@@ -1047,6 +1137,92 @@ export async function clearLearningGroupSession(
 
     throw new Error(`learning_groups session clear failed: ${fallbackResult.error.message}`);
   }
+}
+
+export async function trimLearningGroupToWordIds(
+  userId: string,
+  groupId: string,
+  keepWordIds: string[],
+) {
+  const keepSet = new Set(keepWordIds.filter(Boolean));
+  const { data: groupWords, error: groupWordsError } = await supabase
+    .from('learning_group_words')
+    .select('vocabulary_item_id')
+    .eq('learning_group_id', groupId);
+
+  if (groupWordsError) {
+    throw new Error(`learning_group_words lookup failed: ${groupWordsError.message}`);
+  }
+
+  const removeWordIds = Array.from(
+    new Set(
+      ((groupWords ?? []) as Array<{ vocabulary_item_id: string }>)
+        .map((row) => row.vocabulary_item_id)
+        .filter((wordId) => wordId && !keepSet.has(wordId)),
+    ),
+  );
+
+  if (removeWordIds.length === 0) {
+    return { removedWordCount: 0, removedReviewStateCount: 0 };
+  }
+
+  const { data: sharedWords, error: sharedWordsError } = await supabase
+    .from('learning_group_words')
+    .select('vocabulary_item_id, learning_groups!inner(user_id)')
+    .in('vocabulary_item_id', removeWordIds)
+    .neq('learning_group_id', groupId)
+    .eq('learning_groups.user_id', userId);
+
+  if (sharedWordsError) {
+    throw new Error(`shared learning_group_words lookup failed: ${sharedWordsError.message}`);
+  }
+
+  const sharedWordIds = new Set(
+    ((sharedWords ?? []) as Array<{ vocabulary_item_id: string }>)
+      .map((row) => row.vocabulary_item_id)
+      .filter(Boolean),
+  );
+  const orphanWordIds = removeWordIds.filter((wordId) => !sharedWordIds.has(wordId));
+
+  const { error: deleteGroupWordsError } = await supabase
+    .from('learning_group_words')
+    .delete()
+    .eq('learning_group_id', groupId)
+    .in('vocabulary_item_id', removeWordIds);
+
+  if (deleteGroupWordsError) {
+    throw new Error(`learning_group_words delete failed: ${deleteGroupWordsError.message}`);
+  }
+
+  let removedReviewStateCount = 0;
+  if (orphanWordIds.length > 0) {
+    const { error: reviewEventsError } = await supabase
+      .from('review_events')
+      .delete()
+      .eq('user_id', userId)
+      .in('vocabulary_item_id', orphanWordIds);
+
+    if (reviewEventsError) {
+      throw new Error(`review_events delete failed: ${reviewEventsError.message}`);
+    }
+
+    const { error: reviewStatesError, count } = await supabase
+      .from('review_states')
+      .delete({ count: 'exact' })
+      .eq('user_id', userId)
+      .in('vocabulary_item_id', orphanWordIds);
+
+    if (reviewStatesError) {
+      throw new Error(`review_states delete failed: ${reviewStatesError.message}`);
+    }
+
+    removedReviewStateCount = count ?? 0;
+  }
+
+  return {
+    removedWordCount: removeWordIds.length,
+    removedReviewStateCount,
+  };
 }
 
 export async function fetchGeneratedArticle(userId: string, groupId: string) {

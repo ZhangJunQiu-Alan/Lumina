@@ -41,7 +41,7 @@ interface CachedLookup {
 
 type WordLookupListener = () => void;
 
-const FAILURE_CACHE_MS = 30 * 60 * 1000;
+const FAILURE_CACHE_MS = 15 * 1000;
 const MISSING_CACHE_MS = 30 * 60 * 1000;
 const memoryCache = new Map<string, CachedLookup>();
 const canonicalWordByLookupKey = new Map<string, string>();

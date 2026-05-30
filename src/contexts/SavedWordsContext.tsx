@@ -14,7 +14,7 @@ interface SaveWordResponse {
 }
 
 interface SavedWordsContextValue {
-  saveWord: (vocabularyItemId: string, source?: SavedWordSource) => Promise<void>;
+  saveWord: (vocabularyItemId: string, source?: SavedWordSource) => Promise<SaveWordResponse>;
   removeWord: (vocabularyItemId: string) => Promise<void>;
 }
 
@@ -71,7 +71,7 @@ export function SavedWordsProvider({ children }: { children: ReactNode }) {
         in_user_library: false,
       }));
       invalidateLibraryCache(user?.id);
-      return;
+      return result ?? { saved: false, skippedReason: 'non_new_state' };
     }
 
     updateCachedLookup(vocabularyItemId, (current) => ({
@@ -79,6 +79,7 @@ export function SavedWordsProvider({ children }: { children: ReactNode }) {
       in_user_library: true,
     }));
     invalidateLibraryCache(user?.id);
+    return result ?? { saved: true };
   }, [user?.id]);
 
   const removeWord = useCallback(async (vocabularyItemId: string) => {

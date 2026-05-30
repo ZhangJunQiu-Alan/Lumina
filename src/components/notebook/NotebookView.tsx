@@ -318,7 +318,7 @@ export function NotebookView() {
                       transition={{ duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
                     >
                       <div className="border-t border-black/5 p-6 sm:p-8 space-y-8">
-                        {word.memoryTip && (
+                        {preferences.memoryTipEnabled && word.memoryTip && (
                           <div className="rounded-2xl bg-apple-blue/5 p-4">
                             <p className="text-xs font-bold uppercase tracking-widest text-apple-blue mb-2">记忆锦囊</p>
                             <p className="text-sm leading-relaxed text-text-primary font-medium">{word.memoryTip}</p>

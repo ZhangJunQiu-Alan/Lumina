@@ -836,7 +836,7 @@ function WordDetailDrawer({
             )}
           </section>
 
-          {word.memoryTip && (
+          {preferences.memoryTipEnabled && word.memoryTip && (
             <section className="glass rounded-2xl p-5">
               <div className="flex items-center gap-2 text-text-secondary">
                 <Sparkles className="h-4 w-4" />
@@ -1151,7 +1151,7 @@ export const LibraryView = ({
           <div className="min-w-0 pt-1">
             <h2 className="text-3xl font-black tracking-tight text-text-primary sm:text-4xl">我的词库</h2>
             <p className="mt-2 text-sm leading-7 text-text-secondary">
-              官方词库和自己保存的词会放在这里。凑够 30 个可用词，就能开始一组。
+              官方词库和自己保存的词会放在这里。凑够 40 个可用词，就能开始一组。
             </p>
           </div>
         </div>
@@ -1229,15 +1229,13 @@ export const LibraryView = ({
             className="space-y-5"
           >
             <div className="grid grid-cols-1 gap-3 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {officialLibraries.map(({ definition, summary, existingGroupCount }) => (
+              {officialLibraries.map(({ definition, summary }) => (
                 <Fragment key={definition.id}>
                   <OfficialLibraryPanel
                     definition={definition}
                     summary={summary}
-                    existingGroupCount={existingGroupCount}
                     onStartLearning={onStartLearningGroup}
                     onOpenDetail={() => navigate(`/app/library/official/${definition.id}`)}
-                    onLibraryMutated={onLibraryMutated}
                   />
                 </Fragment>
               ))}
@@ -1364,9 +1362,7 @@ export const OfficialLibraryDetailView = ({
         <OfficialLibraryPanel
           definition={definition}
           summary={summary}
-          existingGroupCount={existingGroupCount}
           onStartLearning={onStartLearningGroup ?? (() => undefined)}
-          onLibraryMutated={onLibraryMutated}
           showOpenDetailAction={false}
         />
 
@@ -1375,7 +1371,7 @@ export const OfficialLibraryDetailView = ({
             <BookOpen className="mx-auto h-10 w-10 text-text-secondary/50" />
             <p className="mt-4 text-2xl font-black text-text-primary">{definition.title} 还没有开始</p>
             <p className="mt-3 text-sm leading-7 text-text-secondary">
-              点上方按钮，会从第一批官方词开始生成学习组。
+              回首页选择词库和顺序后，就能开始官方学习。
             </p>
           </div>
         ) : (
