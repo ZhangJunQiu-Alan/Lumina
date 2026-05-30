@@ -46,6 +46,12 @@ jobs:
         with:
           version: 2.75.0
 
+      - name: Enable AI content features
+        if: steps.preflight.outputs.skip_deploy != 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase secrets set LUMINA_AI_FEATURES_ENABLED=true --project-ref zhjdsvcgccdvtnicyasi
+
       - name: Deploy api function
         if: steps.preflight.outputs.skip_deploy != 'true'
         env:
