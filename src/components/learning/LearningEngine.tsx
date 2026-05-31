@@ -1263,20 +1263,10 @@ export const LearningEngine = ({
   const primaryPos = viewedWord.pos_tags[0] ?? '未标注';
   const actionDisabled =
     isViewingHistory || isSubmittingAttempt || ((type === 'round2' || type === 'review') && showAnswer);
-  const actionLabel =
-    (type === 'round2' || type === 'review') && showAnswer
-      ? isWrong
-        ? '答案展示中…'
-        : '判断正确！'
-      : type === 'round1'
-        ? '确认这一词'
-        : '提交这次判断';
   const allowLiveCorrectTint = type === 'round1' || type === 'round2';
   const inputIsCorrect = !isWrong && allowLiveCorrectTint && isCorrect;
   const contentAreaClassName =
     'learning-card-scrollarea flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7 sm:py-7 lg:px-8 lg:py-7';
-  const inputDockClassName =
-    'shrink-0 border-t border-black/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(247,249,253,0.92))] px-4 py-4 shadow-[0_-18px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl sm:px-7 sm:py-5 lg:px-8';
   const round1InputDockClassName =
     'shrink-0 border-t border-black/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.76),rgba(247,249,253,0.94))] px-4 pt-2 pb-3 shadow-[0_-18px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl sm:px-7 sm:pt-3 sm:pb-4 lg:px-8';
   const round1MemoryTip = preferences.memoryTipEnabled ? trimDisplayText(viewedWord.memory_tip) : '';
@@ -1366,34 +1356,6 @@ export const LearningEngine = ({
     <div className="rounded-2xl bg-apple-red/10 px-4 py-3 text-sm font-medium text-apple-red">{submitError}</div>
   ) : null;
 
-  const actionButton = (
-    <button
-      type="button"
-      onClick={() => {
-        void validateCurrentInput();
-      }}
-      disabled={actionDisabled}
-      className={cx(
-        'flex w-full items-center justify-center gap-2 rounded-[20px] px-5 py-3.5 text-base font-black text-white transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 sm:w-auto sm:min-w-[220px]',
-        type === 'round2'
-          ? 'bg-[#2563eb] shadow-[0_18px_40px_rgba(37,99,235,0.22)] hover:bg-[#1d4ed8]'
-          : 'bg-apple-blue shadow-[0_18px_40px_rgba(25,200,185,0.22)]',
-      )}
-    >
-      {isSubmittingAttempt ? (
-        <>
-          <Loader2 className="h-5 w-5 animate-spin" />
-          正在写回这次判断…
-        </>
-      ) : (
-        <>
-          {actionLabel}
-          <ChevronRight className="h-5 w-5" />
-        </>
-      )}
-    </button>
-  );
-
   const navigationButtonClassName =
     'flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/80 bg-white/78 text-text-primary shadow-[0_14px_34px_rgba(14,26,56,0.08)] backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:bg-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:translate-y-0 disabled:hover:bg-white/78';
   const leftNavigationButton = (
@@ -1430,6 +1392,7 @@ export const LearningEngine = ({
     <div
       ref={ref}
       className={className}
+      style={{ zIndex: 80 }}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
     >
@@ -1453,7 +1416,7 @@ export const LearningEngine = ({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ duration: 0.14, ease: 'easeOut' }}
-            className="absolute right-0 top-[3.25rem] w-52 overflow-hidden rounded-[22px] border border-white/85 bg-white/92 p-1.5 text-left shadow-[0_22px_56px_rgba(61,52,40,0.18)] backdrop-blur-xl"
+            className="absolute right-0 top-[3.25rem] z-[90] w-52 overflow-hidden rounded-[22px] border border-white/85 bg-white/92 p-1.5 text-left shadow-[0_22px_56px_rgba(61,52,40,0.18)] backdrop-blur-xl"
           >
             <button
               type="button"
@@ -2030,8 +1993,8 @@ export const LearningEngine = ({
                 </div>
               )}
             </motion.div>
-            <div className="relative hidden items-center justify-center sm:flex">
-              <div className="absolute left-1/2 top-3 -translate-x-1/2">{desktopWordActionMenu}</div>
+            <div className="relative z-[70] hidden items-center justify-center sm:flex">
+              <div className="absolute left-1/2 top-3 z-[80] -translate-x-1/2">{desktopWordActionMenu}</div>
               {rightNavigationButton}
             </div>
           </div>

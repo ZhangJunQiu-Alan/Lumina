@@ -27,11 +27,12 @@ async function readApiError(response: Response) {
 
 export function SavedWordsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const userId = user?.id ?? null;
 
   useEffect(() => {
-    if (!user) return undefined;
+    if (!userId) return undefined;
 
-    const channelName = `vocab-updates-${user.id}-${Math.random().toString(36).slice(2)}`;
+    const channelName = `vocab-updates-${userId}-${Math.random().toString(36).slice(2)}`;
     const channel = supabase
       .channel(channelName)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'vocabulary_items' }, (payload) => {
@@ -45,7 +46,7 @@ export function SavedWordsProvider({ children }: { children: ReactNode }) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [userId]);
 
   const saveWord = useCallback(
     async (vocabularyItemId: string, source: SavedWordSource = 'reading_popup') => {
@@ -67,7 +68,7 @@ export function SavedWordsProvider({ children }: { children: ReactNode }) {
           ...current,
           in_user_library: false,
         }));
-        invalidateLibraryCache(user?.id);
+        invalidateLibraryCache(userId);
         return result ?? { saved: false, skippedReason: 'non_new_state' };
       }
 
@@ -75,10 +76,10 @@ export function SavedWordsProvider({ children }: { children: ReactNode }) {
         ...current,
         in_user_library: true,
       }));
-      invalidateLibraryCache(user?.id);
+      invalidateLibraryCache(userId);
       return result ?? { saved: true };
     },
-    [user?.id],
+    [userId],
   );
 
   const removeWord = useCallback(
@@ -95,9 +96,9 @@ export function SavedWordsProvider({ children }: { children: ReactNode }) {
         ...current,
         in_user_library: false,
       }));
-      invalidateLibraryCache(user?.id);
+      invalidateLibraryCache(userId);
     },
-    [user?.id],
+    [userId],
   );
 
   const value = useMemo(

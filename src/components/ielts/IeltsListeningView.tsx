@@ -170,6 +170,7 @@ function RecentListeningAttempts({
 
 export function IeltsListeningHomeView() {
   const { user } = useAuth();
+  const userId = user?.id ?? null;
   const navigate = useNavigate();
   const [books, setBooks] = useState<IeltsListeningBookSummary[]>([]);
   const [attempts, setAttempts] = useState<IeltsListeningAttemptSummary[]>([]);
@@ -180,13 +181,13 @@ export function IeltsListeningHomeView() {
     let cancelled = false;
 
     async function load() {
-      if (!user) return;
+      if (!userId) return;
       setIsLoading(true);
       setErrorMsg('');
       try {
         const [nextBooks, nextAttempts] = await Promise.all([
           fetchIeltsListeningBooks(),
-          fetchRecentIeltsListeningAttempts(user.id),
+          fetchRecentIeltsListeningAttempts(userId),
         ]);
         if (cancelled) return;
         setBooks(nextBooks);
@@ -202,7 +203,7 @@ export function IeltsListeningHomeView() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [userId]);
 
   if (isLoading) return <IeltsListeningLoadingShell label="正在读取雅思听力题库" />;
   if (errorMsg) return <IeltsListeningErrorShell message={errorMsg} onBack={() => navigate('/app/ielts')} />;
@@ -346,7 +347,7 @@ function QuestionInput({
       value={typeof value === 'string' ? value : ''}
       disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
-      className="h-12 w-full rounded-2xl border border-[#dce3ee] bg-white px-4 text-base font-bold text-text-primary outline-none transition-colors focus:border-apple-orange disabled:cursor-not-allowed disabled:bg-[#f2f4f8]"
+      className="h-12 w-full rounded-2xl border border-[#dce3ee] bg-white px-4 text-base font-bold text-text-primary outline-none transition-colors focus:border-[#19c8b9] disabled:cursor-not-allowed disabled:bg-[#f2f4f8]"
       placeholder="输入答案"
     />
   );
@@ -637,6 +638,7 @@ function ResultPanel({
 export function IeltsListeningTestView() {
   const { testId } = useParams();
   const { user } = useAuth();
+  const userId = user?.id ?? null;
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const attemptId = searchParams.get('attempt');
@@ -653,14 +655,14 @@ export function IeltsListeningTestView() {
   const timeoutSubmitAttempted = useRef(false);
 
   useEffect(() => {
-    if (!testId || !user || attemptId) return;
-    const draft = readDraft(user.id, testId);
+    if (!testId || !userId || attemptId) return;
+    const draft = readDraft(userId, testId);
     if (!draft) return;
     setStartedAt(draft.startedAt);
     setAnswers(draft.answers);
     setSelectedSection(draft.selectedSection);
     setFlaggedNumbers(draft.flags ?? []);
-  }, [attemptId, testId, user]);
+  }, [attemptId, testId, userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -676,9 +678,9 @@ export function IeltsListeningTestView() {
           return;
         }
         setTest(detail);
-        if (!detail.sections.some((section) => section.number === selectedSection)) {
-          setSelectedSection(detail.sections[0]?.number ?? 1);
-        }
+        setSelectedSection((current) =>
+          detail.sections.some((section) => section.number === current) ? current : (detail.sections[0]?.number ?? 1),
+        );
       } catch (error) {
         if (!cancelled) setErrorMsg(error instanceof Error ? error.message : String(error));
       } finally {
@@ -689,12 +691,12 @@ export function IeltsListeningTestView() {
     return () => {
       cancelled = true;
     };
-  }, [selectedSection, testId]);
+  }, [testId]);
 
   useEffect(() => {
     let cancelled = false;
     async function loadAttempt() {
-      if (!attemptId || !user) {
+      if (!attemptId || !userId) {
         if (!attemptId) setResult(null);
         return;
       }
@@ -702,7 +704,7 @@ export function IeltsListeningTestView() {
       setIsLoading(true);
       setErrorMsg('');
       try {
-        const attempt = await fetchIeltsListeningAttemptResult(user.id, attemptId);
+        const attempt = await fetchIeltsListeningAttemptResult(userId, attemptId);
         if (cancelled) return;
         if (!attempt) {
           setErrorMsg('找不到这次听力记录。');
@@ -721,17 +723,17 @@ export function IeltsListeningTestView() {
     return () => {
       cancelled = true;
     };
-  }, [attemptId, user]);
+  }, [attemptId, userId]);
 
   useEffect(() => {
-    if (!testId || !user || result || attemptId) return;
-    writeDraft(user.id, testId, {
+    if (!testId || !userId || result || attemptId) return;
+    writeDraft(userId, testId, {
       startedAt,
       answers,
       selectedSection,
       flags: flaggedNumbers,
     });
-  }, [answers, attemptId, flaggedNumbers, result, selectedSection, startedAt, testId, user]);
+  }, [answers, attemptId, flaggedNumbers, result, selectedSection, startedAt, testId, userId]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -761,24 +763,24 @@ export function IeltsListeningTestView() {
   }, []);
 
   const submitAttempt = useCallback(async () => {
-    if (!test || !user || !testId || isSubmitting) return;
+    if (!test || !userId || !testId || isSubmitting) return;
     setIsSubmitting(true);
     try {
       const nextResult = await submitIeltsListeningAttempt({
-        userId: user.id,
+        userId,
         test,
         answers,
         startedAt,
         elapsedSeconds,
       });
-      clearDraft(user.id, testId);
+      clearDraft(userId, testId);
       setResult(nextResult);
     } catch (error) {
       setErrorMsg(error instanceof Error ? error.message : String(error));
     } finally {
       setIsSubmitting(false);
     }
-  }, [answers, elapsedSeconds, isSubmitting, startedAt, test, testId, user]);
+  }, [answers, elapsedSeconds, isSubmitting, startedAt, test, testId, userId]);
 
   useEffect(() => {
     if (!test || result || isSubmitting || timeoutSubmitAttempted.current || remainingSeconds > 0) return;
@@ -787,8 +789,8 @@ export function IeltsListeningTestView() {
   }, [isSubmitting, remainingSeconds, result, submitAttempt, test]);
 
   const handleReset = () => {
-    if (!testId || !user) return;
-    clearDraft(user.id, testId);
+    if (!testId || !userId) return;
+    clearDraft(userId, testId);
     setAnswers({});
     setFlaggedNumbers([]);
     setStartedAt(new Date().toISOString());

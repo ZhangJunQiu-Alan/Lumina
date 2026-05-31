@@ -12,7 +12,6 @@ import {
   ArticleSentence,
   HomeOfficialLibraryOption,
   LearningPreferences,
-  LearningRoundType,
   OfficialLibraryId,
   OfficialStudyMode,
   PersistedLearningSession,
@@ -173,7 +172,7 @@ function AmbientBackground() {
   );
 }
 
-const LoadingShell = ({ children, isSkeleton = false }: { children: React.ReactNode; isSkeleton?: boolean }) => {
+const LoadingShell = ({ isSkeleton = false }: { isSkeleton?: boolean }) => {
   const shouldShow = useDeferredLoading(true, 300);
   if (!shouldShow) return null;
   return (
@@ -539,7 +538,7 @@ export default function App() {
       setArticleGenerationError('');
       setRound('round1');
     }
-  }, [cancelArticleGeneration, user]);
+  }, [cancelArticleGeneration, setActiveSessionSeed, user]);
 
   const resetActiveLearningState = useCallback(() => {
     cancelArticleGeneration();
@@ -550,7 +549,7 @@ export default function App() {
     setArticleSentences(null);
     setArticleGenerationError('');
     setRound('round1');
-  }, [cancelArticleGeneration]);
+  }, [cancelArticleGeneration, setActiveSessionSeed]);
 
   const ensureArticleForGroup = useCallback(
     async (groupId: string, words: Word[]) => {
@@ -821,6 +820,7 @@ export default function App() {
       learningPreferences.round2Enabled,
       navigate,
       resetActiveLearningState,
+      setActiveSessionSeed,
       user,
     ],
   );
@@ -1094,13 +1094,7 @@ export default function App() {
           });
       }
     },
-    [
-      activeLearningGroupId,
-      stats.routineCard.lastUsedOfficialGroupCount,
-      stats.routineCard.officialLibraryOptions,
-      stats.routineCard,
-      user,
-    ],
+    [activeLearningGroupId, stats.routineCard, setActiveSessionSeed, user],
   );
 
   const handleSessionWordMastered = useCallback(
@@ -1323,6 +1317,9 @@ export default function App() {
       activeLearningGroupId,
       activeSessionSeed?.completedAt,
       activeSessionSeed?.groupCompleted,
+      activeSessionSeed?.libraryId,
+      activeSessionSeed?.officialMode,
+      activeSessionSeed?.round1ConfirmedWordIds,
       articleReinforcementEnabled,
       ensureArticleForGroup,
       fetchStats,
@@ -1331,6 +1328,7 @@ export default function App() {
       navigate,
       resetActiveLearningState,
       round,
+      setActiveSessionSeed,
       user,
     ],
   );
@@ -1551,9 +1549,7 @@ export default function App() {
                   </div>
                 )}
                 <div className={cx(isSessionRoute && 'flex-1 min-h-0')}>
-                  <Suspense
-                    fallback={<LoadingShell isSkeleton={location.pathname.includes('/library')}>{null}</LoadingShell>}
-                  >
+                  <Suspense fallback={<LoadingShell isSkeleton={location.pathname.includes('/library')} />}>
                     <Routes>
                       <Route
                         path="home"
@@ -1582,14 +1578,7 @@ export default function App() {
                       />
                       <Route
                         path="library/official/:libraryId?"
-                        element={
-                          <OfficialLibraryDetailView
-                            onLibraryMutated={() => {
-                              void fetchStats();
-                            }}
-                            onStartLearningGroup={handleStartLearningGroup}
-                          />
-                        }
+                        element={<OfficialLibraryDetailView onStartLearningGroup={handleStartLearningGroup} />}
                       />
                       <Route
                         path="library/group/:groupId"

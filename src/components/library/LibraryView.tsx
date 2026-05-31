@@ -969,6 +969,7 @@ export const LibraryView = ({
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
+  const userId = user?.id ?? null;
   const [groups, setGroups] = useState<LibraryGroupSummary[]>([]);
   const [officialResumeCandidates, setOfficialResumeCandidates] = useState<
     Record<OfficialLibraryId, OfficialResumeTargets> | undefined
@@ -986,19 +987,19 @@ export const LibraryView = ({
   };
 
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
 
-    const flagKey = `lumina:custom-groups-merged:${user.id}`;
+    const flagKey = `lumina:custom-groups-merged:${userId}`;
     if (typeof window === 'undefined' || window.localStorage.getItem(flagKey) === '1') return;
 
     let cancelled = false;
     void (async () => {
       try {
-        const result = await migrateCustomGroupWordsIntoSavedWords(user.id);
+        const result = await migrateCustomGroupWordsIntoSavedWords(userId);
         if (cancelled) return;
         window.localStorage.setItem(flagKey, '1');
         if (result.inserted > 0) {
-          invalidateLibraryCache(user.id);
+          invalidateLibraryCache(userId);
         }
       } catch (error) {
         console.error('migrate custom groups into saved words failed:', error);
@@ -1008,12 +1009,12 @@ export const LibraryView = ({
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [userId]);
 
   useEffect(() => {
     let active = true;
 
-    if (!user) {
+    if (!userId) {
       setGroups([]);
       setOfficialResumeCandidates(
         Object.fromEntries(
@@ -1028,9 +1029,9 @@ export const LibraryView = ({
       };
     }
 
-    const cachedGroups = getCachedLibraryGroups(user.id);
-    const cachedResume = getCachedOfficialResumeCandidates(user.id);
-    const cachedCompletionCounts = getCachedOfficialCompletionCounts(user.id);
+    const cachedGroups = getCachedLibraryGroups(userId);
+    const cachedResume = getCachedOfficialResumeCandidates(userId);
+    const cachedCompletionCounts = getCachedOfficialCompletionCounts(userId);
 
     if (cachedGroups) {
       setGroups(cachedGroups.data);
@@ -1062,13 +1063,13 @@ export const LibraryView = ({
       const [groupsResult, resumeResult, completionCountsResult] = await Promise.allSettled([
         groupsFresh
           ? Promise.resolve(cachedGroups!.data)
-          : refreshLibraryGroups(user.id, () => fetchLibraryGroupSummaries(user.id)),
+          : refreshLibraryGroups(userId, () => fetchLibraryGroupSummaries(userId)),
         resumeFresh
           ? Promise.resolve(cachedResume!.data)
-          : refreshOfficialResumeCandidates(user.id, () => fetchOfficialResumeCandidates(user.id)),
+          : refreshOfficialResumeCandidates(userId, () => fetchOfficialResumeCandidates(userId)),
         completionCountsFresh
           ? Promise.resolve(cachedCompletionCounts!.data)
-          : refreshOfficialCompletionCounts(user.id, () => fetchOfficialCompletionCounts(user.id)),
+          : refreshOfficialCompletionCounts(userId, () => fetchOfficialCompletionCounts(userId)),
       ]);
 
       if (!active) return;
@@ -1128,7 +1129,7 @@ export const LibraryView = ({
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [userId]);
 
   if (isLoading || officialResumeCandidates === undefined || officialCompletionCounts === undefined) {
     return <LibraryLoading message="正在把你的记忆地图展开" />;
@@ -1221,9 +1222,9 @@ export const LibraryView = ({
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.18 }}
           >
-            {user && (
+            {userId && (
               <SavedWordsPanel
-                userId={user.id}
+                userId={userId}
                 nextGroupNumber={customGroupCount + 1}
                 onStartLearningGroup={onStartLearningGroup}
                 onLibraryMutated={onLibraryMutated}
@@ -1260,15 +1261,14 @@ export const LibraryView = ({
 };
 
 export const OfficialLibraryDetailView = ({
-  onLibraryMutated,
   onStartLearningGroup,
 }: {
-  onLibraryMutated?: () => void | Promise<void>;
   onStartLearningGroup?: (groupId: string) => Promise<void> | void;
 }) => {
   const navigate = useNavigate();
   const { libraryId: rawLibraryId } = useParams();
   const { user } = useAuth();
+  const userId = user?.id ?? null;
 
   const validLibraryId = rawLibraryId && isOfficialLibraryId(rawLibraryId) ? rawLibraryId : null;
   const libraryId = validLibraryId ?? 'ielts-vocab';
@@ -1277,7 +1277,6 @@ export const OfficialLibraryDetailView = ({
     buildOfficialLibrarySummary(libraryId, [], null),
   );
   const [words, setWords] = useState<LibraryGroupWord[]>([]);
-  const [existingGroupCount, setExistingGroupCount] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -1285,10 +1284,9 @@ export const OfficialLibraryDetailView = ({
   useEffect(() => {
     let active = true;
 
-    if (!validLibraryId || !user) {
+    if (!validLibraryId || !userId) {
       setSummary(buildOfficialLibrarySummary(libraryId, [], null));
       setWords([]);
-      setExistingGroupCount(0);
       setIsLoading(false);
       setErrorMsg('');
       return () => {
@@ -1296,11 +1294,10 @@ export const OfficialLibraryDetailView = ({
       };
     }
 
-    const cached = getCachedOfficialLibraryDetail(user.id, libraryId);
+    const cached = getCachedOfficialLibraryDetail(userId, libraryId);
     if (cached) {
       setSummary(cached.data.summary);
       setWords(cached.data.words);
-      setExistingGroupCount(cached.data.existingGroupCount);
       setErrorMsg('');
       setIsLoading(false);
     } else {
@@ -1316,13 +1313,12 @@ export const OfficialLibraryDetailView = ({
 
     const loadOfficialDetail = async () => {
       try {
-        const detail = await refreshOfficialLibraryDetail(user.id, libraryId, () =>
-          fetchOfficialLibraryDetail(user.id, libraryId),
+        const detail = await refreshOfficialLibraryDetail(userId, libraryId, () =>
+          fetchOfficialLibraryDetail(userId, libraryId),
         );
         if (!active) return;
         setSummary(detail.summary);
         setWords(detail.words);
-        setExistingGroupCount(detail.existingGroupCount);
         setErrorMsg('');
       } catch (error) {
         if (!active) return;
@@ -1343,7 +1339,7 @@ export const OfficialLibraryDetailView = ({
     return () => {
       active = false;
     };
-  }, [libraryId, user, validLibraryId]);
+  }, [libraryId, userId, validLibraryId]);
 
   const selectedWord = useMemo(() => words.find((word) => word.id === selectedId) ?? null, [selectedId, words]);
 
@@ -1449,6 +1445,7 @@ export const LibraryGroupDetailView = ({
   const navigate = useNavigate();
   const { groupId } = useParams();
   const { user } = useAuth();
+  const userId = user?.id ?? null;
   const [group, setGroup] = useState<LibraryGroupSummary | null>(null);
   const [words, setWords] = useState<LibraryGroupWord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -1460,9 +1457,9 @@ export const LibraryGroupDetailView = ({
 
   useEffect(() => {
     let active = true;
-    const cachedDetail = user && groupId ? getCachedLibraryGroupDetail(user.id, groupId) : null;
+    const cachedDetail = userId && groupId ? getCachedLibraryGroupDetail(userId, groupId) : null;
 
-    if (!user || !groupId) {
+    if (!userId || !groupId) {
       setGroup(null);
       setWords([]);
       setIsLoading(false);
@@ -1486,9 +1483,7 @@ export const LibraryGroupDetailView = ({
           setErrorMsg('');
         }
 
-        const detail = await refreshLibraryGroupDetail(user.id, groupId, () =>
-          fetchLibraryGroupDetail(user.id, groupId),
-        );
+        const detail = await refreshLibraryGroupDetail(userId, groupId, () => fetchLibraryGroupDetail(userId, groupId));
         if (!active) return;
         setGroup(detail.group);
         setWords(detail.words);
@@ -1514,7 +1509,7 @@ export const LibraryGroupDetailView = ({
     return () => {
       active = false;
     };
-  }, [groupId, user]);
+  }, [groupId, userId]);
 
   const selectedWord = useMemo(() => words.find((word) => word.id === selectedId) ?? null, [selectedId, words]);
 
@@ -1552,13 +1547,13 @@ export const LibraryGroupDetailView = ({
   const groupHelperLabel = isSystemGroup ? '官方词库' : '我的词库';
 
   const handleDeleteGroup = async () => {
-    if (!user || !group || isSystemGroup) return;
+    if (!userId || !group || isSystemGroup) return;
 
     try {
       setIsDeletingGroup(true);
       setDeleteErrorMsg('');
-      await deleteLibraryGroup(user.id, group.id);
-      removeLibraryGroupFromCache(user.id, group.id);
+      await deleteLibraryGroup(userId, group.id);
+      removeLibraryGroupFromCache(userId, group.id);
       setSelectedId(null);
       setIsDeleteDialogOpen(false);
       void onLibraryMutated?.();

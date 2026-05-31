@@ -13,7 +13,6 @@ import { toConfusingPairs, toWordMorphology, toWordRelations } from '../types';
 import { supabase } from './supabase';
 import {
   OFFICIAL_LIBRARY_DEFINITIONS,
-  resolveLibraryGroupSourceType,
   resolveOfficialLibraryId,
   resolveOfficialStudyModeFromGroupName,
 } from './officialLibrary';

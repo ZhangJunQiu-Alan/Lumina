@@ -11,7 +11,14 @@ import {
   Shield,
   type LucideIcon,
 } from 'lucide-react';
-import type { OfficialLibraryId, OfficialStudyMode, OrbitDay, OrbitDayStatus, UserStats } from '../../types';
+import type {
+  HomeOfficialLibraryOption,
+  OfficialLibraryId,
+  OfficialStudyMode,
+  OrbitDay,
+  OrbitDayStatus,
+  UserStats,
+} from '../../types';
 import { LuminaLogo } from '../brand/LuminaLogo';
 
 interface HomeViewProps {
@@ -27,6 +34,8 @@ interface HomeViewProps {
 function cx(...parts: Array<string | false | undefined>) {
   return parts.filter(Boolean).join(' ');
 }
+
+const EMPTY_OFFICIAL_LIBRARY_OPTIONS: HomeOfficialLibraryOption[] = [];
 
 function OrbitMetric({
   value,
@@ -304,8 +313,8 @@ function RoutineDropdown<T extends string>({
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         className={cx(
-          'group flex h-11 w-full items-center justify-between gap-2 rounded-[17px] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,250,238,0.88))] px-4 text-left text-sm font-black text-[#5b4932] shadow-[0_10px_24px_rgba(90,70,42,0.10),inset_0_-2px_0_rgba(149,117,68,0.08)] outline-none transition-all hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_14px_30px_rgba(90,70,42,0.13),inset_0_-2px_0_rgba(149,117,68,0.08)] focus-visible:ring-4 focus-visible:ring-[#f1c45d]/25 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 sm:h-12',
-          isOpen && 'border-[#e2c982] ring-4 ring-[#f1c45d]/18',
+          'group flex h-11 w-full items-center justify-between gap-2 rounded-[17px] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,250,238,0.88))] px-4 text-left text-sm font-black text-[#5b4932] shadow-[0_10px_24px_rgba(90,70,42,0.10),inset_0_-2px_0_rgba(149,117,68,0.08)] outline-none transition-all hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_14px_30px_rgba(90,70,42,0.13),inset_0_-2px_0_rgba(149,117,68,0.08)] focus-visible:ring-4 focus-visible:ring-[#19c8b9]/18 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 sm:h-12',
+          isOpen && 'border-[#19c8b9]/45 ring-4 ring-[#19c8b9]/14',
         )}
       >
         <span className="min-w-0 truncate">{selectedOption?.label ?? label}</span>
@@ -335,7 +344,7 @@ function RoutineDropdown<T extends string>({
                     setIsOpen(false);
                   }}
                   className={cx(
-                    'flex h-10 w-full items-center justify-between gap-3 rounded-[13px] px-3 text-sm font-black text-[#5b4932] transition-colors hover:bg-[#fff2cf] focus-visible:bg-[#fff2cf] focus-visible:outline-none',
+                    'flex h-10 w-full items-center justify-between gap-3 rounded-[13px] px-3 text-sm font-black text-[#5b4932] transition-colors hover:bg-[#fff2cf] focus-visible:bg-[#e7fbf7] focus-visible:outline-none',
                     isSelected && 'bg-[#fff0c2] text-[#2f261d]',
                   )}
                 >
@@ -353,7 +362,7 @@ function RoutineDropdown<T extends string>({
                   footerAction.onSelect();
                   setIsOpen(false);
                 }}
-                className="flex h-10 w-full items-center justify-between gap-3 rounded-[13px] px-3 text-sm font-black text-[#5b4932] transition-colors hover:bg-[#fff2cf] focus-visible:bg-[#fff2cf] focus-visible:outline-none"
+                className="flex h-10 w-full items-center justify-between gap-3 rounded-[13px] px-3 text-sm font-black text-[#5b4932] transition-colors hover:bg-[#fff2cf] focus-visible:bg-[#e7fbf7] focus-visible:outline-none"
               >
                 <span className="flex min-w-0 items-center gap-2">
                   <BookOpen className="h-4 w-4 shrink-0 text-[#9b7a45]" />
@@ -379,7 +388,7 @@ export const HomeView = ({
   isLoading = false,
 }: HomeViewProps) => {
   const routineCard = stats.routineCard;
-  const officialOptions = routineCard.officialLibraryOptions ?? [];
+  const officialOptions = routineCard.officialLibraryOptions ?? EMPTY_OFFICIAL_LIBRARY_OPTIONS;
   const shouldShowOfficialControls = officialOptions.length > 0 || routineCard.ctaMode === 'start_learning';
   const defaultLibraryId = routineCard.selectedOfficialLibraryId ?? officialOptions[0]?.libraryId ?? '';
   const libraryDropdownOptions = useMemo(
@@ -603,7 +612,7 @@ export const HomeView = ({
                     <button
                       type="button"
                       onClick={onOpenOfficialLibrary}
-                      className="relative flex h-11 min-w-0 flex-1 items-center rounded-[17px] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,250,238,0.88))] px-4 pr-10 text-left text-sm font-black text-[#5b4932] shadow-[0_10px_24px_rgba(90,70,42,0.10),inset_0_-2px_0_rgba(149,117,68,0.08)] outline-none transition-all hover:-translate-y-0.5 hover:bg-white focus-visible:ring-4 focus-visible:ring-[#f1c45d]/25 sm:h-12 sm:min-w-[15rem]"
+                      className="relative flex h-11 min-w-0 flex-1 items-center rounded-[17px] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,250,238,0.88))] px-4 pr-10 text-left text-sm font-black text-[#5b4932] shadow-[0_10px_24px_rgba(90,70,42,0.10),inset_0_-2px_0_rgba(149,117,68,0.08)] outline-none transition-all hover:-translate-y-0.5 hover:bg-white focus-visible:ring-4 focus-visible:ring-[#19c8b9]/18 sm:h-12 sm:min-w-[15rem]"
                       aria-haspopup="listbox"
                     >
                       <span className="min-w-0 truncate">去官方词库挑选并加入</span>

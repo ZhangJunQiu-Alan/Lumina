@@ -42,6 +42,16 @@ function hasPasswordRecoveryMarker() {
   return searchParams.get('type') === 'recovery' || hashParams.get('type') === 'recovery';
 }
 
+function canReuseUser(current: User | null, next: User | null) {
+  if (!current || !next) return current === next;
+
+  return (
+    current.id === next.id &&
+    current.email === next.email &&
+    current.user_metadata?.full_name === next.user_metadata?.full_name
+  );
+}
+
 export function AuthProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -55,7 +65,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (!active) return;
 
       setSession(nextSession);
-      setUser(nextSession?.user ?? null);
+      setUser((current) => {
+        const nextUser = nextSession?.user ?? null;
+        return canReuseUser(current, nextUser) ? current : nextUser;
+      });
       setIsAuthLoading(false);
 
       if (event === 'PASSWORD_RECOVERY' || hasPasswordRecoveryMarker()) {
@@ -72,7 +85,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (!active) return;
 
       setSession(data.session ?? null);
-      setUser(data.session?.user ?? null);
+      setUser((current) => {
+        const nextUser = data.session?.user ?? null;
+        return canReuseUser(current, nextUser) ? current : nextUser;
+      });
       setIsAuthLoading(false);
     });
 

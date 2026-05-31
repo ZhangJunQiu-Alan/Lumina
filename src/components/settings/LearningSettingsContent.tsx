@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   AlertCircle,
   BookOpen,
-  CheckCircle2,
   Clock3,
+  FileText,
+  Globe2,
   Loader2,
+  MessageSquareText,
   Repeat2,
   RotateCcw,
+  SlidersHorizontal,
   Sparkles,
-  Target,
   Volume2,
   type LucideIcon,
 } from 'lucide-react';
@@ -17,44 +19,32 @@ import {
   AUTO_PLAY_GAP_OPTIONS,
   AUTO_PLAY_REPEAT_OPTIONS,
   CORRECT_ANSWER_REVEAL_OPTIONS,
-  IELTS_TARGET_SCORE_OPTIONS,
   LEARNING_PREFERENCES_DEFAULTS,
   SPEECH_PLAYBACK_RATE_OPTIONS,
   WRONG_ANSWER_REVEAL_OPTIONS,
 } from '../../lib/learningPreferences';
 import { AI_CONTENT_FEATURES_ENABLED } from '../../lib/aiFeatures';
-import type { IeltsTargetScore, LearningPreferences, PronunciationLocale, SpeechPlaybackRate } from '../../types';
+import type { LearningPreferences, PronunciationLocale, SpeechPlaybackRate } from '../../types';
 
 type PreferenceKey = keyof LearningPreferences;
-type PreferenceStatus = 'idle' | 'saving' | 'saved' | 'error';
+type PreferenceStatus = 'idle' | 'saving' | 'error';
 
 interface PreferenceFeedback {
   status: PreferenceStatus;
   message?: string;
 }
 
+function cx(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(' ');
+}
+
+function formatSeconds(ms: number, fixed = false) {
+  const seconds = ms / 1000;
+  return `${fixed ? seconds.toFixed(1) : seconds}秒`;
+}
+
 function StatusPill({ feedback }: { feedback?: PreferenceFeedback }) {
-  if (!feedback || feedback.status === 'idle') {
-    return null;
-  }
-
-  if (feedback.status === 'saving') {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-[#12192b]/8 px-2.5 py-1 text-[11px] font-black text-text-primary">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        保存中
-      </span>
-    );
-  }
-
-  if (feedback.status === 'saved') {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-apple-green/12 px-2.5 py-1 text-[11px] font-black text-apple-green">
-        <CheckCircle2 className="h-3.5 w-3.5" />
-        已保存
-      </span>
-    );
-  }
+  if (!feedback || feedback.status !== 'error') return null;
 
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full bg-apple-red/10 px-2.5 py-1 text-[11px] font-black text-apple-red">
@@ -69,15 +59,24 @@ function SegmentedOptionGroup<T extends string | number>({
   value,
   onChange,
   disabled = false,
+  wrap = false,
 }: {
-  options: Array<{ label: string; value: T; hint?: string }>;
+  options: Array<{ label: string; value: T }>;
   value: T;
   onChange: (next: T) => void;
   disabled?: boolean;
+  wrap?: boolean;
 }) {
   return (
-    <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
-      {options.map((option) => {
+    <div
+      className={cx(
+        'isolate grid w-full overflow-hidden rounded-[16px] border border-[#eadfcd] bg-white/92 shadow-[0_10px_28px_rgba(79,62,38,0.10),inset_0_1px_0_rgba(255,255,255,0.85)]',
+        wrap ? 'grid-cols-3 sm:grid-cols-5' : '',
+        disabled && 'opacity-45',
+      )}
+      style={wrap ? undefined : { gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+    >
+      {options.map((option, index) => {
         const active = option.value === value;
         return (
           <button
@@ -85,15 +84,19 @@ function SegmentedOptionGroup<T extends string | number>({
             type="button"
             disabled={disabled}
             onClick={() => onChange(option.value)}
-            className={`min-h-[58px] rounded-[18px] border px-3 text-center transition-all ${
-              disabled
-                ? 'cursor-not-allowed border-white/60 bg-white/38 text-text-secondary/45'
-                : active
-                  ? 'border-apple-blue bg-apple-blue text-white shadow-[0_18px_34px_rgba(25,200,185,0.25)]'
-                  : 'border-white/80 bg-white/78 text-text-primary shadow-[0_10px_24px_rgba(14,26,56,0.06)] hover:-translate-y-0.5 hover:bg-white'
-            }`}
+            className={cx(
+              'min-h-[52px] px-2.5 text-sm font-black text-[#5f4f42] transition-colors sm:text-base',
+              index > 0 && !wrap && 'border-l border-[#eadfcd]',
+              wrap && index % 3 !== 0 && 'border-l border-[#eadfcd] sm:border-l-0',
+              wrap && index % 5 !== 0 && 'sm:border-l sm:border-[#eadfcd]',
+              wrap && index >= 3 && 'border-t border-[#eadfcd] sm:border-t-0',
+              wrap && index >= 5 && 'sm:border-t sm:border-[#eadfcd]',
+              active && 'bg-[#19c8b9] text-white shadow-[0_12px_28px_rgba(25,200,185,0.30)]',
+              !active && !disabled && 'hover:bg-[#fff8ec]',
+              disabled && 'cursor-not-allowed',
+            )}
           >
-            <span className="text-base font-black">{option.label}</span>
+            {option.label}
           </button>
         );
       })}
@@ -105,89 +108,61 @@ function ToggleControl({ checked, onChange }: { checked: boolean; onChange: (che
   return (
     <button
       type="button"
+      aria-pressed={checked}
       onClick={() => onChange(!checked)}
-      className={`inline-flex h-[58px] w-full items-center justify-between rounded-[18px] border px-4 transition-all ${
-        checked
-          ? 'border-apple-blue bg-apple-blue text-white shadow-[0_18px_34px_rgba(25,200,185,0.25)]'
-          : 'border-white/80 bg-white/78 text-text-secondary shadow-[0_10px_24px_rgba(14,26,56,0.06)]'
-      }`}
+      className={cx(
+        'relative h-9 w-[66px] rounded-full transition-colors shadow-[0_10px_24px_rgba(79,62,38,0.10)]',
+        checked ? 'bg-[#19c8b9]' : 'bg-[#ded4c8]',
+      )}
     >
-      <span className="text-base font-black">{checked ? '开启' : '关闭'}</span>
       <span
-        className={`h-7 w-7 rounded-full transition-transform shadow-[0_6px_16px_rgba(14,26,56,0.12)] ${
-          checked ? 'bg-white/95' : 'bg-white'
-        }`}
+        className={cx(
+          'absolute top-1 h-7 w-7 rounded-full bg-white shadow-[0_6px_14px_rgba(51,41,30,0.22)] transition-transform',
+          checked ? 'translate-x-[34px]' : 'translate-x-1',
+        )}
       />
     </button>
   );
 }
 
-function IeltsTargetScoreControl({
-  value,
-  onChange,
-}: {
-  value: IeltsTargetScore;
-  onChange: (next: IeltsTargetScore) => void;
-}) {
-  return (
-    <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
-      {IELTS_TARGET_SCORE_OPTIONS.map((score) => {
-        const active = score === value;
-        return (
-          <button
-            key={score}
-            type="button"
-            onClick={() => onChange(score)}
-            className={`min-h-[58px] rounded-[18px] border px-3 text-center transition-all ${
-              active
-                ? 'border-apple-blue bg-apple-blue text-white shadow-[0_18px_34px_rgba(25,200,185,0.25)]'
-                : 'border-white/80 bg-white/78 text-text-primary shadow-[0_10px_24px_rgba(14,26,56,0.06)] hover:-translate-y-0.5 hover:bg-white'
-            }`}
-          >
-            <span className="text-base font-black">{score.toFixed(1)}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
+function SettingGroup({ children }: { children: ReactNode }) {
+  return <section className="divide-y divide-[#eadfcd] border-t border-[#eadfcd]">{children}</section>;
 }
 
-function SettingItem({
+function SettingRow({
   icon: Icon,
   title,
-  description,
   feedback,
   control,
   disabled = false,
 }: {
   icon: LucideIcon;
   title: string;
-  description: string;
   feedback?: PreferenceFeedback;
   control: ReactNode;
   disabled?: boolean;
 }) {
   return (
-    <section className={`space-y-4 ${disabled ? 'opacity-65' : ''}`}>
-      <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] bg-apple-blue/10 text-apple-blue shadow-[0_10px_24px_rgba(25,200,185,0.10)]">
-          <Icon className="h-5 w-5" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex min-h-7 items-center justify-between gap-3">
-            <h3 className="text-xl font-black leading-7 text-text-primary">{title}</h3>
-            <StatusPill feedback={feedback} />
-          </div>
-          <p className="mt-1 text-sm font-semibold leading-6 text-text-secondary">{description}</p>
-        </div>
-      </div>
-
-      <div className="sm:pl-[52px]">{control}</div>
-
-      {feedback?.status === 'error' && feedback.message && (
-        <p className="sm:pl-[52px] text-sm leading-6 text-apple-red">{feedback.message}</p>
+    <div
+      className={cx(
+        'grid min-h-[82px] grid-cols-[3.25rem_minmax(0,1fr)] items-center gap-x-4 gap-y-3 py-4 sm:grid-cols-[3.25rem_minmax(8rem,1fr)_minmax(10rem,15rem)]',
+        disabled && 'opacity-50',
       )}
-    </section>
+    >
+      <div className="flex h-12 w-12 items-center justify-center rounded-full border border-[#eadfcd] bg-[#fffdf8] text-[#6a5848] shadow-[0_8px_22px_rgba(79,62,38,0.08),inset_0_1px_0_rgba(255,255,255,0.95)]">
+        <Icon className="h-5 w-5" strokeWidth={2.35} />
+      </div>
+      <div className="flex min-w-0 items-center gap-2">
+        <h3 className="text-lg font-black leading-tight text-[#5a4a3d]">{title}</h3>
+        <StatusPill feedback={feedback} />
+      </div>
+      <div className="col-span-2 flex min-w-0 justify-start sm:col-span-1 sm:col-start-3 sm:justify-end">
+        <div className="w-full sm:w-[15rem] sm:max-w-full">{control}</div>
+      </div>
+      {feedback?.status === 'error' && feedback.message && (
+        <p className="col-span-2 text-sm font-bold leading-6 text-apple-red sm:col-start-2">{feedback.message}</p>
+      )}
+    </div>
   );
 }
 
@@ -195,37 +170,6 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
   const { preferences, isLoading, loadError, savePreferences } = useLearningPreferences();
   const [feedbackByKey, setFeedbackByKey] = useState<Partial<Record<PreferenceKey, PreferenceFeedback>>>({});
   const [resetFeedback, setResetFeedback] = useState<PreferenceFeedback>({ status: 'idle' });
-  const feedbackTimeoutsRef = useRef<Partial<Record<PreferenceKey, ReturnType<typeof setTimeout>>>>({});
-  const resetFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      for (const timeout of Object.values(feedbackTimeoutsRef.current) as Array<
-        ReturnType<typeof setTimeout> | undefined
-      >) {
-        if (timeout) clearTimeout(timeout);
-      }
-
-      if (resetFeedbackTimeoutRef.current) {
-        clearTimeout(resetFeedbackTimeoutRef.current);
-      }
-    },
-    [],
-  );
-
-  const setTransientSaved = (key: PreferenceKey) => {
-    if (feedbackTimeoutsRef.current[key]) {
-      clearTimeout(feedbackTimeoutsRef.current[key]);
-    }
-
-    feedbackTimeoutsRef.current[key] = setTimeout(() => {
-      setFeedbackByKey((prev) => ({
-        ...prev,
-        [key]: { status: 'idle' },
-      }));
-      feedbackTimeoutsRef.current[key] = undefined;
-    }, 1800);
-  };
 
   const handleSave = async (key: PreferenceKey, patch: Partial<LearningPreferences>) => {
     const isUnchanged = Object.entries(patch).every(([patchKey, patchValue]) => {
@@ -237,36 +181,24 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
 
     setFeedbackByKey((prev) => ({
       ...prev,
-      [key]: { status: 'saving' },
+      [key]: { status: 'idle' },
     }));
 
     try {
       await savePreferences(patch);
       setFeedbackByKey((prev) => ({
         ...prev,
-        [key]: { status: 'saved' },
+        [key]: { status: 'idle' },
       }));
-      setTransientSaved(key);
     } catch (error) {
       setFeedbackByKey((prev) => ({
         ...prev,
         [key]: {
           status: 'error',
-          message: error instanceof Error ? error.message : '这次没写回账号，请稍后再试。',
+          message: error instanceof Error ? error.message : '保存失败',
         },
       }));
     }
-  };
-
-  const setTransientResetSaved = () => {
-    if (resetFeedbackTimeoutRef.current) {
-      clearTimeout(resetFeedbackTimeoutRef.current);
-    }
-
-    resetFeedbackTimeoutRef.current = setTimeout(() => {
-      setResetFeedback({ status: 'idle' });
-      resetFeedbackTimeoutRef.current = null;
-    }, 1800);
   };
 
   const handleResetDefaults = async () => {
@@ -275,300 +207,266 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
     try {
       await savePreferences(LEARNING_PREFERENCES_DEFAULTS);
       setFeedbackByKey({});
-      setResetFeedback({ status: 'saved' });
-      setTransientResetSaved();
+      setResetFeedback({ status: 'idle' });
     } catch (error) {
       setResetFeedback({
         status: 'error',
-        message: error instanceof Error ? error.message : '默认设置没能写回账号，请稍后再试。',
+        message: error instanceof Error ? error.message : '保存失败',
       });
     }
   };
 
   if (isLoading) {
     return (
-      <div className="glass mx-auto max-w-3xl rounded-[34px] p-16 text-center shadow-[0_28px_64px_rgba(14,26,56,0.08)]">
-        <Loader2 className="mx-auto h-10 w-10 animate-spin text-apple-blue" />
-        <p className="mt-5 text-2xl font-black text-text-primary">正在读取学习设置</p>
-        <p className="mt-2 text-sm text-text-secondary">默认读音、自动连播和反馈时长会保存在账号里。</p>
+      <div className="flex min-h-[320px] items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="mx-auto h-9 w-9 animate-spin text-[#19c8b9]" />
+          <p className="mt-5 text-xl font-black text-[#5a4a3d]">正在读取学习设置</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className={`w-full max-w-3xl mx-auto space-y-8 ${className}`}>
+    <div className={cx('w-full', className)}>
       {loadError && (
-        <div className="rounded-[22px] border border-apple-red/15 bg-apple-red/8 px-4 py-3 text-apple-red shadow-[0_14px_30px_rgba(224,90,90,0.08)]">
+        <div className="mb-5 rounded-[20px] border border-apple-red/15 bg-apple-red/8 px-4 py-3 text-apple-red">
           <div className="flex items-start gap-3">
             <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-black">学习设置暂时没读到</p>
-              <p className="mt-1 text-sm leading-6">{loadError}</p>
-            </div>
+            <p className="text-sm font-bold leading-6">{loadError}</p>
           </div>
         </div>
       )}
 
-      <SettingItem
-        icon={Volume2}
-        title="默认口音"
-        description="自动朗读优先使用的口音"
-        feedback={feedbackByKey.defaultPronunciationLocale}
-        control={
-          <SegmentedOptionGroup<PronunciationLocale>
-            options={[
-              { label: 'UK', value: 'uk' },
-              { label: 'US', value: 'us' },
-            ]}
-            value={preferences.defaultPronunciationLocale}
-            onChange={(next) => {
-              void handleSave('defaultPronunciationLocale', { defaultPronunciationLocale: next });
-            }}
-          />
-        }
-      />
-
-      <SettingItem
-        icon={Target}
-        title="雅思目标分"
-        description="IELTS 总览页顶部显示的目标分"
-        feedback={feedbackByKey.ieltsTargetScore}
-        control={
-          <IeltsTargetScoreControl
-            value={preferences.ieltsTargetScore}
-            onChange={(next) => {
-              void handleSave('ieltsTargetScore', { ieltsTargetScore: next });
-            }}
-          />
-        }
-      />
-
-      <SettingItem
-        icon={Volume2}
-        title="朗读速度"
-        description="学习卡片里的单词和例句朗读速度"
-        feedback={feedbackByKey.speechPlaybackRate}
-        control={
-          <SegmentedOptionGroup<number>
-            options={SPEECH_PLAYBACK_RATE_OPTIONS.map((rate) => ({
-              label: `${rate}倍`,
-              value: rate,
-            }))}
-            value={preferences.speechPlaybackRate}
-            onChange={(next) => {
-              void handleSave('speechPlaybackRate', { speechPlaybackRate: next as SpeechPlaybackRate });
-            }}
-          />
-        }
-      />
-
-      <SettingItem
-        icon={Repeat2}
-        title="自动朗读"
-        description="进入新词时自动朗读"
-        feedback={feedbackByKey.autoPlayEnabled}
-        control={
-          <ToggleControl
-            checked={preferences.autoPlayEnabled}
-            onChange={(checked) => {
-              void handleSave('autoPlayEnabled', { autoPlayEnabled: checked });
-            }}
-          />
-        }
-      />
-
-      <SettingItem
-        icon={Volume2}
-        title="查词浮窗自动朗读"
-        description="点开查词浮窗时自动朗读这个词"
-        feedback={feedbackByKey.popoverAutoPlayEnabled}
-        control={
-          <ToggleControl
-            checked={preferences.popoverAutoPlayEnabled}
-            onChange={(checked) => {
-              void handleSave('popoverAutoPlayEnabled', { popoverAutoPlayEnabled: checked });
-            }}
-          />
-        }
-      />
-
-      <SettingItem
-        icon={Volume2}
-        title="句子默认朗读"
-        description="复习轮和 Round 2 答对后自动朗读完整句"
-        feedback={feedbackByKey.clozeSentenceAutoPlayEnabled}
-        control={
-          <ToggleControl
-            checked={preferences.clozeSentenceAutoPlayEnabled}
-            onChange={(checked) => {
-              void handleSave('clozeSentenceAutoPlayEnabled', { clozeSentenceAutoPlayEnabled: checked });
-            }}
-          />
-        }
-      />
-
-      <SettingItem
-        icon={Sparkles}
-        title="记忆锦囊"
-        description="学习和查看词条时显示记忆提示"
-        feedback={feedbackByKey.memoryTipEnabled}
-        control={
-          <ToggleControl
-            checked={preferences.memoryTipEnabled}
-            onChange={(checked) => {
-              void handleSave('memoryTipEnabled', { memoryTipEnabled: checked });
-            }}
-          />
-        }
-      />
-
-      <SettingItem
-        icon={Volume2}
-        title="朗读次数"
-        description="每个单词自动朗读的次数"
-        feedback={feedbackByKey.autoPlayRepeatCount}
-        control={
-          <SegmentedOptionGroup<number>
-            options={AUTO_PLAY_REPEAT_OPTIONS.map((count) => ({
-              label: `${count}次`,
-              value: count,
-            }))}
-            value={preferences.autoPlayRepeatCount}
-            onChange={(next) => {
-              void handleSave('autoPlayRepeatCount', { autoPlayRepeatCount: next as 1 | 2 | 3 });
-            }}
-          />
-        }
-      />
-
-      <SettingItem
-        icon={Clock3}
-        title="间隔时间"
-        description="自动朗读之间的间隔"
-        feedback={feedbackByKey.autoPlayRepeatGapMs}
-        disabled={preferences.autoPlayRepeatCount === 1}
-        control={
-          <SegmentedOptionGroup<number>
-            options={AUTO_PLAY_GAP_OPTIONS.map((gap) => ({
-              label: `${(gap / 1000).toFixed(1)}秒`,
-              value: gap,
-            }))}
-            value={preferences.autoPlayRepeatGapMs}
-            disabled={preferences.autoPlayRepeatCount === 1}
-            onChange={(next) => {
-              void handleSave('autoPlayRepeatGapMs', { autoPlayRepeatGapMs: next });
-            }}
-          />
-        }
-      />
-
-      <SettingItem
-        icon={Clock3}
-        title="答对反馈时间"
-        description="Round 2 和复习轮答对后反馈停留的时间"
-        feedback={feedbackByKey.correctAnswerRevealMs}
-        control={
-          <SegmentedOptionGroup<number>
-            options={CORRECT_ANSWER_REVEAL_OPTIONS.map((duration) => ({
-              label: `${duration / 1000}秒`,
-              value: duration,
-            }))}
-            value={preferences.correctAnswerRevealMs}
-            onChange={(next) => {
-              void handleSave('correctAnswerRevealMs', { correctAnswerRevealMs: next as 800 | 1000 | 1500 | 2000 });
-            }}
-          />
-        }
-      />
-
-      <SettingItem
-        icon={Clock3}
-        title="答错答案停留"
-        description="答错后正确答案停留的时间"
-        feedback={feedbackByKey.wrongAnswerRevealMs}
-        control={
-          <SegmentedOptionGroup<number>
-            options={WRONG_ANSWER_REVEAL_OPTIONS.map((duration) => ({
-              label: `${duration / 1000}秒`,
-              value: duration,
-            }))}
-            value={preferences.wrongAnswerRevealMs}
-            onChange={(next) => {
-              void handleSave('wrongAnswerRevealMs', { wrongAnswerRevealMs: next as 3000 | 5000 | 8000 });
-            }}
-          />
-        }
-      />
-
-      <SettingItem
-        icon={BookOpen}
-        title="第二轮练习"
-        description="完成第一轮后继续进入语境复现"
-        feedback={feedbackByKey.round2Enabled}
-        control={
-          <ToggleControl
-            checked={preferences.round2Enabled}
-            onChange={(checked) => {
-              void handleSave('round2Enabled', { round2Enabled: checked });
-            }}
-          />
-        }
-      />
-
-      <SettingItem
-        icon={BookOpen}
-        title="第三轮练习"
-        description="完成第二轮后继续强化"
-        feedback={feedbackByKey.reinforcementRound3Enabled}
-        control={
-          <ToggleControl
-            checked={preferences.reinforcementRound3Enabled}
-            onChange={(checked) => {
-              void handleSave('reinforcementRound3Enabled', { reinforcementRound3Enabled: checked });
-            }}
-          />
-        }
-      />
-
-      {AI_CONTENT_FEATURES_ENABLED && (
-        <SettingItem
-          icon={BookOpen}
-          title="文章巩固"
-          description="用短文把单词放回语境"
-          feedback={feedbackByKey.reinforcementArticleEnabled}
+      <SettingGroup>
+        <SettingRow
+          icon={Globe2}
+          title="默认口音"
+          feedback={feedbackByKey.defaultPronunciationLocale}
           control={
-            <ToggleControl
-              checked={preferences.reinforcementArticleEnabled}
-              onChange={(checked) => {
-                void handleSave('reinforcementArticleEnabled', { reinforcementArticleEnabled: checked });
+            <SegmentedOptionGroup<PronunciationLocale>
+              options={[
+                { label: 'UK', value: 'uk' },
+                { label: 'US', value: 'us' },
+              ]}
+              value={preferences.defaultPronunciationLocale}
+              onChange={(next) => {
+                void handleSave('defaultPronunciationLocale', { defaultPronunciationLocale: next });
               }}
             />
           }
         />
-      )}
+      </SettingGroup>
 
-      <div className="border-t border-black/6 pt-2">
+      <SettingGroup>
+        <SettingRow
+          icon={Volume2}
+          title="自动朗读"
+          feedback={feedbackByKey.autoPlayEnabled}
+          control={
+            <ToggleControl
+              checked={preferences.autoPlayEnabled}
+              onChange={(checked) => {
+                void handleSave('autoPlayEnabled', { autoPlayEnabled: checked });
+              }}
+            />
+          }
+        />
+        <SettingRow
+          icon={Volume2}
+          title="查词浮窗自动朗读"
+          feedback={feedbackByKey.popoverAutoPlayEnabled}
+          control={
+            <ToggleControl
+              checked={preferences.popoverAutoPlayEnabled}
+              onChange={(checked) => {
+                void handleSave('popoverAutoPlayEnabled', { popoverAutoPlayEnabled: checked });
+              }}
+            />
+          }
+        />
+        <SettingRow
+          icon={Volume2}
+          title="句子默认朗读"
+          feedback={feedbackByKey.clozeSentenceAutoPlayEnabled}
+          control={
+            <ToggleControl
+              checked={preferences.clozeSentenceAutoPlayEnabled}
+              onChange={(checked) => {
+                void handleSave('clozeSentenceAutoPlayEnabled', { clozeSentenceAutoPlayEnabled: checked });
+              }}
+            />
+          }
+        />
+        <SettingRow
+          icon={SlidersHorizontal}
+          title="朗读速度"
+          feedback={feedbackByKey.speechPlaybackRate}
+          control={
+            <SegmentedOptionGroup<number>
+              options={SPEECH_PLAYBACK_RATE_OPTIONS.map((rate) => ({
+                label: `${rate}倍`,
+                value: rate,
+              }))}
+              value={preferences.speechPlaybackRate}
+              onChange={(next) => {
+                void handleSave('speechPlaybackRate', { speechPlaybackRate: next as SpeechPlaybackRate });
+              }}
+            />
+          }
+        />
+        <SettingRow
+          icon={Repeat2}
+          title="朗读次数"
+          feedback={feedbackByKey.autoPlayRepeatCount}
+          control={
+            <SegmentedOptionGroup<number>
+              options={AUTO_PLAY_REPEAT_OPTIONS.map((count) => ({
+                label: `${count}次`,
+                value: count,
+              }))}
+              value={preferences.autoPlayRepeatCount}
+              onChange={(next) => {
+                void handleSave('autoPlayRepeatCount', { autoPlayRepeatCount: next as 1 | 2 | 3 });
+              }}
+            />
+          }
+        />
+        <SettingRow
+          icon={Clock3}
+          title="间隔时间"
+          feedback={feedbackByKey.autoPlayRepeatGapMs}
+          disabled={preferences.autoPlayRepeatCount === 1}
+          control={
+            <SegmentedOptionGroup<number>
+              options={AUTO_PLAY_GAP_OPTIONS.map((gap) => ({
+                label: formatSeconds(gap, true),
+                value: gap,
+              }))}
+              value={preferences.autoPlayRepeatGapMs}
+              disabled={preferences.autoPlayRepeatCount === 1}
+              onChange={(next) => {
+                void handleSave('autoPlayRepeatGapMs', { autoPlayRepeatGapMs: next });
+              }}
+            />
+          }
+        />
+      </SettingGroup>
+
+      <SettingGroup>
+        <SettingRow
+          icon={MessageSquareText}
+          title="答对反馈时间"
+          feedback={feedbackByKey.correctAnswerRevealMs}
+          control={
+            <SegmentedOptionGroup<number>
+              options={CORRECT_ANSWER_REVEAL_OPTIONS.map((duration) => ({
+                label: formatSeconds(duration),
+                value: duration,
+              }))}
+              value={preferences.correctAnswerRevealMs}
+              onChange={(next) => {
+                void handleSave('correctAnswerRevealMs', { correctAnswerRevealMs: next as 800 | 1000 | 1500 | 2000 });
+              }}
+            />
+          }
+        />
+        <SettingRow
+          icon={Clock3}
+          title="答错答案停留"
+          feedback={feedbackByKey.wrongAnswerRevealMs}
+          control={
+            <SegmentedOptionGroup<number>
+              options={WRONG_ANSWER_REVEAL_OPTIONS.map((duration) => ({
+                label: formatSeconds(duration),
+                value: duration,
+              }))}
+              value={preferences.wrongAnswerRevealMs}
+              onChange={(next) => {
+                void handleSave('wrongAnswerRevealMs', { wrongAnswerRevealMs: next as 3000 | 5000 | 8000 });
+              }}
+            />
+          }
+        />
+      </SettingGroup>
+
+      <SettingGroup>
+        <SettingRow
+          icon={Sparkles}
+          title="记忆锦囊"
+          feedback={feedbackByKey.memoryTipEnabled}
+          control={
+            <ToggleControl
+              checked={preferences.memoryTipEnabled}
+              onChange={(checked) => {
+                void handleSave('memoryTipEnabled', { memoryTipEnabled: checked });
+              }}
+            />
+          }
+        />
+        <SettingRow
+          icon={BookOpen}
+          title="第二轮练习"
+          feedback={feedbackByKey.round2Enabled}
+          control={
+            <ToggleControl
+              checked={preferences.round2Enabled}
+              onChange={(checked) => {
+                void handleSave('round2Enabled', { round2Enabled: checked });
+              }}
+            />
+          }
+        />
+        <SettingRow
+          icon={BookOpen}
+          title="第三轮练习"
+          feedback={feedbackByKey.reinforcementRound3Enabled}
+          control={
+            <ToggleControl
+              checked={preferences.reinforcementRound3Enabled}
+              onChange={(checked) => {
+                void handleSave('reinforcementRound3Enabled', { reinforcementRound3Enabled: checked });
+              }}
+            />
+          }
+        />
+        {AI_CONTENT_FEATURES_ENABLED && (
+          <SettingRow
+            icon={FileText}
+            title="文章巩固"
+            feedback={feedbackByKey.reinforcementArticleEnabled}
+            control={
+              <ToggleControl
+                checked={preferences.reinforcementArticleEnabled}
+                onChange={(checked) => {
+                  void handleSave('reinforcementArticleEnabled', { reinforcementArticleEnabled: checked });
+                }}
+              />
+            }
+          />
+        )}
+      </SettingGroup>
+
+      <div className="border-t border-[#eadfcd] pt-4">
         <button
           type="button"
           onClick={() => {
             void handleResetDefaults();
           }}
           disabled={resetFeedback.status === 'saving'}
-          className="flex w-full items-center justify-between gap-4 rounded-[18px] px-3 py-3 text-left text-sm font-black text-text-primary transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-60"
+          className="mx-auto flex min-h-12 items-center justify-center gap-3 rounded-[18px] px-5 text-base font-black text-[#8a7a69] transition-colors hover:bg-[#fff8ec] disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <span className="inline-flex items-center gap-3">
-            {resetFeedback.status === 'saving' ? (
-              <Loader2 className="h-5 w-5 animate-spin text-apple-blue" />
-            ) : (
-              <RotateCcw className="h-5 w-5 text-apple-blue" />
-            )}
-            恢复默认设置
-          </span>
+          {resetFeedback.status === 'saving' ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <RotateCcw className="h-5 w-5" />
+          )}
+          恢复默认设置
           <StatusPill feedback={resetFeedback} />
         </button>
 
         {resetFeedback.status === 'error' && resetFeedback.message && (
-          <p className="mt-3 px-4 text-sm leading-6 text-apple-red">{resetFeedback.message}</p>
+          <p className="mt-2 text-center text-sm font-bold text-apple-red">{resetFeedback.message}</p>
         )}
       </div>
     </div>

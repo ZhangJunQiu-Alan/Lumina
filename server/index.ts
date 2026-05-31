@@ -42,7 +42,6 @@ import {
   type VocabularySourceType,
 } from '../shared/server/vocab.ts';
 import { isOfficialLibraryId } from '../shared/officialLibraryLite.ts';
-import { analyzeWordBatch, formatDuplicateWordsMessage } from '../shared/wordBatch.js';
 import { isAiContentFeaturesEnabled } from '../shared/runtime.ts';
 import {
   consumeExpensiveRateLimit,
@@ -403,7 +402,6 @@ app.post('/api/vocab/report', requireAuth, async (req: AuthenticatedRequest, res
     });
     res.json({ data });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
     logger.error(
       'API Error: /api/vocab/report',
       e,
@@ -439,7 +437,6 @@ app.post(
 
       res.status(result.queued ? 202 : 200).json(result);
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
       logger.error(
         'API Error: /api/vocab/full-enrich',
         e,
@@ -464,7 +461,6 @@ app.post('/api/vocab/persist', requireAuth, async (req: AuthenticatedRequest, re
     const data = await persistFullVocabularyEntries(entries, sourceType);
     res.json({ data });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
     logger.error(
       'API Error: /api/vocab/persist',
       e,
@@ -492,7 +488,6 @@ app.post('/api/vocab/article', requireAuth, requireAiContentFeatures, aiArticleQ
     const article = await generateArticle(cleaned);
     res.json({ data: article });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
     logger.error(
       'API Error: /api/vocab/article',
       e,
@@ -525,7 +520,6 @@ app.post('/api/review/attempt', requireAuth, async (req: AuthenticatedRequest, r
     });
     res.json({ data: result });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
     logger.error(
       'API Error: /api/review/attempt',
       e,
@@ -547,7 +541,6 @@ app.post('/api/review/batch-attempt', requireAuth, async (req: AuthenticatedRequ
     const results = await recordBatchReviewAttempts(userId, attempts);
     res.json({ data: results });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
     logger.error(
       'API Error: /api/review/batch-attempt',
       e,
@@ -574,7 +567,6 @@ app.post('/api/review/unknown', requireAuth, async (req: AuthenticatedRequest, r
     });
     res.json({ data: result });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
     logger.error(
       'API Error: /api/review/unknown',
       e,
@@ -600,7 +592,6 @@ app.post('/api/review/mastered', requireAuth, async (req: AuthenticatedRequest, 
     });
     res.json({ data: result });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
     logger.error(
       'API Error: /api/review/mastered',
       e,
@@ -624,7 +615,6 @@ app.post('/api/ielts/reading/attempts', requireAuth, async (req: AuthenticatedRe
     const data = await submitIeltsReadingAttempt(userId, req.body);
     res.json({ data });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
     logger.error(
       'API Error: /api/ielts/reading/attempts',
       e,
@@ -648,7 +638,6 @@ app.post('/api/ielts/listening/attempts', requireAuth, async (req: Authenticated
     const data = await submitIeltsListeningAttempt(userId, req.body);
     res.json({ data });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
     logger.error(
       'API Error: /api/ielts/listening/attempts',
       e,
@@ -672,7 +661,6 @@ app.get('/api/review/due', requireAuth, async (req: AuthenticatedRequest, res) =
     const words = await fetchDueReviewWords(userId, { timeZone });
     res.json({ data: words });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
     logger.error('API Error: /api/review/due', e, { endpoint: '/api/review/due', user_id: userId, timezone: timeZone });
     return sendInternalError(res);
   }
@@ -687,7 +675,6 @@ app.get('/api/home/overview', requireAuth, async (req: AuthenticatedRequest, res
     const overview = await getHomeOverview(userId, timeZone);
     res.json({ data: overview });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
     logger.error('API Error: /api/home/overview', e, {
       endpoint: '/api/home/overview',
       user_id: userId,
@@ -719,7 +706,6 @@ app.post('/api/library/official/:libraryId/discard-active', requireAuth, async (
     });
     res.json({ data: result });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
     logger.error(`API Error: /api/library/official/${libraryId}/discard-active`, e, {
       endpoint: `/api/library/official/${libraryId}/discard-active`,
       user_id: userId,
@@ -783,7 +769,6 @@ app.post('/api/library/saved-words', requireAuth, async (req: AuthenticatedReque
     const data = await saveWordToLibrary(userId, vocabularyItemId.trim(), source);
     res.json({ data });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
     logger.error('API Error: /api/library/saved-words', e, {
       endpoint: '/api/library/saved-words',
       user_id: userId,
@@ -807,7 +792,6 @@ app.post('/api/library/saved-words/cleanup', requireAuth, async (req: Authentica
       },
     });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
     logger.error('API Error: /api/library/saved-words/cleanup', e, {
       endpoint: '/api/library/saved-words/cleanup',
       user_id: userId,
@@ -828,7 +812,6 @@ app.delete('/api/library/saved-words/:vocabularyItemId', requireAuth, async (req
     const data = await removeWordFromLibrary(userId, vocabularyItemId);
     res.json({ data });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
     logger.error(`API Error: /api/library/saved-words/${vocabularyItemId}`, e, {
       endpoint: `/api/library/saved-words/${vocabularyItemId}`,
       user_id: userId,
@@ -848,7 +831,6 @@ app.delete('/api/library/groups/:groupId', requireAuth, async (req: Authenticate
     await deleteLearningGroup(userId, groupId);
     res.json({ data: { success: true } });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
     logger.error(`API Error: /api/library/groups/${groupId}`, e, {
       endpoint: `/api/library/groups/${groupId}`,
       user_id: userId,
@@ -868,7 +850,6 @@ app.get('/api/audio/:word', requireAuth, ttsSingleQuota, async (req, res) => {
     const url = await getOrCreateAudio(word, locale);
     res.json({ data: url });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
     logger.error(`API Error: /api/audio/${word}`, e, { endpoint: `/api/audio/${word}`, locale });
     return sendInternalError(res);
   }
@@ -888,7 +869,6 @@ app.post('/api/audio/batch', requireAuth, ttsBatchQuota, async (req, res) => {
     const urls = await batchGenerateAudio(cleaned);
     res.json({ data: urls });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
     logger.error('API Error: /api/audio/batch', e, { endpoint: '/api/audio/batch' });
     return sendInternalError(res);
   }

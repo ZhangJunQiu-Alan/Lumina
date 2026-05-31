@@ -497,7 +497,7 @@ export async function fetchIeltsListeningAttemptResult(
 }
 
 export async function submitIeltsListeningAttempt({
-  userId,
+  userId: _userId,
   test,
   answers,
   startedAt,

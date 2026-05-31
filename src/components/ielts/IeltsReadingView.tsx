@@ -633,6 +633,7 @@ function AnnotationNoteDialog({
 export function IeltsReadingHomeView() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const userId = user?.id ?? null;
   const [books, setBooks] = useState<IeltsReadingBookSummary[]>([]);
   const [attempts, setAttempts] = useState<IeltsReadingAttemptSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -642,13 +643,13 @@ export function IeltsReadingHomeView() {
     let cancelled = false;
 
     async function load() {
-      if (!user) return;
+      if (!userId) return;
       setIsLoading(true);
       setErrorMsg('');
       try {
         const [nextBooks, nextAttempts] = await Promise.all([
           fetchIeltsReadingBooks(),
-          fetchRecentIeltsReadingAttempts(user.id),
+          fetchRecentIeltsReadingAttempts(userId),
         ]);
         if (cancelled) return;
         setBooks(nextBooks);
@@ -665,7 +666,7 @@ export function IeltsReadingHomeView() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [userId]);
 
   if (isLoading) return <IeltsLoadingShell label="正在读取雅思阅读题库" />;
   if (errorMsg) return <IeltsErrorShell message={errorMsg} onBack={() => navigate('/app/home')} />;
@@ -1144,6 +1145,7 @@ export function IeltsReadingTestView() {
   const { testId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const userId = user?.id ?? null;
   const { preferences } = useLearningPreferences();
   const { openPopover, closePopover } = useWordPopover();
   const questionRefs = useRef<Record<number, HTMLElement | null>>({});
@@ -1170,8 +1172,8 @@ export function IeltsReadingTestView() {
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    if (!testId || !user) return;
-    const draft = readDraft(user.id, testId);
+    if (!testId || !userId) return;
+    const draft = readDraft(userId, testId);
     if (!draft) return;
     setStartedAt(draft.startedAt);
     setAnswers(draft.answers);
@@ -1180,7 +1182,7 @@ export function IeltsReadingTestView() {
     setAnnotations(draft.annotations ?? []);
     setFontSize(clampReadingFontSize(draft.fontSize));
     setPracticeMode(draft.practiceMode);
-  }, [testId, user]);
+  }, [testId, userId]);
 
   useEffect(() => {
     if (!testId) return;
@@ -1216,8 +1218,8 @@ export function IeltsReadingTestView() {
   }, []);
 
   useEffect(() => {
-    if (!testId || !user || result) return;
-    writeDraft(user.id, testId, {
+    if (!testId || !userId || result) return;
+    writeDraft(userId, testId, {
       startedAt,
       answers,
       selectedPassage,
@@ -1226,7 +1228,7 @@ export function IeltsReadingTestView() {
       fontSize,
       practiceMode,
     });
-  }, [answers, annotations, flaggedNumbers, fontSize, practiceMode, result, selectedPassage, startedAt, testId, user]);
+  }, [answers, annotations, flaggedNumbers, fontSize, practiceMode, result, selectedPassage, startedAt, testId, userId]);
 
   const questions = useMemo(() => (test ? getIeltsReadingQuestions(test) : []), [test]);
   const selectedPassageData =
@@ -1391,7 +1393,7 @@ export function IeltsReadingTestView() {
 
   const submitAttempt = useCallback(
     async (mode: SubmitMode) => {
-      if (!test || !testId || !user || isSubmitting) return;
+      if (!test || !testId || !userId || isSubmitting) return;
 
       setIsSubmitting(true);
       setErrorMsg('');
@@ -1402,13 +1404,13 @@ export function IeltsReadingTestView() {
 
       try {
         const nextResult = await submitIeltsReadingAttempt({
-          userId: user.id,
+          userId,
           test,
           answers,
           startedAt,
           elapsedSeconds: mode === 'timeout' ? TEST_DURATION_SECONDS : submitElapsedSeconds,
         });
-        clearDraft(user.id, testId);
+        clearDraft(userId, testId);
         closePopover();
         setResult(nextResult);
         setIsSubmitDialogOpen(false);
@@ -1424,7 +1426,7 @@ export function IeltsReadingTestView() {
         setIsSubmitting(false);
       }
     },
-    [answers, closePopover, isSubmitting, startedAt, submitElapsedSeconds, test, testId, user],
+    [answers, closePopover, isSubmitting, startedAt, submitElapsedSeconds, test, testId, userId],
   );
 
   useEffect(() => {
@@ -1456,7 +1458,7 @@ export function IeltsReadingTestView() {
   }, []);
 
   const handleReset = () => {
-    if (testId && user) clearDraft(user.id, testId);
+    if (testId && userId) clearDraft(userId, testId);
     closePopover();
     setAnswers({});
     setStartedAt(new Date().toISOString());

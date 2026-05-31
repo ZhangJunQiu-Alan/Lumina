@@ -173,7 +173,7 @@ export function SavedWordsPanel({
     return () => {
       active = false;
     };
-  }, [userId]);
+  }, [onLibraryMutated, userId]);
 
   const availableWords = useMemo(() => savedWords.filter((entry) => !entry.isInActiveLearningGroup), [savedWords]);
   const availableWordIds = useMemo(

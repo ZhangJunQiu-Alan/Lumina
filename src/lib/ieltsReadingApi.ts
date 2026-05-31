@@ -479,7 +479,7 @@ export async function fetchRecentIeltsReadingAttempts(
 }
 
 export async function submitIeltsReadingAttempt({
-  userId,
+  userId: _userId,
   test,
   answers,
   startedAt,

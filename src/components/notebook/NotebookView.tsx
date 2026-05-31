@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { AlertCircle, BookMarked, Clock3, Loader2, CalendarDays, X, Volume2 } from 'lucide-react';
-import { LibraryGroupWord, MemoryState, ReviewResultType } from '../../types';
+import { AlertCircle, BookMarked, Clock3, X, Volume2 } from 'lucide-react';
+import type { LibraryGroupWord, MemoryState } from '../../types';
 import { toConfusingPairs, toWordMorphology, toWordRelations } from '../../types';
 import { ExampleSentenceList } from '../shared/ExampleSentenceList';
 import { cancelBrowserSpeech, isBrowserSpeechSupported, speakTextViaBrowser } from '../../lib/browserSpeech';
@@ -109,6 +109,7 @@ function formatDateTime(value: string | null): string {
 
 export function NotebookView() {
   const { user } = useAuth();
+  const userId = user?.id ?? null;
   const { preferences } = useLearningPreferences();
   const [words, setWords] = useState<LibraryGroupWord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -155,10 +156,10 @@ export function NotebookView() {
   );
 
   const loadData = useCallback(async () => {
-    if (!user) return;
+    if (!userId) return;
     try {
       setIsLoading(true);
-      const data = await fetchDifficultWords(user.id);
+      const data = await fetchDifficultWords(userId);
       const mapped = (data ?? []).map(mapDifficultWord).filter((w): w is LibraryGroupWord => w !== null);
       setWords(mapped);
     } catch (error) {
@@ -166,7 +167,7 @@ export function NotebookView() {
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [userId]);
 
   useEffect(() => {
     void loadData();

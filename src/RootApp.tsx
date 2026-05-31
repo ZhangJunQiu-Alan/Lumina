@@ -1,14 +1,15 @@
 import { motion } from 'motion/react';
 import { Loader2 } from 'lucide-react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import type { ReactNode } from 'react';
-import App from './App';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { AuthView } from './components/auth/AuthView';
 import { LuminaLogo } from './components/brand/LuminaLogo';
 import { LandingView } from './components/landing/LandingView';
 import { PrivacyView, TermsView } from './components/legal/LegalView';
 import { IslandPanel } from './components/shared/AnimalPrimitives';
 import { useAuth } from './contexts/AuthContext';
+
+const App = lazy(() => import('./App'));
 
 function FullscreenLoader({ message }: { message: string }) {
   return (
@@ -82,7 +83,9 @@ export default function RootApp() {
           path="/app/*"
           element={
             <ProtectedRoute>
-              <App />
+              <Suspense fallback={<FullscreenLoader message="正在准备学习空间" />}>
+                <App />
+              </Suspense>
             </ProtectedRoute>
           }
         />
