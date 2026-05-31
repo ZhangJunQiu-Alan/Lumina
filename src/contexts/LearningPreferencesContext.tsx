@@ -36,39 +36,42 @@ export function LearningPreferencesProvider({ children }: PropsWithChildren) {
   const loadedUserIdRef = useRef<string | null>(null);
   const loadRunIdRef = useRef(0);
 
-  const loadPreferences = useCallback(async (force = false) => {
-    const loadRunId = ++loadRunIdRef.current;
+  const loadPreferences = useCallback(
+    async (force = false) => {
+      const loadRunId = ++loadRunIdRef.current;
 
-    if (!userId) {
-      loadedUserIdRef.current = null;
-      setPreferences(LEARNING_PREFERENCES_DEFAULTS);
-      setLoadError('');
-      setIsLoading(false);
-      return;
-    }
-
-    if (!force && loadedUserIdRef.current === userId) {
-      setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const nextPreferences = await getLearningPreferences(userId);
-      if (loadRunId !== loadRunIdRef.current) return;
-      setPreferences(nextPreferences);
-      setLoadError('');
-      loadedUserIdRef.current = userId;
-    } catch (error) {
-      if (loadRunId !== loadRunIdRef.current) return;
-      setPreferences(LEARNING_PREFERENCES_DEFAULTS);
-      setLoadError(error instanceof Error ? error.message : '学习设置读取失败');
-    } finally {
-      if (loadRunId === loadRunIdRef.current) {
+      if (!userId) {
+        loadedUserIdRef.current = null;
+        setPreferences(LEARNING_PREFERENCES_DEFAULTS);
+        setLoadError('');
         setIsLoading(false);
+        return;
       }
-    }
-  }, [userId]);
+
+      if (!force && loadedUserIdRef.current === userId) {
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const nextPreferences = await getLearningPreferences(userId);
+        if (loadRunId !== loadRunIdRef.current) return;
+        setPreferences(nextPreferences);
+        setLoadError('');
+        loadedUserIdRef.current = userId;
+      } catch (error) {
+        if (loadRunId !== loadRunIdRef.current) return;
+        setPreferences(LEARNING_PREFERENCES_DEFAULTS);
+        setLoadError(error instanceof Error ? error.message : '学习设置读取失败');
+      } finally {
+        if (loadRunId === loadRunIdRef.current) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [userId],
+  );
 
   const reloadPreferences = useCallback(() => loadPreferences(true), [loadPreferences]);
 

@@ -1228,7 +1228,18 @@ export function IeltsReadingTestView() {
       fontSize,
       practiceMode,
     });
-  }, [answers, annotations, flaggedNumbers, fontSize, practiceMode, result, selectedPassage, startedAt, testId, userId]);
+  }, [
+    answers,
+    annotations,
+    flaggedNumbers,
+    fontSize,
+    practiceMode,
+    result,
+    selectedPassage,
+    startedAt,
+    testId,
+    userId,
+  ]);
 
   const questions = useMemo(() => (test ? getIeltsReadingQuestions(test) : []), [test]);
   const selectedPassageData =
