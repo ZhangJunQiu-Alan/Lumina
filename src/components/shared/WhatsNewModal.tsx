@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, CheckCircle2, Gauge, Keyboard, Sparkles, X } from 'lucide-react';
+import { BarChart3, BookOpenCheck, Settings2, Shuffle, Sparkles, Target, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { IslandButton, IslandIconButton, IslandModalShell } from './AnimalPrimitives';
 
-const VERSION_KEY = 'lumina_whatsnew_2026_05_29_learning_flow'; // Bump this key to show the modal again in future updates
+const VERSION_KEY = 'lumina_whatsnew_2026_05_31_ielts_dashboard_settings'; // Bump this key to show the modal again in future updates
 
 export function WhatsNewModal() {
   const navigate = useNavigate();
@@ -27,7 +27,7 @@ export function WhatsNewModal() {
   const handleStartLearning = () => {
     localStorage.setItem(VERSION_KEY, 'true');
     setIsOpen(false);
-    navigate('/app/home');
+    navigate('/app/ielts');
   };
 
   return (
@@ -61,57 +61,68 @@ export function WhatsNewModal() {
               </div>
 
               <h2 className="mb-2 text-2xl font-black text-text-primary">本次更新</h2>
-              <p className="mb-6 text-sm font-medium text-text-secondary">学习界面和听写体验做了一轮整理：</p>
+              <p className="mb-6 text-sm font-medium text-text-secondary">雅思训练和学习设置升级了：</p>
 
               <div className="space-y-4 mb-8">
                 <div className="flex gap-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#eef2ff] text-[#4f46e5]">
-                    <ArrowLeft className="h-4 w-4" />
+                    <BarChart3 className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-text-primary">手机学习页更顺手</h3>
+                    <h3 className="text-sm font-bold text-text-primary">IELTS 总览页上线</h3>
                     <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                      学习时底部导航会自动收起，顶部新增返回按钮，设置入口也更轻，不再挤占词卡空间。
+                      阅读、听力练习、最近成绩、当前预估分和下一步推荐，现在都集中在雅思首页。
                     </p>
                   </div>
                 </div>
                 <div className="flex gap-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e0f2fe] text-[#0284c7]">
-                    <Gauge className="h-4 w-4" />
+                    <Target className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-text-primary">每一轮进度更清楚</h3>
+                    <h3 className="text-sm font-bold text-text-primary">目标分跟随账号同步</h3>
                     <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                      记忆、听写、回忆改成更清晰的轮次标签和进度条，当前进度一眼可见。
+                      设置里新增雅思目标分，IELTS 总览会用它显示当前差距和练习进度。
                     </p>
                   </div>
                 </div>
                 <div className="flex gap-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#ecfdf5] text-[#16a34a]">
-                    <Keyboard className="h-4 w-4" />
+                    <Settings2 className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-text-primary">听写反馈更直接</h3>
+                    <h3 className="text-sm font-bold text-text-primary">第二轮可按需关闭</h3>
                     <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                      第二轮填对会即时变绿，填空、音频按钮和输入区的状态也统一了。
+                      如果想先只完成第一轮新词，可以在设置里关闭 Round 2，系统会自动收口本组。
                     </p>
                   </div>
                 </div>
                 <div className="flex gap-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#fff8df] text-[#d78918]">
-                    <CheckCircle2 className="h-4 w-4" />
+                    <Shuffle className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-text-primary">词卡信息更紧凑</h3>
+                    <h3 className="text-sm font-bold text-text-primary">官方词库顺序可切换</h3>
                     <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                      单词拆解、易混词对比和例句区域重新排版，长词和长说明更不容易撑乱界面。
+                      已开始的官方词组也能在顺序 / 乱序间切换，已学过的部分会被保留。
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-apple-blue/10 text-apple-blue">
+                    <BookOpenCheck className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-text-primary">文档和稳定性同步更新</h3>
+                    <p className="mt-1 text-xs text-text-secondary leading-relaxed">
+                      README、服务端接口、Edge Function 和相关测试也一起更新，保证线上行为一致。
                     </p>
                   </div>
                 </div>
               </div>
 
               <IslandButton onClick={handleStartLearning} tone="mint" block size="large">
-                知道了，开始学习
+                去看 IELTS 总览
               </IslandButton>
             </IslandModalShell>
           </motion.div>

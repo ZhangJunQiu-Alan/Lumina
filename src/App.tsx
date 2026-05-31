@@ -11,6 +11,7 @@ import {
   ActivityDay,
   ArticleSentence,
   HomeOfficialLibraryOption,
+  LearningPreferences,
   LearningRoundType,
   OfficialLibraryId,
   OfficialStudyMode,
@@ -55,7 +56,11 @@ import { IslandButton } from './components/shared/AnimalPrimitives';
 import { LibrarySkeleton } from './components/shared/Skeleton';
 import { useDeferredLoading } from './hooks/useDeferredLoading';
 import { fetchHomeOverview, resolveBrowserTimeZone } from './lib/homeApi';
-import { appendNextOfficialBatchToLearningGroup, startNextOfficialBatch } from './lib/officialLibraryStart';
+import {
+  appendNextOfficialBatchToLearningGroup,
+  reorderActiveOfficialGroup,
+  startNextOfficialBatch,
+} from './lib/officialLibraryStart';
 import {
   getOfficialLibraryDefinition,
   isOfficialLibraryId,
@@ -306,6 +311,18 @@ function buildEmptyStats(): UserStats {
   };
 }
 
+function applyLearningPreferencesToStats(stats: UserStats, preferences: LearningPreferences): UserStats {
+  if (preferences.round2Enabled) return stats;
+
+  return {
+    ...stats,
+    routineCard: {
+      ...stats.routineCard,
+      visibleSteps: stats.routineCard.visibleSteps.filter((step) => step.key !== 'round2'),
+    },
+  };
+}
+
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -344,9 +361,10 @@ export default function App() {
     return isOfficialLibraryId(value) ? value : null;
   }, [location.search]);
   const homeStats = useMemo(() => {
-    if (!isHomeRoute || !requestedOfficialLibraryId) return stats;
+    const preferenceAwareStats = applyLearningPreferencesToStats(stats, learningPreferences);
+    if (!isHomeRoute || !requestedOfficialLibraryId) return preferenceAwareStats;
 
-    const existingOption = stats.routineCard.officialLibraryOptions.find(
+    const existingOption = preferenceAwareStats.routineCard.officialLibraryOptions.find(
       (option) => option.libraryId === requestedOfficialLibraryId,
     );
     const definition = getOfficialLibraryDefinition(requestedOfficialLibraryId);
@@ -354,12 +372,12 @@ export default function App() {
       libraryId: requestedOfficialLibraryId,
       title: definition.title,
       mode:
-        stats.routineCard.lastUsedOfficialLibraryId === requestedOfficialLibraryId
-          ? (stats.routineCard.lastUsedOfficialMode ?? 'sequential')
+        preferenceAwareStats.routineCard.lastUsedOfficialLibraryId === requestedOfficialLibraryId
+          ? (preferenceAwareStats.routineCard.lastUsedOfficialMode ?? 'sequential')
           : 'sequential',
       existingGroupCount:
-        stats.routineCard.lastUsedOfficialLibraryId === requestedOfficialLibraryId
-          ? stats.routineCard.lastUsedOfficialGroupCount
+        preferenceAwareStats.routineCard.lastUsedOfficialLibraryId === requestedOfficialLibraryId
+          ? preferenceAwareStats.routineCard.lastUsedOfficialGroupCount
           : 0,
       activeGroupId: null,
       activeRound: null,
@@ -370,21 +388,27 @@ export default function App() {
     };
 
     return {
-      ...stats,
+      ...preferenceAwareStats,
       routineCard: {
-        ...stats.routineCard,
-        ctaLabel: stats.routineCard.ctaMode === 'open_library' ? '开始学习' : stats.routineCard.ctaLabel,
-        ctaMode: stats.routineCard.ctaMode === 'open_library' ? 'start_learning' : stats.routineCard.ctaMode,
+        ...preferenceAwareStats.routineCard,
+        ctaLabel:
+          preferenceAwareStats.routineCard.ctaMode === 'open_library'
+            ? '开始学习'
+            : preferenceAwareStats.routineCard.ctaLabel,
+        ctaMode:
+          preferenceAwareStats.routineCard.ctaMode === 'open_library'
+            ? 'start_learning'
+            : preferenceAwareStats.routineCard.ctaMode,
         selectedOfficialLibraryId: requestedOfficialLibraryId,
         officialLibraryOptions: [
           injectedOption,
-          ...stats.routineCard.officialLibraryOptions.filter(
+          ...preferenceAwareStats.routineCard.officialLibraryOptions.filter(
             (option) => option.libraryId !== requestedOfficialLibraryId,
           ),
         ],
       },
     };
-  }, [isHomeRoute, requestedOfficialLibraryId, stats]);
+  }, [isHomeRoute, learningPreferences, requestedOfficialLibraryId, stats]);
 
   const setActiveSessionSeed = useCallback((next: React.SetStateAction<PersistedLearningSession | null>) => {
     setActiveSessionSeedState((current) => {
@@ -709,6 +733,32 @@ export default function App() {
           officialMode: restoredSession?.officialMode ?? options.officialMode ?? null,
           lastActiveAt: new Date().toISOString(),
         };
+
+        if (restoredOrInitialSession.round === 'round2' && !learningPreferences.round2Enabled) {
+          await markRoutineStepCompleted(user.id, {
+            step: 'round1',
+            groupId,
+            timeZone: resolveBrowserTimeZone(),
+          }).catch((error) => {
+            console.error('Failed to mark round1 before skipping restored round2:', error);
+          });
+          await markRoutineStepCompleted(user.id, {
+            step: 'round2',
+            groupId,
+            timeZone: resolveBrowserTimeZone(),
+          }).catch((error) => {
+            console.error('Failed to mark restored round2 as skipped:', error);
+          });
+          await clearLearningGroupSession(user.id, groupId, { markCompleted: true }).catch((error) => {
+            console.error('Failed to close restored round2-skipped learning session:', error);
+          });
+          invalidateLibraryCache(user.id);
+          resetActiveLearningState();
+          navigate('/app/home');
+          void fetchStats();
+          return;
+        }
+
         const nextSession =
           !AI_CONTENT_FEATURES_ENABLED && restoredOrInitialSession.round === 'article'
             ? {
@@ -764,7 +814,15 @@ export default function App() {
         setIsStartingSession(false);
       }
     },
-    [articleReinforcementEnabled, ensureArticleForGroup, navigate, user],
+    [
+      articleReinforcementEnabled,
+      ensureArticleForGroup,
+      fetchStats,
+      learningPreferences.round2Enabled,
+      navigate,
+      resetActiveLearningState,
+      user,
+    ],
   );
 
   const handleStart = async (selection: HomeStartSelection = {}) => {
@@ -818,6 +876,25 @@ export default function App() {
     if (routineCard.ctaMode === 'continue_learning') {
       if (selectedOfficialOption) {
         if (selectedOfficialOption.activeGroupId) {
+          const targetMode = selection.mode ?? selectedOfficialOption.mode;
+          if (targetMode !== selectedOfficialOption.mode) {
+            setIsStartingSession(true);
+            try {
+              await reorderActiveOfficialGroup({
+                libraryId: selectedOfficialOption.libraryId,
+                groupId: selectedOfficialOption.activeGroupId,
+                mode: targetMode,
+              });
+              officialPrefetchKeyRef.current = null;
+              invalidateLibraryCache(user.id);
+              void fetchStats();
+            } catch (error) {
+              console.error('Failed to reorder active official group:', error);
+              setSessionStartError(error instanceof Error ? error.message : '切换当前组顺序时出了点问题，请再试一次。');
+              setIsStartingSession(false);
+              return;
+            }
+          }
           await openLearningGroup(selectedOfficialOption.activeGroupId);
           return;
         }
@@ -1086,7 +1163,11 @@ export default function App() {
         const nextWords = currentActiveWords.filter((word) => confirmedWordIdSet.has(word.id));
 
         if (nextWords.length === 0) {
-          setSessionStartError('至少确认 1 个词后，才能进入 Round 2。');
+          setSessionStartError(
+            learningPreferences.round2Enabled
+              ? '至少确认 1 个词后，才能进入 Round 2。'
+              : '至少确认 1 个词后，才能完成本组。',
+          );
           return;
         }
 
@@ -1111,13 +1192,31 @@ export default function App() {
           officialMode: activeSessionSeed?.officialMode ?? null,
         };
 
-        void markRoutineStepCompleted(user.id, {
+        await markRoutineStepCompleted(user.id, {
           step: 'round1',
           groupId: activeLearningGroupId,
           timeZone: resolveBrowserTimeZone(),
         }).catch((error) => {
           console.error('Failed to mark round1 as completed:', error);
         });
+
+        if (!learningPreferences.round2Enabled) {
+          await markRoutineStepCompleted(user.id, {
+            step: 'round2',
+            groupId: activeLearningGroupId,
+            timeZone: resolveBrowserTimeZone(),
+          }).catch((error) => {
+            console.error('Failed to mark skipped round2 as completed:', error);
+          });
+          await clearLearningGroupSession(user.id, activeLearningGroupId, { markCompleted: true }).catch((error) => {
+            console.error('Failed to close round2-skipped learning session:', error);
+          });
+          invalidateLibraryCache(user.id);
+          resetActiveLearningState();
+          navigate('/app/home');
+          void fetchStats();
+          return;
+        }
 
         setActiveSessionSeed(nextSession);
         setRound('round2');
@@ -1227,6 +1326,7 @@ export default function App() {
       articleReinforcementEnabled,
       ensureArticleForGroup,
       fetchStats,
+      learningPreferences.round2Enabled,
       learningPreferences.reinforcementRound3Enabled,
       navigate,
       resetActiveLearningState,

@@ -38,6 +38,20 @@ export interface AppendNextOfficialBatchResult {
   appendedWords: Word[];
 }
 
+export interface ReorderActiveOfficialGroupInput {
+  libraryId: OfficialLibraryId;
+  groupId: string;
+  mode: OfficialStudyMode;
+}
+
+export interface ReorderActiveOfficialGroupResult {
+  groupId: string;
+  libraryId: OfficialLibraryId;
+  mode: OfficialStudyMode;
+  reorderedWordCount: number;
+  preservedWordCount: number;
+}
+
 async function prepareNextOfficialBatchEntries({
   userId,
   libraryId,
@@ -209,4 +223,23 @@ export async function appendNextOfficialBatchToLearningGroup({
   return {
     appendedWords: entriesToAppend.map(toWord),
   };
+}
+
+export async function reorderActiveOfficialGroup({
+  libraryId,
+  groupId,
+  mode,
+}: ReorderActiveOfficialGroupInput): Promise<ReorderActiveOfficialGroupResult> {
+  const response = await apiFetch(`/api/library/official/${encodeURIComponent(libraryId)}/reorder-active`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ groupId, mode }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error((payload as { error?: string }).error ?? `HTTP ${response.status}`);
+  }
+
+  return (payload as { data: ReorderActiveOfficialGroupResult }).data;
 }

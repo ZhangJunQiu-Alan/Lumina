@@ -404,8 +404,7 @@ export const HomeView = ({
   );
   const [selectedMode, setSelectedMode] = useState<OfficialStudyMode>(routineCard.lastUsedOfficialMode ?? 'sequential');
   const hasUserSelectedModeRef = useRef(false);
-  const isModeSelectionLocked = Boolean(selectedOfficialOption?.activeGroupId);
-  const displayedMode = isModeSelectionLocked ? (selectedOfficialOption?.mode ?? selectedMode) : selectedMode;
+  const displayedMode = selectedMode;
 
   useEffect(() => {
     if (officialOptions.length === 0) {
@@ -419,10 +418,17 @@ export const HomeView = ({
   }, [defaultLibraryId, officialOptions, selectedLibraryId]);
 
   useEffect(() => {
-    if (!hasUserSelectedModeRef.current && routineCard.lastUsedOfficialMode) {
-      setSelectedMode(routineCard.lastUsedOfficialMode);
+    if (!hasUserSelectedModeRef.current) {
+      setSelectedMode(selectedOfficialOption?.mode ?? routineCard.lastUsedOfficialMode ?? 'sequential');
     }
-  }, [routineCard.lastUsedOfficialMode]);
+  }, [routineCard.lastUsedOfficialMode, selectedOfficialOption?.mode]);
+
+  const handleLibraryChange = (libraryId: string) => {
+    const nextOption = officialOptions.find((option) => option.libraryId === libraryId) ?? null;
+    hasUserSelectedModeRef.current = false;
+    setSelectedLibraryId(libraryId);
+    setSelectedMode(nextOption?.mode ?? routineCard.lastUsedOfficialMode ?? 'sequential');
+  };
 
   const handleModeChange = (mode: OfficialStudyMode) => {
     hasUserSelectedModeRef.current = true;
@@ -586,7 +592,7 @@ export const HomeView = ({
                       label="选择已学习官方词库"
                       value={(selectedOfficialOption?.libraryId ?? '') as OfficialLibraryId}
                       options={libraryDropdownOptions}
-                      onChange={setSelectedLibraryId}
+                      onChange={handleLibraryChange}
                       footerAction={{
                         label: '去官方词库挑选并加入',
                         onSelect: onOpenOfficialLibrary,
@@ -611,7 +617,7 @@ export const HomeView = ({
                     value={displayedMode}
                     options={modeDropdownOptions}
                     onChange={handleModeChange}
-                    disabled={officialOptions.length === 0 || isModeSelectionLocked}
+                    disabled={officialOptions.length === 0}
                     className="sm:w-[9.5rem]"
                   />
                 </div>

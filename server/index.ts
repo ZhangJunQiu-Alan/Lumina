@@ -22,6 +22,7 @@ import {
   deleteLearningGroup,
   discardActiveOfficialLearningGroup,
   removeWordFromLibrary,
+  reorderActiveOfficialLearningGroup,
   saveWordToLibrary,
   type SavedWordSource,
 } from '../shared/server/library.ts';
@@ -723,6 +724,42 @@ app.post('/api/library/official/:libraryId/discard-active', requireAuth, async (
       endpoint: `/api/library/official/${libraryId}/discard-active`,
       user_id: userId,
       group_id: groupId,
+    });
+    return sendInternalError(res);
+  }
+});
+
+// POST /api/library/official/:libraryId/reorder-active
+app.post('/api/library/official/:libraryId/reorder-active', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { libraryId } = req.params;
+  const { groupId, mode } = req.body ?? {};
+
+  if (!isOfficialLibraryId(libraryId)) {
+    return res.status(400).json({ error: 'Unknown official library' });
+  }
+
+  if (typeof groupId !== 'string' || groupId.trim().length === 0) {
+    return res.status(400).json({ error: 'Missing group ID' });
+  }
+
+  if (mode !== 'sequential' && mode !== 'shuffle') {
+    return res.status(400).json({ error: 'Unknown study mode' });
+  }
+
+  const userId = req.authUserId!;
+  try {
+    const result = await reorderActiveOfficialLearningGroup(userId, {
+      libraryId,
+      groupId,
+      mode,
+    });
+    res.json({ data: result });
+  } catch (e) {
+    logger.error(`API Error: /api/library/official/${libraryId}/reorder-active`, e, {
+      endpoint: `/api/library/official/${libraryId}/reorder-active`,
+      user_id: userId,
+      group_id: groupId,
+      mode,
     });
     return sendInternalError(res);
   }

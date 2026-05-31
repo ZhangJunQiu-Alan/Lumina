@@ -1,15 +1,17 @@
 import { supabase } from './supabase';
-import type { LearningPreferences, PronunciationLocale, SpeechPlaybackRate } from '../types';
+import type { IeltsTargetScore, LearningPreferences, PronunciationLocale, SpeechPlaybackRate } from '../types';
 
 interface LearningPreferencesRow {
   user_id: string;
   default_pronunciation_locale: PronunciationLocale;
+  ielts_target_score: number;
   speech_playback_rate: number;
   auto_play_enabled: boolean;
   auto_play_repeat_count: number;
   auto_play_repeat_gap_ms: number;
   correct_answer_reveal_ms: number;
   wrong_answer_reveal_ms: number;
+  round2_enabled: boolean;
   reinforcement_round3_enabled: boolean;
   reinforcement_article_enabled: boolean;
   popover_auto_play_enabled: boolean;
@@ -20,12 +22,14 @@ interface LearningPreferencesRow {
 
 export const LEARNING_PREFERENCES_DEFAULTS: LearningPreferences = {
   defaultPronunciationLocale: 'uk',
+  ieltsTargetScore: 7,
   speechPlaybackRate: 1,
   autoPlayEnabled: true,
   autoPlayRepeatCount: 3,
   autoPlayRepeatGapMs: 1500,
   correctAnswerRevealMs: 1000,
   wrongAnswerRevealMs: 8000,
+  round2Enabled: true,
   reinforcementRound3Enabled: true,
   reinforcementArticleEnabled: false,
   popoverAutoPlayEnabled: false,
@@ -34,6 +38,7 @@ export const LEARNING_PREFERENCES_DEFAULTS: LearningPreferences = {
 };
 
 export const SPEECH_PLAYBACK_RATE_OPTIONS = [0.6, 0.8, 1] as const;
+export const IELTS_TARGET_SCORE_OPTIONS = [5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9] as const;
 export const AUTO_PLAY_REPEAT_OPTIONS = [1, 2, 3] as const;
 export const AUTO_PLAY_GAP_OPTIONS = [1000, 1500, 2500] as const;
 export const CORRECT_ANSWER_REVEAL_OPTIONS = [800, 1000, 1500, 2000] as const;
@@ -54,6 +59,13 @@ function normalizeSpeechPlaybackRate(value: unknown): SpeechPlaybackRate {
   const numericValue = typeof value === 'string' ? Number(value) : value;
   if (numericValue === 0.6 || numericValue === 0.8 || numericValue === 1) return numericValue;
   return LEARNING_PREFERENCES_DEFAULTS.speechPlaybackRate;
+}
+
+function normalizeIeltsTargetScore(value: unknown): IeltsTargetScore {
+  const numericValue = typeof value === 'string' ? Number(value) : value;
+  return IELTS_TARGET_SCORE_OPTIONS.includes(numericValue as IeltsTargetScore)
+    ? (numericValue as IeltsTargetScore)
+    : LEARNING_PREFERENCES_DEFAULTS.ieltsTargetScore;
 }
 
 function normalizeGapMs(value: unknown): number {
@@ -85,6 +97,9 @@ function normalizeLearningPreferences(
   const speechPlaybackRateValue = hasCamelCaseShape
     ? (input as Partial<LearningPreferences>).speechPlaybackRate
     : (input as LearningPreferencesRow | null | undefined)?.speech_playback_rate;
+  const ieltsTargetScoreValue = hasCamelCaseShape
+    ? (input as Partial<LearningPreferences>).ieltsTargetScore
+    : (input as LearningPreferencesRow | null | undefined)?.ielts_target_score;
   const repeatCountValue = hasCamelCaseShape
     ? (input as Partial<LearningPreferences>).autoPlayRepeatCount
     : (input as LearningPreferencesRow | null | undefined)?.auto_play_repeat_count;
@@ -97,6 +112,9 @@ function normalizeLearningPreferences(
   const revealMsValue = hasCamelCaseShape
     ? (input as Partial<LearningPreferences>).wrongAnswerRevealMs
     : (input as LearningPreferencesRow | null | undefined)?.wrong_answer_reveal_ms;
+  const round2EnabledValue = hasCamelCaseShape
+    ? (input as Partial<LearningPreferences>).round2Enabled
+    : (input as LearningPreferencesRow | null | undefined)?.round2_enabled;
   const reinforcementRound3Value = hasCamelCaseShape
     ? (input as Partial<LearningPreferences>).reinforcementRound3Enabled
     : (input as LearningPreferencesRow | null | undefined)?.reinforcement_round3_enabled;
@@ -117,12 +135,15 @@ function normalizeLearningPreferences(
     defaultPronunciationLocale: isValidLocale(localeValue)
       ? localeValue
       : LEARNING_PREFERENCES_DEFAULTS.defaultPronunciationLocale,
+    ieltsTargetScore: normalizeIeltsTargetScore(ieltsTargetScoreValue),
     speechPlaybackRate: normalizeSpeechPlaybackRate(speechPlaybackRateValue),
     autoPlayEnabled: autoPlayEnabledValue ?? LEARNING_PREFERENCES_DEFAULTS.autoPlayEnabled,
     autoPlayRepeatCount: normalizeRepeatCount(repeatCountValue),
     autoPlayRepeatGapMs: normalizeGapMs(gapMsValue),
     correctAnswerRevealMs: normalizeCorrectRevealMs(correctRevealMsValue),
     wrongAnswerRevealMs: normalizeRevealMs(revealMsValue),
+    round2Enabled:
+      typeof round2EnabledValue === 'boolean' ? round2EnabledValue : LEARNING_PREFERENCES_DEFAULTS.round2Enabled,
     reinforcementRound3Enabled:
       typeof reinforcementRound3Value === 'boolean'
         ? reinforcementRound3Value
@@ -148,12 +169,14 @@ function toDatabaseRow(userId: string, preferences: LearningPreferences): Omit<L
   return {
     user_id: userId,
     default_pronunciation_locale: preferences.defaultPronunciationLocale,
+    ielts_target_score: preferences.ieltsTargetScore,
     speech_playback_rate: preferences.speechPlaybackRate,
     auto_play_enabled: preferences.autoPlayEnabled,
     auto_play_repeat_count: preferences.autoPlayRepeatCount,
     auto_play_repeat_gap_ms: preferences.autoPlayRepeatGapMs,
     correct_answer_reveal_ms: preferences.correctAnswerRevealMs,
     wrong_answer_reveal_ms: preferences.wrongAnswerRevealMs,
+    round2_enabled: preferences.round2Enabled,
     reinforcement_round3_enabled: preferences.reinforcementRound3Enabled,
     reinforcement_article_enabled: preferences.reinforcementArticleEnabled,
     popover_auto_play_enabled: preferences.popoverAutoPlayEnabled,
@@ -167,9 +190,11 @@ function isMissingUserSettingsTableError(error: { message?: string } | null | un
   return (
     message.includes('user_settings') ||
     message.includes('correct_answer_reveal_ms') ||
+    message.includes('round2_enabled') ||
     message.includes('popover_auto_play_enabled') ||
     message.includes('cloze_sentence_auto_play_enabled') ||
     message.includes('memory_tip_enabled') ||
+    message.includes('ielts_target_score') ||
     message.includes('speech_playback_rate') ||
     message.includes('schema cache')
   );
@@ -209,12 +234,14 @@ export async function getLearningPreferences(userId: string): Promise<LearningPr
       `
       user_id,
       default_pronunciation_locale,
+      ielts_target_score,
       speech_playback_rate,
       auto_play_enabled,
       auto_play_repeat_count,
       auto_play_repeat_gap_ms,
       correct_answer_reveal_ms,
       wrong_answer_reveal_ms,
+      round2_enabled,
       reinforcement_round3_enabled,
       reinforcement_article_enabled,
       popover_auto_play_enabled,
@@ -261,12 +288,14 @@ export async function saveLearningPreferences(
       `
       user_id,
       default_pronunciation_locale,
+      ielts_target_score,
       speech_playback_rate,
       auto_play_enabled,
       auto_play_repeat_count,
       auto_play_repeat_gap_ms,
       correct_answer_reveal_ms,
       wrong_answer_reveal_ms,
+      round2_enabled,
       reinforcement_round3_enabled,
       reinforcement_article_enabled,
       popover_auto_play_enabled,

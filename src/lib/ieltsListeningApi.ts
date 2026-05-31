@@ -374,8 +374,12 @@ export async function fetchIeltsListeningTestDetail(testId: string): Promise<Iel
   };
 }
 
-export async function fetchRecentIeltsListeningAttempts(userId: string): Promise<IeltsListeningAttemptSummary[]> {
-  const { data, error } = await supabase
+export async function fetchRecentIeltsListeningAttempts(
+  userId: string,
+  options: { limit?: number | null } = {},
+): Promise<IeltsListeningAttemptSummary[]> {
+  const limit = options.limit === undefined ? 8 : options.limit;
+  const query = supabase
     .from('ielts_listening_attempts')
     .select(
       `
@@ -399,8 +403,9 @@ export async function fetchRecentIeltsListeningAttempts(userId: string): Promise
     `,
     )
     .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(8);
+    .order('created_at', { ascending: false });
+
+  const { data, error } = typeof limit === 'number' ? await query.limit(limit) : await query;
 
   if (error) throw new Error(`ielts_listening_attempts lookup failed: ${error.message}`);
 

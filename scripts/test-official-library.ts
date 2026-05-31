@@ -15,6 +15,7 @@ import {
   sortWordsByOfficialOrder,
   resolveOfficialLibraryId,
 } from '../src/lib/officialLibrary.js';
+import { reorderOfficialSessionQueue } from '../shared/officialSessionReorder.ts';
 import type { LibraryGroupSummary, OfficialResumeTargets, ResumeCandidate } from '../src/types.js';
 
 function makeGroupSummary(overrides: Partial<LibraryGroupSummary> = {}): LibraryGroupSummary {
@@ -212,5 +213,40 @@ const tailBatch = buildOfficialBatchFromRows('ielts-vocab', rowsFor(range(tailSt
 assert.ok(tailBatch);
 assert.equal(tailBatch.words.length, 4);
 assert.equal(tailBatch.groupName, formatOfficialGroupName('ielts-vocab', tailStart, 4));
+
+const positions = new Map([
+  ['w1', 1],
+  ['w2', 2],
+  ['w3', 3],
+  ['w4', 4],
+  ['w5', 5],
+]);
+const round1Reorder = reorderOfficialSessionQueue({
+  round: 'round1',
+  currentIndex: 2,
+  queueWordIds: ['w1', 'w2', 'w5', 'w4', 'w3'],
+  fallbackWordIds: ['w1', 'w2', 'w3', 'w4', 'w5'],
+  round1ConfirmedWordIds: ['w1', 'w2'],
+  passedQueueIndices: [0, 1],
+  targetMode: 'sequential',
+  officialPositions: positions,
+});
+assert.deepEqual(round1Reorder.queueWordIds, ['w1', 'w2', 'w3', 'w4', 'w5']);
+assert.equal(round1Reorder.currentIndex, 2);
+assert.deepEqual(round1Reorder.passedQueueIndices, [0, 1]);
+
+const round2Reorder = reorderOfficialSessionQueue({
+  round: 'round2',
+  currentIndex: 2,
+  queueWordIds: ['w1', 'w2', 'w5', 'w3', 'w4', 'w3'],
+  fallbackWordIds: ['w1', 'w2', 'w3', 'w4', 'w5'],
+  passedQueueIndices: [0, 1],
+  targetMode: 'shuffle',
+  officialPositions: positions,
+  random: () => 0,
+});
+assert.deepEqual(round2Reorder.queueWordIds, ['w1', 'w2', 'w3', 'w4', 'w3', 'w5']);
+assert.equal(round2Reorder.currentIndex, 2);
+assert.deepEqual(round2Reorder.passedQueueIndices, [0, 1]);
 
 console.log('official library checks passed');

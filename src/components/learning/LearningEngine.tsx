@@ -628,7 +628,11 @@ export const LearningEngine = ({
       setSubmitError('');
     } else {
       if (type === 'round1') {
-        setSubmitError('已到达当前预载末尾。可以点击“结束新词”进入 Round 2，或稍等下一批新词预载。');
+        setSubmitError(
+          preferencesRef.current.round2Enabled
+            ? '已到达当前预载末尾。可以点击“结束新词”进入 Round 2，或稍等下一批新词预载。'
+            : '已到达当前预载末尾。可以点击“结束新词”完成本组，或稍等下一批新词预载。',
+        );
         return;
       }
 
@@ -1151,7 +1155,9 @@ export const LearningEngine = ({
   const finishRound1WithConfirmedWords = useCallback(() => {
     if (type !== 'round1' || isSubmittingAttempt || showAnswer || isViewingHistory) return;
     if (round1ConfirmedWordIdsArray.length === 0) {
-      setSubmitError('至少确认 1 个词后，才能进入 Round 2。');
+      setSubmitError(
+        preferences.round2Enabled ? '至少确认 1 个词后，才能进入 Round 2。' : '至少确认 1 个词后，才能完成本组。',
+      );
       return;
     }
 
@@ -1176,6 +1182,7 @@ export const LearningEngine = ({
     isViewingHistory,
     onComplete,
     passedQueueIndicesArray,
+    preferences.round2Enabled,
     queue,
     round1ConfirmedWordIdsArray,
     showAnswer,
@@ -1925,7 +1932,8 @@ export const LearningEngine = ({
                             className="mt-2 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-[18px] border border-[#cf8922]/20 bg-[#fff6e2]/85 px-4 text-sm font-black text-[#b76f12] shadow-[0_10px_24px_rgba(207,137,34,0.10)] transition-all hover:bg-[#ffefc2] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#fff6e2]/85"
                           >
                             <CheckCircle2 className="h-4 w-4" />
-                            结束新词 · {round1ConfirmedWordIdsArray.length} 词进入 Round 2
+                            结束新词 · {round1ConfirmedWordIdsArray.length} 词
+                            {preferences.round2Enabled ? '进入 Round 2' : '完成本组'}
                           </button>
                           {submitErrorBanner && <div className="mt-2">{submitErrorBanner}</div>}
                         </>

@@ -119,4 +119,19 @@ export function resolveOfficialStudyModeFromGroupName(
   return counterMatch?.[1] === '乱序' ? 'shuffle' : 'sequential';
 }
 
+export function formatOfficialCounterGroupName(
+  libraryId: OfficialLibraryId,
+  mode: OfficialStudyMode,
+  groupIndex: number,
+  batchLength: number,
+): string {
+  const definition = byId.get(libraryId);
+  if (!definition) return `${libraryId} · 第${groupIndex}组 · ${batchLength}词`;
+
+  const safeGroupIndex = Math.max(Math.round(groupIndex), 1);
+  const safeBatchLength = Math.max(Math.round(batchLength), 0);
+  const modeLabel = mode === 'shuffle' ? '乱序' : '顺序';
+  return `${definition.groupPrefix}${modeLabel} · 第${safeGroupIndex}组 · ${safeBatchLength}词`;
+}
+
 export type { OfficialStudyMode };

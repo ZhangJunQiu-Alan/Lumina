@@ -8,6 +8,7 @@ import {
   Repeat2,
   RotateCcw,
   Sparkles,
+  Target,
   Volume2,
   type LucideIcon,
 } from 'lucide-react';
@@ -16,12 +17,13 @@ import {
   AUTO_PLAY_GAP_OPTIONS,
   AUTO_PLAY_REPEAT_OPTIONS,
   CORRECT_ANSWER_REVEAL_OPTIONS,
+  IELTS_TARGET_SCORE_OPTIONS,
   LEARNING_PREFERENCES_DEFAULTS,
   SPEECH_PLAYBACK_RATE_OPTIONS,
   WRONG_ANSWER_REVEAL_OPTIONS,
 } from '../../lib/learningPreferences';
 import { AI_CONTENT_FEATURES_ENABLED } from '../../lib/aiFeatures';
-import type { LearningPreferences, PronunciationLocale, SpeechPlaybackRate } from '../../types';
+import type { IeltsTargetScore, LearningPreferences, PronunciationLocale, SpeechPlaybackRate } from '../../types';
 
 type PreferenceKey = keyof LearningPreferences;
 type PreferenceStatus = 'idle' | 'saving' | 'saved' | 'error';
@@ -117,6 +119,36 @@ function ToggleControl({ checked, onChange }: { checked: boolean; onChange: (che
         }`}
       />
     </button>
+  );
+}
+
+function IeltsTargetScoreControl({
+  value,
+  onChange,
+}: {
+  value: IeltsTargetScore;
+  onChange: (next: IeltsTargetScore) => void;
+}) {
+  return (
+    <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+      {IELTS_TARGET_SCORE_OPTIONS.map((score) => {
+        const active = score === value;
+        return (
+          <button
+            key={score}
+            type="button"
+            onClick={() => onChange(score)}
+            className={`min-h-[58px] rounded-[18px] border px-3 text-center transition-all ${
+              active
+                ? 'border-apple-blue bg-apple-blue text-white shadow-[0_18px_34px_rgba(25,200,185,0.25)]'
+                : 'border-white/80 bg-white/78 text-text-primary shadow-[0_10px_24px_rgba(14,26,56,0.06)] hover:-translate-y-0.5 hover:bg-white'
+            }`}
+          >
+            <span className="text-base font-black">{score.toFixed(1)}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -297,6 +329,21 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
       />
 
       <SettingItem
+        icon={Target}
+        title="雅思目标分"
+        description="IELTS 总览页顶部显示的目标分"
+        feedback={feedbackByKey.ieltsTargetScore}
+        control={
+          <IeltsTargetScoreControl
+            value={preferences.ieltsTargetScore}
+            onChange={(next) => {
+              void handleSave('ieltsTargetScore', { ieltsTargetScore: next });
+            }}
+          />
+        }
+      />
+
+      <SettingItem
         icon={Volume2}
         title="朗读速度"
         description="学习卡片里的单词和例句朗读速度"
@@ -448,6 +495,21 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
             value={preferences.wrongAnswerRevealMs}
             onChange={(next) => {
               void handleSave('wrongAnswerRevealMs', { wrongAnswerRevealMs: next as 3000 | 5000 | 8000 });
+            }}
+          />
+        }
+      />
+
+      <SettingItem
+        icon={BookOpen}
+        title="第二轮练习"
+        description="完成第一轮后继续进入语境复现"
+        feedback={feedbackByKey.round2Enabled}
+        control={
+          <ToggleControl
+            checked={preferences.round2Enabled}
+            onChange={(checked) => {
+              void handleSave('round2Enabled', { round2Enabled: checked });
             }}
           />
         }

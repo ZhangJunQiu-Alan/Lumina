@@ -2,13 +2,15 @@ import { supabaseAdmin } from './supabase.ts';
 import { intervalForState, toNextReviewAt, type MemoryState, type ReviewResultType } from './review-domain.ts';
 import { queueFullEnrichmentForVocabularyItemId } from './vocab.ts';
 import {
+  formatOfficialCounterGroupName,
   isOfficialLibraryId,
   resolveLibraryGroupSourceType,
   resolveOfficialLibraryId,
 } from '../officialLibraryLite.ts';
 import { isCoreLearningComplete } from '../learningSessionLite.ts';
-import type { OfficialLibraryId } from '../types.ts';
+import type { OfficialLibraryId, OfficialStudyMode } from '../types.ts';
 import { isOfficialDiscardableRound, resolveActuallyLearnedWordIds } from '../officialDiscard.ts';
+import { isReorderableOfficialRound, reorderOfficialSessionQueue } from '../officialSessionReorder.ts';
 
 const ROUTINE_DAY_RESET_HOUR = 5;
 
@@ -32,7 +34,18 @@ interface LearningGroupDiscardRow {
   session_round: string | null;
   session_current_index: number | null;
   session_queue_word_ids: unknown;
+  session_passed_queue_indices: unknown;
   session_round1_confirmed_word_ids: unknown;
+}
+
+interface OfficialVocabularyItemRow {
+  id: string;
+  word: string | null;
+}
+
+interface OfficialVocabPositionRow {
+  word_key: string;
+  position: number;
 }
 
 function isSystemLibraryGroup(sourceType: string | null, libraryId: string | null, groupName: string | null) {
@@ -63,6 +76,20 @@ export interface DiscardActiveOfficialLearningGroupResult {
   forcedFuzzyWordCount: number;
   removedUnlearnedWordCount: number;
   removedReviewStateCount: number;
+}
+
+export interface ReorderActiveOfficialLearningGroupInput {
+  libraryId: OfficialLibraryId;
+  groupId: string;
+  mode: OfficialStudyMode;
+}
+
+export interface ReorderActiveOfficialLearningGroupResult {
+  groupId: string;
+  libraryId: OfficialLibraryId;
+  mode: OfficialStudyMode;
+  reorderedWordCount: number;
+  preservedWordCount: number;
 }
 
 export type SavedWordSource = 'reading_popup' | 'manual';
@@ -348,6 +375,7 @@ async function fetchDiscardGroup(userId: string, groupId: string) {
       session_round,
       session_current_index,
       session_queue_word_ids,
+      session_passed_queue_indices,
       session_round1_confirmed_word_ids
     `,
     )
@@ -597,6 +625,207 @@ async function clearTodayRoutineBinding(userId: string, groupId: string, timeZon
     if (isMissingDailyRoutineProgressError(updateError)) return;
     throw new Error(`daily_routine_progress update failed: ${updateError.message}`);
   }
+}
+
+function isOfficialStudyMode(value: unknown): value is OfficialStudyMode {
+  return value === 'sequential' || value === 'shuffle';
+}
+
+function normalizeWordKey(value: string | null | undefined) {
+  return (value ?? '').trim().toLowerCase();
+}
+
+function uniqueWordIds(wordIds: string[]) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const wordId of wordIds) {
+    if (!wordId || seen.has(wordId)) continue;
+    seen.add(wordId);
+    result.push(wordId);
+  }
+
+  return result;
+}
+
+async function fetchOfficialWordPositions(libraryId: OfficialLibraryId, wordIds: string[]) {
+  const uniqueIds = uniqueWordIds(wordIds);
+  if (uniqueIds.length === 0) {
+    return new Map<string, number>();
+  }
+
+  const { data: vocabularyItems, error: vocabularyItemsError } = await supabaseAdmin
+    .from('vocabulary_items')
+    .select('id, word')
+    .in('id', uniqueIds);
+
+  if (vocabularyItemsError) {
+    throw new Error(`vocabulary_items lookup failed: ${vocabularyItemsError.message}`);
+  }
+
+  const itemRows = (vocabularyItems ?? []) as OfficialVocabularyItemRow[];
+  const keyByWordId = new Map(itemRows.map((row) => [row.id, normalizeWordKey(row.word)]));
+  const wordKeys = uniqueWordIds([...keyByWordId.values()].filter(Boolean));
+
+  if (wordKeys.length === 0) {
+    return new Map<string, number>();
+  }
+
+  const { data: officialRows, error: officialRowsError } = await supabaseAdmin
+    .from('official_vocab')
+    .select('word_key, position')
+    .eq('library_id', libraryId)
+    .in('word_key', wordKeys);
+
+  if (officialRowsError) {
+    throw new Error(`official_vocab lookup failed: ${officialRowsError.message}`);
+  }
+
+  const positionByWordKey = new Map(
+    ((officialRows ?? []) as OfficialVocabPositionRow[]).map((row) => [row.word_key, row.position]),
+  );
+  const positions = new Map<string, number>();
+
+  for (const wordId of uniqueIds) {
+    const wordKey = keyByWordId.get(wordId);
+    if (!wordKey) continue;
+    const position = positionByWordKey.get(wordKey);
+    if (typeof position === 'number') {
+      positions.set(wordId, position);
+    }
+  }
+
+  return positions;
+}
+
+function buildGroupWordOrder(nextQueueWordIds: string[], groupWordIds: string[]) {
+  const orderedQueueIds = uniqueWordIds(nextQueueWordIds);
+  const queuedIds = new Set(orderedQueueIds);
+  return [...orderedQueueIds, ...groupWordIds.filter((wordId) => !queuedIds.has(wordId))];
+}
+
+async function updateLearningGroupWordOrder(groupId: string, orderedWordIds: string[]) {
+  await Promise.all(
+    orderedWordIds.map(async (wordId, index) => {
+      const { error } = await supabaseAdmin
+        .from('learning_group_words')
+        .update({ sequence_no: index })
+        .eq('learning_group_id', groupId)
+        .eq('vocabulary_item_id', wordId);
+
+      if (error) {
+        throw new Error(`learning_group_words order update failed: ${error.message}`);
+      }
+    }),
+  );
+}
+
+async function resolveOfficialGroupIndex(userId: string, libraryId: OfficialLibraryId, groupId: string) {
+  const { data, error } = await supabaseAdmin
+    .from('learning_groups')
+    .select('id, group_name, source_type, library_id, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    throw new Error(`learning_groups index lookup failed: ${error.message}`);
+  }
+
+  const officialGroups = (
+    (data ?? []) as Array<{
+      id: string;
+      group_name: string | null;
+      source_type: 'custom' | 'system' | null;
+      library_id: string | null;
+      created_at: string;
+    }>
+  ).filter((row) => resolveOfficialLibraryId(row.library_id, row.group_name, row.source_type) === libraryId);
+
+  const index = officialGroups.findIndex((row) => row.id === groupId);
+  return index >= 0 ? index + 1 : officialGroups.length + 1;
+}
+
+export async function reorderActiveOfficialLearningGroup(
+  userId: string,
+  input: ReorderActiveOfficialLearningGroupInput,
+): Promise<ReorderActiveOfficialLearningGroupResult> {
+  if (!isOfficialLibraryId(input.libraryId)) {
+    throw new Error('未知官方词库。');
+  }
+
+  if (!isOfficialStudyMode(input.mode)) {
+    throw new Error('未知学习顺序。');
+  }
+
+  const group = await fetchDiscardGroup(userId, input.groupId);
+  if (!group) {
+    throw new Error('这组词不存在，或它不属于你。');
+  }
+
+  const resolvedLibraryId = resolveOfficialLibraryId(group.library_id, group.group_name, group.source_type);
+  if (resolvedLibraryId !== input.libraryId) {
+    throw new Error('这组词不属于当前官方路径。');
+  }
+
+  if (
+    !isReorderableOfficialRound(group.session_round) ||
+    isCoreLearningComplete({
+      status: group.status,
+      completedAt: group.completed_at,
+      sessionRound: group.session_round,
+    })
+  ) {
+    throw new Error('当前学习阶段不能重排。');
+  }
+
+  const groupWordIds = await fetchGroupWordIds(group.id);
+  if (groupWordIds.length === 0) {
+    throw new Error('这组词还没有可重排的内容。');
+  }
+
+  const queueWordIds = Array.isArray(group.session_queue_word_ids)
+    ? group.session_queue_word_ids.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+    : groupWordIds;
+  const officialPositions = await fetchOfficialWordPositions(input.libraryId, [...groupWordIds, ...queueWordIds]);
+  const reorderedSession = reorderOfficialSessionQueue({
+    round: group.session_round,
+    currentIndex: group.session_current_index,
+    queueWordIds: group.session_queue_word_ids,
+    fallbackWordIds: groupWordIds,
+    round1ConfirmedWordIds: group.session_round1_confirmed_word_ids,
+    passedQueueIndices: group.session_passed_queue_indices,
+    targetMode: input.mode,
+    officialPositions,
+  });
+  const orderedGroupWordIds = buildGroupWordOrder(reorderedSession.queueWordIds, groupWordIds);
+
+  await updateLearningGroupWordOrder(group.id, orderedGroupWordIds);
+
+  const groupIndex = await resolveOfficialGroupIndex(userId, input.libraryId, group.id);
+  const nextGroupName = formatOfficialCounterGroupName(input.libraryId, input.mode, groupIndex, groupWordIds.length);
+  const { error: updateError } = await supabaseAdmin
+    .from('learning_groups')
+    .update({
+      group_name: nextGroupName,
+      session_current_index: reorderedSession.currentIndex,
+      session_queue_word_ids: reorderedSession.queueWordIds,
+      session_passed_queue_indices: reorderedSession.passedQueueIndices,
+      session_last_active_at: new Date().toISOString(),
+    })
+    .eq('id', group.id)
+    .eq('user_id', userId);
+
+  if (updateError) {
+    throw new Error(`learning_groups reorder update failed: ${updateError.message}`);
+  }
+
+  return {
+    groupId: group.id,
+    libraryId: input.libraryId,
+    mode: input.mode,
+    reorderedWordCount: reorderedSession.reorderedWordIds.length,
+    preservedWordCount: reorderedSession.frozenWordIds.length,
+  };
 }
 
 export async function discardActiveOfficialLearningGroup(

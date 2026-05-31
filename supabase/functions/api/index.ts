@@ -18,6 +18,7 @@ import {
   deleteLearningGroup,
   discardActiveOfficialLearningGroup,
   removeWordFromLibrary,
+  reorderActiveOfficialLearningGroup,
   saveWordToLibrary,
 } from '../../../shared/server/library.ts';
 import { cleanupSavedLibrary } from '../../../shared/server/savedLibraryCleanup.ts';
@@ -810,6 +811,46 @@ Deno.serve(async (request) => {
           endpoint: `/api/library/official/${libraryId}/discard-active`,
           user_id: auth.userId,
           group_id: body.groupId,
+        });
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    const officialReorderMatch = /^\/api\/library\/official\/([^/]+)\/reorder-active$/.exec(path);
+    if (method === 'POST' && officialReorderMatch) {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      const libraryId = decodeURIComponent(officialReorderMatch[1]);
+      if (!isOfficialLibraryId(libraryId)) {
+        status = 400;
+        return errorResponse(request, 'Unknown official library', status);
+      }
+      if (typeof body?.groupId !== 'string' || body.groupId.trim().length === 0) {
+        status = 400;
+        return errorResponse(request, 'Missing group ID', status);
+      }
+      if (body.mode !== 'sequential' && body.mode !== 'shuffle') {
+        status = 400;
+        return errorResponse(request, 'Unknown study mode', status);
+      }
+      try {
+        const data = await reorderActiveOfficialLearningGroup(auth.userId, {
+          libraryId,
+          groupId: body.groupId,
+          mode: body.mode,
+        });
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error(`API Error: /api/library/official/${libraryId}/reorder-active`, error, {
+          endpoint: `/api/library/official/${libraryId}/reorder-active`,
+          user_id: auth.userId,
+          group_id: body.groupId,
+          mode: body.mode,
         });
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
