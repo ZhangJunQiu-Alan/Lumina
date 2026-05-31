@@ -21,6 +21,7 @@ interface GroupWordRow {
 
 interface SharedWordRow {
   vocabulary_item_id: string;
+  learning_group_id?: string | null;
 }
 
 interface LearningGroupDiscardRow {
@@ -36,6 +37,13 @@ interface LearningGroupDiscardRow {
   session_queue_word_ids: unknown;
   session_passed_queue_indices: unknown;
   session_round1_confirmed_word_ids: unknown;
+}
+
+interface OfficialLearningGroupRow {
+  id: string;
+  group_name: string | null;
+  source_type: 'custom' | 'system' | null;
+  library_id: string | null;
 }
 
 interface OfficialVocabularyItemRow {
@@ -75,6 +83,13 @@ export interface DiscardActiveOfficialLearningGroupResult {
   preservedWordCount: number;
   forcedFuzzyWordCount: number;
   removedUnlearnedWordCount: number;
+  removedReviewStateCount: number;
+}
+
+export interface DeleteOfficialLearningLibraryResult {
+  deletedLibraryId: OfficialLibraryId;
+  deletedGroupCount: number;
+  deletedWordCount: number;
   removedReviewStateCount: number;
 }
 
@@ -134,6 +149,8 @@ interface DailyRoutineProgressRow {
 type RoutineStepKey = 'review' | 'round1' | 'round2';
 
 const ROUTINE_STEPS: RoutineStepKey[] = ['review', 'round1', 'round2'];
+const DELETE_CHUNK_SIZE = 200;
+const DELETE_PAGE_SIZE = 1000;
 
 function isRoutineStepKey(value: unknown): value is RoutineStepKey {
   return typeof value === 'string' && ROUTINE_STEPS.includes(value as RoutineStepKey);
@@ -285,6 +302,40 @@ export async function deleteLearningGroup(userId: string, groupId: string): Prom
   };
 }
 
+export async function deleteOfficialLearningLibrary(
+  userId: string,
+  input: { libraryId: OfficialLibraryId; timeZone?: string | null },
+): Promise<DeleteOfficialLearningLibraryResult> {
+  if (!isOfficialLibraryId(input.libraryId)) {
+    throw new Error('未知官方词库。');
+  }
+
+  const groups = await fetchOfficialLibraryGroups(userId, input.libraryId);
+  const groupIds = groups.map((group) => group.id).filter(Boolean);
+  if (groupIds.length === 0) {
+    return {
+      deletedLibraryId: input.libraryId,
+      deletedGroupCount: 0,
+      deletedWordCount: 0,
+      removedReviewStateCount: 0,
+    };
+  }
+
+  const targetWordIds = await fetchGroupWordIdsForGroups(groupIds);
+  const orphanWordIds = await findUnsharedWordIdsOutsideGroups(userId, groupIds, targetWordIds);
+  const removedReviewStateCount = await deleteReviewDataForWords(userId, orphanWordIds);
+
+  await Promise.all(groupIds.map((groupId) => clearTodayRoutineBinding(userId, groupId, input.timeZone)));
+  const deletedGroupCount = await deleteLearningGroupsByIds(userId, groupIds);
+
+  return {
+    deletedLibraryId: input.libraryId,
+    deletedGroupCount,
+    deletedWordCount: targetWordIds.length,
+    removedReviewStateCount,
+  };
+}
+
 export async function saveWordToLibrary(
   userId: string,
   vocabularyItemId: string,
@@ -402,6 +453,112 @@ async function fetchGroupWordIds(groupId: string) {
   }
 
   return ((data ?? []) as GroupWordRow[]).map((row) => row.vocabulary_item_id).filter(Boolean);
+}
+
+async function fetchOfficialLibraryGroups(userId: string, libraryId: OfficialLibraryId) {
+  const rows: OfficialLearningGroupRow[] = [];
+
+  for (let from = 0; ; from += DELETE_PAGE_SIZE) {
+    const { data, error } = await supabaseAdmin
+      .from('learning_groups')
+      .select('id, group_name, source_type, library_id')
+      .eq('user_id', userId)
+      .range(from, from + DELETE_PAGE_SIZE - 1);
+
+    if (error) {
+      throw new Error(`official learning_groups lookup failed: ${error.message}`);
+    }
+
+    const page = (data ?? []) as OfficialLearningGroupRow[];
+    rows.push(...page);
+    if (page.length < DELETE_PAGE_SIZE) break;
+  }
+
+  return rows.filter(
+    (group) => resolveOfficialLibraryId(group.library_id, group.group_name, group.source_type) === libraryId,
+  );
+}
+
+async function fetchGroupWordIdsForGroups(groupIds: string[]) {
+  if (groupIds.length === 0) return [];
+
+  const wordIds: string[] = [];
+  for (let offset = 0; offset < groupIds.length; offset += DELETE_CHUNK_SIZE) {
+    const chunk = groupIds.slice(offset, offset + DELETE_CHUNK_SIZE);
+
+    for (let from = 0; ; from += DELETE_PAGE_SIZE) {
+      const { data, error } = await supabaseAdmin
+        .from('learning_group_words')
+        .select('vocabulary_item_id')
+        .in('learning_group_id', chunk)
+        .range(from, from + DELETE_PAGE_SIZE - 1);
+
+      if (error) {
+        throw new Error(`official learning_group_words lookup failed: ${error.message}`);
+      }
+
+      const page = (data ?? []) as GroupWordRow[];
+      wordIds.push(...page.map((row) => row.vocabulary_item_id).filter(Boolean));
+      if (page.length < DELETE_PAGE_SIZE) break;
+    }
+  }
+
+  return uniqueWordIds(wordIds);
+}
+
+async function findUnsharedWordIdsOutsideGroups(userId: string, groupIds: string[], wordIds: string[]) {
+  if (wordIds.length === 0) return [];
+
+  const targetGroupIds = new Set(groupIds);
+  const sharedWordIds = new Set<string>();
+
+  for (let offset = 0; offset < wordIds.length; offset += DELETE_CHUNK_SIZE) {
+    const chunk = wordIds.slice(offset, offset + DELETE_CHUNK_SIZE);
+
+    for (let from = 0; ; from += DELETE_PAGE_SIZE) {
+      const { data, error } = await supabaseAdmin
+        .from('learning_group_words')
+        .select('learning_group_id, vocabulary_item_id, learning_groups!inner(user_id)')
+        .in('vocabulary_item_id', chunk)
+        .eq('learning_groups.user_id', userId)
+        .range(from, from + DELETE_PAGE_SIZE - 1);
+
+      if (error) {
+        throw new Error(`shared official learning_group_words lookup failed: ${error.message}`);
+      }
+
+      const page = (data ?? []) as SharedWordRow[];
+      for (const row of page) {
+        if (row.vocabulary_item_id && row.learning_group_id && !targetGroupIds.has(row.learning_group_id)) {
+          sharedWordIds.add(row.vocabulary_item_id);
+        }
+      }
+      if (page.length < DELETE_PAGE_SIZE) break;
+    }
+  }
+
+  return wordIds.filter((wordId) => !sharedWordIds.has(wordId));
+}
+
+async function deleteLearningGroupsByIds(userId: string, groupIds: string[]) {
+  let deletedGroupCount = 0;
+
+  for (let offset = 0; offset < groupIds.length; offset += DELETE_CHUNK_SIZE) {
+    const chunk = groupIds.slice(offset, offset + DELETE_CHUNK_SIZE);
+    const { error, count } = await supabaseAdmin
+      .from('learning_groups')
+      .delete({ count: 'exact' })
+      .eq('user_id', userId)
+      .in('id', chunk);
+
+    if (error) {
+      throw new Error(`official learning_groups delete failed: ${error.message}`);
+    }
+
+    deletedGroupCount += count ?? 0;
+  }
+
+  return deletedGroupCount;
 }
 
 async function ensureWordIsNewForSavedLibrary(userId: string, vocabularyItemId: string) {

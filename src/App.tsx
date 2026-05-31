@@ -60,6 +60,7 @@ import {
   reorderActiveOfficialGroup,
   startNextOfficialBatch,
 } from './lib/officialLibraryStart';
+import { deleteOfficialLearningLibrary } from './lib/libraryApi';
 import {
   getOfficialLibraryDefinition,
   isOfficialLibraryId,
@@ -155,6 +156,23 @@ function isSameLearningProgressSnapshot(
     areArraysEqual(current.passedQueueIndices, next.passedQueueIndices) &&
     areArraysEqual(current.round1ConfirmedWordIds, next.round1ConfirmedWordIds)
   );
+}
+
+function buildLearningProgressSignature(
+  groupId: string,
+  progress: Pick<
+    LearningSessionSnapshot | PersistedLearningSession,
+    'round' | 'currentIndex' | 'queueWordIds' | 'passedQueueIndices' | 'round1ConfirmedWordIds'
+  >,
+) {
+  return JSON.stringify([
+    groupId,
+    progress.round,
+    progress.currentIndex,
+    progress.queueWordIds,
+    progress.passedQueueIndices,
+    progress.round1ConfirmedWordIds,
+  ]);
 }
 
 function AmbientBackground() {
@@ -336,6 +354,7 @@ export default function App() {
   const articleGenerationRunIdRef = useRef(0);
   const activeWordsRef = useRef<Word[]>([]);
   const activeSessionSeedRef = useRef<PersistedLearningSession | null>(null);
+  const lastSessionChangeSignatureRef = useRef<string | null>(null);
   const userIdRef = useRef<string | null>(null);
   const [round, setRound] = useState<RoundType>('round1');
   const [activeWords, setActiveWords] = useState<Word[]>([]);
@@ -530,6 +549,7 @@ export default function App() {
     if (!user) {
       cancelArticleGeneration();
       activeLearningGroupIdRef.current = null;
+      lastSessionChangeSignatureRef.current = null;
       setActiveWords([]);
       setActiveLearningGroupId(null);
       setActiveSessionSeed(null);
@@ -543,6 +563,7 @@ export default function App() {
   const resetActiveLearningState = useCallback(() => {
     cancelArticleGeneration();
     activeLearningGroupIdRef.current = null;
+    lastSessionChangeSignatureRef.current = null;
     setActiveWords([]);
     setActiveLearningGroupId(null);
     setActiveSessionSeed(null);
@@ -776,6 +797,7 @@ export default function App() {
         setActiveWords(words);
         activeLearningGroupIdRef.current = groupId;
         setActiveLearningGroupId(groupId);
+        lastSessionChangeSignatureRef.current = buildLearningProgressSignature(groupId, nextSession);
         setActiveSessionSeed(nextSession);
         const persistedArticle = parsePersistedArticleContent(nextSession.article);
         const cachedArticle = getCachedArticle(groupId, words);
@@ -994,6 +1016,26 @@ export default function App() {
     navigate('/app/library');
   };
 
+  const handleDeleteOfficialLibrary = useCallback(
+    async (libraryId: OfficialLibraryId) => {
+      if (!user) return;
+
+      setSessionStartError('');
+      const deletedActiveSession = activeSessionSeedRef.current?.libraryId === libraryId;
+      const result = await deleteOfficialLearningLibrary(libraryId, resolveBrowserTimeZone());
+
+      officialPrefetchKeyRef.current = null;
+      invalidateLibraryCache(user.id);
+      if (deletedActiveSession) {
+        resetActiveLearningState();
+      }
+
+      await fetchStats();
+      return result;
+    },
+    [fetchStats, resetActiveLearningState, user],
+  );
+
   const handleStartLearningGroup = useCallback(
     async (groupId: string, words?: Word[]) => {
       await openLearningGroup(groupId, words);
@@ -1005,8 +1047,14 @@ export default function App() {
     (session: LearningSessionSnapshot) => {
       if (!activeLearningGroupId || !user) return;
 
+      const nextSignature = buildLearningProgressSignature(activeLearningGroupId, session);
+      if (lastSessionChangeSignatureRef.current === nextSignature) {
+        return;
+      }
+
       const currentSeed = activeSessionSeedRef.current;
       if (isSameLearningProgressSnapshot(currentSeed, session, activeLearningGroupId)) {
+        lastSessionChangeSignatureRef.current = nextSignature;
         return;
       }
 
@@ -1026,6 +1074,7 @@ export default function App() {
         article: currentSeed?.article ?? null,
       };
 
+      lastSessionChangeSignatureRef.current = nextSignature;
       setActiveSessionSeed(sessionSeed);
 
       void persistLearningGroupSession(user.id, sessionSeed).catch((error) => {
@@ -1213,6 +1262,7 @@ export default function App() {
         }
 
         setActiveSessionSeed(nextSession);
+        lastSessionChangeSignatureRef.current = buildLearningProgressSignature(activeLearningGroupId, nextSession);
         setRound('round2');
         void persistLearningGroupSession(user.id, nextSession).catch((error) => {
           console.error('Failed to persist round transition:', error);
@@ -1243,6 +1293,7 @@ export default function App() {
         };
         const cachedArticle = getCachedArticle(activeLearningGroupId, currentActiveWords);
         setActiveSessionSeed(nextSession);
+        lastSessionChangeSignatureRef.current = buildLearningProgressSignature(activeLearningGroupId, nextSession);
         setRound('article');
         setArticleSentences(cachedArticle);
         invalidateLibraryCache(user.id);
@@ -1278,6 +1329,7 @@ export default function App() {
           };
 
           setActiveSessionSeed(nextSession);
+          lastSessionChangeSignatureRef.current = buildLearningProgressSignature(activeLearningGroupId, nextSession);
           setRound('round3');
           invalidateLibraryCache(user.id);
           void persistLearningGroupSession(user.id, nextSession).catch((error) => {
@@ -1561,6 +1613,7 @@ export default function App() {
                               void handleStart(selection);
                             }}
                             onOpenOfficialLibrary={() => navigate('/app/library?tab=system')}
+                            onDeleteOfficialLibrary={handleDeleteOfficialLibrary}
                             isLoading={isStartingSession}
                           />
                         }

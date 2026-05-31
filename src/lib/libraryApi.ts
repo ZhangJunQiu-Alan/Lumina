@@ -79,6 +79,37 @@ export interface DeleteLibraryGroupResponse {
   removedReviewStateCount: number;
 }
 
+export interface DeleteOfficialLearningLibraryResponse {
+  deletedLibraryId: OfficialLibraryId;
+  deletedGroupCount: number;
+  deletedWordCount: number;
+  removedReviewStateCount: number;
+}
+
+export async function deleteOfficialLearningLibrary(
+  libraryId: OfficialLibraryId,
+  timeZone?: string | null,
+): Promise<DeleteOfficialLearningLibraryResponse> {
+  const params = new URLSearchParams();
+  if (timeZone) {
+    params.set('timezone', timeZone);
+  }
+
+  const response = await apiFetch(
+    `/api/library/official/${encodeURIComponent(libraryId)}${params.size > 0 ? `?${params.toString()}` : ''}`,
+    {
+      method: 'DELETE',
+    },
+  );
+
+  const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+  if (!response.ok) {
+    throw new Error((payload as { error?: string }).error ?? `HTTP ${response.status}`);
+  }
+
+  return (payload as { data: DeleteOfficialLearningLibraryResponse }).data;
+}
+
 export async function deleteLibraryGroup(userId: string, groupId: string): Promise<DeleteLibraryGroupResponse> {
   const { data: group, error: groupError } = await supabase
     .from('learning_groups')

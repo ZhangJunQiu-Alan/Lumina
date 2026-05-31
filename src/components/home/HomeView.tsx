@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import { Icon as IslandIcon, type IconName } from 'animal-island-ui';
 import {
+  AlertTriangle,
   BookOpen,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Loader2,
   Sparkles,
-  Zap,
   Shield,
+  Trash2,
+  X,
+  Zap,
   type LucideIcon,
 } from 'lucide-react';
 import type {
@@ -26,6 +30,7 @@ interface HomeViewProps {
   onSelectOrbitDate: (date: string) => void;
   onStart: (selection?: { libraryId?: OfficialLibraryId | null; mode?: OfficialStudyMode | null }) => void;
   onOpenOfficialLibrary: () => void;
+  onDeleteOfficialLibrary?: (libraryId: OfficialLibraryId) => Promise<unknown> | unknown;
   isLoading?: boolean;
 }
 
@@ -95,6 +100,25 @@ function writeStoredOfficialStudyMode(libraryId: string | null | undefined, mode
     );
   } catch {
     // Losing this preference should not block the learning flow.
+  }
+}
+
+function removeStoredOfficialStudyMode(libraryId: string | null | undefined) {
+  if (typeof window === 'undefined' || !libraryId) return;
+
+  try {
+    const stored = parseStoredOfficialStudyModePreference();
+    const byLibrary = { ...(stored.byLibrary ?? {}) };
+    delete byLibrary[libraryId];
+    window.localStorage.setItem(
+      OFFICIAL_STUDY_MODE_STORAGE_KEY,
+      JSON.stringify({
+        global: stored.global,
+        byLibrary,
+      }),
+    );
+  } catch {
+    // Losing this preference should not block deleting a learning dictionary.
   }
 }
 
@@ -446,6 +470,7 @@ export const HomeView = ({
   onSelectOrbitDate,
   onStart,
   onOpenOfficialLibrary,
+  onDeleteOfficialLibrary,
   isLoading = false,
 }: HomeViewProps) => {
   const routineCard = stats.routineCard;
@@ -477,6 +502,10 @@ export const HomeView = ({
   );
   const hasUserSelectedModeRef = useRef(Boolean(readStoredOfficialStudyMode(defaultLibraryId)));
   const displayedMode = selectedMode;
+  const [deleteCandidate, setDeleteCandidate] = useState<HomeOfficialLibraryOption | null>(null);
+  const [isDeletingLibrary, setIsDeletingLibrary] = useState(false);
+  const [deleteLibraryError, setDeleteLibraryError] = useState('');
+  const canDeleteSelectedLibrary = Boolean(onDeleteOfficialLibrary && selectedOfficialOption);
 
   useEffect(() => {
     if (officialOptions.length === 0) {
@@ -530,6 +559,35 @@ export const HomeView = ({
           }
         : undefined,
     );
+  };
+
+  const openDeleteLibraryDialog = () => {
+    if (!selectedOfficialOption || !onDeleteOfficialLibrary) return;
+    setDeleteLibraryError('');
+    setDeleteCandidate(selectedOfficialOption);
+  };
+
+  const closeDeleteLibraryDialog = () => {
+    if (isDeletingLibrary) return;
+    setDeleteCandidate(null);
+    setDeleteLibraryError('');
+  };
+
+  const confirmDeleteLibrary = async () => {
+    if (!deleteCandidate || !onDeleteOfficialLibrary) return;
+
+    setIsDeletingLibrary(true);
+    setDeleteLibraryError('');
+    try {
+      await onDeleteOfficialLibrary(deleteCandidate.libraryId);
+      removeStoredOfficialStudyMode(deleteCandidate.libraryId);
+      setSelectedLibraryId('');
+      setDeleteCandidate(null);
+    } catch (error) {
+      setDeleteLibraryError(error instanceof Error ? error.message : '删除词典时出了点问题，请再试一次。');
+    } finally {
+      setIsDeletingLibrary(false);
+    }
   };
 
   return (
@@ -674,17 +732,29 @@ export const HomeView = ({
               {shouldShowOfficialControls ? (
                 <div className="mt-3 flex flex-col items-stretch justify-center gap-2.5 sm:flex-row xl:mt-4">
                   {officialOptions.length > 0 ? (
-                    <RoutineDropdown
-                      label="选择已学习官方词库"
-                      value={(selectedOfficialOption?.libraryId ?? '') as OfficialLibraryId}
-                      options={libraryDropdownOptions}
-                      onChange={handleLibraryChange}
-                      footerAction={{
-                        label: '去官方词库挑选并加入',
-                        onSelect: onOpenOfficialLibrary,
-                      }}
-                      className="flex-1 sm:min-w-[15rem]"
-                    />
+                    <div className="flex min-w-0 flex-1 items-stretch gap-2 sm:min-w-[15rem]">
+                      <RoutineDropdown
+                        label="选择已学习官方词库"
+                        value={(selectedOfficialOption?.libraryId ?? '') as OfficialLibraryId}
+                        options={libraryDropdownOptions}
+                        onChange={handleLibraryChange}
+                        footerAction={{
+                          label: '去官方词库挑选并加入',
+                          onSelect: onOpenOfficialLibrary,
+                        }}
+                        disabled={isDeletingLibrary}
+                        className="min-w-0 flex-1"
+                      />
+                      <button
+                        type="button"
+                        onClick={openDeleteLibraryDialog}
+                        disabled={!canDeleteSelectedLibrary || isDeletingLibrary}
+                        aria-label={selectedOfficialOption ? `删除${selectedOfficialOption.title}` : '删除学习词典'}
+                        className="group flex h-11 w-11 shrink-0 items-center justify-center rounded-[17px] border border-[#f0d8c8]/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,246,240,0.9))] text-[#b87960] shadow-[0_10px_24px_rgba(112,78,46,0.10),inset_0_-2px_0_rgba(166,96,70,0.07)] outline-none transition-all hover:-translate-y-0.5 hover:border-[#e5b6a4] hover:bg-white hover:text-[#c45744] focus-visible:ring-4 focus-visible:ring-[#c45744]/14 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 sm:h-12 sm:w-12"
+                      >
+                        <Trash2 className="h-4.5 w-4.5 transition-transform group-hover:scale-105" strokeWidth={2.2} />
+                      </button>
+                    </div>
                   ) : (
                     <button
                       type="button"
@@ -730,6 +800,94 @@ export const HomeView = ({
           </button>
         </motion.section>
       </main>
+
+      <AnimatePresence>
+        {deleteCandidate && (
+          <>
+            <motion.button
+              type="button"
+              aria-label="关闭删除学习词典确认"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={closeDeleteLibraryDialog}
+              className="fixed inset-0 z-40 cursor-default bg-[#2f261d]/18 backdrop-blur-[2px]"
+            />
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-official-library-title"
+              initial={{ opacity: 0, y: 14, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.16 }}
+              className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-[430px] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[24px] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,249,239,0.96))] p-5 text-left shadow-[0_28px_70px_rgba(71,51,24,0.24)] backdrop-blur-xl sm:rounded-[28px] sm:p-6"
+            >
+              <button
+                type="button"
+                onClick={closeDeleteLibraryDialog}
+                disabled={isDeletingLibrary}
+                aria-label="关闭"
+                className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-[#f7efdf] text-[#8a7256] transition-colors hover:bg-[#f1dfbb] hover:text-[#5b4932] disabled:opacity-45"
+              >
+                <X className="h-4 w-4" />
+              </button>
+
+              <div className="flex items-start gap-3 pr-8">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] bg-[#fff1e8] text-[#c45744] shadow-[inset_0_-2px_0_rgba(196,87,68,0.08)]">
+                  <AlertTriangle className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <h3 id="delete-official-library-title" className="text-[20px] font-black text-[#2f261d]">
+                    删除学习词典
+                  </h3>
+                  <p className="mt-1 text-sm font-bold leading-6 text-[#8a7256]">{deleteCandidate.title}</p>
+                </div>
+              </div>
+
+              <p className="mt-5 text-sm font-bold leading-7 text-[#6f604d]">
+                会移除这个词典在首页里的学习组和进度。仅属于这个词典的单词复习状态会一起清理；如果单词也在你的其他词组里，会保留。
+              </p>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <div className="rounded-[16px] bg-white/70 px-3 py-3 shadow-[inset_0_-1px_0_rgba(149,117,68,0.08)]">
+                  <p className="text-[11px] font-black text-[#a9906f]">学习组</p>
+                  <p className="mt-1 text-lg font-black text-[#2f261d]">{deleteCandidate.existingGroupCount}</p>
+                </div>
+                <div className="rounded-[16px] bg-white/70 px-3 py-3 shadow-[inset_0_-1px_0_rgba(149,117,68,0.08)]">
+                  <p className="text-[11px] font-black text-[#a9906f]">已掌握</p>
+                  <p className="mt-1 text-lg font-black text-[#2f261d]">{deleteCandidate.completedMemoryWordCount}</p>
+                </div>
+              </div>
+
+              {deleteLibraryError && (
+                <p className="mt-4 rounded-[16px] border border-[#f1b7aa]/70 bg-[#fff0eb] px-3 py-2 text-sm font-bold leading-6 text-[#b84d3f]">
+                  {deleteLibraryError}
+                </p>
+              )}
+
+              <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeDeleteLibraryDialog}
+                  disabled={isDeletingLibrary}
+                  className="flex h-11 items-center justify-center rounded-[16px] border border-white/80 bg-white/80 px-5 text-sm font-black text-[#6f604d] shadow-[inset_0_-2px_0_rgba(149,117,68,0.08)] transition-colors hover:bg-white disabled:opacity-45"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void confirmDeleteLibrary()}
+                  disabled={isDeletingLibrary}
+                  className="flex h-11 items-center justify-center gap-2 rounded-[16px] bg-[#c95744] px-5 text-sm font-black text-white shadow-[0_8px_18px_rgba(201,87,68,0.24),inset_0_-2px_0_rgba(115,45,35,0.24)] transition-all hover:-translate-y-0.5 hover:bg-[#b94d3d] disabled:translate-y-0 disabled:opacity-60"
+                >
+                  {isDeletingLibrary && <Loader2 className="h-4 w-4 animate-spin" />}
+                  删除词典
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };

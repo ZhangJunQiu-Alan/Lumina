@@ -17,7 +17,7 @@ export function SessionSettingsDrawer({ isOpen, onClose }: SessionSettingsDrawer
             data-session-settings-panel
             role="dialog"
             aria-modal="true"
-            aria-label="学习节奏设置"
+            aria-label="学习设置"
             initial={{ y: '100%', opacity: 0.96 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: '100%', opacity: 0.96 }}
@@ -36,7 +36,7 @@ export function SessionSettingsDrawer({ isOpen, onClose }: SessionSettingsDrawer
             data-session-settings-panel
             role="dialog"
             aria-modal="true"
-            aria-label="学习节奏设置"
+            aria-label="学习设置"
             initial={{ x: 560, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 560, opacity: 0 }}
@@ -64,8 +64,7 @@ function DrawerHeader({ onClose }: { onClose: () => void }) {
             <SlidersHorizontal className="h-6 w-6" strokeWidth={2.4} />
           </div>
           <div className="min-w-0">
-            <h2 className="text-3xl font-black tracking-tight text-[#5a4a3d]">学习节奏</h2>
-            <p className="mt-1 text-base font-bold text-[#8a7a69]">学习设置</p>
+            <h2 className="text-3xl font-black tracking-tight text-[#5a4a3d]">学习设置</h2>
           </div>
         </div>
 
@@ -73,7 +72,7 @@ function DrawerHeader({ onClose }: { onClose: () => void }) {
           type="button"
           onClick={onClose}
           className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-[#ded2bf] bg-[#fffdf8] text-[#6a5848] shadow-[0_8px_22px_rgba(79,62,38,0.09)] transition-colors hover:bg-white"
-          aria-label="关闭学习节奏设置"
+          aria-label="关闭学习设置"
         >
           <X className="h-6 w-6" strokeWidth={2.2} />
         </button>

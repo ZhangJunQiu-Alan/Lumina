@@ -16,6 +16,7 @@ import { batchGenerateAudio, getOrCreateAudio } from '../../../shared/server/aud
 import { ExampleAudioValidationError, getOrCreateExampleAudio } from '../../../shared/server/exampleAudio.ts';
 import {
   deleteLearningGroup,
+  deleteOfficialLearningLibrary,
   discardActiveOfficialLearningGroup,
   removeWordFromLibrary,
   reorderActiveOfficialLearningGroup,
@@ -776,6 +777,34 @@ Deno.serve(async (request) => {
           endpoint: '/api/home/overview',
           user_id: auth.userId,
           timezone,
+        });
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    const officialDeleteMatch = /^\/api\/library\/official\/([^/]+)$/.exec(path);
+    if (method === 'DELETE' && officialDeleteMatch) {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      const libraryId = decodeURIComponent(officialDeleteMatch[1]);
+      const timeZone = url.searchParams.get('timezone') ?? (typeof body?.timeZone === 'string' ? body.timeZone : null);
+      if (!isOfficialLibraryId(libraryId)) {
+        status = 400;
+        return errorResponse(request, 'Unknown official library', status);
+      }
+      try {
+        const data = await deleteOfficialLearningLibrary(auth.userId, { libraryId, timeZone });
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error(`API Error: /api/library/official/${libraryId}`, error, {
+          endpoint: `/api/library/official/${libraryId}`,
+          user_id: auth.userId,
+          timezone: timeZone,
         });
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }

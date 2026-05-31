@@ -59,6 +59,22 @@ import {
   Round1RelationsCard,
 } from './Round1Cards';
 
+function areSetsEqual<T>(left: Set<T>, right: Set<T>) {
+  if (left.size !== right.size) return false;
+  for (const value of left) {
+    if (!right.has(value)) return false;
+  }
+  return true;
+}
+
+function areWordQueuesEqual(left: Word[], right: Word[]) {
+  return left.length === right.length && left.every((word, index) => word.id === right[index]?.id);
+}
+
+function isWordQueuePrefix(prefix: Word[], full: Word[]) {
+  return prefix.length <= full.length && prefix.every((word, index) => word.id === full[index]?.id);
+}
+
 export interface LearningSessionSnapshot {
   round: LearningRoundType;
   currentIndex: number;
@@ -178,6 +194,7 @@ export const LearningEngine = ({
   const [reportTargetWord, setReportTargetWord] = useState<Word | null>(null);
   const [reportIssueType, setReportIssueType] = useState<VocabularyIssueType>('definition');
   const [reportNote, setReportNote] = useState('');
+  const [round2PhoneticVisible, setRound2PhoneticVisible] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const mobileActionMenuRef = useRef<HTMLDivElement | null>(null);
   const desktopActionMenuRef = useRef<HTMLDivElement | null>(null);
@@ -192,17 +209,30 @@ export const LearningEngine = ({
   const activePlaybackFinishRef = useRef<(() => void) | null>(null);
   const lastRound1PreloadKeyRef = useRef<string | null>(null);
   const lastRound2PreloadKeyRef = useRef<string | null>(null);
+  const lastSessionSnapshotSignatureRef = useRef<string | null>(null);
   const preferencesRef = useRef(preferences);
   const canPlayExampleAudio = useMemo(() => typeof Audio !== 'undefined' || isBrowserSpeechSupported(), []);
 
   const queueRef = useRef<Word[]>(initialEngineState.queue);
   const currentIndexRef = useRef(initialEngineState.currentIndex);
+  const completedWordIdsRef = useRef<Set<string>>(new Set(initialEngineState.initialCompletedIds));
+  const passedQueueIndicesRef = useRef<Set<number>>(new Set(initialEngineState.initialPassedQueueIndices));
+  const round1ConfirmedWordIdsRef = useRef<Set<string>>(new Set(initialEngineState.initialRound1ConfirmedIds));
   useEffect(() => {
     queueRef.current = queue;
   }, [queue]);
   useEffect(() => {
     currentIndexRef.current = currentIndex;
   }, [currentIndex]);
+  useEffect(() => {
+    completedWordIdsRef.current = completedWordIds;
+  }, [completedWordIds]);
+  useEffect(() => {
+    passedQueueIndicesRef.current = passedQueueIndices;
+  }, [passedQueueIndices]);
+  useEffect(() => {
+    round1ConfirmedWordIdsRef.current = round1ConfirmedWordIds;
+  }, [round1ConfirmedWordIds]);
   useEffect(() => {
     preferencesRef.current = preferences;
   }, [preferences]);
@@ -231,10 +261,10 @@ export const LearningEngine = ({
   }, [viewedClozePrompt, viewedWord]);
   const viewedClozeSentenceAudioKey =
     viewedClozePrompt && viewedWord ? `${viewedWord.id}:${viewIndex}:cloze-sentence` : '';
-  const expectedInput = clozePrompt ? clozePrompt.expectedForm : (currentWord?.word.toLowerCase() ?? '');
+  const expectedInput = (clozePrompt ? clozePrompt.expectedForm : (currentWord?.word ?? '')).trim().toLowerCase();
   const viewedExpectedInput = viewedClozePrompt
-    ? viewedClozePrompt.expectedForm
-    : (viewedWord?.word.toLowerCase() ?? '');
+    ? viewedClozePrompt.expectedForm.trim().toLowerCase()
+    : (viewedWord?.word ?? '').trim().toLowerCase();
   const displayedInputValue = isViewingHistory ? viewedExpectedInput : inputValue;
   const roundSource = type === 'review' ? 'review' : type === 'round2' ? 'round2' : null;
   const activePronunciationLocale = playbackTarget?.kind === 'pronunciation' ? playbackTarget.locale : null;
@@ -269,6 +299,22 @@ export const LearningEngine = ({
   }, []);
 
   useEffect(() => {
+    const isSameProgress =
+      currentIndexRef.current === initialEngineState.currentIndex &&
+      areSetsEqual(completedWordIdsRef.current, initialEngineState.initialCompletedIds) &&
+      areSetsEqual(passedQueueIndicesRef.current, new Set(initialEngineState.initialPassedQueueIndices)) &&
+      areSetsEqual(round1ConfirmedWordIdsRef.current, initialEngineState.initialRound1ConfirmedIds);
+
+    if (isSameProgress && areWordQueuesEqual(queueRef.current, initialEngineState.queue)) {
+      return;
+    }
+
+    if (isSameProgress && isWordQueuePrefix(queueRef.current, initialEngineState.queue)) {
+      queueRef.current = initialEngineState.queue;
+      setQueue(initialEngineState.queue);
+      return;
+    }
+
     clearAnswerRevealTimeout();
     stopPlayback();
     setQueue(initialEngineState.queue);
@@ -291,7 +337,10 @@ export const LearningEngine = ({
     setRound1ConfirmedWordIds(new Set(initialEngineState.initialRound1ConfirmedIds));
     queueRef.current = initialEngineState.queue;
     currentIndexRef.current = initialEngineState.currentIndex;
-  }, [clearAnswerRevealTimeout, initialEngineState, stopPlayback, type, words]);
+    completedWordIdsRef.current = new Set(initialEngineState.initialCompletedIds);
+    passedQueueIndicesRef.current = new Set(initialEngineState.initialPassedQueueIndices);
+    round1ConfirmedWordIdsRef.current = new Set(initialEngineState.initialRound1ConfirmedIds);
+  }, [clearAnswerRevealTimeout, initialEngineState, stopPlayback]);
 
   useEffect(
     () => () => {
@@ -521,22 +570,25 @@ export const LearningEngine = ({
   useEffect(() => {
     if (!currentWord) return;
 
-    const currentPreferences = preferencesRef.current;
-    const locale = currentPreferences.defaultPronunciationLocale;
+    const locale = preferences.defaultPronunciationLocale;
     setAudioLocale(locale);
     stopPlayback();
 
-    if (!currentPreferences.autoPlayEnabled) {
+    if (!preferences.autoPlayEnabled) {
       return;
     }
 
-    void playAudioSequence(
-      currentWord,
-      locale,
-      currentPreferences.autoPlayRepeatCount,
-      currentPreferences.autoPlayRepeatGapMs,
-    );
-  }, [currentWord, playAudioSequence, stopPlayback]);
+    void playAudioSequence(currentWord, locale, preferences.autoPlayRepeatCount, preferences.autoPlayRepeatGapMs);
+  }, [
+    currentWord,
+    playAudioSequence,
+    preferences.autoPlayEnabled,
+    preferences.autoPlayRepeatCount,
+    preferences.autoPlayRepeatGapMs,
+    preferences.defaultPronunciationLocale,
+    preferences.speechPlaybackRate,
+    stopPlayback,
+  ]);
 
   useEffect(() => {
     if (type !== 'round1') {
@@ -579,6 +631,17 @@ export const LearningEngine = ({
   }, [currentIndex, roundSource]);
 
   useEffect(() => {
+    if ((type !== 'round2' && type !== 'review') || isViewingHistory || showAnswer || isSubmittingAttempt) {
+      return undefined;
+    }
+
+    const focusTimer = window.setTimeout(() => {
+      inputRef.current?.focus();
+    }, 0);
+    return () => window.clearTimeout(focusTimer);
+  }, [currentIndex, isSubmittingAttempt, isViewingHistory, showAnswer, type]);
+
+  useEffect(() => {
     if (type === 'article') return;
     const canViewIndex = viewIndex === currentIndex || passedQueueIndices.has(viewIndex);
     if (!canViewIndex || viewIndex >= queue.length) {
@@ -600,7 +663,17 @@ export const LearningEngine = ({
 
   useEffect(() => {
     if (!onSessionChange || type === 'review') return;
-    onSessionChange(buildSessionSnapshot());
+    const snapshot = buildSessionSnapshot();
+    const signature = JSON.stringify([
+      snapshot.round,
+      snapshot.currentIndex,
+      snapshot.queueWordIds,
+      snapshot.passedQueueIndices,
+      snapshot.round1ConfirmedWordIds,
+    ]);
+    if (lastSessionSnapshotSignatureRef.current === signature) return;
+    lastSessionSnapshotSignatureRef.current = signature;
+    onSessionChange(snapshot);
   }, [buildSessionSnapshot, onSessionChange, type]);
 
   const markCurrentQueueIndexPassed = useCallback(() => {
@@ -630,8 +703,8 @@ export const LearningEngine = ({
       if (type === 'round1') {
         setSubmitError(
           preferencesRef.current.round2Enabled
-            ? '已到达当前预载末尾。可以点击“结束新词”进入 Round 2，或稍等下一批新词预载。'
-            : '已到达当前预载末尾。可以点击“结束新词”完成本组，或稍等下一批新词预载。',
+            ? '已到达当前预载末尾。可以点击左侧按钮进入听写，或稍等下一批新词预载。'
+            : '已到达当前预载末尾。可以点击左侧按钮完成本组，或稍等下一批新词预载。',
         );
         return;
       }
@@ -1071,9 +1144,15 @@ export const LearningEngine = ({
           next.add(currentWord.id);
           return next;
         });
+        setIsWrong(false);
+        setSubmitError('');
+        clearAnswerRevealTimeout();
+        markCurrentQueueIndexPassed();
+        nextWord();
+        return;
       }
 
-      if (type === 'round2' || type === 'review' || type === 'round1') {
+      if (type === 'round2' || type === 'review') {
         setShowAnswer(true);
         setIsWrong(false);
         clearAnswerRevealTimeout();
@@ -1102,8 +1181,7 @@ export const LearningEngine = ({
           }
         }
 
-        const correctAnswerRevealMs = type === 'round1' ? 800 : preferences.correctAnswerRevealMs;
-        answerRevealTimeoutRef.current = setTimeout(advance, correctAnswerRevealMs);
+        answerRevealTimeoutRef.current = setTimeout(advance, preferences.correctAnswerRevealMs);
         return;
       }
 
@@ -1156,7 +1234,7 @@ export const LearningEngine = ({
     if (type !== 'round1' || isSubmittingAttempt || showAnswer || isViewingHistory) return;
     if (round1ConfirmedWordIdsArray.length === 0) {
       setSubmitError(
-        preferences.round2Enabled ? '至少确认 1 个词后，才能进入 Round 2。' : '至少确认 1 个词后，才能完成本组。',
+        preferences.round2Enabled ? '至少确认 1 个词后，才能进入听写。' : '至少确认 1 个词后，才能完成本组。',
       );
       return;
     }
@@ -1275,15 +1353,34 @@ export const LearningEngine = ({
   const showRound1ContextCard = hasRound1ContextContent(viewedWord);
   const hasRound1InfoCards = showRound1MorphologyCard || showRound1RelationsCard || showRound1ContextCard;
   const displayedPhonetic = getWordPhonetic(viewedWord, audioLocale);
+  const canToggleRound2Phonetic = type === 'round2' && Boolean(viewedClozePrompt) && Boolean(displayedPhonetic);
+  const displayedClozePhonetic = type === 'round2' && !round2PhoneticVisible ? undefined : displayedPhonetic;
+  const inputContainerStyle: React.CSSProperties | undefined = inputIsCorrect
+    ? {
+        borderColor: 'rgba(34, 197, 94, 0.72)',
+        backgroundColor: 'rgba(236, 253, 245, 0.94)',
+        boxShadow: '0 12px 32px rgba(34, 197, 94, 0.16)',
+      }
+    : undefined;
+  const round1InputStyle: React.CSSProperties | undefined =
+    type === 'round1'
+      ? {
+          fontSize: inputValue.length > 16 ? '1.25rem' : '1.5rem',
+          lineHeight: 1.15,
+          color: isWrong ? '#E05A5A' : inputIsCorrect ? '#16A34A' : undefined,
+          caretColor: isWrong ? '#E05A5A' : inputIsCorrect ? '#16A34A' : undefined,
+        }
+      : undefined;
 
   const inputField = (
     <form onSubmit={handleSubmit} className="w-full">
       <div
         className={cx(
           'rounded-[22px] border border-white/80 bg-white/60 px-4 shadow-[0_12px_32px_rgba(14,26,56,0.06)] backdrop-blur-xl transition-[background-color,border-color,box-shadow] duration-200 sm:px-5',
-          type === 'round1' ? 'py-2 sm:py-3' : 'py-3.5 sm:py-5',
+          type === 'round1' ? 'py-[3px]' : 'py-3.5 sm:py-5',
           inputIsCorrect && 'border-[#22C55E]/35 bg-[#ECFDF5]/80 shadow-[0_12px_32px_rgba(34,197,94,0.12)]',
         )}
+        style={inputContainerStyle}
       >
         <input
           ref={inputRef}
@@ -1293,14 +1390,15 @@ export const LearningEngine = ({
           disabled={isSubmittingAttempt || isViewingHistory}
           className={cx(
             'w-full bg-transparent text-center font-black leading-none outline-none transition-colors duration-200 caret-gray-800 placeholder:text-text-secondary/35 focus-visible:!outline-none',
-            type === 'round1' ? 'text-4xl sm:text-6xl' : 'text-5xl sm:text-7xl',
+            type === 'round1' ? 'text-[1.5rem]' : 'text-5xl sm:text-7xl',
             isWrong ? 'text-apple-red' : inputIsCorrect ? 'text-[#16A34A] caret-[#16A34A]' : 'text-text-primary',
           )}
+          style={round1InputStyle}
           autoFocus
           autoComplete="off"
           autoCorrect="off"
           spellCheck="false"
-          placeholder={type === 'round1' ? '把这个词拼出来' : clozePrompt ? '填入正确词形' : '写出英文词形'}
+          placeholder={type === 'round1' ? '拼写' : clozePrompt ? '填入正确词形' : '写出英文词形'}
         />
       </div>
     </form>
@@ -1351,6 +1449,41 @@ export const LearningEngine = ({
         ))}
       </div>
     ) : null;
+
+  const round2PhoneticToggle = canToggleRound2Phonetic ? (
+    <button
+      type="button"
+      aria-pressed={round2PhoneticVisible}
+      aria-label={round2PhoneticVisible ? '隐藏 Round 2 音标' : '显示 Round 2 音标'}
+      title={round2PhoneticVisible ? '隐藏音标' : '显示音标'}
+      onClick={(event) => {
+        event.stopPropagation();
+        setRound2PhoneticVisible((visible) => !visible);
+      }}
+      className={cx(
+        'absolute left-4 top-4 z-20 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-black tracking-[0.12em] shadow-[0_12px_28px_rgba(14,26,56,0.08)] backdrop-blur-xl transition-all active:scale-[0.98] sm:left-5 sm:top-5',
+        round2PhoneticVisible
+          ? 'border-[#2563eb]/18 bg-[#eaf2ff]/95 text-[#2563eb] hover:bg-[#dbeafe]'
+          : 'border-black/6 bg-white/76 text-text-secondary/70 hover:bg-white hover:text-text-secondary',
+      )}
+    >
+      音标
+      <span
+        aria-hidden="true"
+        className={cx(
+          'inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors',
+          round2PhoneticVisible ? 'bg-[#2563eb]' : 'bg-black/15',
+        )}
+      >
+        <span
+          className={cx(
+            'h-3 w-3 rounded-full bg-white shadow-sm transition-transform',
+            round2PhoneticVisible ? 'translate-x-3' : 'translate-x-0',
+          )}
+        />
+      </span>
+    </button>
+  ) : null;
 
   const submitErrorBanner = submitError ? (
     <div className="rounded-2xl bg-apple-red/10 px-4 py-3 text-sm font-medium text-apple-red">{submitError}</div>
@@ -1868,36 +2001,25 @@ export const LearningEngine = ({
                         </div>
                       ) : (
                         <>
-                          <div className="flex flex-row items-stretch gap-3">
-                            <div className="flex-[3.2] min-w-0">{inputField}</div>
-                            <div className="flex-1 shrink-0">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  void validateCurrentInput();
-                                }}
-                                disabled={actionDisabled}
-                                className="flex h-full min-h-[50px] w-full items-center justify-center rounded-[22px] bg-[#4f46e5] text-white shadow-[0_14px_32px_rgba(79,70,229,0.22)] transition-all hover:bg-[#4338ca] active:scale-[0.96] disabled:opacity-50 disabled:hover:bg-[#4f46e5]"
-                              >
-                                <ChevronRight className="h-6 w-6" strokeWidth={3} />
-                              </button>
-                            </div>
+                          <div className="grid grid-cols-[minmax(8.5rem,0.72fr)_minmax(0,3fr)] items-stretch gap-3">
+                            <button
+                              type="button"
+                              onClick={finishRound1WithConfirmedWords}
+                              disabled={
+                                actionDisabled ||
+                                showAnswer ||
+                                isViewingHistory ||
+                                round1ConfirmedWordIdsArray.length === 0
+                              }
+                              className="inline-flex min-h-9 items-center justify-center gap-2 rounded-[22px] border border-[#cf8922]/18 bg-[#fff6e2]/90 px-3 text-sm font-black text-[#b76f12] shadow-[0_10px_24px_rgba(207,137,34,0.10)] transition-all hover:bg-[#ffefc2] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#fff6e2]/90 sm:px-4"
+                            >
+                              <CheckCircle2 className="h-4 w-4 shrink-0" />
+                              <span className="min-w-0 truncate">
+                                {round1ConfirmedWordIdsArray.length}词{preferences.round2Enabled ? '听写' : '完成本组'}
+                              </span>
+                            </button>
+                            <div className="min-w-0">{inputField}</div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={finishRound1WithConfirmedWords}
-                            disabled={
-                              actionDisabled ||
-                              showAnswer ||
-                              isViewingHistory ||
-                              round1ConfirmedWordIdsArray.length === 0
-                            }
-                            className="mt-2 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-[18px] border border-[#cf8922]/20 bg-[#fff6e2]/85 px-4 text-sm font-black text-[#b76f12] shadow-[0_10px_24px_rgba(207,137,34,0.10)] transition-all hover:bg-[#ffefc2] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#fff6e2]/85"
-                          >
-                            <CheckCircle2 className="h-4 w-4" />
-                            结束新词 · {round1ConfirmedWordIdsArray.length} 词
-                            {preferences.round2Enabled ? '进入 Round 2' : '完成本组'}
-                          </button>
                           {submitErrorBanner && <div className="mt-2">{submitErrorBanner}</div>}
                         </>
                       )}
@@ -1913,6 +2035,7 @@ export const LearningEngine = ({
                     }
                   }}
                 >
+                  {round2PhoneticToggle}
                   <div className={cx(contentAreaClassName, 'py-8')}>
                     <div className="flex min-h-full flex-col justify-center text-center">
                       {replayControls}
@@ -1920,6 +2043,7 @@ export const LearningEngine = ({
                         <Round2ClozePrompt
                           prompt={viewedClozePrompt}
                           inputValue={displayedInputValue}
+                          phonetic={displayedClozePhonetic}
                           targetWords={lookupTargetWords}
                           onWordClick={openPopover}
                           canPlaySentenceAudio={canPlayExampleAudio && Boolean(viewedClozeFullSentence)}

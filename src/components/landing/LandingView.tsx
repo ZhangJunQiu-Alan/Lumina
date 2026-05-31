@@ -304,7 +304,7 @@ export const LandingView = () => {
           <header className="landing-topbar">
             <div className="landing-brand-lockup">
               <LuminaLogo size={42} wordmarkClassName="landing-wordmark" />
-              <span>让英语学习 · 有迹可循</span>
+              <span>让英语学习· 更高效</span>
             </div>
 
             <nav className="landing-nav" aria-label="Landing page navigation">

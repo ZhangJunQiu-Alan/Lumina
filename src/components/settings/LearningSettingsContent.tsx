@@ -117,7 +117,7 @@ function ToggleControl({ checked, onChange }: { checked: boolean; onChange: (che
     >
       <span
         className={cx(
-          'absolute top-1 h-7 w-7 rounded-full bg-white shadow-[0_6px_14px_rgba(51,41,30,0.22)] transition-transform',
+          'absolute left-0 top-1 h-7 w-7 rounded-full bg-white shadow-[0_6px_14px_rgba(51,41,30,0.22)] transition-transform',
           checked ? 'translate-x-[34px]' : 'translate-x-1',
         )}
       />
@@ -157,7 +157,7 @@ function SettingRow({
         <StatusPill feedback={feedback} />
       </div>
       <div className="col-span-2 flex min-w-0 justify-start sm:col-span-1 sm:col-start-3 sm:justify-end">
-        <div className="w-full sm:w-[15rem] sm:max-w-full">{control}</div>
+        <div className="flex w-full justify-start sm:mr-6 sm:w-[15rem] sm:max-w-full sm:justify-end">{control}</div>
       </div>
       {feedback?.status === 'error' && feedback.message && (
         <p className="col-span-2 text-sm font-bold leading-6 text-apple-red sm:col-start-2">{feedback.message}</p>

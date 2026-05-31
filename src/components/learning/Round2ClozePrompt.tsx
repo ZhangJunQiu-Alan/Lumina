@@ -49,6 +49,7 @@ function renderBlankedSentence(
 export const Round2ClozePrompt = ({
   prompt,
   inputValue,
+  phonetic,
   targetWords,
   onWordClick,
   canPlaySentenceAudio = false,
@@ -58,44 +59,60 @@ export const Round2ClozePrompt = ({
 }: {
   prompt: ClozePrompt;
   inputValue: string;
+  phonetic?: string;
   targetWords?: ReadonlySet<string>;
   onWordClick?: WordClickHandler;
   canPlaySentenceAudio?: boolean;
   isSentencePlaying?: boolean;
   onPlaySentence?: () => void;
   sentenceAudioLocale?: PronunciationLocale;
-}) => (
-  <div className="mx-auto max-w-3xl">
-    <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary/60">根据语境复现单词</p>
+}) => {
+  const hasPhonetic = Boolean(phonetic);
 
-    <p className="mt-5 text-2xl font-black leading-[1.5] text-text-primary md:text-[1.95rem] md:leading-[1.55]">
-      {renderBlankedSentence(prompt.blankedSentence, prompt.expectedForm, inputValue, onWordClick, targetWords)}
-    </p>
+  return (
+    <div className="mx-auto max-w-3xl">
+      <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary/60">根据语境复现单词</p>
 
-    <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-      <span className="rounded-full bg-[#eaf2ff] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-[#2563eb]">
-        {prompt.formLabel}
-      </span>
-      {onPlaySentence && (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onPlaySentence();
-          }}
-          disabled={!canPlaySentenceAudio}
-          aria-label={isSentencePlaying ? '停止朗读完整例句' : '播放完整例句'}
-          title={isSentencePlaying ? '停止朗读完整例句' : '播放完整例句'}
-          className="inline-flex items-center gap-1.5 rounded-full bg-[#eaf2ff] px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-[#2563eb] transition-colors hover:bg-[#dbeafe] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#eaf2ff]"
+      {hasPhonetic && (
+        <p
+          aria-label="当前词音标"
+          className="mt-2 min-h-7 font-mono text-base font-black tracking-[0.04em] text-[#2563eb] md:text-lg"
         >
-          {isSentencePlaying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Volume2 className="h-3.5 w-3.5" />}
-          完整句 {sentenceAudioLocale.toUpperCase()}
-        </button>
+          {phonetic}
+        </p>
+      )}
+
+      <p
+        className={`text-2xl font-black leading-[1.5] text-text-primary md:text-[1.95rem] md:leading-[1.55] ${hasPhonetic ? 'mt-2' : 'mt-5'}`}
+      >
+        {renderBlankedSentence(prompt.blankedSentence, prompt.expectedForm, inputValue, onWordClick, targetWords)}
+      </p>
+
+      <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+        <span className="rounded-full bg-[#eaf2ff] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-[#2563eb]">
+          {prompt.formLabel}
+        </span>
+        {onPlaySentence && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onPlaySentence();
+            }}
+            disabled={!canPlaySentenceAudio}
+            aria-label={isSentencePlaying ? '停止朗读完整例句' : '播放完整例句'}
+            title={isSentencePlaying ? '停止朗读完整例句' : '播放完整例句'}
+            className="inline-flex items-center gap-1.5 rounded-full bg-[#eaf2ff] px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-[#2563eb] transition-colors hover:bg-[#dbeafe] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#eaf2ff]"
+          >
+            {isSentencePlaying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Volume2 className="h-3.5 w-3.5" />}
+            完整句 {sentenceAudioLocale.toUpperCase()}
+          </button>
+        )}
+      </div>
+
+      {prompt.translation && (
+        <p className="mt-4 text-sm leading-6 text-text-secondary md:text-base md:leading-7">{prompt.translation}</p>
       )}
     </div>
-
-    {prompt.translation && (
-      <p className="mt-4 text-sm leading-6 text-text-secondary md:text-base md:leading-7">{prompt.translation}</p>
-    )}
-  </div>
-);
+  );
+};

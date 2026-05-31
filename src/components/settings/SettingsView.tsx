@@ -11,8 +11,7 @@ export const SettingsView = () => (
           <SlidersHorizontal className="h-6 w-6" strokeWidth={2.4} />
         </div>
         <div className="min-w-0">
-          <h1 className="text-3xl font-black tracking-tight text-[#5a4a3d]">学习节奏</h1>
-          <p className="mt-1 text-base font-bold text-[#8a7a69]">学习设置</p>
+          <h1 className="text-3xl font-black tracking-tight text-[#5a4a3d]">学习设置</h1>
         </div>
       </div>
     </header>

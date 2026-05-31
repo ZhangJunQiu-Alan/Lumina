@@ -20,6 +20,7 @@ import { getOrCreateAudio, batchGenerateAudio } from '../shared/server/audio.ts'
 import { ExampleAudioValidationError, getOrCreateExampleAudio } from '../shared/server/exampleAudio.ts';
 import {
   deleteLearningGroup,
+  deleteOfficialLearningLibrary,
   discardActiveOfficialLearningGroup,
   removeWordFromLibrary,
   reorderActiveOfficialLearningGroup,
@@ -677,6 +678,34 @@ app.get('/api/home/overview', requireAuth, async (req: AuthenticatedRequest, res
   } catch (e) {
     logger.error('API Error: /api/home/overview', e, {
       endpoint: '/api/home/overview',
+      user_id: userId,
+      timezone: timeZone,
+    });
+    return sendInternalError(res);
+  }
+});
+
+// DELETE /api/library/official/:libraryId
+app.delete('/api/library/official/:libraryId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { libraryId } = req.params;
+  const timeZone =
+    typeof req.query.timezone === 'string'
+      ? req.query.timezone
+      : typeof req.body?.timeZone === 'string'
+        ? req.body.timeZone
+        : null;
+
+  if (!isOfficialLibraryId(libraryId)) {
+    return res.status(400).json({ error: 'Unknown official library' });
+  }
+
+  const userId = req.authUserId!;
+  try {
+    const result = await deleteOfficialLearningLibrary(userId, { libraryId, timeZone });
+    res.json({ data: result });
+  } catch (e) {
+    logger.error(`API Error: /api/library/official/${libraryId}`, e, {
+      endpoint: `/api/library/official/${libraryId}`,
       user_id: userId,
       timezone: timeZone,
     });
