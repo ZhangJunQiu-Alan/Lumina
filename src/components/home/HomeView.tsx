@@ -36,6 +36,67 @@ function cx(...parts: Array<string | false | undefined>) {
 }
 
 const EMPTY_OFFICIAL_LIBRARY_OPTIONS: HomeOfficialLibraryOption[] = [];
+const OFFICIAL_STUDY_MODE_STORAGE_KEY = 'lumina.home.officialStudyMode.v1';
+
+interface StoredOfficialStudyModePreference {
+  global?: OfficialStudyMode;
+  byLibrary?: Record<string, OfficialStudyMode>;
+}
+
+function isOfficialStudyMode(value: unknown): value is OfficialStudyMode {
+  return value === 'sequential' || value === 'shuffle';
+}
+
+function parseStoredOfficialStudyModePreference(): StoredOfficialStudyModePreference {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const raw = window.localStorage.getItem(OFFICIAL_STUDY_MODE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Partial<StoredOfficialStudyModePreference>;
+    const global = isOfficialStudyMode(parsed.global) ? parsed.global : undefined;
+    const byLibraryEntries =
+      parsed.byLibrary && typeof parsed.byLibrary === 'object'
+        ? Object.entries(parsed.byLibrary).filter((entry): entry is [string, OfficialStudyMode] =>
+            isOfficialStudyMode(entry[1]),
+          )
+        : [];
+
+    return {
+      global,
+      byLibrary: Object.fromEntries(byLibraryEntries),
+    };
+  } catch {
+    return {};
+  }
+}
+
+function readStoredOfficialStudyMode(libraryId?: string | null): OfficialStudyMode | null {
+  const stored = parseStoredOfficialStudyModePreference();
+  const libraryMode = libraryId ? stored.byLibrary?.[libraryId] : undefined;
+  return libraryMode ?? stored.global ?? null;
+}
+
+function writeStoredOfficialStudyMode(libraryId: string | null | undefined, mode: OfficialStudyMode) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const stored = parseStoredOfficialStudyModePreference();
+    const byLibrary = { ...(stored.byLibrary ?? {}) };
+    if (libraryId) {
+      byLibrary[libraryId] = mode;
+    }
+    window.localStorage.setItem(
+      OFFICIAL_STUDY_MODE_STORAGE_KEY,
+      JSON.stringify({
+        global: mode,
+        byLibrary,
+      }),
+    );
+  } catch {
+    // Losing this preference should not block the learning flow.
+  }
+}
 
 function OrbitMetric({
   value,
@@ -411,8 +472,10 @@ export const HomeView = ({
     () => officialOptions.find((option) => option.libraryId === selectedLibraryId) ?? officialOptions[0] ?? null,
     [officialOptions, selectedLibraryId],
   );
-  const [selectedMode, setSelectedMode] = useState<OfficialStudyMode>(routineCard.lastUsedOfficialMode ?? 'sequential');
-  const hasUserSelectedModeRef = useRef(false);
+  const [selectedMode, setSelectedMode] = useState<OfficialStudyMode>(
+    () => readStoredOfficialStudyMode(defaultLibraryId) ?? routineCard.lastUsedOfficialMode ?? 'sequential',
+  );
+  const hasUserSelectedModeRef = useRef(Boolean(readStoredOfficialStudyMode(defaultLibraryId)));
   const displayedMode = selectedMode;
 
   useEffect(() => {
@@ -427,21 +490,35 @@ export const HomeView = ({
   }, [defaultLibraryId, officialOptions, selectedLibraryId]);
 
   useEffect(() => {
+    const storedMode = readStoredOfficialStudyMode(selectedOfficialOption?.libraryId ?? defaultLibraryId);
+    if (storedMode) {
+      hasUserSelectedModeRef.current = true;
+      setSelectedMode(storedMode);
+      return;
+    }
+
     if (!hasUserSelectedModeRef.current) {
       setSelectedMode(selectedOfficialOption?.mode ?? routineCard.lastUsedOfficialMode ?? 'sequential');
     }
-  }, [routineCard.lastUsedOfficialMode, selectedOfficialOption?.mode]);
+  }, [
+    defaultLibraryId,
+    routineCard.lastUsedOfficialMode,
+    selectedOfficialOption?.libraryId,
+    selectedOfficialOption?.mode,
+  ]);
 
   const handleLibraryChange = (libraryId: string) => {
     const nextOption = officialOptions.find((option) => option.libraryId === libraryId) ?? null;
-    hasUserSelectedModeRef.current = false;
+    const storedMode = readStoredOfficialStudyMode(libraryId);
+    hasUserSelectedModeRef.current = Boolean(storedMode);
     setSelectedLibraryId(libraryId);
-    setSelectedMode(nextOption?.mode ?? routineCard.lastUsedOfficialMode ?? 'sequential');
+    setSelectedMode(storedMode ?? nextOption?.mode ?? routineCard.lastUsedOfficialMode ?? 'sequential');
   };
 
   const handleModeChange = (mode: OfficialStudyMode) => {
     hasUserSelectedModeRef.current = true;
     setSelectedMode(mode);
+    writeStoredOfficialStudyMode(selectedOfficialOption?.libraryId ?? selectedLibraryId, mode);
   };
 
   const handleStart = () => {

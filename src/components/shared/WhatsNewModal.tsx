@@ -4,7 +4,7 @@ import { BarChart3, BookOpenCheck, Settings2, Shuffle, Sparkles, Target, X } fro
 import { useNavigate } from 'react-router-dom';
 import { IslandButton, IslandIconButton, IslandModalShell } from './AnimalPrimitives';
 
-const VERSION_KEY = 'lumina_whatsnew_2026_05_31_ielts_dashboard_settings'; // Bump this key to show the modal again in future updates
+const VERSION_KEY = 'lumina_whatsnew_2026_05_31_release_summary_v2'; // Bump this key to show the modal again in future updates
 
 export function WhatsNewModal() {
   const navigate = useNavigate();
@@ -60,8 +60,10 @@ export function WhatsNewModal() {
                 <Sparkles className="h-6 w-6" />
               </div>
 
-              <h2 className="mb-2 text-2xl font-black text-text-primary">本次更新</h2>
-              <p className="mb-6 text-sm font-medium text-text-secondary">雅思训练和学习设置升级了：</p>
+              <h2 className="mb-2 text-2xl font-black text-text-primary">上次以来的更新</h2>
+              <p className="mb-6 text-sm font-medium text-text-secondary">
+                IELTS 练习、官方词库和加载体验一起整理好了：
+              </p>
 
               <div className="space-y-4 mb-8">
                 <div className="flex gap-3">
@@ -69,7 +71,7 @@ export function WhatsNewModal() {
                     <BarChart3 className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-text-primary">IELTS 总览页上线</h3>
+                    <h3 className="text-sm font-bold text-text-primary">IELTS 总览页更完整</h3>
                     <p className="mt-1 text-xs text-text-secondary leading-relaxed">
                       阅读、听力练习、最近成绩、当前预估分和下一步推荐，现在都集中在雅思首页。
                     </p>
@@ -91,7 +93,7 @@ export function WhatsNewModal() {
                     <Settings2 className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-text-primary">第二轮可按需关闭</h3>
+                    <h3 className="text-sm font-bold text-text-primary">学习轮次可按需调整</h3>
                     <p className="mt-1 text-xs text-text-secondary leading-relaxed">
                       如果想先只完成第一轮新词，可以在设置里关闭 Round 2，系统会自动收口本组。
                     </p>
@@ -102,9 +104,9 @@ export function WhatsNewModal() {
                     <Shuffle className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-text-primary">官方词库顺序可切换</h3>
+                    <h3 className="text-sm font-bold text-text-primary">官方词库会记住选择</h3>
                     <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                      已开始的官方词组也能在顺序 / 乱序间切换，已学过的部分会被保留。
+                      顺序 / 乱序会跟随你的选择保留，已开始的官方词组切换模式时也会保留已学进度。
                     </p>
                   </div>
                 </div>
@@ -113,9 +115,9 @@ export function WhatsNewModal() {
                     <BookOpenCheck className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-text-primary">文档和稳定性同步更新</h3>
+                    <h3 className="text-sm font-bold text-text-primary">首页加载更轻快</h3>
                     <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                      README、服务端接口、Edge Function 和相关测试也一起更新，保证线上行为一致。
+                      学习主界面改为按需加载，同时清理了代码 warning 和构建体积提醒。
                     </p>
                   </div>
                 </div>
