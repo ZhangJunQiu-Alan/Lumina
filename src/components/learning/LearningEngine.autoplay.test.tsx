@@ -53,12 +53,30 @@ vi.mock('../../lib/attemptBuffer', () => ({
   },
 }));
 
+vi.mock('../../lib/exampleAudio', () => ({
+  fetchExampleAudioUrl: vi.fn(() => Promise.resolve(null)),
+}));
+
+vi.mock('../../lib/reviewApi', () => ({
+  markReviewWordMastered: vi.fn(() => Promise.resolve()),
+  markReviewWordUnknown: vi.fn(() => Promise.resolve()),
+}));
+
 vi.mock('../../lib/round1Preload', () => ({
   preloadRound1CardResources: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock('../../lib/round2Preload', () => ({
   preloadRound2CardResources: vi.fn(() => Promise.resolve()),
+}));
+
+vi.mock('../../lib/vocabReportApi', () => ({
+  reportVocabularyIssue: vi.fn(() => Promise.resolve()),
+}));
+
+vi.mock('../../lib/wordAudio', () => ({
+  fetchWordAudioUrl: vi.fn(() => Promise.resolve(null)),
+  primeWordAudioUrl: vi.fn(),
 }));
 
 function makeWord(overrides: Partial<Word> = {}): Word {
