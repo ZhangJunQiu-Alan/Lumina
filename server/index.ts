@@ -505,7 +505,11 @@ app.post('/api/vocab/article', requireAuth, requireAiContentFeatures, aiArticleQ
 app.post('/api/review/attempt', requireAuth, async (req: AuthenticatedRequest, res) => {
   const { vocabularyItemId, learningGroupId, source, wasCorrect, elapsedMs } = req.body;
 
-  if (!vocabularyItemId || (source !== 'round2' && source !== 'review') || typeof wasCorrect !== 'boolean') {
+  if (
+    !vocabularyItemId ||
+    (source !== 'round2' && source !== 'round3' && source !== 'review') ||
+    typeof wasCorrect !== 'boolean'
+  ) {
     return res.status(400).json({ error: 'Missing required attempt fields' });
   }
 

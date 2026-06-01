@@ -71,7 +71,7 @@ export const Round2ClozePrompt = ({
 
   return (
     <div className="mx-auto max-w-3xl">
-      <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary/60">根据语境复现单词</p>
+      <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary/60">根据语境听写单词</p>
 
       {hasPhonetic && (
         <p

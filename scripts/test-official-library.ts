@@ -42,7 +42,7 @@ const officialGroups: LibraryGroupSummary[] = [
     id: 'g1',
     title: formatOfficialGroupName('ielts-vocab', 0, OFFICIAL_BATCH_SIZE),
     status: 'completed',
-    sessionRound: 'round3',
+    sessionRound: 'article',
     completedAt: '2026-04-18T00:20:00.000Z',
   }),
   makeGroupSummary({

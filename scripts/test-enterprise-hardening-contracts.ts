@@ -161,6 +161,24 @@ assert.equal(
   'parallel official learning migration must not delete other active official groups',
 );
 
+const sharedLibrarySource = read('shared/server/library.ts');
+const deleteOfficialLibraryFunction = extractFunction(sharedLibrarySource, 'deleteOfficialLearningLibrary');
+assert.equal(
+  deleteOfficialLibraryFunction.includes('deleteReviewDataForWords'),
+  false,
+  'official library deletion must preserve review state and event history',
+);
+assert.equal(
+  deleteOfficialLibraryFunction.includes('clearTodayRoutineBinding'),
+  false,
+  'official library deletion must not clear or recompute today routine progress',
+);
+assertIncludes(
+  deleteOfficialLibraryFunction,
+  'fetchTodayRoutineBoundGroupIds',
+  'official library deletion should preserve groups bound to today routine',
+);
+
 const schema = read('supabase/schema.sql');
 assertIncludes(schema, 'session_round1_confirmed_word_ids JSONB', 'schema learning session persistence');
 assert.equal(

@@ -4,7 +4,7 @@ import { BookOpenCheck, Headphones, Settings2, Shuffle, Sparkles, Trash2, X } fr
 import { useNavigate } from 'react-router-dom';
 import { IslandButton, IslandIconButton, IslandModalShell } from './AnimalPrimitives';
 
-const VERSION_KEY = 'lumina_whatsnew_2026_06_01_learning_controls_v1'; // Bump this key to show the modal again in future updates
+const VERSION_KEY = 'lumina_whatsnew_2026_06_01_round3_progress_v2'; // Bump this key to show the modal again in future updates
 
 export function WhatsNewModal() {
   const navigate = useNavigate();
@@ -61,7 +61,7 @@ export function WhatsNewModal() {
               </div>
 
               <h2 className="mb-2 text-2xl font-black text-text-primary">上次以来的更新</h2>
-              <p className="mb-6 text-sm font-medium text-text-secondary">学习首页和听写体验继续优化：</p>
+              <p className="mb-6 text-sm font-medium text-text-secondary">学习流程和首页管理继续优化：</p>
 
               <div className="space-y-4 mb-8">
                 <div className="flex gap-3">
@@ -69,20 +69,20 @@ export function WhatsNewModal() {
                     <BookOpenCheck className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-text-primary">官方词库可直接管理</h3>
+                    <h3 className="text-sm font-bold text-text-primary">学习轮次更清楚</h3>
                     <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                      首页可以选择、切换和删除官方词库进度，不想继续的词库不用再留在学习列表里。
+                      Round 2 现在专注主动回忆，Round 3 负责听写复现，学习步骤更贴近真实记忆。
                     </p>
                   </div>
                 </div>
                 <div className="flex gap-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e0f2fe] text-[#0284c7]">
-                    <Trash2 className="h-4 w-4" />
+                    <Settings2 className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-text-primary">删除时会保留共享单词</h3>
+                    <h3 className="text-sm font-bold text-text-primary">每个词都有学习进度</h3>
                     <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                      只清理这个官方词库自己的学习组和进度；也在其他词组里的单词会继续保留。
+                      单词会单独记录 Round 1、Round 2 和 Round 3 的完成状态，首页统计会更准确。
                     </p>
                   </div>
                 </div>
@@ -91,9 +91,9 @@ export function WhatsNewModal() {
                     <Shuffle className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-text-primary">顺序 / 乱序会记住</h3>
+                    <h3 className="text-sm font-bold text-text-primary">官方词库可直接管理</h3>
                     <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                      官方词库的学习模式会跟随你的选择保留，切换词库后也能沿用上次偏好。
+                      首页可以选择、切换和删除官方词库进度，顺序 / 乱序也会记住你的上次选择。
                     </p>
                   </div>
                 </div>
@@ -104,18 +104,18 @@ export function WhatsNewModal() {
                   <div>
                     <h3 className="text-sm font-bold text-text-primary">听写音标可显示 / 隐藏</h3>
                     <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                      Round 2 听写新增音标开关，想要提示或挑战纯听写都可以自己切换。
+                      Round 3 听写新增音标开关，想要提示或挑战纯听写都可以自己切换。
                     </p>
                   </div>
                 </div>
                 <div className="flex gap-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-apple-blue/10 text-apple-blue">
-                    <Settings2 className="h-4 w-4" />
+                    <Trash2 className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-text-primary">自动播放和进度更稳</h3>
+                    <h3 className="text-sm font-bold text-text-primary">删除时会保留共享内容</h3>
                     <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                      自动播放不会因为进度回写被打断，学习设置、完成按钮和反馈时长也更清楚。
+                      删除官方词库进度时，会保留今天正在学习的内容和其他词组也在使用的单词。
                     </p>
                   </div>
                 </div>

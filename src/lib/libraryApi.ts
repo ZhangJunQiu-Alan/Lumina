@@ -84,6 +84,7 @@ export interface DeleteOfficialLearningLibraryResponse {
   deletedGroupCount: number;
   deletedWordCount: number;
   removedReviewStateCount: number;
+  preservedRoutineGroupIds?: string[];
 }
 
 export async function deleteOfficialLearningLibrary(

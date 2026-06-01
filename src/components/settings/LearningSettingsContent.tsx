@@ -406,7 +406,7 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
         />
         <SettingRow
           icon={BookOpen}
-          title="第二轮练习"
+          title="Round 3 听写"
           feedback={feedbackByKey.round2Enabled}
           control={
             <ToggleControl
@@ -419,7 +419,7 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
         />
         <SettingRow
           icon={BookOpen}
-          title="第三轮练习"
+          title="Round 2 回忆"
           feedback={feedbackByKey.reinforcementRound3Enabled}
           control={
             <ToggleControl

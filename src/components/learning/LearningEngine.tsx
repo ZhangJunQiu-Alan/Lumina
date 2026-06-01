@@ -121,7 +121,7 @@ export const LearningEngine = ({
           .sort((left, right) => left - right)
       : [];
     const initialPassedQueueIndices =
-      hasMatchingSession && type === 'round3' && normalizedPassedQueueIndices.length === 0 && currentIndex > 0
+      hasMatchingSession && type === 'round2' && normalizedPassedQueueIndices.length === 0 && currentIndex > 0
         ? Array.from({ length: currentIndex }, (_, index) => index)
         : normalizedPassedQueueIndices;
 
@@ -132,15 +132,14 @@ export const LearningEngine = ({
     for (const word of queue.slice(0, currentIndex)) {
       if (!pendingIds.has(word.id)) initialCompletedIds.add(word.id);
     }
-    const initialRound1ConfirmedIds =
-      type === 'round1'
-        ? new Set(
-            (initialSession?.round1ConfirmedWordIds?.length
-              ? initialSession.round1ConfirmedWordIds
-              : [...initialCompletedIds]
-            ).filter((wordId) => wordMap.has(wordId)),
-          )
-        : new Set<string>();
+    const initialRound1ConfirmedIds = new Set(
+      (initialSession?.round1ConfirmedWordIds?.length
+        ? initialSession.round1ConfirmedWordIds
+        : type === 'round1'
+          ? [...initialCompletedIds]
+          : []
+      ).filter((wordId) => wordMap.has(wordId)),
+    );
 
     return {
       queue,
@@ -175,7 +174,7 @@ export const LearningEngine = ({
   const completedCount = completedWordIds.size;
   const displayNumerator = Math.min(completedCount + 1, initialUniqueCount);
   const displayProgressIndex =
-    type === 'round3' ? Math.min(currentIndex, Math.max(initialUniqueCount - 1, 0)) : displayNumerator - 1;
+    type === 'round2' ? Math.min(currentIndex, Math.max(initialUniqueCount - 1, 0)) : displayNumerator - 1;
   const passedQueueIndicesArray = useMemo(
     () => [...passedQueueIndices].sort((left, right) => left - right),
     [passedQueueIndices],
@@ -194,7 +193,7 @@ export const LearningEngine = ({
   const [reportTargetWord, setReportTargetWord] = useState<Word | null>(null);
   const [reportIssueType, setReportIssueType] = useState<VocabularyIssueType>('definition');
   const [reportNote, setReportNote] = useState('');
-  const [round2PhoneticVisible, setRound2PhoneticVisible] = useState(true);
+  const [dictationPhoneticVisible, setDictationPhoneticVisible] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const mobileActionMenuRef = useRef<HTMLDivElement | null>(null);
   const desktopActionMenuRef = useRef<HTMLDivElement | null>(null);
@@ -240,18 +239,20 @@ export const LearningEngine = ({
   const currentWord = queue[currentIndex];
   const viewedWord = queue[viewIndex] ?? currentWord;
   const isViewingHistory = viewIndex !== currentIndex;
+  const isDictationRound = type === 'round3' || type === 'review';
+  const isRecallRound = type === 'round2';
   const lookupTargetWords = useMemo(
     () => new Set(words.map((word) => word.word.trim().toLowerCase()).filter(Boolean)),
     [words],
   );
   const clozePrompt = useMemo(() => {
-    if ((type !== 'round2' && type !== 'review') || !currentWord) return null;
+    if (!isDictationRound || !currentWord) return null;
     return buildClozePrompt({ word: currentWord.word, senses: currentWord.senses });
-  }, [currentWord, type]);
+  }, [currentWord, isDictationRound]);
   const viewedClozePrompt = useMemo(() => {
-    if ((type !== 'round2' && type !== 'review') || !viewedWord) return null;
+    if (!isDictationRound || !viewedWord) return null;
     return buildClozePrompt({ word: viewedWord.word, senses: viewedWord.senses });
-  }, [viewedWord, type]);
+  }, [isDictationRound, viewedWord]);
   const viewedClozeFullSentence = useMemo(() => {
     if (!viewedClozePrompt || !viewedWord) return '';
     return (viewedWord.senses[viewedClozePrompt.senseIndex]?.example_sentence ?? '')
@@ -266,7 +267,7 @@ export const LearningEngine = ({
     ? viewedClozePrompt.expectedForm.trim().toLowerCase()
     : (viewedWord?.word ?? '').trim().toLowerCase();
   const displayedInputValue = isViewingHistory ? viewedExpectedInput : inputValue;
-  const roundSource = type === 'review' ? 'review' : type === 'round2' ? 'round2' : null;
+  const roundSource = type === 'review' ? 'review' : type === 'round3' ? 'round3' : null;
   const activePronunciationLocale = playbackTarget?.kind === 'pronunciation' ? playbackTarget.locale : null;
   const activeExampleKey = playbackTarget?.kind === 'example' ? playbackTarget.key : null;
 
@@ -608,7 +609,7 @@ export const LearningEngine = ({
   }, [currentIndex, preferences.defaultPronunciationLocale, queue, type]);
 
   useEffect(() => {
-    if (type !== 'round2') {
+    if (type !== 'round3') {
       lastRound2PreloadKeyRef.current = null;
       return;
     }
@@ -631,7 +632,7 @@ export const LearningEngine = ({
   }, [currentIndex, roundSource]);
 
   useEffect(() => {
-    if ((type !== 'round2' && type !== 'review') || isViewingHistory || showAnswer || isSubmittingAttempt) {
+    if (!isDictationRound || isViewingHistory || showAnswer || isSubmittingAttempt) {
       return undefined;
     }
 
@@ -639,7 +640,7 @@ export const LearningEngine = ({
       inputRef.current?.focus();
     }, 0);
     return () => window.clearTimeout(focusTimer);
-  }, [currentIndex, isSubmittingAttempt, isViewingHistory, showAnswer, type]);
+  }, [currentIndex, isDictationRound, isSubmittingAttempt, isViewingHistory, showAnswer]);
 
   useEffect(() => {
     if (type === 'article') return;
@@ -702,9 +703,11 @@ export const LearningEngine = ({
     } else {
       if (type === 'round1') {
         setSubmitError(
-          preferencesRef.current.round2Enabled
-            ? '已到达当前预载末尾。可以点击左侧按钮进入听写，或稍等下一批新词预载。'
-            : '已到达当前预载末尾。可以点击左侧按钮完成本组，或稍等下一批新词预载。',
+          preferencesRef.current.reinforcementRound3Enabled
+            ? '已到达当前预载末尾。可以点击左侧按钮进入回忆，或稍等下一批新词预载。'
+            : preferencesRef.current.round2Enabled
+              ? '已到达当前预载末尾。可以点击左侧按钮进入听写，或稍等下一批新词预载。'
+              : '已到达当前预载末尾。可以点击左侧按钮完成本组，或稍等下一批新词预载。',
         );
         return;
       }
@@ -1152,7 +1155,7 @@ export const LearningEngine = ({
         return;
       }
 
-      if (type === 'round2' || type === 'review') {
+      if (isDictationRound) {
         setShowAnswer(true);
         setIsWrong(false);
         clearAnswerRevealTimeout();
@@ -1164,7 +1167,7 @@ export const LearningEngine = ({
           nextWord();
         };
 
-        if ((type === 'round2' || type === 'review') && clozePrompt && preferences.clozeSentenceAutoPlayEnabled) {
+        if (isDictationRound && clozePrompt && preferences.clozeSentenceAutoPlayEnabled) {
           const fullSentence = (currentWord.senses[clozePrompt.senseIndex]?.example_sentence ?? '')
             .replace(/\*\*(.+?)\*\*/g, '$1')
             .trim();
@@ -1192,7 +1195,7 @@ export const LearningEngine = ({
     setIsWrong(true);
     setLastWrongInput(inputValue);
 
-    if (type === 'round2' || type === 'review') {
+    if (isDictationRound) {
       const newQueue = [...queue];
       const insertAt = Math.min(currentIndex + Math.floor(Math.random() * 3) + 2, newQueue.length);
       newQueue.splice(insertAt, 0, currentWord);
@@ -1212,6 +1215,7 @@ export const LearningEngine = ({
   }, [
     showAnswer,
     isSubmittingAttempt,
+    isDictationRound,
     isViewingHistory,
     inputValue,
     expectedInput,
@@ -1234,7 +1238,11 @@ export const LearningEngine = ({
     if (type !== 'round1' || isSubmittingAttempt || showAnswer || isViewingHistory) return;
     if (round1ConfirmedWordIdsArray.length === 0) {
       setSubmitError(
-        preferences.round2Enabled ? '至少确认 1 个词后，才能进入听写。' : '至少确认 1 个词后，才能完成本组。',
+        preferences.reinforcementRound3Enabled
+          ? '至少确认 1 个词后，才能进入回忆。'
+          : preferences.round2Enabled
+            ? '至少确认 1 个词后，才能进入听写。'
+            : '至少确认 1 个词后，才能完成本组。',
       );
       return;
     }
@@ -1260,6 +1268,7 @@ export const LearningEngine = ({
     isViewingHistory,
     onComplete,
     passedQueueIndicesArray,
+    preferences.reinforcementRound3Enabled,
     preferences.round2Enabled,
     queue,
     round1ConfirmedWordIdsArray,
@@ -1269,7 +1278,7 @@ export const LearningEngine = ({
   ]);
 
   useEffect(() => {
-    if (type !== 'round3') return;
+    if (!isRecallRound) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Enter' || event.repeat) return;
@@ -1279,7 +1288,7 @@ export const LearningEngine = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleRound3PrimaryAction, type]);
+  }, [handleRound3PrimaryAction, isRecallRound]);
 
   useEffect(() => {
     if (type === 'article') return;
@@ -1306,7 +1315,7 @@ export const LearningEngine = ({
 
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    if (type === 'round2' || type === 'review') {
+    if (isDictationRound) {
       const filtered = val
         .toLowerCase()
         .replace(/[^\p{L}' -]/gu, '')
@@ -1320,7 +1329,7 @@ export const LearningEngine = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (type === 'round3') {
+    if (isRecallRound) {
       handleRound3PrimaryAction();
       return;
     }
@@ -1339,9 +1348,8 @@ export const LearningEngine = ({
   const isCorrect =
     inputValue.trim().length > 0 && stripDiacritics(inputValue.trim().toLowerCase()) === stripDiacritics(expectedInput);
   const primaryPos = viewedWord.pos_tags[0] ?? '未标注';
-  const actionDisabled =
-    isViewingHistory || isSubmittingAttempt || ((type === 'round2' || type === 'review') && showAnswer);
-  const allowLiveCorrectTint = type === 'round1' || type === 'round2';
+  const actionDisabled = isViewingHistory || isSubmittingAttempt || (isDictationRound && showAnswer);
+  const allowLiveCorrectTint = type === 'round1' || type === 'round3';
   const inputIsCorrect = !isWrong && allowLiveCorrectTint && isCorrect;
   const contentAreaClassName =
     'learning-card-scrollarea flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7 sm:py-7 lg:px-8 lg:py-7';
@@ -1353,8 +1361,8 @@ export const LearningEngine = ({
   const showRound1ContextCard = hasRound1ContextContent(viewedWord);
   const hasRound1InfoCards = showRound1MorphologyCard || showRound1RelationsCard || showRound1ContextCard;
   const displayedPhonetic = getWordPhonetic(viewedWord, audioLocale);
-  const canToggleRound2Phonetic = type === 'round2' && Boolean(viewedClozePrompt) && Boolean(displayedPhonetic);
-  const displayedClozePhonetic = type === 'round2' && !round2PhoneticVisible ? undefined : displayedPhonetic;
+  const canToggleDictationPhonetic = isDictationRound && Boolean(viewedClozePrompt) && Boolean(displayedPhonetic);
+  const displayedClozePhonetic = isDictationRound && !dictationPhoneticVisible ? undefined : displayedPhonetic;
   const inputContainerStyle: React.CSSProperties | undefined = inputIsCorrect
     ? {
         borderColor: 'rgba(34, 197, 94, 0.72)',
@@ -1417,53 +1425,60 @@ export const LearningEngine = ({
     </AnimatePresence>
   );
 
-  const replayControls =
-    type === 'round2' || type === 'review' ? (
-      <div className="mx-auto mb-8 flex flex-wrap items-center justify-center gap-2.5">
-        {(['uk', 'us'] as const).map((loc) => (
-          <button
-            key={`${type}-replay-${loc}`}
-            type="button"
-            onClick={() => {
-              setAudioLocale(loc);
-              void playAudioSequence(viewedWord, loc, 1, 0);
-            }}
-            className={cx(
-              'flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-black tracking-[0.14em] transition-all',
-              audioLocale === loc
-                ? type === 'round2'
-                  ? 'bg-[#2563eb] text-white shadow-[0_12px_24px_rgba(37,99,235,0.18)]'
-                  : 'bg-apple-blue text-white shadow-[0_12px_24px_rgba(25,200,185,0.18)]'
-                : type === 'round2'
-                  ? 'bg-[#eaf2ff] text-[#2563eb] hover:bg-[#dbeafe]'
-                  : 'bg-apple-blue/10 text-apple-blue hover:bg-apple-blue/15',
-            )}
-          >
-            {activePronunciationLocale === loc ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Volume2 className="h-3.5 w-3.5" />
-            )}
-            再听 {loc.toUpperCase()}
-          </button>
-        ))}
-      </div>
-    ) : null;
+  const replayControls = isDictationRound ? (
+    <div className="mx-auto mb-8 flex flex-wrap items-center justify-center gap-2.5">
+      {(['uk', 'us'] as const).map((loc) => (
+        <button
+          key={`${type}-replay-${loc}`}
+          type="button"
+          onClick={() => {
+            setAudioLocale(loc);
+            void playAudioSequence(viewedWord, loc, 1, 0);
+          }}
+          className={cx(
+            'flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-black tracking-[0.14em] transition-all',
+            audioLocale === loc
+              ? type === 'round3'
+                ? 'bg-[#2563eb] text-white shadow-[0_12px_24px_rgba(37,99,235,0.18)]'
+                : 'bg-apple-blue text-white shadow-[0_12px_24px_rgba(25,200,185,0.18)]'
+              : type === 'round3'
+                ? 'bg-[#eaf2ff] text-[#2563eb] hover:bg-[#dbeafe]'
+                : 'bg-apple-blue/10 text-apple-blue hover:bg-apple-blue/15',
+          )}
+        >
+          {activePronunciationLocale === loc ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Volume2 className="h-3.5 w-3.5" />
+          )}
+          再听 {loc.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  ) : null;
 
-  const round2PhoneticToggle = canToggleRound2Phonetic ? (
+  const phoneticToggleHideLabel = type === 'review' ? '隐藏复习轮音标' : '隐藏 Round 3 音标';
+  const phoneticToggleShowLabel = type === 'review' ? '显示复习轮音标' : '显示 Round 3 音标';
+  const phoneticToggleActiveClass =
+    type === 'round3'
+      ? 'border-[#2563eb]/18 bg-[#eaf2ff]/95 text-[#2563eb] hover:bg-[#dbeafe]'
+      : 'border-apple-blue/18 bg-apple-blue/10 text-apple-blue hover:bg-apple-blue/15';
+  const phoneticToggleSwitchClass = type === 'round3' ? 'bg-[#2563eb]' : 'bg-apple-blue';
+
+  const dictationPhoneticToggle = canToggleDictationPhonetic ? (
     <button
       type="button"
-      aria-pressed={round2PhoneticVisible}
-      aria-label={round2PhoneticVisible ? '隐藏 Round 2 音标' : '显示 Round 2 音标'}
-      title={round2PhoneticVisible ? '隐藏音标' : '显示音标'}
+      aria-pressed={dictationPhoneticVisible}
+      aria-label={dictationPhoneticVisible ? phoneticToggleHideLabel : phoneticToggleShowLabel}
+      title={dictationPhoneticVisible ? '隐藏音标' : '显示音标'}
       onClick={(event) => {
         event.stopPropagation();
-        setRound2PhoneticVisible((visible) => !visible);
+        setDictationPhoneticVisible((visible) => !visible);
       }}
       className={cx(
         'absolute left-4 top-4 z-20 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-black tracking-[0.12em] shadow-[0_12px_28px_rgba(14,26,56,0.08)] backdrop-blur-xl transition-all active:scale-[0.98] sm:left-5 sm:top-5',
-        round2PhoneticVisible
-          ? 'border-[#2563eb]/18 bg-[#eaf2ff]/95 text-[#2563eb] hover:bg-[#dbeafe]'
+        dictationPhoneticVisible
+          ? phoneticToggleActiveClass
           : 'border-black/6 bg-white/76 text-text-secondary/70 hover:bg-white hover:text-text-secondary',
       )}
     >
@@ -1472,13 +1487,13 @@ export const LearningEngine = ({
         aria-hidden="true"
         className={cx(
           'inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors',
-          round2PhoneticVisible ? 'bg-[#2563eb]' : 'bg-black/15',
+          dictationPhoneticVisible ? phoneticToggleSwitchClass : 'bg-black/15',
         )}
       >
         <span
           className={cx(
             'h-3 w-3 rounded-full bg-white shadow-sm transition-transform',
-            round2PhoneticVisible ? 'translate-x-3' : 'translate-x-0',
+            dictationPhoneticVisible ? 'translate-x-3' : 'translate-x-0',
           )}
         />
       </span>
@@ -1704,7 +1719,7 @@ export const LearningEngine = ({
     </AnimatePresence>
   );
 
-  if (type === 'round3') {
+  if (type === 'round2') {
     return (
       <div className="relative w-full max-w-4xl mx-auto flex h-full min-h-0 flex-col items-center">
         {renderWordActionMenu('!absolute right-3 top-12 z-30', round3ActionMenuRef)}
@@ -2015,7 +2030,12 @@ export const LearningEngine = ({
                             >
                               <CheckCircle2 className="h-4 w-4 shrink-0" />
                               <span className="min-w-0 truncate">
-                                {round1ConfirmedWordIdsArray.length}词{preferences.round2Enabled ? '听写' : '完成本组'}
+                                {round1ConfirmedWordIdsArray.length}词
+                                {preferences.reinforcementRound3Enabled
+                                  ? '回忆'
+                                  : preferences.round2Enabled
+                                    ? '听写'
+                                    : '完成本组'}
                               </span>
                             </button>
                             <div className="min-w-0">{inputField}</div>
@@ -2035,7 +2055,7 @@ export const LearningEngine = ({
                     }
                   }}
                 >
-                  {round2PhoneticToggle}
+                  {dictationPhoneticToggle}
                   <div className={cx(contentAreaClassName, 'py-8')}>
                     <div className="flex min-h-full flex-col justify-center text-center">
                       {replayControls}
@@ -2070,7 +2090,7 @@ export const LearningEngine = ({
                           <div
                             className={cx(
                               'mt-7 inline-flex items-baseline gap-1.5 rounded-md px-4 py-2 text-2xl md:text-3xl',
-                              type === 'round2' ? 'bg-[#eaf2ff] text-[#2563eb]' : 'bg-apple-blue/10 text-apple-blue/80',
+                              type === 'round3' ? 'bg-[#eaf2ff] text-[#2563eb]' : 'bg-apple-blue/10 text-apple-blue/80',
                             )}
                           >
                             {Array.from({ length: viewedExpectedInput.length }, (_, i) => (

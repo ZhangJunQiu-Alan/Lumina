@@ -186,7 +186,13 @@ CREATE TABLE IF NOT EXISTS learning_group_words (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   learning_group_id     UUID NOT NULL REFERENCES learning_groups(id) ON DELETE CASCADE,
   vocabulary_item_id    UUID NOT NULL REFERENCES vocabulary_items(id) ON DELETE CASCADE,
-  sequence_no           INTEGER
+  sequence_no           INTEGER,
+  round1_confirmed_at   TIMESTAMPTZ,
+  round2_completed_at   TIMESTAMPTZ,
+  round3_completed_at   TIMESTAMPTZ,
+  learned_at            TIMESTAMPTZ,
+  round2_required       BOOLEAN NOT NULL DEFAULT TRUE,
+  round3_required       BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 -- SRS review scheduling (one row per user×word)
@@ -223,7 +229,7 @@ CREATE TABLE IF NOT EXISTS review_events (
   next_state            TEXT NOT NULL,
   next_review_at        TIMESTAMPTZ,
   created_at            TIMESTAMPTZ DEFAULT NOW(),
-  CHECK (source IN ('round2', 'review', 'manual_mastered')),
+  CHECK (source IN ('round2', 'round3', 'review', 'manual_mastered')),
   CHECK (previous_state IS NULL OR previous_state IN ('new', 'fuzzy', 'slow_recall', 'stable_recall', 'mastered')),
   CHECK (next_state IN ('new', 'fuzzy', 'slow_recall', 'stable_recall', 'mastered'))
 );
@@ -999,6 +1005,154 @@ $$;
 REVOKE ALL ON FUNCTION public.create_learning_group_exclusive(TEXT, TEXT, TEXT, TEXT, UUID[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.create_learning_group_exclusive(TEXT, TEXT, TEXT, TEXT, UUID[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.create_learning_group_exclusive(TEXT, TEXT, TEXT, TEXT, UUID[]) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.mark_learning_group_word_progress(
+  p_learning_group_id UUID,
+  p_vocabulary_item_ids UUID[],
+  p_round TEXT,
+  p_round2_required BOOLEAN DEFAULT TRUE,
+  p_round3_required BOOLEAN DEFAULT TRUE
+)
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_user_id TEXT := auth.uid()::TEXT;
+  v_now TIMESTAMPTZ := NOW();
+  v_next_review_at TIMESTAMPTZ := v_now + INTERVAL '1 day';
+  v_expected_count INTEGER;
+  v_updated_count INTEGER;
+  v_learned_count INTEGER;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Authentication required';
+  END IF;
+
+  IF p_round NOT IN ('round1', 'round2', 'round3') THEN
+    RAISE EXCEPTION 'Invalid learning round: %', p_round;
+  END IF;
+
+  SELECT COUNT(DISTINCT item.vocabulary_item_id)
+  INTO v_expected_count
+  FROM unnest(COALESCE(p_vocabulary_item_ids, ARRAY[]::UUID[])) AS item(vocabulary_item_id)
+  WHERE item.vocabulary_item_id IS NOT NULL;
+
+  IF v_expected_count = 0 THEN
+    RETURN 0;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.learning_groups AS lg
+    WHERE lg.id = p_learning_group_id
+      AND lg.user_id = v_user_id
+  ) THEN
+    RAISE EXCEPTION 'Learning group not found';
+  END IF;
+
+  WITH input_ids AS (
+    SELECT DISTINCT item.vocabulary_item_id
+    FROM unnest(p_vocabulary_item_ids) AS item(vocabulary_item_id)
+    WHERE item.vocabulary_item_id IS NOT NULL
+  ),
+  updated AS (
+    UPDATE public.learning_group_words AS lgw
+    SET
+      round1_confirmed_at = CASE
+        WHEN p_round = 'round1' THEN COALESCE(lgw.round1_confirmed_at, v_now)
+        ELSE lgw.round1_confirmed_at
+      END,
+      round2_completed_at = CASE
+        WHEN p_round = 'round2' THEN COALESCE(lgw.round2_completed_at, v_now)
+        ELSE lgw.round2_completed_at
+      END,
+      round3_completed_at = CASE
+        WHEN p_round = 'round3' THEN COALESCE(lgw.round3_completed_at, v_now)
+        ELSE lgw.round3_completed_at
+      END,
+      round2_required = CASE
+        WHEN p_round = 'round1' THEN p_round2_required
+        ELSE lgw.round2_required
+      END,
+      round3_required = CASE
+        WHEN p_round = 'round1' THEN p_round3_required
+        ELSE lgw.round3_required
+      END
+    FROM input_ids
+    WHERE lgw.learning_group_id = p_learning_group_id
+      AND lgw.vocabulary_item_id = input_ids.vocabulary_item_id
+    RETURNING lgw.vocabulary_item_id
+  )
+  SELECT COUNT(*) INTO v_updated_count FROM updated;
+
+  IF v_updated_count <> v_expected_count THEN
+    RAISE EXCEPTION 'Some vocabulary items do not belong to this learning group';
+  END IF;
+
+  WITH input_ids AS (
+    SELECT DISTINCT item.vocabulary_item_id
+    FROM unnest(p_vocabulary_item_ids) AS item(vocabulary_item_id)
+    WHERE item.vocabulary_item_id IS NOT NULL
+  ),
+  learned AS (
+    UPDATE public.learning_group_words AS lgw
+    SET learned_at = COALESCE(lgw.learned_at, v_now)
+    FROM input_ids
+    WHERE lgw.learning_group_id = p_learning_group_id
+      AND lgw.vocabulary_item_id = input_ids.vocabulary_item_id
+      AND lgw.round1_confirmed_at IS NOT NULL
+      AND (lgw.round2_required = FALSE OR lgw.round2_completed_at IS NOT NULL)
+      AND (lgw.round3_required = FALSE OR lgw.round3_completed_at IS NOT NULL)
+    RETURNING lgw.vocabulary_item_id
+  ),
+  activated_existing AS (
+    UPDATE public.review_states AS rs
+    SET
+      memory_state = 'fuzzy',
+      interval_days = 1,
+      next_review_at = v_next_review_at,
+      last_reviewed_at = COALESCE(rs.last_reviewed_at, v_now),
+      graduated_at = NULL
+    FROM learned
+    WHERE rs.user_id = v_user_id
+      AND rs.vocabulary_item_id = learned.vocabulary_item_id
+      AND rs.memory_state = 'new'
+      AND rs.next_review_at IS NULL
+    RETURNING rs.vocabulary_item_id
+  ),
+  inserted AS (
+    INSERT INTO public.review_states (
+      user_id,
+      vocabulary_item_id,
+      memory_state,
+      interval_days,
+      next_review_at,
+      last_reviewed_at,
+      graduated_at
+    )
+    SELECT
+      v_user_id,
+      learned.vocabulary_item_id,
+      'fuzzy',
+      1,
+      v_next_review_at,
+      v_now,
+      NULL
+    FROM learned
+    ON CONFLICT (user_id, vocabulary_item_id) DO NOTHING
+    RETURNING vocabulary_item_id
+  )
+  SELECT COUNT(*) INTO v_learned_count FROM learned;
+
+  RETURN COALESCE(v_learned_count, 0);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.mark_learning_group_word_progress(UUID, UUID[], TEXT, BOOLEAN, BOOLEAN) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.mark_learning_group_word_progress(UUID, UUID[], TEXT, BOOLEAN, BOOLEAN) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.mark_learning_group_word_progress(UUID, UUID[], TEXT, BOOLEAN, BOOLEAN) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.learning_group_library_key(
   p_source_type TEXT,

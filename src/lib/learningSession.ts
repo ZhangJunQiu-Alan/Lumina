@@ -1,8 +1,8 @@
 import type { LearningRoundType, PersistedLearningSession, ResumeCandidate, Word } from '../types';
 
 const LEARNING_ROUNDS: LearningRoundType[] = ['round1', 'round2', 'round3', 'article'];
-const CORE_LEARNING_ROUNDS: LearningRoundType[] = ['round1', 'round2'];
-const REINFORCEMENT_ROUNDS: LearningRoundType[] = ['round3', 'article'];
+const CORE_LEARNING_ROUNDS: LearningRoundType[] = ['round1', 'round2', 'round3'];
+const REINFORCEMENT_ROUNDS: LearningRoundType[] = ['article'];
 
 export const LEARNING_ROUND_LABELS: Record<LearningRoundType, string> = {
   round1: '第一轮',
@@ -15,17 +15,17 @@ export function isLearningRoundType(value: unknown): value is LearningRoundType 
   return typeof value === 'string' && LEARNING_ROUNDS.includes(value as LearningRoundType);
 }
 
-export function isCoreLearningRound(value: unknown): value is Extract<LearningRoundType, 'round1' | 'round2'> {
+export function isCoreLearningRound(
+  value: unknown,
+): value is Extract<LearningRoundType, 'round1' | 'round2' | 'round3'> {
   return (
-    typeof value === 'string' && CORE_LEARNING_ROUNDS.includes(value as Extract<LearningRoundType, 'round1' | 'round2'>)
+    typeof value === 'string' &&
+    CORE_LEARNING_ROUNDS.includes(value as Extract<LearningRoundType, 'round1' | 'round2' | 'round3'>)
   );
 }
 
-export function isReinforcementRound(value: unknown): value is Extract<LearningRoundType, 'round3' | 'article'> {
-  return (
-    typeof value === 'string' &&
-    REINFORCEMENT_ROUNDS.includes(value as Extract<LearningRoundType, 'round3' | 'article'>)
-  );
+export function isReinforcementRound(value: unknown): value is Extract<LearningRoundType, 'article'> {
+  return typeof value === 'string' && REINFORCEMENT_ROUNDS.includes(value as Extract<LearningRoundType, 'article'>);
 }
 
 export function isCoreLearningComplete(input: {
@@ -103,12 +103,29 @@ export function filterMasteredSessionWords(words: Word[], masteredWordIds: Itera
   return words.filter((word) => !masteredIds.has(word.id));
 }
 
+export function filterWordsToRound1Confirmed(words: Word[], confirmedWordIds: unknown) {
+  const wordIds = new Set(words.map((word) => word.id));
+  const confirmedIds = normalizeSessionRound1ConfirmedWordIds(confirmedWordIds).filter((wordId) => wordIds.has(wordId));
+  if (confirmedIds.length === 0) return words;
+
+  const confirmedSet = new Set(confirmedIds);
+  const scopedWords = words.filter((word) => confirmedSet.has(word.id));
+  return scopedWords.length > 0 ? scopedWords : words;
+}
+
 export function normalizePersistedLearningSession(
   session: PersistedLearningSession,
   words: Word[],
 ): PersistedLearningSession {
-  const hydratedQueue = rebuildSessionQueue(words, session.queueWordIds);
-  const effectiveQueue = hydratedQueue.length > 0 ? hydratedQueue : words;
+  const normalizedRound1ConfirmedWordIds = normalizeSessionRound1ConfirmedWordIds(
+    session.round1ConfirmedWordIds,
+  ).filter((wordId) => words.some((word) => word.id === wordId));
+  const scopedWords =
+    session.round === 'round1' ? words : filterWordsToRound1Confirmed(words, normalizedRound1ConfirmedWordIds);
+  const scopedWordIds = new Set(scopedWords.map((word) => word.id));
+  const queueWordIds = normalizeSessionQueueWordIds(session.queueWordIds).filter((wordId) => scopedWordIds.has(wordId));
+  const hydratedQueue = rebuildSessionQueue(scopedWords, queueWordIds);
+  const effectiveQueue = hydratedQueue.length > 0 ? hydratedQueue : scopedWords;
   const currentIndex = clampSessionIndex(session.currentIndex, effectiveQueue.length);
 
   return {
@@ -120,9 +137,7 @@ export function normalizePersistedLearningSession(
       effectiveQueue.length,
       currentIndex,
     ),
-    round1ConfirmedWordIds: normalizeSessionRound1ConfirmedWordIds(session.round1ConfirmedWordIds).filter((wordId) =>
-      words.some((word) => word.id === wordId),
-    ),
+    round1ConfirmedWordIds: normalizedRound1ConfirmedWordIds,
   };
 }
 
@@ -177,7 +192,7 @@ export function reconcileSessionWithRound2History(
   }
 
   const correctWordIds = new Set(input.correctWordIds);
-  const wordIds = words.map((word) => word.id);
+  const wordIds = filterWordsToRound1Confirmed(words, session.round1ConfirmedWordIds).map((word) => word.id);
   const hasRelevantAttempt = wordIds.some((wordId) => correctWordIds.has(wordId));
   if (!hasRelevantAttempt) {
     return normalizePersistedLearningSession(session, words);
@@ -190,7 +205,7 @@ export function reconcileSessionWithRound2History(
     return normalizePersistedLearningSession(
       {
         ...session,
-        round: 'round3',
+        round: 'article',
         currentIndex: 0,
         queueWordIds: wordIds,
         passedQueueIndices: [],
@@ -205,7 +220,7 @@ export function reconcileSessionWithRound2History(
   return normalizePersistedLearningSession(
     {
       ...session,
-      round: 'round2',
+      round: 'round3',
       currentIndex: firstPendingIndex,
       queueWordIds: wordIds,
       passedQueueIndices: wordIds.slice(0, firstPendingIndex).map((_, index) => index),

@@ -1,5 +1,5 @@
 export type MemoryState = 'new' | 'fuzzy' | 'slow_recall' | 'stable_recall' | 'mastered';
-export type ReviewAttemptSource = 'round2' | 'review';
+export type ReviewAttemptSource = 'round2' | 'round3' | 'review';
 export type ReviewEventSource = ReviewAttemptSource | 'manual_mastered';
 export type ReviewResultType = 'wrong' | 'slow_correct' | 'fast_correct';
 export const FIRST_MEMORY_STATE: MemoryState = 'fuzzy';

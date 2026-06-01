@@ -567,7 +567,7 @@ Deno.serve(async (request) => {
       }
       if (
         !body?.vocabularyItemId ||
-        (body.source !== 'round2' && body.source !== 'review') ||
+        (body.source !== 'round2' && body.source !== 'round3' && body.source !== 'review') ||
         typeof body?.wasCorrect !== 'boolean'
       ) {
         status = 400;

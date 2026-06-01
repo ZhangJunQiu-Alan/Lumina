@@ -21,7 +21,7 @@ function addDays(days: number) {
 }
 
 describe('review scheduling domain', () => {
-  it('classifies recall speed and schedules the next review from round 2 outcomes', () => {
+  it('classifies recall speed and schedules the next review from dictation outcomes', () => {
     expect(toResultType(false, 0)).toBe('wrong');
     expect(toResultType(true, FAST_RECALL_MS)).toBe('fast_correct');
     expect(toResultType(true, FAST_RECALL_MS + 1)).toBe('slow_correct');

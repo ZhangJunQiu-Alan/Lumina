@@ -240,16 +240,29 @@ describe('LearningEngine autoplay', () => {
     expect(instances[1]?.pause).not.toHaveBeenCalled();
   });
 
-  it('toggles the round 2 phonetic hint from the corner switch', () => {
-    render(<LearningEngine type="round2" words={[makeWord()]} onComplete={vi.fn()} />);
+  it('toggles the round 3 phonetic hint from the corner switch', () => {
+    render(<LearningEngine type="round3" words={[makeWord()]} onComplete={vi.fn()} />);
 
     expect(screen.getByLabelText('当前词音标')).toHaveTextContent('/deili/');
 
-    fireEvent.click(screen.getByRole('button', { name: '隐藏 Round 2 音标' }));
+    fireEvent.click(screen.getByRole('button', { name: '隐藏 Round 3 音标' }));
     expect(screen.queryByLabelText('当前词音标')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '显示 Round 2 音标' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: '显示 Round 3 音标' })).toHaveAttribute('aria-pressed', 'false');
 
-    fireEvent.click(screen.getByRole('button', { name: '显示 Round 2 音标' }));
+    fireEvent.click(screen.getByRole('button', { name: '显示 Round 3 音标' }));
+    expect(screen.getByLabelText('当前词音标')).toHaveTextContent('/deili/');
+  });
+
+  it('toggles the review phonetic hint from the corner switch', () => {
+    render(<LearningEngine type="review" words={[makeWord()]} onComplete={vi.fn()} />);
+
+    expect(screen.getByLabelText('当前词音标')).toHaveTextContent('/deili/');
+
+    fireEvent.click(screen.getByRole('button', { name: '隐藏复习轮音标' }));
+    expect(screen.queryByLabelText('当前词音标')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '显示复习轮音标' })).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(screen.getByRole('button', { name: '显示复习轮音标' }));
     expect(screen.getByLabelText('当前词音标')).toHaveTextContent('/deili/');
   });
 });

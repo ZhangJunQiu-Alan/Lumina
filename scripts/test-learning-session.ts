@@ -135,9 +135,9 @@ const fallback = normalizePersistedLearningSession(
   },
   words,
 );
-assert.equal(fallback.currentIndex, 2);
-assert.deepEqual(fallback.queueWordIds, ['w1', 'w2', 'w3']);
-assert.deepEqual(fallback.passedQueueIndices, [0, 1]);
+assert.equal(fallback.currentIndex, 0);
+assert.deepEqual(fallback.queueWordIds, ['w3']);
+assert.deepEqual(fallback.passedQueueIndices, []);
 assert.deepEqual(fallback.round1ConfirmedWordIds, ['w3']);
 
 const initial = createInitialLearningSession('g2', words);
@@ -187,14 +187,14 @@ const reconciledRound2 = reconcileSessionWithRound2History(
   },
   words,
   {
-    correctWordIds: ['w1', 'w2'],
+    correctWordIds: ['w1'],
     lastAttemptAt: '2026-04-18T00:05:00.000Z',
   },
 );
-assert.equal(reconciledRound2.round, 'round2');
-assert.equal(reconciledRound2.currentIndex, 2);
-assert.deepEqual(reconciledRound2.queueWordIds, ['w1', 'w2', 'w3']);
-assert.deepEqual(reconciledRound2.passedQueueIndices, [0, 1]);
+assert.equal(reconciledRound2.round, 'round3');
+assert.equal(reconciledRound2.currentIndex, 1);
+assert.deepEqual(reconciledRound2.queueWordIds, ['w1', 'w2']);
+assert.deepEqual(reconciledRound2.passedQueueIndices, [0]);
 assert.equal(reconciledRound2.lastActiveAt, '2026-04-18T00:05:00.000Z');
 
 const reconciledComplete = reconcileSessionWithRound2History(
@@ -215,7 +215,7 @@ const reconciledComplete = reconcileSessionWithRound2History(
     lastAttemptAt: '2026-04-18T00:10:00.000Z',
   },
 );
-assert.equal(reconciledComplete.round, 'round3');
+assert.equal(reconciledComplete.round, 'article');
 assert.equal(reconciledComplete.groupCompleted, true);
 assert.equal(reconciledComplete.completedAt, '2026-04-18T00:10:00.000Z');
 
@@ -253,7 +253,7 @@ assert.deepEqual(
 
 assert.deepEqual(
   resolveActuallyLearnedWordIds({
-    round: 'round2',
+    round: 'round3',
     currentIndex: 1,
     queueWordIds: ['w2', 'w3', 'w2'],
     fallbackWordIds: ['w1', 'w2', 'w3'],
@@ -295,6 +295,14 @@ assert.equal(
     completedAt: null,
     sessionRound: 'round3',
   }),
+  false,
+);
+assert.equal(
+  isCoreLearningComplete({
+    status: 'active',
+    completedAt: null,
+    sessionRound: 'article',
+  }),
   true,
 );
 
@@ -318,7 +326,7 @@ const officialGroups = [
     sourceType: 'system' as const,
     libraryId: 'ielts-vocab' as const,
     status: 'completed' as const,
-    sessionRound: 'round3' as const,
+    sessionRound: 'article' as const,
     completedAt: '2026-04-19T00:20:00.000Z',
   },
   {

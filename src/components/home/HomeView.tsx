@@ -846,7 +846,7 @@ export const HomeView = ({
               </div>
 
               <p className="mt-5 text-sm font-bold leading-7 text-[#6f604d]">
-                会移除这个词典在首页里的学习组和进度。仅属于这个词典的单词复习状态会一起清理；如果单词也在你的其他词组里，会保留。
+                会移除这个词典里未绑定今日流程的学习组。单词复习状态和学习历史会保留；如果首页今天正在使用其中一组，也会保留当天进度。
               </p>
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <div className="rounded-[16px] bg-white/70 px-3 py-3 shadow-[inset_0_-1px_0_rgba(149,117,68,0.08)]">

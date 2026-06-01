@@ -1,6 +1,6 @@
 import type { LearningRoundType } from './types.ts';
 
-const REINFORCEMENT_ROUNDS: LearningRoundType[] = ['round3', 'article'];
+const REINFORCEMENT_ROUNDS: LearningRoundType[] = ['article'];
 
 export function isCoreLearningComplete(input: {
   status?: 'active' | 'completed' | null;

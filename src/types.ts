@@ -183,7 +183,7 @@ export function toWord(e: EnrichedWord): Word {
 }
 
 export type MemoryState = 'new' | 'fuzzy' | 'slow_recall' | 'stable_recall' | 'mastered';
-export type ReviewAttemptSource = 'round2' | 'review';
+export type ReviewAttemptSource = 'round2' | 'round3' | 'review';
 export type ReviewEventSource = ReviewAttemptSource | 'manual_mastered';
 export type ReviewResultType = 'wrong' | 'slow_correct' | 'fast_correct';
 export type LearningRoundType = 'round1' | 'round2' | 'round3' | 'article';
@@ -554,11 +554,11 @@ export interface LearningSession {
   type: RoundType;
   words: Word[];
   currentIndex: number;
-  queue: Word[]; // Used for Round 2 re-insertion logic
+  queue: Word[]; // Used for dictation re-insertion logic
 }
 
 export type OrbitDayStatus = 'gap' | 'ordinary' | 'perfect' | 'shielded';
-export type RoutineStepKey = 'review' | 'round1' | 'round2';
+export type RoutineStepKey = 'review' | 'round1' | 'round2' | 'round3';
 export type RoutineCardState = 'not_started' | 'in_progress' | 'completed';
 export type RoutineVisibleStepStatus = 'completed' | 'current' | 'upcoming';
 export type RoutineCardCtaMode =

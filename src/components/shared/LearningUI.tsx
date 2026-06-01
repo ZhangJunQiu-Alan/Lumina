@@ -96,15 +96,15 @@ export const RoundIndicator = ({
   const labels: Record<RoundType, string> = {
     review: '先处理到期复习',
     round1: '记忆',
-    round2: '听写',
-    round3: '回忆',
+    round2: '回忆',
+    round3: '听写',
     article: '最后用短文收口',
   };
   const colors: Record<RoundType, string> = {
     review: 'bg-apple-red',
     round1: 'bg-[#4f46e5]',
-    round2: 'bg-[#2563eb]',
-    round3: 'bg-[#0ea5e9]',
+    round2: 'bg-[#0ea5e9]',
+    round3: 'bg-[#2563eb]',
     article: 'bg-apple-green',
   };
   return (
@@ -138,8 +138,8 @@ export const SessionProgress = ({
   const fillColors: Record<RoundType, string> = {
     review: 'from-apple-red/70 to-apple-red',
     round1: 'from-[#8b5cf6] via-[#6366f1] to-[#4f46e5]',
-    round2: 'from-[#60a5fa] via-[#3b82f6] to-[#2563eb]',
-    round3: 'from-[#67e8f9] via-[#38bdf8] to-[#0ea5e9]',
+    round2: 'from-[#67e8f9] via-[#38bdf8] to-[#0ea5e9]',
+    round3: 'from-[#60a5fa] via-[#3b82f6] to-[#2563eb]',
     article: 'from-apple-green/70 to-apple-green',
   };
 

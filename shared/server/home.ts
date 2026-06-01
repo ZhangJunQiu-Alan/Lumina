@@ -10,7 +10,7 @@ import { redistributeDueReviewBacklog } from './review.ts';
 
 type OrbitDayStatus = 'gap' | 'ordinary' | 'perfect' | 'shielded';
 type LearningRoundType = 'round1' | 'round2' | 'round3' | 'article';
-type RoutineStepKey = 'review' | 'round1' | 'round2';
+type RoutineStepKey = 'review' | 'round1' | 'round2' | 'round3';
 type RoutineCardState = 'not_started' | 'in_progress' | 'completed';
 type RoutineVisibleStepStatus = 'completed' | 'current' | 'upcoming';
 type RoutineCardCtaMode = 'start_review' | 'continue_review' | 'start_learning' | 'continue_learning' | 'open_library';
@@ -97,7 +97,7 @@ interface ReviewEventRow {
   id: string;
   vocabulary_item_id: string;
   learning_group_id: string | null;
-  source: 'round2' | 'review' | null;
+  source: 'round2' | 'round3' | 'review' | 'manual_mastered' | null;
   was_correct: boolean | null;
   next_state: string | null;
   next_review_at: string | null;
@@ -121,6 +121,11 @@ interface LearningGroupRow {
 
 interface LearningGroupWordRow {
   learning_group_id: string;
+}
+
+interface LearningGroupLearnedWordRow {
+  vocabulary_item_id: string;
+  learned_at: string | null;
 }
 
 interface StreakProtectionEventRow {
@@ -160,12 +165,13 @@ interface DailySummary {
 const PAGE_SIZE = 1000;
 const GROUP_ID_CHUNK_SIZE = 200;
 const LEARNING_ROUNDS = new Set<LearningRoundType>(['round1', 'round2', 'round3', 'article']);
-const ROUTINE_STEPS: RoutineStepKey[] = ['review', 'round1', 'round2'];
+const ROUTINE_STEPS: RoutineStepKey[] = ['review', 'round1', 'round2', 'round3'];
 const ROUTINE_DAY_RESET_HOUR = 5;
 const ROUTINE_STEP_LABELS: Record<RoutineStepKey, string> = {
   review: 'Round 0 · 到期复习',
   round1: 'Round 1 · 明示关联',
-  round2: 'Round 2 · 语境复现',
+  round2: 'Round 2 · 主动回忆',
+  round3: 'Round 3 · 听写复现',
 };
 const formatterCache = new Map<string, Intl.DateTimeFormat>();
 
@@ -286,12 +292,12 @@ function isLearningRoundType(value: unknown): value is LearningRoundType {
   return typeof value === 'string' && LEARNING_ROUNDS.has(value as LearningRoundType);
 }
 
-function isCoreLearningRound(value: unknown): value is Extract<LearningRoundType, 'round1' | 'round2'> {
-  return value === 'round1' || value === 'round2';
+function isCoreLearningRound(value: unknown): value is Extract<LearningRoundType, 'round1' | 'round2' | 'round3'> {
+  return value === 'round1' || value === 'round2' || value === 'round3';
 }
 
-function isReinforcementRound(value: unknown): value is Extract<LearningRoundType, 'round3' | 'article'> {
-  return value === 'round3' || value === 'article';
+function isReinforcementRound(value: unknown): value is Extract<LearningRoundType, 'article'> {
+  return value === 'article';
 }
 
 function isCoreLearningComplete(input: {
@@ -349,7 +355,7 @@ function buildRound2ProgressByGroupId(reviewEvents: ReviewEventRow[]) {
   const progressByGroupId = new Map<string, Round2GroupProgress>();
 
   for (const event of reviewEvents) {
-    if (event.source !== 'round2' || !event.learning_group_id) continue;
+    if ((event.source !== 'round2' && event.source !== 'round3') || !event.learning_group_id) continue;
 
     const progress = progressByGroupId.get(event.learning_group_id) ?? {
       correctWordIds: new Set<string>(),
@@ -396,7 +402,7 @@ function reconcileLearningGroupWithRound2History(
       ...group,
       status: 'completed',
       completed_at: group.completed_at ?? progress.lastAttemptAt ?? lastActiveAt,
-      session_round: 'round3',
+      session_round: 'article',
       session_current_index: 0,
       session_last_active_at: lastActiveAt,
     };
@@ -404,7 +410,7 @@ function reconcileLearningGroupWithRound2History(
 
   return {
     ...group,
-    session_round: 'round2',
+    session_round: 'round3',
     session_current_index: firstPendingIndex,
     session_last_active_at: lastActiveAt,
   };
@@ -511,10 +517,10 @@ function buildRoutineStepOrder(startingDueCount: number) {
   }
 
   if (startingDueCount > 0) {
-    return ['review', 'round1', 'round2'] as RoutineStepKey[];
+    return ['review', 'round1', 'round2', 'round3'] as RoutineStepKey[];
   }
 
-  return ['round1', 'round2'] as RoutineStepKey[];
+  return ['round1', 'round2', 'round3'] as RoutineStepKey[];
 }
 
 function inferCompletedLearningSteps(
@@ -534,11 +540,11 @@ function inferCompletedLearningSteps(
       sessionRound: source.session_round,
     })
   ) {
-    return ['round1', 'round2'] as RoutineStepKey[];
+    return ['round1', 'round2', 'round3'] as RoutineStepKey[];
   }
 
   if ('groupCompleted' in source && source.groupCompleted) {
-    return ['round1', 'round2'] as RoutineStepKey[];
+    return ['round1', 'round2', 'round3'] as RoutineStepKey[];
   }
 
   const currentRound = 'round' in source ? source.round : source.session_round;
@@ -547,8 +553,9 @@ function inferCompletedLearningSteps(
     case 'round2':
       return ['round1'] as RoutineStepKey[];
     case 'round3':
-    case 'article':
       return ['round1', 'round2'] as RoutineStepKey[];
+    case 'article':
+      return ['round1', 'round2', 'round3'] as RoutineStepKey[];
     default:
       return [];
   }
@@ -1066,6 +1073,40 @@ async function fetchLearningGroupWordCounts(groupIds: string[]) {
   return counts;
 }
 
+async function fetchLearningGroupLearnedWordRows(groupIds: string[]) {
+  const rows: LearningGroupLearnedWordRow[] = [];
+
+  if (groupIds.length === 0) {
+    return rows;
+  }
+
+  for (let offset = 0; offset < groupIds.length; offset += GROUP_ID_CHUNK_SIZE) {
+    const chunk = groupIds.slice(offset, offset + GROUP_ID_CHUNK_SIZE);
+
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data, error } = await supabaseAdmin
+        .from('learning_group_words')
+        .select('vocabulary_item_id, learned_at')
+        .in('learning_group_id', chunk)
+        .not('learned_at', 'is', null)
+        .range(from, from + PAGE_SIZE - 1);
+
+      if (error) {
+        throw new Error(`learning_group_words learned lookup failed: ${error.message}`);
+      }
+
+      const page = (data ?? []) as LearningGroupLearnedWordRow[];
+      rows.push(...page);
+
+      if (page.length < PAGE_SIZE) {
+        break;
+      }
+    }
+  }
+
+  return rows;
+}
+
 async function fetchOfficialCompletedMemoryCounts(userId: string, learningGroups: LearningGroupRow[]) {
   const officialGroups = learningGroups
     .map((group) => ({
@@ -1232,7 +1273,11 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     throw new Error(`review_states due count failed: ${dueCountResult.error.message}`);
   }
 
-  const learningGroupWordCounts = await fetchLearningGroupWordCounts(learningGroups.map((group) => group.id));
+  const learningGroupIds = learningGroups.map((group) => group.id);
+  const [learningGroupWordCounts, learnedGroupWordRows] = await Promise.all([
+    fetchLearningGroupWordCounts(learningGroupIds),
+    fetchLearningGroupLearnedWordRows(learningGroupIds),
+  ]);
   const round2ProgressByGroupId = buildRound2ProgressByGroupId(reviewEvents);
   const reconciledLearningGroups = learningGroups.map((group) =>
     reconcileLearningGroupWithRound2History(group, round2ProgressByGroupId.get(group.id)),
@@ -1264,8 +1309,8 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
       const seen = reviewWordIdsByDate.get(dayKey) ?? new Set<string>();
       seen.add(event.vocabulary_item_id);
       reviewWordIdsByDate.set(dayKey, seen);
-    } else if (event.source === 'round2') {
-      // 只要在 Round 2 产生过成功判定，就计入当天的“新学”成果
+    } else if (event.source === 'round2' || event.source === 'round3') {
+      // 兼容旧数据：有学习轮成功事件时也计入当天的“新学”成果
       const seen = learnedWordIdsByDate.get(dayKey) ?? new Set<string>();
       seen.add(event.vocabulary_item_id);
       learnedWordIdsByDate.set(dayKey, seen);
@@ -1273,6 +1318,14 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
 
     return { ...event, dayKey };
   });
+
+  for (const row of learnedGroupWordRows) {
+    const dayKey = dateKeyFromIso(row.learned_at, timeZone) ?? todayKey;
+    relevantDateKeys.push(dayKey);
+    const seen = learnedWordIdsByDate.get(dayKey) ?? new Set<string>();
+    seen.add(row.vocabulary_item_id);
+    learnedWordIdsByDate.set(dayKey, seen);
+  }
 
   for (const protectedDate of protectedDates) {
     relevantDateKeys.push(protectedDate);

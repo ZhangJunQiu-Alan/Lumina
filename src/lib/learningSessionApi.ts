@@ -19,6 +19,7 @@ import {
 import {
   clampSessionIndex,
   createResumeCandidate,
+  filterWordsToRound1Confirmed,
   filterMasteredSessionWords,
   isCoreLearningComplete,
   isCoreLearningRound,
@@ -122,6 +123,13 @@ interface VocabularyItemRow {
 
 interface LearningGroupWordRow {
   sequence_no: number | null;
+  vocabulary_item_id: string | null;
+  round1_confirmed_at?: string | null;
+  round2_completed_at?: string | null;
+  round3_completed_at?: string | null;
+  learned_at?: string | null;
+  round2_required?: boolean | null;
+  round3_required?: boolean | null;
   vocabulary_items: VocabularyItemRow | VocabularyItemRow[];
 }
 
@@ -152,6 +160,18 @@ function isMissingRichVocabularySchemaError(error: { message?: string } | null |
   return ['morphology_summary_zh', 'vocabulary_morphology_parts', 'vocabulary_relations', 'sort_order'].some((part) =>
     message.includes(part),
   );
+}
+
+function isMissingLearningGroupWordProgressSchemaError(error: { message?: string } | null | undefined) {
+  const message = error?.message ?? '';
+  return [
+    'round1_confirmed_at',
+    'round2_completed_at',
+    'round3_completed_at',
+    'learned_at',
+    'round2_required',
+    'round3_required',
+  ].some((column) => message.includes(column));
 }
 
 function hasLearningSessionColumns(row: LearningGroupLookupRow): row is LearningGroupSessionRow {
@@ -236,6 +256,68 @@ function mapGroupWord(row: LearningGroupWordRow): Word | null {
     audio_uk_url: vocabularyItem.audio_uk_url,
     audio_us_url: vocabularyItem.audio_us_url,
   };
+}
+
+function uniqueVocabularyItemIds(wordIds: string[]) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const wordId of wordIds) {
+    const trimmed = wordId.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+
+  return result;
+}
+
+type CoreLearningRound = Extract<LearningRoundType, 'round1' | 'round2' | 'round3'>;
+
+async function markLearningGroupWordProgress(
+  groupId: string,
+  wordIds: string[],
+  round: CoreLearningRound,
+  options: {
+    round2Required?: boolean;
+    round3Required?: boolean;
+  } = {},
+) {
+  const vocabularyItemIds = uniqueVocabularyItemIds(wordIds);
+  if (vocabularyItemIds.length === 0) return 0;
+
+  const { data, error } = await supabase.rpc('mark_learning_group_word_progress', {
+    p_learning_group_id: groupId,
+    p_vocabulary_item_ids: vocabularyItemIds,
+    p_round: round,
+    p_round2_required: options.round2Required ?? true,
+    p_round3_required: options.round3Required ?? true,
+  });
+
+  if (error) {
+    throw new Error(`learning_group_words progress update failed: ${error.message}`);
+  }
+
+  return typeof data === 'number' ? data : 0;
+}
+
+export async function markLearningGroupWordsRound1Confirmed(
+  groupId: string,
+  wordIds: string[],
+  options: {
+    round2Required: boolean;
+    round3Required: boolean;
+  },
+) {
+  return markLearningGroupWordProgress(groupId, wordIds, 'round1', options);
+}
+
+export async function markLearningGroupWordsRoundCompleted(
+  groupId: string,
+  wordIds: string[],
+  round: Extract<LearningRoundType, 'round2' | 'round3'>,
+) {
+  return markLearningGroupWordProgress(groupId, wordIds, round);
 }
 
 function toPersistedLearningSession(
@@ -701,8 +783,21 @@ export async function fetchLearningGroupSession(
   userId: string,
   groupId: string,
 ): Promise<{ groupTitle: string; words: Word[]; session: PersistedLearningSession | null } | null> {
-  const richWordSelect = `
+  const progressWordColumns = `
         sequence_no,
+        vocabulary_item_id,
+        round1_confirmed_at,
+        round2_completed_at,
+        round3_completed_at,
+        learned_at,
+        round2_required,
+        round3_required
+      `;
+  const baseWordColumns = `
+        sequence_no,
+        vocabulary_item_id
+      `;
+  const richVocabularySelect = `
         vocabulary_items!inner (
           id,
           word,
@@ -741,8 +836,7 @@ export async function fetchLearningGroupSession(
           )
         )
       `;
-  const legacyWordSelect = `
-        sequence_no,
+  const legacyVocabularySelect = `
         vocabulary_items!inner (
           id,
           word,
@@ -765,6 +859,22 @@ export async function fetchLearningGroupSession(
           )
         )
       `;
+  const richWordSelect = `
+        ${progressWordColumns},
+        ${richVocabularySelect}
+      `;
+  const legacyWordSelect = `
+        ${progressWordColumns},
+        ${legacyVocabularySelect}
+      `;
+  const richWordSelectWithoutProgress = `
+        ${baseWordColumns},
+        ${richVocabularySelect}
+      `;
+  const legacyWordSelectWithoutProgress = `
+        ${baseWordColumns},
+        ${legacyVocabularySelect}
+      `;
   const [groupData, wordResult, articleResult, round2AttemptResult] = await Promise.all([
     fetchLearningGroupRow(userId, groupId),
     supabase
@@ -783,7 +893,7 @@ export async function fetchLearningGroupSession(
       .select('vocabulary_item_id, was_correct, created_at')
       .eq('user_id', userId)
       .eq('learning_group_id', groupId)
-      .eq('source', 'round2')
+      .in('source', ['round2', 'round3'])
       .order('created_at', { ascending: true })
       .order('id', { ascending: true }),
   ]);
@@ -794,20 +904,60 @@ export async function fetchLearningGroupSession(
 
   let wordRows = (wordResult.data ?? []) as LearningGroupWordRow[];
 
-  if (wordResult.error && isMissingRichVocabularySchemaError(wordResult.error)) {
+  if (wordResult.error && isMissingLearningGroupWordProgressSchemaError(wordResult.error)) {
+    const fallbackResult = await supabase
+      .from('learning_group_words')
+      .select(richWordSelectWithoutProgress)
+      .eq('learning_group_id', groupId)
+      .order('sequence_no', { ascending: true });
+
+    if (fallbackResult.error && isMissingRichVocabularySchemaError(fallbackResult.error)) {
+      const legacyFallbackResult = await supabase
+        .from('learning_group_words')
+        .select(legacyWordSelectWithoutProgress)
+        .eq('learning_group_id', groupId)
+        .order('sequence_no', { ascending: true });
+
+      if (legacyFallbackResult.error) {
+        throw new Error(`learning_group_words lookup failed: ${legacyFallbackResult.error.message}`);
+      }
+
+      wordRows = (legacyFallbackResult.data ?? []) as LearningGroupWordRow[];
+    } else if (fallbackResult.error) {
+      throw new Error(`learning_group_words lookup failed: ${fallbackResult.error.message}`);
+    } else {
+      wordRows = (fallbackResult.data ?? []) as LearningGroupWordRow[];
+    }
+  } else if (wordResult.error && isMissingRichVocabularySchemaError(wordResult.error)) {
     const fallbackResult = await supabase
       .from('learning_group_words')
       .select(legacyWordSelect)
       .eq('learning_group_id', groupId)
       .order('sequence_no', { ascending: true });
 
-    if (fallbackResult.error) {
-      throw new Error(`learning_group_words lookup failed: ${fallbackResult.error.message}`);
-    }
+    if (fallbackResult.error && isMissingLearningGroupWordProgressSchemaError(fallbackResult.error)) {
+      const legacyFallbackResult = await supabase
+        .from('learning_group_words')
+        .select(legacyWordSelectWithoutProgress)
+        .eq('learning_group_id', groupId)
+        .order('sequence_no', { ascending: true });
 
-    wordRows = (fallbackResult.data ?? []) as LearningGroupWordRow[];
+      if (legacyFallbackResult.error) {
+        throw new Error(`learning_group_words lookup failed: ${legacyFallbackResult.error.message}`);
+      }
+
+      wordRows = (legacyFallbackResult.data ?? []) as LearningGroupWordRow[];
+    } else if (fallbackResult.error) {
+      throw new Error(`learning_group_words lookup failed: ${fallbackResult.error.message}`);
+    } else {
+      wordRows = (fallbackResult.data ?? []) as LearningGroupWordRow[];
+    }
   } else if (wordResult.error) {
     throw new Error(`learning_group_words lookup failed: ${wordResult.error.message}`);
+  }
+
+  if (wordRows.length === 0 && !wordResult.error) {
+    wordRows = [];
   }
 
   if (articleResult.error) {
@@ -816,6 +966,13 @@ export async function fetchLearningGroupSession(
   if (round2AttemptResult.error) {
     throw new Error(`review_events lookup failed: ${round2AttemptResult.error.message}`);
   }
+
+  const dbConfirmedWordIds = normalizeSessionRound1ConfirmedWordIds(
+    wordRows
+      .filter((row) => Boolean(row.round1_confirmed_at))
+      .map((row) => row.vocabulary_item_id)
+      .filter((wordId): wordId is string => Boolean(wordId)),
+  );
 
   const words = wordRows.map(mapGroupWord).filter((word): word is Word => Boolean(word));
   const wordIds = words.map((word) => word.id);
@@ -835,7 +992,7 @@ export async function fetchLearningGroupSession(
   const masteredWordIds = ((reviewStatesResult.data ?? []) as GroupReviewStateRow[])
     .filter((row) => row.memory_state === 'mastered')
     .map((row) => row.vocabulary_item_id);
-  const activeWords = filterMasteredSessionWords(words, masteredWordIds);
+  let activeWords = filterMasteredSessionWords(words, masteredWordIds);
   const group = groupData;
   const article = articleResult.data?.content ?? null;
   const round2Attempts = (round2AttemptResult.data ?? []) as GroupRound2AttemptRow[];
@@ -843,7 +1000,22 @@ export async function fetchLearningGroupSession(
     .filter((attempt) => attempt.was_correct)
     .map((attempt) => attempt.vocabulary_item_id);
   const lastRound2AttemptAt = round2Attempts.at(-1)?.created_at ?? null;
-  const session = toPersistedLearningSession(group, activeWords, article);
+  let session = toPersistedLearningSession(group, activeWords, article);
+
+  if (session && session.round !== 'round1') {
+    const confirmedWordIds =
+      dbConfirmedWordIds.length > 0
+        ? dbConfirmedWordIds
+        : normalizeSessionRound1ConfirmedWordIds(session.round1ConfirmedWordIds);
+    activeWords = filterWordsToRound1Confirmed(activeWords, confirmedWordIds);
+    session = normalizePersistedLearningSession(
+      {
+        ...session,
+        round1ConfirmedWordIds: confirmedWordIds.length > 0 ? confirmedWordIds : session.round1ConfirmedWordIds,
+      },
+      activeWords,
+    );
+  }
 
   return {
     groupTitle: resolveGroupTitle(group),
@@ -908,7 +1080,7 @@ async function shouldSkipStaleSessionPersist(userId: string, session: PersistedL
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId)
     .eq('learning_group_id', session.groupId)
-    .eq('source', 'round2');
+    .in('source', ['round2', 'round3']);
 
   if (round2EventsResult.error) {
     throw new Error(`review_events stale guard failed: ${round2EventsResult.error.message}`);
@@ -927,6 +1099,8 @@ function staleSafeSessionRoundFilter(session: PersistedLearningSession) {
       return 'session_round.is.null,session_round.eq.round1';
     case 'round2':
       return 'session_round.is.null,session_round.eq.round1,session_round.eq.round2';
+    case 'round3':
+      return 'session_round.is.null,session_round.eq.round1,session_round.eq.round2,session_round.eq.round3';
     default:
       return null;
   }

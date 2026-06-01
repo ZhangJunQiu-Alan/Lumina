@@ -49,7 +49,7 @@ export async function recordBatchReviewAttempts(
 
   // Sequential processing to maintain SRS logic consistency per word
   for (const attempt of attempts) {
-    if (attempt.source !== 'round2' && attempt.source !== 'review') {
+    if (attempt.source !== 'round2' && attempt.source !== 'round3' && attempt.source !== 'review') {
       throw new Error(`Invalid review attempt source: ${attempt.source}`);
     }
 
@@ -61,6 +61,10 @@ export async function recordBatchReviewAttempts(
   }
 
   return results;
+}
+
+function isDictationAttemptSource(source: ReviewAttemptSource) {
+  return source === 'round3' || source === 'round2';
 }
 
 export interface ReviewAttemptResponse {
@@ -334,17 +338,16 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
   }
 
   const currentState = existing?.memory_state ?? 'new';
-  const shouldIncrementReviewCounters = input.source === 'review' || input.source === 'round2';
+  const shouldIncrementReviewCounters = input.source === 'review' || isDictationAttemptSource(input.source);
 
   // Calculate new success count: previous successes + (1 if current is correct)
   // Successes = review_count - lapse_count
   const previousSuccesses = (existing?.review_count ?? 0) - (existing?.lapse_count ?? 0);
   const totalSuccesses = previousSuccesses + (result !== 'wrong' ? 1 : 0);
 
-  const nextState =
-    input.source === 'round2'
-      ? resolveRound2State(currentState, result)
-      : resolveReviewState(currentState, result, totalSuccesses);
+  const nextState = isDictationAttemptSource(input.source)
+    ? resolveRound2State(currentState, result)
+    : resolveReviewState(currentState, result, totalSuccesses);
 
   // If the user got it wrong during a review, keep it "due" for today (don't push to future).
   // This allows the word to stay in the queue if the user exits the session midway.

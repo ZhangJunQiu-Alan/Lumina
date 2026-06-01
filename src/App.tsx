@@ -12,6 +12,7 @@ import {
   ArticleSentence,
   HomeOfficialLibraryOption,
   LearningPreferences,
+  LearningRoundType,
   OfficialLibraryId,
   OfficialStudyMode,
   PersistedLearningSession,
@@ -33,13 +34,17 @@ import { apiFetch } from './lib/api';
 import { invalidateLibraryCache } from './lib/libraryCache';
 import {
   createInitialLearningSession,
+  filterWordsToRound1Confirmed,
   isCoreLearningRound,
+  normalizePersistedLearningSession,
   normalizeSessionRound1ConfirmedWordIds,
 } from './lib/learningSession';
 import {
   clearLearningGroupSession,
   fetchGeneratedArticle,
   fetchLearningGroupSession,
+  markLearningGroupWordsRound1Confirmed,
+  markLearningGroupWordsRoundCompleted,
   persistLearningGroupSession,
   trimLearningGroupToWordIds,
   upsertGeneratedArticle,
@@ -311,7 +316,7 @@ function buildEmptyStats(): UserStats {
     routineCard: {
       state: 'not_started',
       title: '开始今天的学习',
-      subtitle: '先完成第一轮，再进入复习',
+      subtitle: '先完成第一轮，再进入回忆与听写',
       ctaLabel: '开始学习',
       ctaMode: 'start_learning',
       boundLearningGroupId: null,
@@ -322,20 +327,25 @@ function buildEmptyStats(): UserStats {
       officialLibraryOptions: [],
       visibleSteps: [
         { key: 'round1', label: 'Round 1 · 明示关联', status: 'current' },
-        { key: 'round2', label: 'Round 2 · 语境复现', status: 'upcoming' },
+        { key: 'round2', label: 'Round 2 · 主动回忆', status: 'upcoming' },
+        { key: 'round3', label: 'Round 3 · 听写复现', status: 'upcoming' },
       ],
     },
   };
 }
 
 function applyLearningPreferencesToStats(stats: UserStats, preferences: LearningPreferences): UserStats {
-  if (preferences.round2Enabled) return stats;
+  if (preferences.reinforcementRound3Enabled && preferences.round2Enabled) return stats;
 
   return {
     ...stats,
     routineCard: {
       ...stats.routineCard,
-      visibleSteps: stats.routineCard.visibleSteps.filter((step) => step.key !== 'round2'),
+      visibleSteps: stats.routineCard.visibleSteps.filter((step) => {
+        if (step.key === 'round2') return preferences.reinforcementRound3Enabled;
+        if (step.key === 'round3') return preferences.round2Enabled;
+        return true;
+      }),
     },
   };
 }
@@ -372,6 +382,8 @@ export default function App() {
   const isIeltsTestRoute =
     location.pathname.startsWith('/app/ielts-reading/test/') ||
     location.pathname.startsWith('/app/ielts-listening/test/');
+  const recallRoundEnabled = learningPreferences.reinforcementRound3Enabled;
+  const dictationRoundEnabled = learningPreferences.round2Enabled;
   const articleReinforcementEnabled = AI_CONTENT_FEATURES_ENABLED && learningPreferences.reinforcementArticleEnabled;
   const requestedOfficialLibraryId = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -743,7 +755,7 @@ export default function App() {
           throw new Error('这组词还没有可学习的内容。');
         }
 
-        const restoredOrInitialSession: PersistedLearningSession = {
+        let restoredOrInitialSession: PersistedLearningSession = {
           ...(restoredSession ?? {
             ...createInitialLearningSession(groupId, words),
             libraryId: options.libraryId ?? null,
@@ -754,23 +766,87 @@ export default function App() {
           lastActiveAt: new Date().toISOString(),
         };
 
-        if (restoredOrInitialSession.round === 'round2' && !learningPreferences.round2Enabled) {
+        if (restoredOrInitialSession.round === 'round2' && !recallRoundEnabled) {
+          const scopedWords = filterWordsToRound1Confirmed(words, restoredOrInitialSession.round1ConfirmedWordIds);
+          await markLearningGroupWordsRoundCompleted(
+            groupId,
+            scopedWords.map((word) => word.id),
+            'round2',
+          ).catch((error) => {
+            console.error('Failed to mark restored recall word progress as skipped:', error);
+            throw error;
+          });
           await markRoutineStepCompleted(user.id, {
             step: 'round1',
             groupId,
             timeZone: resolveBrowserTimeZone(),
           }).catch((error) => {
-            console.error('Failed to mark round1 before skipping restored round2:', error);
+            console.error('Failed to mark round1 before skipping restored recall:', error);
           });
           await markRoutineStepCompleted(user.id, {
             step: 'round2',
             groupId,
             timeZone: resolveBrowserTimeZone(),
           }).catch((error) => {
-            console.error('Failed to mark restored round2 as skipped:', error);
+            console.error('Failed to mark restored recall as skipped:', error);
+          });
+
+          if (!dictationRoundEnabled) {
+            await markLearningGroupWordsRoundCompleted(
+              groupId,
+              scopedWords.map((word) => word.id),
+              'round3',
+            ).catch((error) => {
+              console.error('Failed to mark restored dictation word progress as skipped:', error);
+              throw error;
+            });
+            await markRoutineStepCompleted(user.id, {
+              step: 'round3',
+              groupId,
+              timeZone: resolveBrowserTimeZone(),
+            }).catch((error) => {
+              console.error('Failed to mark restored dictation as skipped:', error);
+            });
+            await clearLearningGroupSession(user.id, groupId, { markCompleted: true }).catch((error) => {
+              console.error('Failed to close restored recall/dictation-skipped learning session:', error);
+            });
+            invalidateLibraryCache(user.id);
+            resetActiveLearningState();
+            navigate('/app/home');
+            void fetchStats();
+            return;
+          }
+
+          restoredOrInitialSession = {
+            ...createInitialLearningSession(groupId, scopedWords, 'round3'),
+            round1ConfirmedWordIds:
+              restoredOrInitialSession.round1ConfirmedWordIds.length > 0
+                ? restoredOrInitialSession.round1ConfirmedWordIds
+                : scopedWords.map((word) => word.id),
+            libraryId: restoredOrInitialSession.libraryId ?? null,
+            officialMode: restoredOrInitialSession.officialMode ?? null,
+          };
+        }
+
+        if (restoredOrInitialSession.round === 'round3' && !dictationRoundEnabled) {
+          const scopedWords = filterWordsToRound1Confirmed(words, restoredOrInitialSession.round1ConfirmedWordIds);
+          await markLearningGroupWordsRoundCompleted(
+            groupId,
+            scopedWords.map((word) => word.id),
+            'round3',
+          ).catch((error) => {
+            console.error('Failed to mark restored dictation word progress as skipped:', error);
+            throw error;
+          });
+          await markRoutineStepCompleted(user.id, {
+            step: 'round3',
+            groupId,
+            timeZone: resolveBrowserTimeZone(),
+          }).catch((error) => {
+            console.error('Failed to mark restored dictation as skipped:', error);
           });
           await clearLearningGroupSession(user.id, groupId, { markCompleted: true }).catch((error) => {
-            console.error('Failed to close restored round2-skipped learning session:', error);
+            console.error('Failed to close restored dictation-skipped learning session:', error);
           });
           invalidateLibraryCache(user.id);
           resetActiveLearningState();
@@ -779,31 +855,38 @@ export default function App() {
           return;
         }
 
-        const nextSession =
-          !AI_CONTENT_FEATURES_ENABLED && restoredOrInitialSession.round === 'article'
-            ? {
-                ...createInitialLearningSession(groupId, words, 'round3', {
-                  groupCompleted: restoredOrInitialSession.groupCompleted ?? true,
-                  completedAt: restoredOrInitialSession.completedAt ?? new Date().toISOString(),
-                }),
-                round1ConfirmedWordIds: restoredOrInitialSession.round1ConfirmedWordIds,
-                libraryId: restoredOrInitialSession.libraryId ?? null,
-                officialMode: restoredOrInitialSession.officialMode ?? null,
-              }
-            : restoredOrInitialSession;
+        if (!AI_CONTENT_FEATURES_ENABLED && restoredOrInitialSession.round === 'article') {
+          await clearLearningGroupSession(user.id, groupId, { markCompleted: true }).catch((error) => {
+            console.error('Failed to close article-only learning session:', error);
+          });
+          invalidateLibraryCache(user.id);
+          resetActiveLearningState();
+          navigate('/app/home');
+          void fetchStats();
+          return;
+        }
+
+        let nextSession = restoredOrInitialSession;
+        let sessionWords = words;
+        if (nextSession.round !== 'round1') {
+          sessionWords = filterWordsToRound1Confirmed(words, nextSession.round1ConfirmedWordIds);
+          if (sessionWords.length !== words.length) {
+            nextSession = normalizePersistedLearningSession(nextSession, sessionWords);
+          }
+        }
 
         setReviewSummary([]);
         setArticleGenerationError('');
-        setActiveWords(words);
+        setActiveWords(sessionWords);
         activeLearningGroupIdRef.current = groupId;
         setActiveLearningGroupId(groupId);
         lastSessionChangeSignatureRef.current = buildLearningProgressSignature(groupId, nextSession);
         setActiveSessionSeed(nextSession);
         const persistedArticle = parsePersistedArticleContent(nextSession.article);
-        const cachedArticle = getCachedArticle(groupId, words);
+        const cachedArticle = getCachedArticle(groupId, sessionWords);
         const restoredArticle = cachedArticle ?? persistedArticle;
         if (restoredArticle) {
-          setCachedArticle(groupId, words, restoredArticle);
+          setCachedArticle(groupId, sessionWords, restoredArticle);
         }
         setArticleSentences(nextSession.round === 'article' ? restoredArticle : null);
         setRound(nextSession.round);
@@ -826,7 +909,7 @@ export default function App() {
           (nextSession.round === 'round3' || nextSession.round === 'article') &&
           !restoredArticle
         ) {
-          void ensureArticleForGroup(groupId, words);
+          void ensureArticleForGroup(groupId, sessionWords);
         }
       } catch (error) {
         console.error('Failed to open learning group:', error);
@@ -837,10 +920,11 @@ export default function App() {
     },
     [
       articleReinforcementEnabled,
+      dictationRoundEnabled,
       ensureArticleForGroup,
       fetchStats,
-      learningPreferences.round2Enabled,
       navigate,
+      recallRoundEnabled,
       resetActiveLearningState,
       setActiveSessionSeed,
       user,
@@ -1023,10 +1107,13 @@ export default function App() {
       setSessionStartError('');
       const deletedActiveSession = activeSessionSeedRef.current?.libraryId === libraryId;
       const result = await deleteOfficialLearningLibrary(libraryId, resolveBrowserTimeZone());
+      const activeGroupPreserved = Boolean(
+        activeLearningGroupIdRef.current && result.preservedRoutineGroupIds?.includes(activeLearningGroupIdRef.current),
+      );
 
       officialPrefetchKeyRef.current = null;
       invalidateLibraryCache(user.id);
-      if (deletedActiveSession) {
+      if (deletedActiveSession && !activeGroupPreserved) {
         resetActiveLearningState();
       }
 
@@ -1186,6 +1273,15 @@ export default function App() {
       }
 
       const currentActiveWords = activeWordsRef.current;
+      const scopedActiveWords = filterWordsToRound1Confirmed(
+        currentActiveWords,
+        activeSessionSeed?.round1ConfirmedWordIds ?? [],
+      );
+      const ensureScopedActiveWords = () => {
+        if (scopedActiveWords.length === currentActiveWords.length) return;
+        activeWordsRef.current = scopedActiveWords;
+        setActiveWords(scopedActiveWords);
+      };
 
       if (currentActiveWords.length === 0) {
         await clearLearningGroupSession(user.id, activeLearningGroupId, { markCompleted: true }).catch((error) => {
@@ -1207,9 +1303,11 @@ export default function App() {
 
         if (nextWords.length === 0) {
           setSessionStartError(
-            learningPreferences.round2Enabled
-              ? '至少确认 1 个词后，才能进入 Round 2。'
-              : '至少确认 1 个词后，才能完成本组。',
+            recallRoundEnabled
+              ? '至少确认 1 个词后，才能进入 Round 2 回忆。'
+              : dictationRoundEnabled
+                ? '至少确认 1 个词后，才能进入 Round 3 听写。'
+                : '至少确认 1 个词后，才能完成本组。',
           );
           return;
         }
@@ -1225,15 +1323,20 @@ export default function App() {
           });
         }
 
+        await markLearningGroupWordsRound1Confirmed(
+          activeLearningGroupId,
+          nextWords.map((word) => word.id),
+          {
+            round2Required: recallRoundEnabled,
+            round3Required: dictationRoundEnabled,
+          },
+        ).catch((error) => {
+          console.error('Failed to mark round1 word progress:', error);
+          throw error;
+        });
+
         activeWordsRef.current = nextWords;
         setActiveWords(nextWords);
-
-        const nextSession: PersistedLearningSession = {
-          ...createInitialLearningSession(activeLearningGroupId, nextWords, 'round2'),
-          round1ConfirmedWordIds: nextWords.map((word) => word.id),
-          libraryId: activeSessionSeed?.libraryId ?? null,
-          officialMode: activeSessionSeed?.officialMode ?? null,
-        };
 
         await markRoutineStepCompleted(user.id, {
           step: 'round1',
@@ -1243,16 +1346,26 @@ export default function App() {
           console.error('Failed to mark round1 as completed:', error);
         });
 
-        if (!learningPreferences.round2Enabled) {
+        if (!recallRoundEnabled) {
           await markRoutineStepCompleted(user.id, {
             step: 'round2',
             groupId: activeLearningGroupId,
             timeZone: resolveBrowserTimeZone(),
           }).catch((error) => {
-            console.error('Failed to mark skipped round2 as completed:', error);
+            console.error('Failed to mark skipped recall as completed:', error);
+          });
+        }
+
+        if (!dictationRoundEnabled && !recallRoundEnabled) {
+          await markRoutineStepCompleted(user.id, {
+            step: 'round3',
+            groupId: activeLearningGroupId,
+            timeZone: resolveBrowserTimeZone(),
+          }).catch((error) => {
+            console.error('Failed to mark skipped dictation as completed:', error);
           });
           await clearLearningGroupSession(user.id, activeLearningGroupId, { markCompleted: true }).catch((error) => {
-            console.error('Failed to close round2-skipped learning session:', error);
+            console.error('Failed to close recall/dictation-skipped learning session:', error);
           });
           invalidateLibraryCache(user.id);
           resetActiveLearningState();
@@ -1261,18 +1374,26 @@ export default function App() {
           return;
         }
 
+        const nextRound: LearningRoundType = recallRoundEnabled ? 'round2' : 'round3';
+        const nextSession: PersistedLearningSession = {
+          ...createInitialLearningSession(activeLearningGroupId, nextWords, nextRound),
+          round1ConfirmedWordIds: nextWords.map((word) => word.id),
+          libraryId: activeSessionSeed?.libraryId ?? null,
+          officialMode: activeSessionSeed?.officialMode ?? null,
+        };
+
         setActiveSessionSeed(nextSession);
         lastSessionChangeSignatureRef.current = buildLearningProgressSignature(activeLearningGroupId, nextSession);
-        setRound('round2');
+        setRound(nextRound);
         void persistLearningGroupSession(user.id, nextSession).catch((error) => {
           console.error('Failed to persist round transition:', error);
         });
         return;
       }
 
-      const finishReinforcementSession = async () => {
-        await clearLearningGroupSession(user.id, activeLearningGroupId).catch((error) => {
-          console.error('Failed to close reinforcement session:', error);
+      const finishLearningSession = async () => {
+        await clearLearningGroupSession(user.id, activeLearningGroupId, { markCompleted: true }).catch((error) => {
+          console.error('Failed to close learning session:', error);
         });
         invalidateLibraryCache(user.id);
         resetActiveLearningState();
@@ -1281,17 +1402,17 @@ export default function App() {
       };
 
       const advanceToArticle = (completedAt: string, groupCompleted: boolean) => {
+        ensureScopedActiveWords();
         const nextSession: PersistedLearningSession = {
-          ...createInitialLearningSession(activeLearningGroupId, currentActiveWords, 'article', {
+          ...createInitialLearningSession(activeLearningGroupId, scopedActiveWords, 'article', {
             groupCompleted,
             completedAt,
           }),
-          round1ConfirmedWordIds:
-            activeSessionSeed?.round1ConfirmedWordIds ?? currentActiveWords.map((word) => word.id),
+          round1ConfirmedWordIds: activeSessionSeed?.round1ConfirmedWordIds ?? scopedActiveWords.map((word) => word.id),
           libraryId: activeSessionSeed?.libraryId ?? null,
           officialMode: activeSessionSeed?.officialMode ?? null,
         };
-        const cachedArticle = getCachedArticle(activeLearningGroupId, currentActiveWords);
+        const cachedArticle = getCachedArticle(activeLearningGroupId, scopedActiveWords);
         setActiveSessionSeed(nextSession);
         lastSessionChangeSignatureRef.current = buildLearningProgressSignature(activeLearningGroupId, nextSession);
         setRound('article');
@@ -1301,12 +1422,20 @@ export default function App() {
           console.error('Failed to persist article transition:', error);
         });
         if (!cachedArticle) {
-          void ensureArticleForGroup(activeLearningGroupId, currentActiveWords);
+          void ensureArticleForGroup(activeLearningGroupId, scopedActiveWords);
         }
       };
 
       if (round === 'round2') {
-        const completedAt = activeSessionSeed?.completedAt ?? new Date().toISOString();
+        const completedAt = new Date().toISOString();
+        await markLearningGroupWordsRoundCompleted(
+          activeLearningGroupId,
+          scopedActiveWords.map((word) => word.id),
+          'round2',
+        ).catch((error) => {
+          console.error('Failed to mark round2 word progress:', error);
+          throw error;
+        });
 
         void markRoutineStepCompleted(user.id, {
           step: 'round2',
@@ -1316,14 +1445,12 @@ export default function App() {
           console.error('Failed to mark round2 as completed:', error);
         });
 
-        if (learningPreferences.reinforcementRound3Enabled) {
+        if (dictationRoundEnabled) {
+          ensureScopedActiveWords();
           const nextSession: PersistedLearningSession = {
-            ...createInitialLearningSession(activeLearningGroupId, currentActiveWords, 'round3', {
-              groupCompleted: true,
-              completedAt,
-            }),
+            ...createInitialLearningSession(activeLearningGroupId, scopedActiveWords, 'round3'),
             round1ConfirmedWordIds:
-              activeSessionSeed?.round1ConfirmedWordIds ?? currentActiveWords.map((word) => word.id),
+              activeSessionSeed?.round1ConfirmedWordIds ?? scopedActiveWords.map((word) => word.id),
             libraryId: activeSessionSeed?.libraryId ?? null,
             officialMode: activeSessionSeed?.officialMode ?? null,
           };
@@ -1333,51 +1460,81 @@ export default function App() {
           setRound('round3');
           invalidateLibraryCache(user.id);
           void persistLearningGroupSession(user.id, nextSession).catch((error) => {
-            console.error('Failed to persist reinforcement transition:', error);
+            console.error('Failed to persist dictation transition:', error);
           });
           if (articleReinforcementEnabled) {
-            void ensureArticleForGroup(activeLearningGroupId, currentActiveWords);
+            void ensureArticleForGroup(activeLearningGroupId, scopedActiveWords);
           }
           return;
         }
+
+        void markRoutineStepCompleted(user.id, {
+          step: 'round3',
+          groupId: activeLearningGroupId,
+          timeZone: resolveBrowserTimeZone(),
+        }).catch((error) => {
+          console.error('Failed to mark skipped dictation as completed:', error);
+        });
+        await markLearningGroupWordsRoundCompleted(
+          activeLearningGroupId,
+          scopedActiveWords.map((word) => word.id),
+          'round3',
+        ).catch((error) => {
+          console.error('Failed to mark skipped dictation word progress:', error);
+          throw error;
+        });
 
         if (articleReinforcementEnabled) {
           advanceToArticle(completedAt, true);
           return;
         }
 
-        await finishReinforcementSession();
+        await finishLearningSession();
         return;
       }
 
       if (round === 'round3') {
+        const completedAt = new Date().toISOString();
+        await attemptBuffer.flush();
+        await markLearningGroupWordsRoundCompleted(
+          activeLearningGroupId,
+          scopedActiveWords.map((word) => word.id),
+          'round3',
+        ).catch((error) => {
+          console.error('Failed to mark round3 word progress:', error);
+          throw error;
+        });
+
+        void markRoutineStepCompleted(user.id, {
+          step: 'round3',
+          groupId: activeLearningGroupId,
+          timeZone: resolveBrowserTimeZone(),
+        }).catch((error) => {
+          console.error('Failed to mark round3 as completed:', error);
+        });
+
         if (articleReinforcementEnabled) {
-          advanceToArticle(
-            activeSessionSeed?.completedAt ?? new Date().toISOString(),
-            activeSessionSeed?.groupCompleted ?? true,
-          );
+          advanceToArticle(completedAt, true);
           return;
         }
 
-        await finishReinforcementSession();
+        await finishLearningSession();
         return;
       }
 
-      await finishReinforcementSession();
+      await finishLearningSession();
     },
     [
       activeLearningGroupId,
-      activeSessionSeed?.completedAt,
-      activeSessionSeed?.groupCompleted,
       activeSessionSeed?.libraryId,
       activeSessionSeed?.officialMode,
       activeSessionSeed?.round1ConfirmedWordIds,
       articleReinforcementEnabled,
       ensureArticleForGroup,
       fetchStats,
-      learningPreferences.round2Enabled,
-      learningPreferences.reinforcementRound3Enabled,
+      dictationRoundEnabled,
       navigate,
+      recallRoundEnabled,
       resetActiveLearningState,
       round,
       setActiveSessionSeed,

@@ -120,6 +120,25 @@ describe('learning session domain', () => {
     expect(normalized.passedQueueIndices).toEqual([0]);
     expect(normalized.round1ConfirmedWordIds).toEqual(['w2', 'w1']);
 
+    const constrainedRound2 = normalizePersistedLearningSession(
+      {
+        groupId: 'g1',
+        round: 'round2',
+        currentIndex: 1,
+        queueWordIds: ['w1', 'w2', 'w3'],
+        passedQueueIndices: [0],
+        round1ConfirmedWordIds: ['w1', 'w2'],
+        lastActiveAt: '2026-04-18T00:00:00.000Z',
+        groupCompleted: false,
+        completedAt: null,
+      },
+      words,
+    );
+
+    expect(constrainedRound2.queueWordIds).toEqual(['w1', 'w2']);
+    expect(constrainedRound2.currentIndex).toBe(1);
+    expect(constrainedRound2.round1ConfirmedWordIds).toEqual(['w1', 'w2']);
+
     const fallback = normalizePersistedLearningSession(
       {
         groupId: 'g1',
@@ -135,13 +154,13 @@ describe('learning session domain', () => {
       words,
     );
 
-    expect(fallback.currentIndex).toBe(2);
-    expect(fallback.queueWordIds).toEqual(['w1', 'w2', 'w3']);
-    expect(fallback.passedQueueIndices).toEqual([0, 1]);
+    expect(fallback.currentIndex).toBe(0);
+    expect(fallback.queueWordIds).toEqual(['w3']);
+    expect(fallback.passedQueueIndices).toEqual([]);
     expect(fallback.round1ConfirmedWordIds).toEqual(['w3']);
   });
 
-  it('creates a resume candidate and reconciles stale round 2 progress from history', () => {
+  it('creates a resume candidate and reconciles stale dictation progress from history', () => {
     const initial = createInitialLearningSession('g2', words);
     expect(initial).toMatchObject({
       groupId: 'g2',
@@ -178,7 +197,7 @@ describe('learning session domain', () => {
     expect(candidate.queueLength).toBe(2);
   });
 
-  it('moves a stale session to the first unfinished round 2 word or completes it', () => {
+  it('moves a stale session to the first unfinished round 3 dictation word or completes it', () => {
     const reconciledRound2 = reconcileSessionWithRound2History(
       {
         groupId: 'g-stale',
@@ -193,15 +212,15 @@ describe('learning session domain', () => {
       },
       words,
       {
-        correctWordIds: ['w1', 'w2'],
+        correctWordIds: ['w1'],
         lastAttemptAt: '2026-04-18T00:05:00.000Z',
       },
     );
 
-    expect(reconciledRound2.round).toBe('round2');
-    expect(reconciledRound2.currentIndex).toBe(2);
-    expect(reconciledRound2.queueWordIds).toEqual(['w1', 'w2', 'w3']);
-    expect(reconciledRound2.passedQueueIndices).toEqual([0, 1]);
+    expect(reconciledRound2.round).toBe('round3');
+    expect(reconciledRound2.currentIndex).toBe(1);
+    expect(reconciledRound2.queueWordIds).toEqual(['w1', 'w2']);
+    expect(reconciledRound2.passedQueueIndices).toEqual([0]);
     expect(reconciledRound2.lastActiveAt).toBe('2026-04-18T00:05:00.000Z');
 
     const reconciledComplete = reconcileSessionWithRound2History(
@@ -223,7 +242,7 @@ describe('learning session domain', () => {
       },
     );
 
-    expect(reconciledComplete.round).toBe('round3');
+    expect(reconciledComplete.round).toBe('article');
     expect(reconciledComplete.groupCompleted).toBe(true);
     expect(reconciledComplete.completedAt).toBe('2026-04-18T00:10:00.000Z');
   });
@@ -250,7 +269,7 @@ describe('learning session domain', () => {
 
     expect(
       resolveActuallyLearnedWordIds({
-        round: 'round2',
+        round: 'round3',
         currentIndex: 1,
         queueWordIds: ['w2', 'w3', 'w2'],
         fallbackWordIds: ['w1', 'w2', 'w3'],
@@ -269,7 +288,7 @@ describe('learning session domain', () => {
     ).toEqual([]);
   });
 
-  it('treats reinforcement rounds and completed groups as core learning complete', () => {
+  it('treats final reinforcement and completed groups as core learning complete', () => {
     expect(
       isCoreLearningComplete({
         status: 'active',
@@ -289,6 +308,13 @@ describe('learning session domain', () => {
         status: 'active',
         completedAt: null,
         sessionRound: 'round3',
+      }),
+    ).toBe(false);
+    expect(
+      isCoreLearningComplete({
+        status: 'active',
+        completedAt: null,
+        sessionRound: 'article',
       }),
     ).toBe(true);
   });

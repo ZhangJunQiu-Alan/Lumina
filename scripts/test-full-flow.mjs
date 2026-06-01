@@ -134,8 +134,8 @@ if (reviewErr) {
 }
 console.log(`   ✅ Seeded ${reviewRows.length} review states (state: new)`);
 
-// ── Step 8: Round2 assessment via server ──────────────────
-console.log('\n⑧ Posting Round2 attempts...');
+// ── Step 8: Round3 dictation assessment via server ──────────────────
+console.log('\n⑧ Posting Round3 dictation attempts...');
 const attemptScenarios = [
   { word: 'allocate', wasCorrect: false, elapsedMs: 1800 },
   { word: 'sustainable', wasCorrect: true, elapsedMs: 8200 },
@@ -149,7 +149,7 @@ for (const scenario of attemptScenarios) {
     body: JSON.stringify({
       vocabularyItemId: wordIdMap.get(scenario.word.toLowerCase()),
       learningGroupId: group.id,
-      source: 'round2',
+      source: 'round3',
       wasCorrect: scenario.wasCorrect,
       elapsedMs: scenario.elapsedMs,
     }),

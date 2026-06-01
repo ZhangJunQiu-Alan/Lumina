@@ -1,4 +1,4 @@
-export type OfficialDiscardableRound = 'round1' | 'round2';
+export type OfficialDiscardableRound = 'round1' | 'round2' | 'round3';
 
 export interface ResolveActuallyLearnedWordIdsInput {
   round: string | null | undefined;
@@ -10,7 +10,7 @@ export interface ResolveActuallyLearnedWordIdsInput {
 }
 
 export function isOfficialDiscardableRound(value: unknown): value is OfficialDiscardableRound {
-  return value === 'round1' || value === 'round2';
+  return value === 'round1' || value === 'round2' || value === 'round3';
 }
 
 function normalizeWordIds(value: unknown): string[] {
@@ -45,7 +45,7 @@ export function resolveActuallyLearnedWordIds(input: ResolveActuallyLearnedWordI
     }
   }
 
-  if (input.round === 'round2') {
+  if (input.round === 'round2' || input.round === 'round3') {
     for (const wordId of fallbackWordIds) {
       learnedIds.add(wordId);
     }

@@ -29,7 +29,7 @@ export interface ArticleSentence {
 }
 
 export type MemoryState = 'new' | 'fuzzy' | 'slow_recall' | 'stable_recall' | 'mastered';
-export type ReviewAttemptSource = 'round2' | 'review';
+export type ReviewAttemptSource = 'round2' | 'round3' | 'review';
 export type ReviewEventSource = ReviewAttemptSource | 'manual_mastered';
 export type LearningRoundType = 'round1' | 'round2' | 'round3' | 'article';
 export type OfficialLibraryId =

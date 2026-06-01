@@ -17,7 +17,7 @@ describe('Round2ClozePrompt', () => {
   it('shows the cloze sentence, typed progress, form hint, and translation', () => {
     render(<Round2ClozePrompt prompt={prompt} inputValue="allo" phonetic="/ˈæləkeɪt/" />);
 
-    expect(screen.getByText('根据语境复现单词')).toBeInTheDocument();
+    expect(screen.getByText('根据语境听写单词')).toBeInTheDocument();
     expect(screen.getByLabelText('当前词音标')).toHaveTextContent('/ˈæləkeɪt/');
     expect(screen.getByText('Good teams')).toBeInTheDocument();
     expect(screen.getByText('scarce resources carefully.')).toBeInTheDocument();
