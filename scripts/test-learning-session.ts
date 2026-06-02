@@ -188,6 +188,29 @@ const normalizedMany = normalizePersistedLearningSession(
 assert.deepEqual(normalizedMany.queueWordIds, expectedRound1ConfirmedWordIds);
 assert.deepEqual(normalizedMany.round1ConfirmedWordIds, expectedRound1ConfirmedWordIds);
 
+const staleRound2QueueWords = makeNumberedWords(70);
+const staleRound2ConfirmedWordIds = staleRound2QueueWords.slice(0, 30).map((word) => word.id);
+const normalizedStaleRound2Queue = normalizePersistedLearningSession(
+  {
+    groupId: 'g-stale-round2-queue',
+    round: 'round2',
+    currentIndex: 69,
+    queueWordIds: staleRound2QueueWords.map((word) => word.id),
+    passedQueueIndices: Array.from({ length: 69 }, (_, index) => index),
+    round1ConfirmedWordIds: staleRound2ConfirmedWordIds,
+    lastActiveAt: '2026-04-18T00:00:00.000Z',
+    groupCompleted: false,
+    completedAt: null,
+  },
+  staleRound2QueueWords,
+);
+assert.deepEqual(normalizedStaleRound2Queue.queueWordIds, staleRound2ConfirmedWordIds);
+assert.equal(normalizedStaleRound2Queue.currentIndex, 29);
+assert.deepEqual(
+  normalizedStaleRound2Queue.passedQueueIndices,
+  Array.from({ length: 29 }, (_, index) => index),
+);
+
 const initial = createInitialLearningSession('g2', words);
 assert.equal(initial.groupId, 'g2');
 assert.equal(initial.round, 'round1');

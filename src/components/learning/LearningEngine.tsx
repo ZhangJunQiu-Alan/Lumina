@@ -84,6 +84,12 @@ export interface LearningSessionSnapshot {
   round1ConfirmedWordIds: string[];
 }
 
+interface OptimisticallyRemovedWord {
+  word: Word;
+  wasCompleted: boolean;
+  wasRound1Confirmed: boolean;
+}
+
 export const LearningEngine = ({
   type,
   words,
@@ -91,6 +97,7 @@ export const LearningEngine = ({
   onComplete,
   onSessionChange,
   onWordMastered,
+  onWordMasteredRollback,
   sessionLeadingAction,
   sessionActions,
   round1CanWaitForMoreWords = false,
@@ -101,6 +108,7 @@ export const LearningEngine = ({
   onComplete: (session?: LearningSessionSnapshot) => void | Promise<void>;
   onSessionChange?: (session: LearningSessionSnapshot) => void;
   onWordMastered?: (wordId: string) => void;
+  onWordMasteredRollback?: (word: Word) => void;
   sessionLeadingAction?: React.ReactNode;
   sessionActions?: React.ReactNode;
   round1CanWaitForMoreWords?: boolean;
@@ -891,26 +899,30 @@ export const LearningEngine = ({
   }, [isActionMenuOpen]);
 
   const removeWordFromCurrentSession = useCallback(
-    (wordId: string) => {
+    (wordId: string): OptimisticallyRemovedWord | null => {
       clearAnswerRevealTimeout();
       stopPlayback();
-      onWordMastered?.(wordId);
 
       const previousQueue = queueRef.current;
       const filteredQueue = previousQueue.filter((word) => word.id !== wordId);
-      if (filteredQueue.length === previousQueue.length) return;
+      const removedWord = previousQueue.find((word) => word.id === wordId);
+      if (!removedWord || filteredQueue.length === previousQueue.length) return null;
 
-      setCompletedWordIds((prev) => {
-        const next = new Set(prev);
-        next.add(wordId);
-        return next;
-      });
-      setRound1ConfirmedWordIds((prev) => {
-        if (!prev.has(wordId)) return prev;
-        const next = new Set(prev);
-        next.delete(wordId);
-        return next;
-      });
+      const rollbackWord: OptimisticallyRemovedWord = {
+        word: removedWord,
+        wasCompleted: completedWordIdsRef.current.has(wordId),
+        wasRound1Confirmed: round1ConfirmedWordIdsRef.current.has(wordId),
+      };
+
+      const nextCompletedWordIds = new Set(completedWordIdsRef.current);
+      nextCompletedWordIds.add(wordId);
+      completedWordIdsRef.current = nextCompletedWordIds;
+      setCompletedWordIds(nextCompletedWordIds);
+
+      const nextRound1ConfirmedWordIds = new Set(round1ConfirmedWordIdsRef.current);
+      nextRound1ConfirmedWordIds.delete(wordId);
+      round1ConfirmedWordIdsRef.current = nextRound1ConfirmedWordIds;
+      setRound1ConfirmedWordIds(nextRound1ConfirmedWordIds);
 
       const indexMap = new Map<number, number>();
       previousQueue.forEach((word, index) => {
@@ -931,7 +943,9 @@ export const LearningEngine = ({
         setLastWrongInput(null);
         setShowAnswer(false);
         setSubmitError('');
-        setPassedQueueIndices(new Set());
+        const nextPassedQueueIndices = new Set<number>();
+        passedQueueIndicesRef.current = nextPassedQueueIndices;
+        setPassedQueueIndices(nextPassedQueueIndices);
         void attemptBuffer.flush();
         void onComplete(
           type === 'review'
@@ -943,7 +957,7 @@ export const LearningEngine = ({
                 round1ConfirmedWordIds: round1ConfirmedWordIdsArray.filter((id) => id !== wordId),
               }),
         );
-        return;
+        return rollbackWord;
       }
 
       const currentQueueIndex = currentIndexRef.current;
@@ -964,22 +978,22 @@ export const LearningEngine = ({
       setLastWrongInput(null);
       setShowAnswer(false);
       setSubmitError('');
-      setPassedQueueIndices((prev) => {
-        const next = new Set<number>();
-        for (const index of prev) {
-          const mappedIndex = indexMap.get(index);
-          if (typeof mappedIndex === 'number' && mappedIndex < nextCurrentIndex) {
-            next.add(mappedIndex);
-          }
+      const nextPassedQueueIndices = new Set<number>();
+      for (const index of passedQueueIndicesRef.current) {
+        const mappedIndex = indexMap.get(index);
+        if (typeof mappedIndex === 'number' && mappedIndex < nextCurrentIndex) {
+          nextPassedQueueIndices.add(mappedIndex);
         }
-        return next;
-      });
+      }
+      passedQueueIndicesRef.current = nextPassedQueueIndices;
+      setPassedQueueIndices(nextPassedQueueIndices);
+
+      return rollbackWord;
     },
     [
       buildSessionSnapshot,
       clearAnswerRevealTimeout,
       onComplete,
-      onWordMastered,
       round1ConfirmedWordIdsArray,
       stopPlayback,
       type,
@@ -987,29 +1001,90 @@ export const LearningEngine = ({
     ],
   );
 
+  const requeueOptimisticallyRemovedWord = useCallback(
+    ({ word, wasCompleted, wasRound1Confirmed }: OptimisticallyRemovedWord) => {
+      clearAnswerRevealTimeout();
+      stopPlayback();
+
+      if (!queueRef.current.some((queuedWord) => queuedWord.id === word.id)) {
+        const nextQueue = [...queueRef.current, word];
+        queueRef.current = nextQueue;
+        setQueue(nextQueue);
+
+        if (nextQueue.length === 1) {
+          currentIndexRef.current = 0;
+          setCurrentIndex(0);
+          setViewIndex(0);
+          setInputValue('');
+          setIsWrong(false);
+          setLastWrongInput(null);
+          setShowAnswer(false);
+          setSubmitError('');
+        }
+      }
+
+      const nextCompletedWordIds = new Set(completedWordIdsRef.current);
+      if (wasCompleted) {
+        nextCompletedWordIds.add(word.id);
+      } else {
+        nextCompletedWordIds.delete(word.id);
+      }
+      completedWordIdsRef.current = nextCompletedWordIds;
+      setCompletedWordIds(nextCompletedWordIds);
+
+      const nextRound1ConfirmedWordIds = new Set(round1ConfirmedWordIdsRef.current);
+      if (wasRound1Confirmed) {
+        nextRound1ConfirmedWordIds.add(word.id);
+      } else {
+        nextRound1ConfirmedWordIds.delete(word.id);
+      }
+      round1ConfirmedWordIdsRef.current = nextRound1ConfirmedWordIds;
+      setRound1ConfirmedWordIds(nextRound1ConfirmedWordIds);
+
+      setRound1WaitingForMoreWords(false);
+    },
+    [clearAnswerRevealTimeout, stopPlayback],
+  );
+
   const handleMarkViewedWordMastered = useCallback(async () => {
     if (activeActionKind || !viewedWord) return;
 
+    const wordToMaster = viewedWord;
     setIsActionMenuOpen(false);
     setActiveActionKind('mastered');
     setSubmitError('');
+    const rollbackWord = removeWordFromCurrentSession(wordToMaster.id);
+    if (rollbackWord) {
+      onWordMastered?.(wordToMaster.id);
+    }
+    setActiveActionKind(null);
 
     try {
       await markReviewWordMastered({
-        vocabularyItemId: viewedWord.id,
+        vocabularyItemId: wordToMaster.id,
         learningGroupId: initialSession?.groupId ?? null,
       });
-      removeWordFromCurrentSession(viewedWord.id);
-      showSessionActionFeedback({ tone: 'success', text: `已掌握 ${viewedWord.word}` });
+      showSessionActionFeedback({ tone: 'success', text: `已掌握 ${wordToMaster.word}` });
     } catch (error) {
+      if (rollbackWord) {
+        requeueOptimisticallyRemovedWord(rollbackWord);
+        onWordMasteredRollback?.(rollbackWord.word);
+      }
       showSessionActionFeedback({
         tone: 'error',
-        text: error instanceof Error ? error.message : '标记已掌握失败，请稍后再试。',
+        text: error instanceof Error ? `标记已掌握失败，已放回本轮：${error.message}` : '标记已掌握失败，已放回本轮。',
       });
-    } finally {
-      setActiveActionKind(null);
     }
-  }, [activeActionKind, initialSession?.groupId, removeWordFromCurrentSession, showSessionActionFeedback, viewedWord]);
+  }, [
+    activeActionKind,
+    initialSession?.groupId,
+    onWordMastered,
+    onWordMasteredRollback,
+    removeWordFromCurrentSession,
+    requeueOptimisticallyRemovedWord,
+    showSessionActionFeedback,
+    viewedWord,
+  ]);
 
   const handleSaveViewedWord = useCallback(async () => {
     if (activeActionKind || !viewedWord) return;

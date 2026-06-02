@@ -1155,32 +1155,51 @@ export default function App() {
     (session: LearningSessionSnapshot) => {
       if (!activeLearningGroupId || !user) return;
 
-      const nextSignature = buildLearningProgressSignature(activeLearningGroupId, session);
+      const currentSeed = activeSessionSeedRef.current;
+      const lastActiveAt = new Date().toISOString();
+      const currentWords = activeWordsRef.current;
+      const scopedWords =
+        session.round === 'round1'
+          ? currentWords
+          : filterWordsToRound1Confirmed(currentWords, session.round1ConfirmedWordIds);
+      const sessionSeed = normalizePersistedLearningSession(
+        {
+          groupId: activeLearningGroupId,
+          round: session.round,
+          currentIndex: session.currentIndex,
+          queueWordIds: session.queueWordIds,
+          passedQueueIndices: session.passedQueueIndices,
+          round1ConfirmedWordIds: session.round1ConfirmedWordIds,
+          lastActiveAt,
+          groupCompleted: currentSeed?.groupCompleted ?? false,
+          completedAt: currentSeed?.completedAt ?? null,
+          libraryId: currentSeed?.libraryId ?? null,
+          officialMode: currentSeed?.officialMode ?? null,
+          article: currentSeed?.article ?? null,
+        },
+        scopedWords,
+      );
+      const normalizedSnapshot: LearningSessionSnapshot = {
+        round: sessionSeed.round,
+        currentIndex: sessionSeed.currentIndex,
+        queueWordIds: sessionSeed.queueWordIds,
+        passedQueueIndices: sessionSeed.passedQueueIndices,
+        round1ConfirmedWordIds: sessionSeed.round1ConfirmedWordIds,
+      };
+      const nextSignature = buildLearningProgressSignature(activeLearningGroupId, normalizedSnapshot);
       if (lastSessionChangeSignatureRef.current === nextSignature) {
         return;
       }
 
-      const currentSeed = activeSessionSeedRef.current;
-      if (isSameLearningProgressSnapshot(currentSeed, session, activeLearningGroupId)) {
+      if (isSameLearningProgressSnapshot(currentSeed, normalizedSnapshot, activeLearningGroupId)) {
         lastSessionChangeSignatureRef.current = nextSignature;
         return;
       }
 
-      const lastActiveAt = new Date().toISOString();
-      const sessionSeed: PersistedLearningSession = {
-        groupId: activeLearningGroupId,
-        round: session.round,
-        currentIndex: session.currentIndex,
-        queueWordIds: session.queueWordIds,
-        passedQueueIndices: session.passedQueueIndices,
-        round1ConfirmedWordIds: session.round1ConfirmedWordIds,
-        lastActiveAt,
-        groupCompleted: currentSeed?.groupCompleted ?? false,
-        completedAt: currentSeed?.completedAt ?? null,
-        libraryId: currentSeed?.libraryId ?? null,
-        officialMode: currentSeed?.officialMode ?? null,
-        article: currentSeed?.article ?? null,
-      };
+      if (scopedWords.length !== currentWords.length) {
+        activeWordsRef.current = scopedWords;
+        setActiveWords(scopedWords);
+      }
 
       lastSessionChangeSignatureRef.current = nextSignature;
       setActiveSessionSeed(sessionSeed);
@@ -1189,10 +1208,10 @@ export default function App() {
         console.error('Failed to persist learning session snapshot:', error);
       });
 
-      if (isCoreLearningRound(session.round)) {
+      if (isCoreLearningRound(sessionSeed.round)) {
         void bindRoutineMainLearningGroup(user.id, {
           groupId: activeLearningGroupId,
-          round: session.round,
+          round: sessionSeed.round,
           timeZone: resolveBrowserTimeZone(),
         }).catch((error) => {
           console.error('Failed to refresh daily routine main learning group:', error);
@@ -1290,21 +1309,26 @@ export default function App() {
   );
 
   const handleSessionWordMastered = useCallback(
-    (wordId: string) => {
-      // 复习轮没有 session seed，改写 activeWords 会让 LearningEngine 的 words 重置 effect
-      // 把进度清零、从头重放。引擎已在本地队列里删掉该词，这里就别再动 activeWords。
-      if (round !== 'review') {
-        const nextWords = activeWordsRef.current.filter((word) => word.id !== wordId);
-        activeWordsRef.current = nextWords;
-        setActiveWords(nextWords);
-      }
+    (_wordId: string) => {
+      // LearningEngine 已经在本地队列里即时删掉该词；这里不要改 activeWords。
+      // 改 props 会触发引擎按旧 session 重新初始化，导致 Round1 进度条回退。
 
       if (user) {
         invalidateLibraryCache(user.id);
         void fetchStats();
       }
     },
-    [fetchStats, round, user],
+    [fetchStats, user],
+  );
+
+  const handleSessionWordMasteredRollback = useCallback(
+    (_word: Word) => {
+      if (user) {
+        invalidateLibraryCache(user.id);
+        void fetchStats();
+      }
+    },
+    [fetchStats, user],
   );
 
   const handleRoundComplete = useCallback(
@@ -1955,6 +1979,7 @@ export default function App() {
                                 onComplete={handleRoundComplete}
                                 onSessionChange={handleLearningSessionChange}
                                 onWordMastered={handleSessionWordMastered}
+                                onWordMasteredRollback={handleSessionWordMasteredRollback}
                                 sessionLeadingAction={sessionBackButton}
                                 sessionActions={sessionSettingsButton}
                                 round1CanWaitForMoreWords={round1CanWaitForMoreWords}

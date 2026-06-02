@@ -363,6 +363,18 @@ export function getEmbeddedFiguresAfterParagraph(
   ];
 }
 
+export function getQuestionGroupFigures(
+  passage: IeltsReadingPassage,
+  group: IeltsReadingQuestionGroup,
+): IeltsReadingPassageFigure[] {
+  const questionText = `${group.prompt}\n${group.instructions}`;
+  if (!questionText.trim()) return [];
+
+  return passage.figures
+    .filter((figure) => figure.anchorText && questionText.includes(figure.anchorText))
+    .sort((left, right) => left.sortOrder - right.sortOrder);
+}
+
 export function getUnansweredNumbers(questions: IeltsReadingQuestion[], answers: IeltsReadingAnswerMap) {
   return questions.filter((question) => !isAnswered(answers[question.number])).map((question) => question.number);
 }

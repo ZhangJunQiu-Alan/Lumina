@@ -208,6 +208,26 @@ describe('learning session domain', () => {
     expect(normalized.queueWordIds).toEqual(expectedWordIds);
     expect(normalized.round1ConfirmedWordIds).toEqual(expectedWordIds);
 
+    const staleRound2QueueWords = makeNumberedWords(70);
+    const staleRound2ConfirmedWordIds = staleRound2QueueWords.slice(0, 30).map((word) => word.id);
+    const normalizedStaleRound2Queue = normalizePersistedLearningSession(
+      {
+        groupId: 'g-stale-round2-queue',
+        round: 'round2',
+        currentIndex: 69,
+        queueWordIds: staleRound2QueueWords.map((word) => word.id),
+        passedQueueIndices: Array.from({ length: 69 }, (_, index) => index),
+        round1ConfirmedWordIds: staleRound2ConfirmedWordIds,
+        lastActiveAt: '2026-04-18T00:00:00.000Z',
+        groupCompleted: false,
+        completedAt: null,
+      },
+      staleRound2QueueWords,
+    );
+    expect(normalizedStaleRound2Queue.queueWordIds).toEqual(staleRound2ConfirmedWordIds);
+    expect(normalizedStaleRound2Queue.currentIndex).toBe(29);
+    expect(normalizedStaleRound2Queue.passedQueueIndices).toEqual(Array.from({ length: 29 }, (_, index) => index));
+
     const reconciled = reconcileSessionWithRound2History(
       {
         groupId: 'g-many-stale',

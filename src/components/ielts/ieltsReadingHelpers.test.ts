@@ -22,6 +22,7 @@ import {
   getEmbeddedFiguresAfterParagraph,
   getInstructionLines,
   getQuestionDisplayPrompt,
+  getQuestionGroupFigures,
   getQuestionGroupRangeLabel,
   getQuestionRangeLabel,
   getRawAnswerText,
@@ -248,6 +249,18 @@ describe('passage figures', () => {
     expect(figures).toHaveLength(1);
     expect(figures[0].figureKey).toBe('fig-2');
     expect(getEmbeddedFiguresAfterParagraph(passage, 'no marker here')).toEqual([]);
+  });
+
+  it('matches source-PDF figures to question groups by anchor text', () => {
+    const passage = makePassage({
+      figures: [
+        makeFigure({ figureKey: 'question-21-23', anchorText: 'Questions 21-23', sortOrder: 2 }),
+        makeFigure({ figureKey: 'passage-only', anchorText: 'See Fig. 1', sortOrder: 1 }),
+      ],
+    });
+    const group = makeGroup({ prompt: 'Questions 21-23', instructions: 'Label the diagram.' });
+
+    expect(getQuestionGroupFigures(passage, group).map((figure) => figure.figureKey)).toEqual(['question-21-23']);
   });
 });
 

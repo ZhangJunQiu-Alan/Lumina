@@ -63,6 +63,7 @@ import {
   getInstructionLines,
   getPassageParagraphs,
   getQuestionDisplayPrompt,
+  getQuestionGroupFigures,
   getQuestionGroupRangeLabel,
   getQuestionRangeLabel,
   getRawAnswerText,
@@ -267,7 +268,11 @@ function CompletionSourceBlock({
 
 function EmbeddedPassageFigureBlock({ figure }: { figure: IeltsReadingPassageFigure }) {
   const imageAlt = figure.caption ? `${figure.title}: ${figure.caption}` : figure.title;
-  const imageMaxWidth = figure.figureKey === 'fig-1' ? 'max-w-[240px]' : 'max-w-[520px]';
+  const imageMaxWidth = figure.figureKey.startsWith('question-')
+    ? 'max-w-[760px]'
+    : figure.figureKey === 'fig-1'
+      ? 'max-w-[240px]'
+      : 'max-w-[520px]';
   const fallback =
     figure.fallback.headers && figure.fallback.rows
       ? { headers: figure.fallback.headers, rows: figure.fallback.rows }
@@ -1876,7 +1881,9 @@ export function IeltsReadingTestView() {
               {test.passages.map((passage) => (
                 <div key={passage.id} className={cx('space-y-5', passage.number !== selectedPassage && 'hidden')}>
                   {passage.groups.map((group) => {
-                    const rendersInlineTable = group.type === 'table_completion' && hasCompletionTable(group);
+                    const groupFigures = getQuestionGroupFigures(passage, group);
+                    const rendersInlineTable =
+                      groupFigures.length === 0 && group.type === 'table_completion' && hasCompletionTable(group);
                     return (
                       <section key={group.id} className="space-y-5">
                         <div className="flex items-center justify-between gap-4 rounded-[20px] border border-[#e5ebf5] bg-white px-6 py-4">
@@ -1889,17 +1896,23 @@ export function IeltsReadingTestView() {
                           </p>
                         </div>
 
-                        <CompletionSourceBlock
-                          group={group}
-                          answers={answers}
-                          disabled={inputsLocked}
-                          activeQuestionNumber={activeQuestionNumber}
-                          onAnswerChange={setAnswer}
-                          onQuestionFocus={setActiveQuestionNumber}
-                          registerQuestionRef={(questionNumber, node) => {
-                            questionRefs.current[questionNumber] = node;
-                          }}
-                        />
+                        {groupFigures.map((figure) => (
+                          <EmbeddedPassageFigureBlock key={figure.id} figure={figure} />
+                        ))}
+
+                        {groupFigures.length === 0 && (
+                          <CompletionSourceBlock
+                            group={group}
+                            answers={answers}
+                            disabled={inputsLocked}
+                            activeQuestionNumber={activeQuestionNumber}
+                            onAnswerChange={setAnswer}
+                            onQuestionFocus={setActiveQuestionNumber}
+                            registerQuestionRef={(questionNumber, node) => {
+                              questionRefs.current[questionNumber] = node;
+                            }}
+                          />
+                        )}
 
                         {!rendersInlineTable && (
                           <div className="space-y-5">

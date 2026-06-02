@@ -138,6 +138,17 @@ function submitRound1Word(word: string) {
   fireEvent.submit(input.closest('form') as HTMLFormElement);
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return { promise, resolve, reject };
+}
+
 function installAudioMock() {
   const instances: Array<{
     src: string;
@@ -374,6 +385,53 @@ describe('LearningEngine autoplay', () => {
     await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
     const snapshot = onComplete.mock.calls[0]?.[0] as LearningSessionSnapshot;
     expect(snapshot.round1ConfirmedWordIds).toEqual(words.slice(1, 31).map((word) => word.id));
+  });
+
+  it('moves to the next round 1 word before the mastered request resolves', async () => {
+    type MasteredResponse = Awaited<ReturnType<typeof markReviewWordMastered>>;
+    const masteredRequest = createDeferred<MasteredResponse>();
+    vi.mocked(markReviewWordMastered).mockReturnValueOnce(
+      masteredRequest.promise as ReturnType<typeof markReviewWordMastered>,
+    );
+    const words = makeWords(2);
+    const onWordMastered = vi.fn();
+
+    render(<LearningEngine type="round1" words={words} onComplete={vi.fn()} onWordMastered={onWordMastered} />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: '更多操作' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: '标记已掌握' })[0]);
+
+    await waitFor(() => expect(screen.getAllByText('word2').length).toBeGreaterThan(0));
+    expect(onWordMastered).toHaveBeenCalledWith('w1');
+
+    masteredRequest.resolve(undefined as MasteredResponse);
+    await waitFor(() => expect(screen.getByText('已掌握 word1')).toBeInTheDocument());
+  });
+
+  it('puts an optimistically mastered round 1 word back into the round when the request fails', async () => {
+    vi.mocked(markReviewWordMastered).mockRejectedValueOnce(new Error('network down'));
+    const words = makeWords(2);
+    const onWordMasteredRollback = vi.fn();
+
+    render(
+      <LearningEngine
+        type="round1"
+        words={words}
+        onComplete={vi.fn()}
+        onWordMasteredRollback={onWordMasteredRollback}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: '更多操作' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: '标记已掌握' })[0]);
+
+    await waitFor(() => expect(screen.getAllByText('word2').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getByText(/标记已掌握失败，已放回本轮/)).toBeInTheDocument());
+    expect(onWordMasteredRollback).toHaveBeenCalledWith(words[0]);
+
+    submitRound1Word(words[1].word);
+
+    await waitFor(() => expect(screen.getAllByText('word1').length).toBeGreaterThan(0));
   });
 
   it('waits for more round 1 words at the queue end when official append can continue', () => {
