@@ -1,4 +1,5 @@
 import type { LearningRoundType, PersistedLearningSession, ResumeCandidate, Word } from '../types';
+import { limitRound1ReinforcementWordIds } from '../../shared/learningProgress';
 
 const LEARNING_ROUNDS: LearningRoundType[] = ['round1', 'round2', 'round3', 'article'];
 const CORE_LEARNING_ROUNDS: LearningRoundType[] = ['round1', 'round2', 'round3'];
@@ -83,7 +84,7 @@ export function normalizeSessionRound1ConfirmedWordIds(value: unknown): string[]
     result.push(trimmed);
   }
 
-  return result;
+  return limitRound1ReinforcementWordIds(result);
 }
 
 export function clampSessionIndex(currentIndex: number, queueLength: number) {

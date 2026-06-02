@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ClozePrompt } from '../../lib/cloze';
 import { Round2ClozePrompt } from './Round2ClozePrompt';
 
@@ -14,6 +14,10 @@ const prompt: ClozePrompt = {
 };
 
 describe('Round2ClozePrompt', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it('shows the cloze sentence, typed progress, form hint, and translation', () => {
     render(<Round2ClozePrompt prompt={prompt} inputValue="allo" phonetic="/ˈæləkeɪt/" />);
 
@@ -24,6 +28,13 @@ describe('Round2ClozePrompt', () => {
     expect(screen.getByLabelText('blank')).toHaveTextContent('allo____');
     expect(screen.getByText('原型')).toBeInTheDocument();
     expect(screen.getByText('优秀团队会谨慎分配稀缺资源。')).toBeInTheDocument();
+  });
+
+  it('uses an explicit translation text instead of the sentence translation', () => {
+    render(<Round2ClozePrompt prompt={prompt} inputValue="" translationText="分配；调拨" />);
+
+    expect(screen.getByText('分配；调拨')).toBeInTheDocument();
+    expect(screen.queryByText('优秀团队会谨慎分配稀缺资源。')).not.toBeInTheDocument();
   });
 
   it('lets the user play the full sentence only when audio is available', async () => {

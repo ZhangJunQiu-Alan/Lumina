@@ -1,3 +1,5 @@
+import { limitRound1ReinforcementWordIds } from './learningProgress.ts';
+
 export type OfficialDiscardableRound = 'round1' | 'round2' | 'round3';
 
 export interface ResolveActuallyLearnedWordIdsInput {
@@ -32,7 +34,7 @@ export function resolveActuallyLearnedWordIds(input: ResolveActuallyLearnedWordI
   const fallbackWordIds = input.fallbackWordIds.filter(Boolean);
   const queueWordIds = normalizedQueue.length > 0 ? normalizedQueue : fallbackWordIds;
   const completedPrefixLength = clampCompletedPrefixLength(input.currentIndex, queueWordIds.length);
-  const round1ConfirmedWordIds = normalizeWordIds(input.round1ConfirmedWordIds);
+  const round1ConfirmedWordIds = limitRound1ReinforcementWordIds(normalizeWordIds(input.round1ConfirmedWordIds));
   const learnedIds = new Set<string>();
 
   if (input.round === 'round1' && round1ConfirmedWordIds.length > 0) {

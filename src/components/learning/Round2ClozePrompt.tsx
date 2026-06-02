@@ -56,6 +56,7 @@ export const Round2ClozePrompt = ({
   isSentencePlaying = false,
   onPlaySentence,
   sentenceAudioLocale = 'uk',
+  translationText,
 }: {
   prompt: ClozePrompt;
   inputValue: string;
@@ -66,8 +67,10 @@ export const Round2ClozePrompt = ({
   isSentencePlaying?: boolean;
   onPlaySentence?: () => void;
   sentenceAudioLocale?: PronunciationLocale;
+  translationText?: string;
 }) => {
   const hasPhonetic = Boolean(phonetic);
+  const displayTranslation = translationText ?? prompt.translation;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -110,8 +113,8 @@ export const Round2ClozePrompt = ({
         )}
       </div>
 
-      {prompt.translation && (
-        <p className="mt-4 text-sm leading-6 text-text-secondary md:text-base md:leading-7">{prompt.translation}</p>
+      {displayTranslation && (
+        <p className="mt-4 text-sm leading-6 text-text-secondary md:text-base md:leading-7">{displayTranslation}</p>
       )}
     </div>
   );

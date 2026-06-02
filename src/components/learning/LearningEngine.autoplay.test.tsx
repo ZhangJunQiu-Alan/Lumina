@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LearningPreferences, PersistedLearningSession, Word } from '../../types';
+import { markReviewWordMastered } from '../../lib/reviewApi';
 import { LearningEngine, type LearningSessionSnapshot } from './LearningEngine';
 
 const testState = vi.hoisted(() => ({
@@ -110,6 +111,33 @@ function makeWord(overrides: Partial<Word> = {}): Word {
   };
 }
 
+function makeWords(count: number) {
+  return Array.from({ length: count }, (_, index) =>
+    makeWord({
+      id: `w${index + 1}`,
+      word: `word${index + 1}`,
+      chinese_definition: `释义 ${index + 1}`,
+      senses: [
+        {
+          pos: 'n',
+          meaning_zh: `释义 ${index + 1}`,
+          example_sentence: `This is word${index + 1}.`,
+          example_translation_zh: '',
+        },
+      ],
+      example_sentences: [`This is word${index + 1}.`],
+      audio_uk_url: `https://example.com/word${index + 1}-uk.mp3`,
+      audio_us_url: `https://example.com/word${index + 1}-us.mp3`,
+    }),
+  );
+}
+
+function submitRound1Word(word: string) {
+  const input = screen.getByPlaceholderText('拼写');
+  fireEvent.change(input, { target: { value: word } });
+  fireEvent.submit(input.closest('form') as HTMLFormElement);
+}
+
 function installAudioMock() {
   const instances: Array<{
     src: string;
@@ -153,6 +181,7 @@ function installAudioMock() {
 
 describe('LearningEngine autoplay', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     testState.preferences = {
       ...testState.preferences,
       defaultPronunciationLocale: 'uk',
@@ -185,6 +214,27 @@ describe('LearningEngine autoplay', () => {
       autoPlayEnabled: true,
     };
     rerender(<LearningEngine {...props} />);
+
+    await waitFor(() => expect(AudioMock).toHaveBeenCalledTimes(1));
+    expect(AudioMock).toHaveBeenCalledWith('https://example.com/daily-uk.mp3');
+  });
+
+  it.each(['round3', 'review'] as const)('does not autoplay %s dictation when autoplay is off', (type) => {
+    const { AudioMock } = installAudioMock();
+
+    render(<LearningEngine type={type} words={[makeWord()]} onComplete={vi.fn()} />);
+
+    expect(AudioMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['round3', 'review'] as const)('autoplays %s dictation when autoplay is explicitly on', async (type) => {
+    testState.preferences = {
+      ...testState.preferences,
+      autoPlayEnabled: true,
+    };
+    const { AudioMock } = installAudioMock();
+
+    render(<LearningEngine type={type} words={[makeWord()]} onComplete={vi.fn()} />);
 
     await waitFor(() => expect(AudioMock).toHaveBeenCalledTimes(1));
     expect(AudioMock).toHaveBeenCalledWith('https://example.com/daily-uk.mp3');
@@ -264,5 +314,92 @@ describe('LearningEngine autoplay', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '显示复习轮音标' }));
     expect(screen.getByLabelText('当前词音标')).toHaveTextContent('/deili/');
+  });
+
+  it('shows the word definition instead of the sentence translation in round 3 cloze dictation', () => {
+    render(<LearningEngine type="round3" words={[makeWord()]} onComplete={vi.fn()} />);
+
+    expect(screen.getByText('每日的')).toBeInTheDocument();
+    expect(screen.queryByText('我每天读报纸。')).not.toBeInTheDocument();
+  });
+
+  it('shows the word definition instead of the sentence translation in review cloze dictation', () => {
+    render(<LearningEngine type="review" words={[makeWord()]} onComplete={vi.fn()} />);
+
+    expect(screen.getByText('每日的')).toBeInTheDocument();
+    expect(screen.queryByText('我每天读报纸。')).not.toBeInTheDocument();
+  });
+
+  it('does not render the round 1 manual entry button', () => {
+    render(<LearningEngine type="round1" words={makeWords(2)} onComplete={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: /\d+词(回忆|听写|完成本组)/ })).not.toBeInTheDocument();
+  });
+
+  it('auto-completes round 1 after 30 confirmed words', async () => {
+    const words = makeWords(31);
+    const onComplete = vi.fn();
+
+    render(<LearningEngine type="round1" words={words} onComplete={onComplete} />);
+
+    for (const word of words.slice(0, 30)) {
+      submitRound1Word(word.word);
+    }
+
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+    const snapshot = onComplete.mock.calls[0]?.[0] as LearningSessionSnapshot;
+    expect(snapshot.round).toBe('round1');
+    expect(snapshot.round1ConfirmedWordIds).toEqual(words.slice(0, 30).map((word) => word.id));
+  });
+
+  it('excludes round 1 mastered words from the 30 confirmed word limit', async () => {
+    const words = makeWords(31);
+    const onComplete = vi.fn();
+
+    render(<LearningEngine type="round1" words={words} onComplete={onComplete} />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: '更多操作' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: '标记已掌握' })[0]);
+
+    await waitFor(() => expect(markReviewWordMastered).toHaveBeenCalledTimes(1));
+    expect(markReviewWordMastered).toHaveBeenCalledWith({
+      vocabularyItemId: 'w1',
+      learningGroupId: null,
+    });
+
+    for (const word of words.slice(1, 31)) {
+      submitRound1Word(word.word);
+    }
+
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+    const snapshot = onComplete.mock.calls[0]?.[0] as LearningSessionSnapshot;
+    expect(snapshot.round1ConfirmedWordIds).toEqual(words.slice(1, 31).map((word) => word.id));
+  });
+
+  it('waits for more round 1 words at the queue end when official append can continue', () => {
+    const words = makeWords(2);
+    const onComplete = vi.fn();
+
+    render(<LearningEngine type="round1" words={words} onComplete={onComplete} round1CanWaitForMoreWords />);
+
+    submitRound1Word(words[0].word);
+    submitRound1Word(words[1].word);
+
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(screen.getByText(/正在等待下一批新词预载/)).toBeInTheDocument();
+  });
+
+  it('auto-completes round 1 under 30 words when no more words can be appended', async () => {
+    const words = makeWords(2);
+    const onComplete = vi.fn();
+
+    render(<LearningEngine type="round1" words={words} onComplete={onComplete} round1CanWaitForMoreWords={false} />);
+
+    submitRound1Word(words[0].word);
+    submitRound1Word(words[1].word);
+
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+    const snapshot = onComplete.mock.calls[0]?.[0] as LearningSessionSnapshot;
+    expect(snapshot.round1ConfirmedWordIds).toEqual(words.map((word) => word.id));
   });
 });

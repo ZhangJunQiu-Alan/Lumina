@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { resolveActuallyLearnedWordIds } from '../../shared/officialDiscard';
+import { ROUND1_REINFORCEMENT_WORD_LIMIT } from '../../shared/learningProgress';
 import type { Word } from '../types';
 import {
   clampSessionIndex,
   createInitialLearningSession,
   createResumeCandidate,
   filterMasteredSessionWords,
+  filterWordsToRound1Confirmed,
   isCoreLearningComplete,
   normalizePersistedLearningSession,
   normalizeSessionQueueWordIds,
@@ -76,6 +78,27 @@ const words: Word[] = [
     ...emptyWordExtras,
   },
 ];
+
+function makeNumberedWords(count: number): Word[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `w${index + 1}`,
+    word: `word${index + 1}`,
+    phonetic: `/word${index + 1}/`,
+    pos_tags: ['n'],
+    ner_entities: [],
+    chinese_definition: `释义 ${index + 1}`,
+    senses: [
+      {
+        pos: 'n',
+        meaning_zh: `释义 ${index + 1}`,
+        example_sentence: `This is word${index + 1}.`,
+        example_translation_zh: '',
+      },
+    ],
+    example_sentences: [`This is word${index + 1}.`],
+    ...emptyWordExtras,
+  }));
+}
 
 describe('learning session domain', () => {
   it('normalizes persisted queues so resume starts on a valid word', () => {
@@ -158,6 +181,55 @@ describe('learning session domain', () => {
     expect(fallback.queueWordIds).toEqual(['w3']);
     expect(fallback.passedQueueIndices).toEqual([]);
     expect(fallback.round1ConfirmedWordIds).toEqual(['w3']);
+  });
+
+  it('caps round 1 confirmed words to the reinforcement limit across restore paths', () => {
+    const manyWords = makeNumberedWords(45);
+    const confirmedWordIds = manyWords.map((word) => word.id);
+    const expectedWordIds = confirmedWordIds.slice(0, ROUND1_REINFORCEMENT_WORD_LIMIT);
+
+    expect(filterWordsToRound1Confirmed(manyWords, confirmedWordIds).map((word) => word.id)).toEqual(expectedWordIds);
+
+    const normalized = normalizePersistedLearningSession(
+      {
+        groupId: 'g-many',
+        round: 'round2',
+        currentIndex: 44,
+        queueWordIds: confirmedWordIds,
+        passedQueueIndices: confirmedWordIds.map((_, index) => index),
+        round1ConfirmedWordIds: confirmedWordIds,
+        lastActiveAt: '2026-04-18T00:00:00.000Z',
+        groupCompleted: false,
+        completedAt: null,
+      },
+      manyWords,
+    );
+
+    expect(normalized.queueWordIds).toEqual(expectedWordIds);
+    expect(normalized.round1ConfirmedWordIds).toEqual(expectedWordIds);
+
+    const reconciled = reconcileSessionWithRound2History(
+      {
+        groupId: 'g-many-stale',
+        round: 'round1',
+        currentIndex: 29,
+        queueWordIds: confirmedWordIds,
+        passedQueueIndices: confirmedWordIds.slice(0, 29).map((_, index) => index),
+        round1ConfirmedWordIds: confirmedWordIds,
+        lastActiveAt: '2026-04-18T00:00:00.000Z',
+        groupCompleted: false,
+        completedAt: null,
+      },
+      manyWords,
+      {
+        correctWordIds: expectedWordIds.slice(0, 29),
+        lastAttemptAt: '2026-04-18T00:05:00.000Z',
+      },
+    );
+
+    expect(reconciled.round).toBe('round3');
+    expect(reconciled.queueWordIds).toEqual(expectedWordIds);
+    expect(reconciled.currentIndex).toBe(29);
   });
 
   it('creates a resume candidate and reconciles stale dictation progress from history', () => {
@@ -266,6 +338,16 @@ describe('learning session domain', () => {
         round1ConfirmedWordIds: Array.from({ length: 30 }, (_, index) => `w${index + 1}`),
       }),
     ).toEqual(Array.from({ length: 30 }, (_, index) => `w${index + 1}`));
+
+    expect(
+      resolveActuallyLearnedWordIds({
+        round: 'round1',
+        currentIndex: 40,
+        queueWordIds: Array.from({ length: 45 }, (_, index) => `w${index + 1}`),
+        fallbackWordIds: Array.from({ length: 45 }, (_, index) => `w${index + 1}`),
+        round1ConfirmedWordIds: Array.from({ length: 45 }, (_, index) => `w${index + 1}`),
+      }),
+    ).toEqual(Array.from({ length: ROUND1_REINFORCEMENT_WORD_LIMIT }, (_, index) => `w${index + 1}`));
 
     expect(
       resolveActuallyLearnedWordIds({

@@ -62,6 +62,8 @@ import { useDeferredLoading } from './hooks/useDeferredLoading';
 import { fetchHomeOverview, resolveBrowserTimeZone } from './lib/homeApi';
 import {
   appendNextOfficialBatchToLearningGroup,
+  clearOfficialAppendPreparationCache,
+  preloadNextOfficialBatchForAppend,
   reorderActiveOfficialGroup,
   startNextOfficialBatch,
 } from './lib/officialLibraryStart';
@@ -69,6 +71,7 @@ import { deleteOfficialLearningLibrary } from './lib/libraryApi';
 import {
   getOfficialLibraryDefinition,
   isOfficialLibraryId,
+  OFFICIAL_APPEND_PRELOAD_REMAINING_THRESHOLD,
   OFFICIAL_PREFETCH_REMAINING_THRESHOLD,
 } from './lib/officialLibrary';
 import { toRoutineDateKey } from './lib/routineDate';
@@ -359,6 +362,7 @@ export default function App() {
   const activeLearningGroupIdRef = useRef<string | null>(null);
   const sessionAutoRestoreRef = useRef<string | null>(null);
   const lastNonSessionAppPathRef = useRef('/app/home');
+  const officialAppendPreloadKeyRef = useRef<string | null>(null);
   const officialPrefetchKeyRef = useRef<string | null>(null);
   const articleGenerationRef = useRef<ArticleGenerationJob | null>(null);
   const articleGenerationRunIdRef = useRef(0);
@@ -370,6 +374,7 @@ export default function App() {
   const [activeWords, setActiveWords] = useState<Word[]>([]);
   const [activeLearningGroupId, setActiveLearningGroupId] = useState<string | null>(null);
   const [activeSessionSeed, setActiveSessionSeedState] = useState<PersistedLearningSession | null>(null);
+  const [round1AppendExhaustedGroupIds, setRound1AppendExhaustedGroupIds] = useState<Set<string>>(() => new Set());
   const [articleSentences, setArticleSentences] = useState<ArticleSentence[] | null>(null);
   const [articleGenerationError, setArticleGenerationError] = useState('');
   const [isStartingSession, setIsStartingSession] = useState(false);
@@ -561,10 +566,14 @@ export default function App() {
     if (!user) {
       cancelArticleGeneration();
       activeLearningGroupIdRef.current = null;
+      officialAppendPreloadKeyRef.current = null;
+      officialPrefetchKeyRef.current = null;
+      clearOfficialAppendPreparationCache();
       lastSessionChangeSignatureRef.current = null;
       setActiveWords([]);
       setActiveLearningGroupId(null);
       setActiveSessionSeed(null);
+      setRound1AppendExhaustedGroupIds(new Set());
       setReviewSummary([]);
       setArticleSentences(null);
       setArticleGenerationError('');
@@ -575,10 +584,14 @@ export default function App() {
   const resetActiveLearningState = useCallback(() => {
     cancelArticleGeneration();
     activeLearningGroupIdRef.current = null;
+    officialAppendPreloadKeyRef.current = null;
+    officialPrefetchKeyRef.current = null;
+    clearOfficialAppendPreparationCache();
     lastSessionChangeSignatureRef.current = null;
     setActiveWords([]);
     setActiveLearningGroupId(null);
     setActiveSessionSeed(null);
+    setRound1AppendExhaustedGroupIds(new Set());
     setArticleSentences(null);
     setArticleGenerationError('');
     setRound('round1');
@@ -877,6 +890,14 @@ export default function App() {
 
         setReviewSummary([]);
         setArticleGenerationError('');
+        officialAppendPreloadKeyRef.current = null;
+        officialPrefetchKeyRef.current = null;
+        setRound1AppendExhaustedGroupIds((current) => {
+          if (!current.has(groupId)) return current;
+          const next = new Set(current);
+          next.delete(groupId);
+          return next;
+        });
         setActiveWords(sessionWords);
         activeLearningGroupIdRef.current = groupId;
         setActiveLearningGroupId(groupId);
@@ -1182,26 +1203,60 @@ export default function App() {
       const mode = sessionSeed.officialMode;
       const confirmedCount = session.round1ConfirmedWordIds.length;
       const remainingLoadedCount = session.queueWordIds.length - confirmedCount;
+      const officialGroupCount =
+        stats.routineCard.officialLibraryOptions.find((item) => item.libraryId === libraryId)?.existingGroupCount ??
+        stats.routineCard.lastUsedOfficialGroupCount;
+      const officialAppendInput =
+        libraryId && mode
+          ? {
+              userId: user.id,
+              groupId: activeLearningGroupId,
+              libraryId,
+              mode,
+              existingGroupCount: officialGroupCount,
+            }
+          : null;
+      const appendPreloadKey = `${activeLearningGroupId}:${session.queueWordIds.length}:preload`;
+      if (
+        session.round === 'round1' &&
+        officialAppendInput &&
+        remainingLoadedCount <= OFFICIAL_APPEND_PRELOAD_REMAINING_THRESHOLD &&
+        officialAppendPreloadKeyRef.current !== appendPreloadKey
+      ) {
+        officialAppendPreloadKeyRef.current = appendPreloadKey;
+        void preloadNextOfficialBatchForAppend(officialAppendInput).catch((error) => {
+          officialAppendPreloadKeyRef.current = null;
+          console.error('Failed to preload next official batch:', error);
+        });
+      }
+
       const prefetchKey = `${activeLearningGroupId}:${session.queueWordIds.length}`;
       if (
         session.round === 'round1' &&
-        libraryId &&
-        mode &&
+        officialAppendInput &&
         remainingLoadedCount <= OFFICIAL_PREFETCH_REMAINING_THRESHOLD &&
         officialPrefetchKeyRef.current !== prefetchKey
       ) {
-        const option = stats.routineCard.officialLibraryOptions.find((item) => item.libraryId === libraryId);
         officialPrefetchKeyRef.current = prefetchKey;
-        void appendNextOfficialBatchToLearningGroup({
-          userId: user.id,
-          groupId: activeLearningGroupId,
-          libraryId,
-          mode,
-          existingGroupCount: option?.existingGroupCount ?? stats.routineCard.lastUsedOfficialGroupCount,
-        })
+        void appendNextOfficialBatchToLearningGroup(officialAppendInput)
           .then((result) => {
             const appendedWords = result?.appendedWords ?? [];
-            if (appendedWords.length === 0) return;
+            if (appendedWords.length === 0) {
+              setRound1AppendExhaustedGroupIds((current) => {
+                if (current.has(activeLearningGroupId)) return current;
+                const next = new Set(current);
+                next.add(activeLearningGroupId);
+                return next;
+              });
+              return;
+            }
+            officialAppendPreloadKeyRef.current = null;
+            setRound1AppendExhaustedGroupIds((current) => {
+              if (!current.has(activeLearningGroupId)) return current;
+              const next = new Set(current);
+              next.delete(activeLearningGroupId);
+              return next;
+            });
             setActiveWords((currentWords) => {
               const currentIds = new Set(currentWords.map((word) => word.id));
               const nextWords = [...currentWords, ...appendedWords.filter((word) => !currentIds.has(word.id))];
@@ -1225,6 +1280,7 @@ export default function App() {
             invalidateLibraryCache(user.id);
           })
           .catch((error) => {
+            officialAppendPreloadKeyRef.current = null;
             officialPrefetchKeyRef.current = null;
             console.error('Failed to prefetch next official batch:', error);
           });
@@ -1559,6 +1615,24 @@ export default function App() {
     void ensureArticleForGroup(activeLearningGroupId, activeWords);
   }, [activeLearningGroupId, activeWords, cancelArticleGeneration, ensureArticleForGroup]);
 
+  const round1CanWaitForMoreWords = useMemo(
+    () =>
+      round === 'round1' &&
+      Boolean(
+        activeLearningGroupId &&
+        activeSessionSeed?.libraryId &&
+        activeSessionSeed?.officialMode &&
+        !round1AppendExhaustedGroupIds.has(activeLearningGroupId),
+      ),
+    [
+      activeLearningGroupId,
+      activeSessionSeed?.libraryId,
+      activeSessionSeed?.officialMode,
+      round,
+      round1AppendExhaustedGroupIds,
+    ],
+  );
+
   const handleSignOut = async () => {
     resetActiveLearningState();
     setReviewSummary([]);
@@ -1883,6 +1957,7 @@ export default function App() {
                                 onWordMastered={handleSessionWordMastered}
                                 sessionLeadingAction={sessionBackButton}
                                 sessionActions={sessionSettingsButton}
+                                round1CanWaitForMoreWords={round1CanWaitForMoreWords}
                               />
                             </React.Fragment>
                           )

@@ -18,6 +18,7 @@ import { useLearningPreferences } from '../../contexts/LearningPreferencesContex
 import {
   AUTO_PLAY_GAP_OPTIONS,
   AUTO_PLAY_REPEAT_OPTIONS,
+  buildReinforcementRoundTogglePatch,
   CORRECT_ANSWER_REVEAL_OPTIONS,
   LEARNING_PREFERENCES_DEFAULTS,
   SPEECH_PLAYBACK_RATE_OPTIONS,
@@ -216,6 +217,10 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
     }
   };
 
+  const handleReinforcementRoundToggle = (key: 'round2Enabled' | 'reinforcementRound3Enabled', checked: boolean) => {
+    void handleSave(key, buildReinforcementRoundTogglePatch(preferences, key, checked));
+  };
+
   if (isLoading) {
     return (
       <div className="flex min-h-[320px] items-center justify-center">
@@ -412,7 +417,7 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
             <ToggleControl
               checked={preferences.round2Enabled}
               onChange={(checked) => {
-                void handleSave('round2Enabled', { round2Enabled: checked });
+                handleReinforcementRoundToggle('round2Enabled', checked);
               }}
             />
           }
@@ -425,7 +430,7 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
             <ToggleControl
               checked={preferences.reinforcementRound3Enabled}
               onChange={(checked) => {
-                void handleSave('reinforcementRound3Enabled', { reinforcementRound3Enabled: checked });
+                handleReinforcementRoundToggle('reinforcementRound3Enabled', checked);
               }}
             />
           }

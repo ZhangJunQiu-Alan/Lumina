@@ -58,6 +58,7 @@ import {
   Round1MorphologyCard,
   Round1RelationsCard,
 } from './Round1Cards';
+import { limitRound1ReinforcementWordIds, ROUND1_REINFORCEMENT_WORD_LIMIT } from '../../../shared/learningProgress';
 
 function areSetsEqual<T>(left: Set<T>, right: Set<T>) {
   if (left.size !== right.size) return false;
@@ -92,6 +93,7 @@ export const LearningEngine = ({
   onWordMastered,
   sessionLeadingAction,
   sessionActions,
+  round1CanWaitForMoreWords = false,
 }: {
   type: RoundType;
   words: Word[];
@@ -101,6 +103,7 @@ export const LearningEngine = ({
   onWordMastered?: (wordId: string) => void;
   sessionLeadingAction?: React.ReactNode;
   sessionActions?: React.ReactNode;
+  round1CanWaitForMoreWords?: boolean;
 }) => {
   const { preferences } = useLearningPreferences();
   const { saveWord } = useSavedWords();
@@ -133,12 +136,14 @@ export const LearningEngine = ({
       if (!pendingIds.has(word.id)) initialCompletedIds.add(word.id);
     }
     const initialRound1ConfirmedIds = new Set(
-      (initialSession?.round1ConfirmedWordIds?.length
-        ? initialSession.round1ConfirmedWordIds
-        : type === 'round1'
-          ? [...initialCompletedIds]
-          : []
-      ).filter((wordId) => wordMap.has(wordId)),
+      limitRound1ReinforcementWordIds(
+        (initialSession?.round1ConfirmedWordIds?.length
+          ? initialSession.round1ConfirmedWordIds
+          : type === 'round1'
+            ? [...initialCompletedIds]
+            : []
+        ).filter((wordId) => wordMap.has(wordId)),
+      ),
     );
 
     return {
@@ -168,6 +173,7 @@ export const LearningEngine = ({
   const [round1ConfirmedWordIds, setRound1ConfirmedWordIds] = useState<Set<string>>(
     () => new Set(initialEngineState.initialRound1ConfirmedIds),
   );
+  const [round1WaitingForMoreWords, setRound1WaitingForMoreWords] = useState(false);
 
   // 计算进度：分母固定为初始单词数，分子为已正确完成的单词数 + 1（代表当前正在进行的第几个）
   const initialUniqueCount = words.length;
@@ -180,7 +186,10 @@ export const LearningEngine = ({
     [passedQueueIndices],
   );
   const round1ConfirmedWordIdsArray = useMemo(
-    () => words.map((word) => word.id).filter((wordId) => round1ConfirmedWordIds.has(wordId)),
+    () =>
+      limitRound1ReinforcementWordIds(
+        words.map((word) => word.id).filter((wordId) => round1ConfirmedWordIds.has(wordId)),
+      ),
     [round1ConfirmedWordIds, words],
   );
 
@@ -326,6 +335,7 @@ export const LearningEngine = ({
     setShowAnswer(false);
     setIsSubmittingAttempt(false);
     setSubmitError('');
+    setRound1WaitingForMoreWords(false);
     setIsActionMenuOpen(false);
     setIsReportSheetOpen(false);
     setActionFeedback(null);
@@ -662,6 +672,90 @@ export const LearningEngine = ({
     [currentIndex, passedQueueIndicesArray, queue, round1ConfirmedWordIdsArray, type],
   );
 
+  const getRound1NoConfirmedMessage = useCallback(() => {
+    if (preferencesRef.current.reinforcementRound3Enabled) {
+      return '至少确认 1 个词后，才能进入回忆。';
+    }
+    if (preferencesRef.current.round2Enabled) {
+      return '至少确认 1 个词后，才能进入听写。';
+    }
+    return '至少确认 1 个词后，才能完成本组。';
+  }, []);
+
+  const completeRound1WithConfirmedWords = useCallback(
+    (overrides: Partial<LearningSessionSnapshot> = {}) => {
+      if (type !== 'round1') return false;
+      const confirmedWordIds = limitRound1ReinforcementWordIds(
+        overrides.round1ConfirmedWordIds ?? round1ConfirmedWordIdsArray,
+      );
+
+      if (confirmedWordIds.length === 0) {
+        setSubmitError(getRound1NoConfirmedMessage());
+        return false;
+      }
+
+      clearAnswerRevealTimeout();
+      stopPlayback();
+      setRound1WaitingForMoreWords(false);
+      setSubmitError('');
+      void attemptBuffer.flush();
+      void onComplete(
+        buildSessionSnapshot({
+          round: 'round1',
+          currentIndex: overrides.currentIndex ?? currentIndexRef.current,
+          queueWordIds: overrides.queueWordIds ?? queueRef.current.map((word) => word.id),
+          passedQueueIndices: overrides.passedQueueIndices ?? passedQueueIndicesArray,
+          round1ConfirmedWordIds: confirmedWordIds,
+        }),
+      );
+      return true;
+    },
+    [
+      buildSessionSnapshot,
+      clearAnswerRevealTimeout,
+      getRound1NoConfirmedMessage,
+      onComplete,
+      passedQueueIndicesArray,
+      round1ConfirmedWordIdsArray,
+      stopPlayback,
+      type,
+    ],
+  );
+
+  useEffect(() => {
+    const currentWordAlreadyConfirmed = Boolean(currentWord?.id && round1ConfirmedWordIds.has(currentWord.id));
+    if (
+      type !== 'round1' ||
+      (!round1WaitingForMoreWords && !currentWordAlreadyConfirmed) ||
+      currentIndex >= queue.length - 1
+    ) {
+      return;
+    }
+
+    const nextIndex = currentIndex + 1;
+    currentIndexRef.current = nextIndex;
+    setCurrentIndex(nextIndex);
+    setViewIndex(nextIndex);
+    setInputValue('');
+    setIsWrong(false);
+    setLastWrongInput(null);
+    setShowAnswer(false);
+    setSubmitError('');
+    setRound1WaitingForMoreWords(false);
+  }, [currentIndex, currentWord?.id, queue.length, round1ConfirmedWordIds, round1WaitingForMoreWords, type]);
+
+  useEffect(() => {
+    if (type !== 'round1' || !round1WaitingForMoreWords || round1CanWaitForMoreWords) return;
+    if (round1ConfirmedWordIdsArray.length === 0) return;
+    void completeRound1WithConfirmedWords();
+  }, [
+    completeRound1WithConfirmedWords,
+    round1CanWaitForMoreWords,
+    round1ConfirmedWordIdsArray.length,
+    round1WaitingForMoreWords,
+    type,
+  ]);
+
   useEffect(() => {
     if (!onSessionChange || type === 'review') return;
     const snapshot = buildSessionSnapshot();
@@ -702,12 +796,9 @@ export const LearningEngine = ({
       setSubmitError('');
     } else {
       if (type === 'round1') {
+        setRound1WaitingForMoreWords(true);
         setSubmitError(
-          preferencesRef.current.reinforcementRound3Enabled
-            ? '已到达当前预载末尾。可以点击左侧按钮进入回忆，或稍等下一批新词预载。'
-            : preferencesRef.current.round2Enabled
-              ? '已到达当前预载末尾。可以点击左侧按钮进入听写，或稍等下一批新词预载。'
-              : '已到达当前预载末尾。可以点击左侧按钮完成本组，或稍等下一批新词预载。',
+          `已通过 ${round1ConfirmedWordIdsRef.current.size}/${ROUND1_REINFORCEMENT_WORD_LIMIT} 个词，正在等待下一批新词预载。`,
         );
         return;
       }
@@ -1141,16 +1232,53 @@ export const LearningEngine = ({
         return next;
       });
       if (type === 'round1') {
-        setRound1ConfirmedWordIds((prev) => {
-          if (prev.has(currentWord.id)) return prev;
-          const next = new Set(prev);
-          next.add(currentWord.id);
-          return next;
-        });
+        const currentConfirmedWordIds = round1ConfirmedWordIdsArray.includes(currentWord.id)
+          ? round1ConfirmedWordIdsArray
+          : [...round1ConfirmedWordIdsArray, currentWord.id];
+        const nextConfirmedWordIds = limitRound1ReinforcementWordIds(currentConfirmedWordIds);
+        const nextPassedQueueIndices = [...passedQueueIndicesRef.current, currentIndexRef.current]
+          .filter((index, arrayIndex, allIndices) => allIndices.indexOf(index) === arrayIndex)
+          .sort((left, right) => left - right);
+        const currentQueueWordIds = queueRef.current.map((word) => word.id);
+        const isAtQueueEnd = currentIndexRef.current >= queueRef.current.length - 1;
+
+        setRound1ConfirmedWordIds(new Set(nextConfirmedWordIds));
         setIsWrong(false);
         setSubmitError('');
+        setInputValue('');
         clearAnswerRevealTimeout();
-        markCurrentQueueIndexPassed();
+        setPassedQueueIndices(new Set(nextPassedQueueIndices));
+
+        if (nextConfirmedWordIds.length >= ROUND1_REINFORCEMENT_WORD_LIMIT) {
+          completeRound1WithConfirmedWords({
+            currentIndex: currentIndexRef.current,
+            queueWordIds: currentQueueWordIds,
+            passedQueueIndices: nextPassedQueueIndices,
+            round1ConfirmedWordIds: nextConfirmedWordIds,
+          });
+          return;
+        }
+
+        if (isAtQueueEnd) {
+          if (round1CanWaitForMoreWords) {
+            stopPlayback();
+            setRound1WaitingForMoreWords(true);
+            setSubmitError(
+              `已通过 ${nextConfirmedWordIds.length}/${ROUND1_REINFORCEMENT_WORD_LIMIT} 个词，正在等待下一批新词预载。`,
+            );
+            return;
+          }
+
+          completeRound1WithConfirmedWords({
+            currentIndex: currentIndexRef.current,
+            queueWordIds: currentQueueWordIds,
+            passedQueueIndices: nextPassedQueueIndices,
+            round1ConfirmedWordIds: nextConfirmedWordIds,
+          });
+          return;
+        }
+
+        setRound1WaitingForMoreWords(false);
         nextWord();
         return;
       }
@@ -1224,57 +1352,18 @@ export const LearningEngine = ({
     type,
     nextWord,
     clearAnswerRevealTimeout,
+    completeRound1WithConfirmedWords,
+    stopPlayback,
     queue,
     currentIndex,
     preferences.clozeSentenceAutoPlayEnabled,
     preferences.correctAnswerRevealMs,
     preferences.wrongAnswerRevealMs,
+    round1CanWaitForMoreWords,
+    round1ConfirmedWordIdsArray,
     clozePrompt,
     playExampleSentence,
     markCurrentQueueIndexPassed,
-  ]);
-
-  const finishRound1WithConfirmedWords = useCallback(() => {
-    if (type !== 'round1' || isSubmittingAttempt || showAnswer || isViewingHistory) return;
-    if (round1ConfirmedWordIdsArray.length === 0) {
-      setSubmitError(
-        preferences.reinforcementRound3Enabled
-          ? '至少确认 1 个词后，才能进入回忆。'
-          : preferences.round2Enabled
-            ? '至少确认 1 个词后，才能进入听写。'
-            : '至少确认 1 个词后，才能完成本组。',
-      );
-      return;
-    }
-
-    clearAnswerRevealTimeout();
-    stopPlayback();
-    setSubmitError('');
-    void attemptBuffer.flush();
-    void onComplete(
-      buildSessionSnapshot({
-        round: 'round1',
-        currentIndex,
-        queueWordIds: queue.map((word) => word.id),
-        passedQueueIndices: passedQueueIndicesArray,
-        round1ConfirmedWordIds: round1ConfirmedWordIdsArray,
-      }),
-    );
-  }, [
-    buildSessionSnapshot,
-    clearAnswerRevealTimeout,
-    currentIndex,
-    isSubmittingAttempt,
-    isViewingHistory,
-    onComplete,
-    passedQueueIndicesArray,
-    preferences.reinforcementRound3Enabled,
-    preferences.round2Enabled,
-    queue,
-    round1ConfirmedWordIdsArray,
-    showAnswer,
-    stopPlayback,
-    type,
   ]);
 
   useEffect(() => {
@@ -1348,7 +1437,6 @@ export const LearningEngine = ({
   const isCorrect =
     inputValue.trim().length > 0 && stripDiacritics(inputValue.trim().toLowerCase()) === stripDiacritics(expectedInput);
   const primaryPos = viewedWord.pos_tags[0] ?? '未标注';
-  const actionDisabled = isViewingHistory || isSubmittingAttempt || (isDictationRound && showAnswer);
   const allowLiveCorrectTint = type === 'round1' || type === 'round3';
   const inputIsCorrect = !isWrong && allowLiveCorrectTint && isCorrect;
   const contentAreaClassName =
@@ -2016,30 +2104,7 @@ export const LearningEngine = ({
                         </div>
                       ) : (
                         <>
-                          <div className="grid grid-cols-[minmax(8.5rem,0.72fr)_minmax(0,3fr)] items-stretch gap-3">
-                            <button
-                              type="button"
-                              onClick={finishRound1WithConfirmedWords}
-                              disabled={
-                                actionDisabled ||
-                                showAnswer ||
-                                isViewingHistory ||
-                                round1ConfirmedWordIdsArray.length === 0
-                              }
-                              className="inline-flex min-h-9 items-center justify-center gap-2 rounded-[22px] border border-[#cf8922]/18 bg-[#fff6e2]/90 px-3 text-sm font-black text-[#b76f12] shadow-[0_10px_24px_rgba(207,137,34,0.10)] transition-all hover:bg-[#ffefc2] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#fff6e2]/90 sm:px-4"
-                            >
-                              <CheckCircle2 className="h-4 w-4 shrink-0" />
-                              <span className="min-w-0 truncate">
-                                {round1ConfirmedWordIdsArray.length}词
-                                {preferences.reinforcementRound3Enabled
-                                  ? '回忆'
-                                  : preferences.round2Enabled
-                                    ? '听写'
-                                    : '完成本组'}
-                              </span>
-                            </button>
-                            <div className="min-w-0">{inputField}</div>
-                          </div>
+                          <div className="min-w-0">{inputField}</div>
                           {submitErrorBanner && <div className="mt-2">{submitErrorBanner}</div>}
                         </>
                       )}
@@ -2069,6 +2134,7 @@ export const LearningEngine = ({
                           canPlaySentenceAudio={canPlayExampleAudio && Boolean(viewedClozeFullSentence)}
                           isSentencePlaying={activeExampleKey === viewedClozeSentenceAudioKey}
                           sentenceAudioLocale={audioLocale}
+                          translationText={viewedWord.chinese_definition}
                           onPlaySentence={() => {
                             if (!viewedClozeFullSentence || !viewedClozeSentenceAudioKey) return;
                             void playExampleSentence(viewedClozeFullSentence, viewedClozeSentenceAudioKey);

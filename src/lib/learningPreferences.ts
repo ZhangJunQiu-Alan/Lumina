@@ -24,7 +24,7 @@ export const LEARNING_PREFERENCES_DEFAULTS: LearningPreferences = {
   defaultPronunciationLocale: 'uk',
   ieltsTargetScore: 7,
   speechPlaybackRate: 1,
-  autoPlayEnabled: true,
+  autoPlayEnabled: false,
   autoPlayRepeatCount: 3,
   autoPlayRepeatGapMs: 1500,
   correctAnswerRevealMs: 1000,
@@ -45,6 +45,7 @@ export const CORRECT_ANSWER_REVEAL_OPTIONS = [800, 1000, 1500, 2000] as const;
 export const WRONG_ANSWER_REVEAL_OPTIONS = [3000, 5000, 8000] as const;
 
 const LOCAL_LEARNING_PREFERENCES_KEY = 'lumina.learning-preferences';
+type ReinforcementRoundPreferenceKey = 'round2Enabled' | 'reinforcementRound3Enabled';
 
 function isValidLocale(value: unknown): value is PronunciationLocale {
   return value === 'uk' || value === 'us';
@@ -82,6 +83,50 @@ function normalizeCorrectRevealMs(value: unknown): 800 | 1000 | 1500 | 2000 {
 function normalizeRevealMs(value: unknown): 3000 | 5000 | 8000 {
   if (value === 3000 || value === 5000 || value === 8000) return value;
   return LEARNING_PREFERENCES_DEFAULTS.wrongAnswerRevealMs;
+}
+
+function normalizeReinforcementRounds(
+  round2EnabledValue: unknown,
+  reinforcementRound3Value: unknown,
+): Pick<LearningPreferences, ReinforcementRoundPreferenceKey> {
+  const round2Enabled =
+    typeof round2EnabledValue === 'boolean' ? round2EnabledValue : LEARNING_PREFERENCES_DEFAULTS.round2Enabled;
+  const reinforcementRound3Enabled =
+    typeof reinforcementRound3Value === 'boolean'
+      ? reinforcementRound3Value
+      : LEARNING_PREFERENCES_DEFAULTS.reinforcementRound3Enabled;
+
+  if (!round2Enabled && !reinforcementRound3Enabled) {
+    return {
+      round2Enabled: LEARNING_PREFERENCES_DEFAULTS.round2Enabled,
+      reinforcementRound3Enabled: LEARNING_PREFERENCES_DEFAULTS.reinforcementRound3Enabled,
+    };
+  }
+
+  return {
+    round2Enabled,
+    reinforcementRound3Enabled,
+  };
+}
+
+export function buildReinforcementRoundTogglePatch(
+  current: Pick<LearningPreferences, ReinforcementRoundPreferenceKey>,
+  key: ReinforcementRoundPreferenceKey,
+  checked: boolean,
+): Pick<LearningPreferences, ReinforcementRoundPreferenceKey> {
+  const next = {
+    round2Enabled: current.round2Enabled,
+    reinforcementRound3Enabled: current.reinforcementRound3Enabled,
+    [key]: checked,
+  };
+
+  if (!next.round2Enabled && !next.reinforcementRound3Enabled) {
+    const pairedKey: ReinforcementRoundPreferenceKey =
+      key === 'round2Enabled' ? 'reinforcementRound3Enabled' : 'round2Enabled';
+    next[pairedKey] = true;
+  }
+
+  return next;
 }
 
 function normalizeLearningPreferences(
@@ -130,6 +175,7 @@ function normalizeLearningPreferences(
   const memoryTipValue = hasCamelCaseShape
     ? (input as Partial<LearningPreferences>).memoryTipEnabled
     : (input as LearningPreferencesRow | null | undefined)?.memory_tip_enabled;
+  const reinforcementRounds = normalizeReinforcementRounds(round2EnabledValue, reinforcementRound3Value);
 
   return {
     defaultPronunciationLocale: isValidLocale(localeValue)
@@ -142,12 +188,8 @@ function normalizeLearningPreferences(
     autoPlayRepeatGapMs: normalizeGapMs(gapMsValue),
     correctAnswerRevealMs: normalizeCorrectRevealMs(correctRevealMsValue),
     wrongAnswerRevealMs: normalizeRevealMs(revealMsValue),
-    round2Enabled:
-      typeof round2EnabledValue === 'boolean' ? round2EnabledValue : LEARNING_PREFERENCES_DEFAULTS.round2Enabled,
-    reinforcementRound3Enabled:
-      typeof reinforcementRound3Value === 'boolean'
-        ? reinforcementRound3Value
-        : LEARNING_PREFERENCES_DEFAULTS.reinforcementRound3Enabled,
+    round2Enabled: reinforcementRounds.round2Enabled,
+    reinforcementRound3Enabled: reinforcementRounds.reinforcementRound3Enabled,
     reinforcementArticleEnabled:
       typeof reinforcementArticleValue === 'boolean'
         ? reinforcementArticleValue

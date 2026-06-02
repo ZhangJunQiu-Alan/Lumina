@@ -4,6 +4,7 @@ import {
   createInitialLearningSession,
   createResumeCandidate,
   filterMasteredSessionWords,
+  filterWordsToRound1Confirmed,
   isCoreLearningComplete,
   normalizePersistedLearningSession,
   normalizeSessionRound1ConfirmedWordIds,
@@ -18,6 +19,7 @@ import {
 } from '../src/lib/officialLibrary.js';
 import { IELTS_WORDS_FLAT } from '../src/data/ielts-vocab.js';
 import { resolveActuallyLearnedWordIds } from '../shared/officialDiscard.js';
+import { ROUND1_REINFORCEMENT_WORD_LIMIT } from '../shared/learningProgress.js';
 import type { Word } from '../src/types.js';
 
 const emptyWordExtras = {
@@ -83,6 +85,27 @@ const words: Word[] = [
   },
 ];
 
+function makeNumberedWords(count: number): Word[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `w${index + 1}`,
+    word: `word${index + 1}`,
+    phonetic: `/word${index + 1}/`,
+    pos_tags: ['n'],
+    ner_entities: [],
+    chinese_definition: `释义 ${index + 1}`,
+    senses: [
+      {
+        pos: 'n',
+        meaning_zh: `释义 ${index + 1}`,
+        example_sentence: `This is word${index + 1}.`,
+        example_translation_zh: '',
+      },
+    ],
+    example_sentences: [`This is word${index + 1}.`],
+    ...emptyWordExtras,
+  }));
+}
+
 assert.deepEqual(normalizeSessionQueueWordIds(['w2', null, 'w1', 42, '', 'w2']), ['w2', 'w1', 'w2']);
 
 assert.deepEqual(normalizeSessionRound1ConfirmedWordIds(['w2', null, 'w1', 42, '', 'w2', ' w3 ']), ['w2', 'w1', 'w3']);
@@ -139,6 +162,31 @@ assert.equal(fallback.currentIndex, 0);
 assert.deepEqual(fallback.queueWordIds, ['w3']);
 assert.deepEqual(fallback.passedQueueIndices, []);
 assert.deepEqual(fallback.round1ConfirmedWordIds, ['w3']);
+
+const manyWords = makeNumberedWords(45);
+const manyWordIds = manyWords.map((word) => word.id);
+const expectedRound1ConfirmedWordIds = manyWordIds.slice(0, ROUND1_REINFORCEMENT_WORD_LIMIT);
+assert.deepEqual(
+  filterWordsToRound1Confirmed(manyWords, manyWordIds).map((word) => word.id),
+  expectedRound1ConfirmedWordIds,
+);
+
+const normalizedMany = normalizePersistedLearningSession(
+  {
+    groupId: 'g-many',
+    round: 'round2',
+    currentIndex: 44,
+    queueWordIds: manyWordIds,
+    passedQueueIndices: manyWordIds.map((_, index) => index),
+    round1ConfirmedWordIds: manyWordIds,
+    lastActiveAt: '2026-04-18T00:00:00.000Z',
+    groupCompleted: false,
+    completedAt: null,
+  },
+  manyWords,
+);
+assert.deepEqual(normalizedMany.queueWordIds, expectedRound1ConfirmedWordIds);
+assert.deepEqual(normalizedMany.round1ConfirmedWordIds, expectedRound1ConfirmedWordIds);
 
 const initial = createInitialLearningSession('g2', words);
 assert.equal(initial.groupId, 'g2');
@@ -248,7 +296,7 @@ assert.deepEqual(
     fallbackWordIds: Array.from({ length: 45 }, (_, index) => `w${index + 1}`),
     round1ConfirmedWordIds: Array.from({ length: 45 }, (_, index) => `w${index + 1}`),
   }),
-  Array.from({ length: 45 }, (_, index) => `w${index + 1}`),
+  Array.from({ length: ROUND1_REINFORCEMENT_WORD_LIMIT }, (_, index) => `w${index + 1}`),
 );
 
 assert.deepEqual(
