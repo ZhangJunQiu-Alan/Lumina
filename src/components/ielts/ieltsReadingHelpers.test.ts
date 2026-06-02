@@ -21,6 +21,7 @@ import {
   getAnswerPart,
   getEmbeddedFiguresAfterParagraph,
   getInstructionLines,
+  getIntroPassageFigures,
   getQuestionDisplayPrompt,
   getQuestionGroupFigures,
   getQuestionGroupRangeLabel,
@@ -261,6 +262,21 @@ describe('passage figures', () => {
     const group = makeGroup({ prompt: 'Questions 21-23', instructions: 'Label the diagram.' });
 
     expect(getQuestionGroupFigures(passage, group).map((figure) => figure.figureKey)).toEqual(['question-21-23']);
+  });
+
+  it('keeps source-PDF intro figures before the passage body', () => {
+    const passage = makePassage({
+      figures: [
+        makeFigure({ figureKey: 'inline-map', anchorText: 'See map', sortOrder: 1 }),
+        makeFigure({ figureKey: 'intro-photo-2', anchorText: '__before_body__', sortOrder: 2 }),
+        makeFigure({ figureKey: 'intro-photo-1', anchorText: '__before_body__', sortOrder: 1 }),
+      ],
+    });
+
+    expect(getIntroPassageFigures(passage).map((figure) => figure.figureKey)).toEqual([
+      'intro-photo-1',
+      'intro-photo-2',
+    ]);
   });
 });
 

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { BookOpenCheck, Headphones, Settings2, Sparkles, X } from 'lucide-react';
+import { ArrowLeftRight, BookOpenCheck, Bug, Keyboard, Sparkles, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { IslandButton, IslandIconButton, IslandModalShell } from './AnimalPrimitives';
 
-const VERSION_KEY = 'lumina_whatsnew_2026_06_02_dictation_review_v1'; // Bump this key to show the modal again in future updates
+const VERSION_KEY = 'lumina_whatsnew_2026_06_02_known_fixes_v1'; // Bump this key to show the modal again in future updates
 
 export function WhatsNewModal() {
   const navigate = useNavigate();
@@ -61,38 +61,41 @@ export function WhatsNewModal() {
               </div>
 
               <h2 className="mb-2 text-2xl font-black text-text-primary">上次以来的更新</h2>
-              <p className="mb-6 text-sm font-medium text-text-secondary">复习和听写体验继续优化：</p>
+              <p className="mb-6 text-sm font-medium text-text-secondary">本次更新：</p>
 
               <div className="space-y-4 mb-8">
                 <div className="flex gap-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#eef2ff] text-[#4f46e5]">
-                    <BookOpenCheck className="h-4 w-4" />
+                    <Bug className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-text-primary">优化学习步骤</h3>
-                    <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                      第二轮复习巩固，第三轮听写纠错，学习更贴近真实记忆。
-                    </p>
+                    <h3 className="text-sm font-bold leading-relaxed text-text-primary">修复了一些已知BUG</h3>
                   </div>
                 </div>
                 <div className="flex gap-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e0f2fe] text-[#0284c7]">
-                    <Headphones className="h-4 w-4" />
+                    <Keyboard className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-text-primary">默写模式</h3>
-                    <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-                      听写和复习支持听写模式，关闭自动朗读，显示单词意思。
-                    </p>
+                    <h3 className="text-sm font-bold leading-relaxed text-text-primary">记忆轮输入正确自动提交</h3>
                   </div>
                 </div>
                 <div className="flex gap-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#ecfdf5] text-[#16a34a]">
-                    <Settings2 className="h-4 w-4" />
+                    <ArrowLeftRight className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-text-primary">音标</h3>
-                    <p className="mt-1 text-xs text-text-secondary leading-relaxed">听写和复习显示音标。</p>
+                    <h3 className="text-sm font-bold leading-relaxed text-text-primary">支持了词卡滑动切换</h3>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#fff8df] text-[#d78918]">
+                    <BookOpenCheck className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold leading-relaxed text-text-primary">
+                      修正了剑桥雅思4-6册雅思阅读文字错误
+                    </h3>
                   </div>
                 </div>
               </div>

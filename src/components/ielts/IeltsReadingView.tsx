@@ -61,6 +61,7 @@ import {
   getAnswerPart,
   getEmbeddedFiguresAfterParagraph,
   getInstructionLines,
+  getIntroPassageFigures,
   getPassageParagraphs,
   getQuestionDisplayPrompt,
   getQuestionGroupFigures,
@@ -268,11 +269,12 @@ function CompletionSourceBlock({
 
 function EmbeddedPassageFigureBlock({ figure }: { figure: IeltsReadingPassageFigure }) {
   const imageAlt = figure.caption ? `${figure.title}: ${figure.caption}` : figure.title;
-  const imageMaxWidth = figure.figureKey.startsWith('question-')
-    ? 'max-w-[760px]'
-    : figure.figureKey === 'fig-1'
-      ? 'max-w-[240px]'
-      : 'max-w-[520px]';
+  const imageMaxWidth =
+    figure.figureKey.startsWith('question-') || figure.figureKey.startsWith('intro-')
+      ? 'max-w-[760px]'
+      : figure.figureKey === 'fig-1'
+        ? 'max-w-[240px]'
+        : 'max-w-[520px]';
   const fallback =
     figure.fallback.headers && figure.fallback.rows
       ? { headers: figure.fallback.headers, rows: figure.fallback.rows }
@@ -1774,6 +1776,10 @@ export function IeltsReadingTestView() {
                     className="space-y-7 font-serif font-medium leading-[1.72] text-[#25252a]"
                     style={{ fontSize: `${fontSize}px` }}
                   >
+                    {getIntroPassageFigures(selectedPassageData).map((figure) => (
+                      <EmbeddedPassageFigureBlock key={figure.id} figure={figure} />
+                    ))}
+
                     {getPassageParagraphs(selectedPassageData.body).map((paragraph, index) => {
                       const isPartHeading = isPassagePartHeading(paragraph);
                       const figures = getEmbeddedFiguresAfterParagraph(selectedPassageData, paragraph);

@@ -56,6 +56,7 @@ export const Round2ClozePrompt = ({
   isSentencePlaying = false,
   onPlaySentence,
   sentenceAudioLocale = 'uk',
+  wordInfoText,
   translationText,
 }: {
   prompt: ClozePrompt;
@@ -67,14 +68,16 @@ export const Round2ClozePrompt = ({
   isSentencePlaying?: boolean;
   onPlaySentence?: () => void;
   sentenceAudioLocale?: PronunciationLocale;
+  wordInfoText?: string;
   translationText?: string;
 }) => {
   const hasPhonetic = Boolean(phonetic);
   const displayTranslation = translationText ?? prompt.translation;
+  const displayWordInfo = wordInfoText || '根据语境听写单词';
 
   return (
     <div className="mx-auto max-w-3xl">
-      <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary/60">根据语境听写单词</p>
+      <p className="min-h-7 text-base font-black leading-7 text-black md:text-lg">{displayWordInfo}</p>
 
       {hasPhonetic && (
         <p

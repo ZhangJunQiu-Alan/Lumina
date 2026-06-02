@@ -138,6 +138,15 @@ function submitRound1Word(word: string) {
   fireEvent.submit(input.closest('form') as HTMLFormElement);
 }
 
+function swipeCardByText(text: string, direction: 'left' | 'right') {
+  const target = screen.getAllByText(text)[0];
+  const startX = direction === 'left' ? 240 : 80;
+  const endX = direction === 'left' ? 80 : 240;
+
+  fireEvent.touchStart(target, { touches: [{ clientX: startX, clientY: 120 }] });
+  fireEvent.touchEnd(target, { changedTouches: [{ clientX: endX, clientY: 124 }] });
+}
+
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -301,6 +310,55 @@ describe('LearningEngine autoplay', () => {
     expect(instances[1]?.pause).not.toHaveBeenCalled();
   });
 
+  it('keeps autoplay alive after a mastered round 1 word advances and the parent echoes the session', async () => {
+    testState.preferences = {
+      ...testState.preferences,
+      autoPlayEnabled: true,
+    };
+    const { AudioMock, instances } = installAudioMock();
+    const words = [
+      makeWord({ id: 'w1', word: 'daily', audio_uk_url: 'https://example.com/daily-uk.mp3' }),
+      makeWord({ id: 'w2', word: 'fume', audio_uk_url: 'https://example.com/fume-uk.mp3' }),
+    ];
+
+    function Harness() {
+      const [session, setSession] = useState<PersistedLearningSession | null>(null);
+      const handleSessionChange = (snapshot: LearningSessionSnapshot) => {
+        setSession({
+          groupId: 'g1',
+          round: snapshot.round,
+          currentIndex: snapshot.currentIndex,
+          queueWordIds: snapshot.queueWordIds,
+          passedQueueIndices: snapshot.passedQueueIndices,
+          round1ConfirmedWordIds: snapshot.round1ConfirmedWordIds,
+          lastActiveAt: new Date(0).toISOString(),
+          groupCompleted: false,
+          completedAt: null,
+        });
+      };
+
+      return (
+        <LearningEngine
+          type="round1"
+          words={words}
+          initialSession={session}
+          onComplete={vi.fn()}
+          onSessionChange={handleSessionChange}
+        />
+      );
+    }
+
+    render(<Harness />);
+    await waitFor(() => expect(AudioMock).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getAllByRole('button', { name: '更多操作' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: '标记已掌握' })[0]);
+
+    await waitFor(() => expect(AudioMock).toHaveBeenCalledTimes(2));
+    expect(AudioMock).toHaveBeenLastCalledWith('https://example.com/fume-uk.mp3');
+    expect(instances[1]?.pause).not.toHaveBeenCalled();
+  });
+
   it('toggles the round 3 phonetic hint from the corner switch', () => {
     render(<LearningEngine type="round3" words={[makeWord()]} onComplete={vi.fn()} />);
 
@@ -327,24 +385,47 @@ describe('LearningEngine autoplay', () => {
     expect(screen.getByLabelText('当前词音标')).toHaveTextContent('/deili/');
   });
 
-  it('shows the word definition instead of the sentence translation in round 3 cloze dictation', () => {
+  it('shows the current sense info and sentence translation in round 3 cloze dictation', () => {
     render(<LearningEngine type="round3" words={[makeWord()]} onComplete={vi.fn()} />);
 
-    expect(screen.getByText('每日的')).toBeInTheDocument();
-    expect(screen.queryByText('我每天读报纸。')).not.toBeInTheDocument();
+    expect(screen.getByText('adj. 每天发生的或使用的。')).toBeInTheDocument();
+    expect(screen.getByText('我每天读报纸。')).toBeInTheDocument();
+    expect(screen.queryByText('每日的')).not.toBeInTheDocument();
   });
 
-  it('shows the word definition instead of the sentence translation in review cloze dictation', () => {
+  it('shows the current sense info and sentence translation in review cloze dictation', () => {
     render(<LearningEngine type="review" words={[makeWord()]} onComplete={vi.fn()} />);
 
-    expect(screen.getByText('每日的')).toBeInTheDocument();
-    expect(screen.queryByText('我每天读报纸。')).not.toBeInTheDocument();
+    expect(screen.getByText('adj. 每天发生的或使用的。')).toBeInTheDocument();
+    expect(screen.getByText('我每天读报纸。')).toBeInTheDocument();
+    expect(screen.queryByText('每日的')).not.toBeInTheDocument();
   });
 
   it('does not render the round 1 manual entry button', () => {
     render(<LearningEngine type="round1" words={makeWords(2)} onComplete={vi.fn()} />);
 
     expect(screen.queryByRole('button', { name: /\d+词(回忆|听写|完成本组)/ })).not.toBeInTheDocument();
+  });
+
+  it('auto-submits round 1 when the input exactly matches the current word', async () => {
+    const words = makeWords(2);
+
+    render(<LearningEngine type="round1" words={words} onComplete={vi.fn()} />);
+
+    fireEvent.change(screen.getByPlaceholderText('拼写'), { target: { value: words[0].word } });
+
+    await waitFor(() => expect(screen.getAllByText(words[1].word).length).toBeGreaterThan(0));
+  });
+
+  it('does not auto-submit an incomplete round 1 input', async () => {
+    const words = makeWords(2);
+
+    render(<LearningEngine type="round1" words={words} onComplete={vi.fn()} />);
+
+    fireEvent.change(screen.getByPlaceholderText('拼写'), { target: { value: 'wor' } });
+
+    expect(screen.getAllByText(words[0].word).length).toBeGreaterThan(0);
+    expect(screen.queryByText(words[1].word)).not.toBeInTheDocument();
   });
 
   it('auto-completes round 1 after 30 confirmed words', async () => {
@@ -361,6 +442,41 @@ describe('LearningEngine autoplay', () => {
     const snapshot = onComplete.mock.calls[0]?.[0] as LearningSessionSnapshot;
     expect(snapshot.round).toBe('round1');
     expect(snapshot.round1ConfirmedWordIds).toEqual(words.slice(0, 30).map((word) => word.id));
+  });
+
+  it('only completes round 1 once and stops emitting round 1 snapshots while completing', async () => {
+    const words = makeWords(31);
+    const onComplete = vi.fn();
+    const onSessionChange = vi.fn();
+
+    render(<LearningEngine type="round1" words={words} onComplete={onComplete} onSessionChange={onSessionChange} />);
+
+    for (const word of words.slice(0, 30)) {
+      submitRound1Word(word.word);
+    }
+
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+    expect(
+      onSessionChange.mock.calls.some(
+        (call) => (call[0] as LearningSessionSnapshot).round1ConfirmedWordIds.length >= 30,
+      ),
+    ).toBe(false);
+  });
+
+  it('uses the round 1 reinforcement limit as the progress target for long official queues', async () => {
+    const words = makeWords(70);
+
+    render(<LearningEngine type="round1" words={words} onComplete={vi.fn()} round1CanWaitForMoreWords />);
+
+    for (const word of words.slice(0, 30)) {
+      submitRound1Word(word.word);
+    }
+
+    await waitFor(() => {
+      const progress = screen.getByRole('progressbar', { name: /这一轮进度/ });
+      expect(progress).toHaveAttribute('aria-valuemax', '30');
+      expect(progress).toHaveAttribute('aria-valuenow', '30');
+    });
   });
 
   it('excludes round 1 mastered words from the 30 confirmed word limit', async () => {
@@ -406,6 +522,30 @@ describe('LearningEngine autoplay', () => {
 
     masteredRequest.resolve(undefined as MasteredResponse);
     await waitFor(() => expect(screen.getByText('已掌握 word1')).toBeInTheDocument());
+  });
+
+  it.each(['round2', 'round3'] as const)('supports touch navigation in %s using the existing card history', (type) => {
+    const words = makeWords(2);
+    const session: PersistedLearningSession = {
+      groupId: 'g1',
+      round: type,
+      currentIndex: 1,
+      queueWordIds: words.map((word) => word.id),
+      passedQueueIndices: [0],
+      round1ConfirmedWordIds: words.map((word) => word.id),
+      lastActiveAt: new Date(0).toISOString(),
+      groupCompleted: false,
+      completedAt: null,
+    };
+
+    render(<LearningEngine type={type} words={words} initialSession={session} onComplete={vi.fn()} />);
+
+    const currentText = type === 'round2' ? words[1].word : `n. ${words[1].chinese_definition}`;
+    const previousText = type === 'round2' ? words[0].word : `n. ${words[0].chinese_definition}`;
+
+    expect(screen.getAllByText(currentText).length).toBeGreaterThan(0);
+    swipeCardByText(currentText, 'right');
+    expect(screen.getAllByText(previousText).length).toBeGreaterThan(0);
   });
 
   it('puts an optimistically mastered round 1 word back into the round when the request fails', async () => {

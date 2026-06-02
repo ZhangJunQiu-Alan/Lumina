@@ -363,6 +363,12 @@ export function getEmbeddedFiguresAfterParagraph(
   ];
 }
 
+export function getIntroPassageFigures(passage: IeltsReadingPassage): IeltsReadingPassageFigure[] {
+  return passage.figures
+    .filter((figure) => figure.anchorText === '__before_body__')
+    .sort((left, right) => left.sortOrder - right.sortOrder);
+}
+
 export function getQuestionGroupFigures(
   passage: IeltsReadingPassage,
   group: IeltsReadingQuestionGroup,

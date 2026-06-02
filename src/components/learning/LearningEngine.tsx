@@ -72,6 +72,22 @@ function areWordQueuesEqual(left: Word[], right: Word[]) {
   return left.length === right.length && left.every((word, index) => word.id === right[index]?.id);
 }
 
+function areNumberArraysEqual(left: readonly number[] = [], right: readonly number[] = []) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function formatClozeWordInfo(pos: string | undefined | null, meaning: string | undefined | null) {
+  const trimmedPos = pos?.trim();
+  const trimmedMeaning = meaning?.trim();
+
+  if (trimmedPos && trimmedMeaning) {
+    const displayPos = trimmedPos.endsWith('.') ? trimmedPos : `${trimmedPos}.`;
+    return `${displayPos} ${trimmedMeaning}`;
+  }
+
+  return trimmedMeaning || trimmedPos || '';
+}
+
 function isWordQueuePrefix(prefix: Word[], full: Word[]) {
   return prefix.length <= full.length && prefix.every((word, index) => word.id === full[index]?.id);
 }
@@ -183,12 +199,22 @@ export const LearningEngine = ({
   );
   const [round1WaitingForMoreWords, setRound1WaitingForMoreWords] = useState(false);
 
-  // 计算进度：分母固定为初始单词数，分子为已正确完成的单词数 + 1（代表当前正在进行的第几个）
   const initialUniqueCount = words.length;
+  const round1ProgressTarget =
+    type === 'round1'
+      ? round1CanWaitForMoreWords
+        ? ROUND1_REINFORCEMENT_WORD_LIMIT
+        : Math.min(Math.max(words.length, 1), ROUND1_REINFORCEMENT_WORD_LIMIT)
+      : initialUniqueCount;
+  const progressQueueLength = type === 'round1' ? round1ProgressTarget : initialUniqueCount;
   const completedCount = completedWordIds.size;
-  const displayNumerator = Math.min(completedCount + 1, initialUniqueCount);
+  const displayNumerator = Math.min(completedCount + 1, progressQueueLength);
   const displayProgressIndex =
-    type === 'round2' ? Math.min(currentIndex, Math.max(initialUniqueCount - 1, 0)) : displayNumerator - 1;
+    type === 'round1'
+      ? Math.min(Math.max(round1ConfirmedWordIds.size - 1, 0), Math.max(progressQueueLength - 1, 0))
+      : type === 'round2'
+        ? Math.min(currentIndex, Math.max(progressQueueLength - 1, 0))
+        : displayNumerator - 1;
   const passedQueueIndicesArray = useMemo(
     () => [...passedQueueIndices].sort((left, right) => left - right),
     [passedQueueIndices],
@@ -226,6 +252,9 @@ export const LearningEngine = ({
   const lastRound1PreloadKeyRef = useRef<string | null>(null);
   const lastRound2PreloadKeyRef = useRef<string | null>(null);
   const lastSessionSnapshotSignatureRef = useRef<string | null>(null);
+  const round1CompletionInFlightRef = useRef(false);
+  const round1AutoSubmitKeyRef = useRef<string | null>(null);
+  const round1SubmittedInputKeyRef = useRef<string | null>(null);
   const preferencesRef = useRef(preferences);
   const canPlayExampleAudio = useMemo(() => typeof Audio !== 'undefined' || isBrowserSpeechSupported(), []);
 
@@ -277,6 +306,11 @@ export const LearningEngine = ({
       .replace(/\s+/g, ' ')
       .trim();
   }, [viewedClozePrompt, viewedWord]);
+  const viewedClozeSense = viewedClozePrompt && viewedWord ? viewedWord.senses[viewedClozePrompt.senseIndex] : null;
+  const viewedClozeWordInfoText = formatClozeWordInfo(
+    viewedClozeSense?.pos || viewedWord?.pos_tags[0],
+    viewedClozeSense?.meaning_zh || viewedWord?.chinese_definition,
+  );
   const viewedClozeSentenceAudioKey =
     viewedClozePrompt && viewedWord ? `${viewedWord.id}:${viewIndex}:cloze-sentence` : '';
   const expectedInput = (clozePrompt ? clozePrompt.expectedForm : (currentWord?.word ?? '')).trim().toLowerCase();
@@ -317,17 +351,17 @@ export const LearningEngine = ({
   }, []);
 
   useEffect(() => {
-    const isSameProgress =
+    const currentPassedQueueIndices = [...passedQueueIndicesRef.current].sort((left, right) => left - right);
+    const hasSamePersistedProgress =
       currentIndexRef.current === initialEngineState.currentIndex &&
-      areSetsEqual(completedWordIdsRef.current, initialEngineState.initialCompletedIds) &&
-      areSetsEqual(passedQueueIndicesRef.current, new Set(initialEngineState.initialPassedQueueIndices)) &&
+      areNumberArraysEqual(currentPassedQueueIndices, initialEngineState.initialPassedQueueIndices) &&
       areSetsEqual(round1ConfirmedWordIdsRef.current, initialEngineState.initialRound1ConfirmedIds);
 
-    if (isSameProgress && areWordQueuesEqual(queueRef.current, initialEngineState.queue)) {
+    if (hasSamePersistedProgress && areWordQueuesEqual(queueRef.current, initialEngineState.queue)) {
       return;
     }
 
-    if (isSameProgress && isWordQueuePrefix(queueRef.current, initialEngineState.queue)) {
+    if (hasSamePersistedProgress && isWordQueuePrefix(queueRef.current, initialEngineState.queue)) {
       queueRef.current = initialEngineState.queue;
       setQueue(initialEngineState.queue);
       return;
@@ -351,6 +385,9 @@ export const LearningEngine = ({
     setReportTargetWord(null);
     setReportIssueType('definition');
     setReportNote('');
+    round1CompletionInFlightRef.current = false;
+    round1AutoSubmitKeyRef.current = null;
+    round1SubmittedInputKeyRef.current = null;
     setCompletedWordIds(new Set(initialEngineState.initialCompletedIds));
     setPassedQueueIndices(new Set(initialEngineState.initialPassedQueueIndices));
     setRound1ConfirmedWordIds(new Set(initialEngineState.initialRound1ConfirmedIds));
@@ -693,6 +730,8 @@ export const LearningEngine = ({
   const completeRound1WithConfirmedWords = useCallback(
     (overrides: Partial<LearningSessionSnapshot> = {}) => {
       if (type !== 'round1') return false;
+      if (round1CompletionInFlightRef.current) return true;
+
       const confirmedWordIds = limitRound1ReinforcementWordIds(
         overrides.round1ConfirmedWordIds ?? round1ConfirmedWordIdsArray,
       );
@@ -704,6 +743,7 @@ export const LearningEngine = ({
 
       clearAnswerRevealTimeout();
       stopPlayback();
+      round1CompletionInFlightRef.current = true;
       setRound1WaitingForMoreWords(false);
       setSubmitError('');
       void attemptBuffer.flush();
@@ -766,6 +806,8 @@ export const LearningEngine = ({
 
   useEffect(() => {
     if (!onSessionChange || type === 'review') return;
+    if (type === 'round1' && round1CompletionInFlightRef.current) return;
+
     const snapshot = buildSessionSnapshot();
     const signature = JSON.stringify([
       snapshot.round,
@@ -1169,19 +1211,15 @@ export const LearningEngine = ({
   ]);
 
   const swipeStartRef = useRef<{ x: number; y: number; valid: boolean } | null>(null);
-  const handleCardTouchStart = useCallback(
-    (event: React.TouchEvent<HTMLDivElement>) => {
-      if (type !== 'round1') return;
-      const touch = event.touches[0];
-      if (!touch) return;
-      const target = event.target as HTMLElement | null;
-      const isInteractive = Boolean(
-        target?.closest('input, textarea, button, a, [role="button"], [contenteditable="true"]'),
-      );
-      swipeStartRef.current = { x: touch.clientX, y: touch.clientY, valid: !isInteractive };
-    },
-    [type],
-  );
+  const handleCardTouchStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    const touch = event.touches[0];
+    if (!touch) return;
+    const target = event.target as HTMLElement | null;
+    const isInteractive = Boolean(
+      target?.closest('input, textarea, button, a, [role="button"], [contenteditable="true"]'),
+    );
+    swipeStartRef.current = { x: touch.clientX, y: touch.clientY, valid: !isInteractive };
+  }, []);
   const handleCardTouchEnd = useCallback(
     (event: React.TouchEvent<HTMLDivElement>) => {
       const start = swipeStartRef.current;
@@ -1290,156 +1328,165 @@ export const LearningEngine = ({
     showAnswer,
   ]);
 
-  const validateCurrentInput = useCallback(async () => {
-    // 防止重复提交
-    if (showAnswer || isSubmittingAttempt || isViewingHistory) return;
+  const validateCurrentInput = useCallback(
+    async (rawInput = inputValue) => {
+      // 防止重复提交
+      if (showAnswer || isSubmittingAttempt || isViewingHistory) return;
 
-    const trimmedInput = inputValue.trim().toLowerCase();
-    const wasCorrect = stripDiacritics(trimmedInput) === stripDiacritics(expectedInput);
+      const trimmedInput = rawInput.trim().toLowerCase();
+      const wasCorrect = stripDiacritics(trimmedInput) === stripDiacritics(expectedInput);
+      const round1SubmissionKey = type === 'round1' && currentWord ? `${currentWord.id}:${expectedInput}` : null;
 
-    // 后台静默保存，不再阻塞 UI 切换
-    void persistAttempt(wasCorrect);
-
-    if (wasCorrect) {
-      setCompletedWordIds((prev) => {
-        const next = new Set(prev);
-        next.add(currentWord.id);
-        return next;
-      });
-      if (type === 'round1') {
-        const currentConfirmedWordIds = round1ConfirmedWordIdsArray.includes(currentWord.id)
-          ? round1ConfirmedWordIdsArray
-          : [...round1ConfirmedWordIdsArray, currentWord.id];
-        const nextConfirmedWordIds = limitRound1ReinforcementWordIds(currentConfirmedWordIds);
-        const nextPassedQueueIndices = [...passedQueueIndicesRef.current, currentIndexRef.current]
-          .filter((index, arrayIndex, allIndices) => allIndices.indexOf(index) === arrayIndex)
-          .sort((left, right) => left - right);
-        const currentQueueWordIds = queueRef.current.map((word) => word.id);
-        const isAtQueueEnd = currentIndexRef.current >= queueRef.current.length - 1;
-
-        setRound1ConfirmedWordIds(new Set(nextConfirmedWordIds));
-        setIsWrong(false);
-        setSubmitError('');
-        setInputValue('');
-        clearAnswerRevealTimeout();
-        setPassedQueueIndices(new Set(nextPassedQueueIndices));
-
-        if (nextConfirmedWordIds.length >= ROUND1_REINFORCEMENT_WORD_LIMIT) {
-          completeRound1WithConfirmedWords({
-            currentIndex: currentIndexRef.current,
-            queueWordIds: currentQueueWordIds,
-            passedQueueIndices: nextPassedQueueIndices,
-            round1ConfirmedWordIds: nextConfirmedWordIds,
-          });
-          return;
-        }
-
-        if (isAtQueueEnd) {
-          if (round1CanWaitForMoreWords) {
-            stopPlayback();
-            setRound1WaitingForMoreWords(true);
-            setSubmitError(
-              `已通过 ${nextConfirmedWordIds.length}/${ROUND1_REINFORCEMENT_WORD_LIMIT} 个词，正在等待下一批新词预载。`,
-            );
-            return;
-          }
-
-          completeRound1WithConfirmedWords({
-            currentIndex: currentIndexRef.current,
-            queueWordIds: currentQueueWordIds,
-            passedQueueIndices: nextPassedQueueIndices,
-            round1ConfirmedWordIds: nextConfirmedWordIds,
-          });
-          return;
-        }
-
-        setRound1WaitingForMoreWords(false);
-        nextWord();
-        return;
+      if (wasCorrect && round1SubmissionKey) {
+        if (round1SubmittedInputKeyRef.current === round1SubmissionKey) return;
+        round1SubmittedInputKeyRef.current = round1SubmissionKey;
       }
 
-      if (isDictationRound) {
-        setShowAnswer(true);
-        setIsWrong(false);
-        clearAnswerRevealTimeout();
+      // 后台静默保存，不再阻塞 UI 切换
+      void persistAttempt(wasCorrect);
 
-        const advance = () => {
-          answerRevealTimeoutRef.current = null;
-          setShowAnswer(false);
-          markCurrentQueueIndexPassed();
-          nextWord();
-        };
+      if (wasCorrect) {
+        setCompletedWordIds((prev) => {
+          const next = new Set(prev);
+          next.add(currentWord.id);
+          return next;
+        });
+        if (type === 'round1') {
+          const currentConfirmedWordIds = round1ConfirmedWordIdsArray.includes(currentWord.id)
+            ? round1ConfirmedWordIdsArray
+            : [...round1ConfirmedWordIdsArray, currentWord.id];
+          const nextConfirmedWordIds = limitRound1ReinforcementWordIds(currentConfirmedWordIds);
+          const nextPassedQueueIndices = [...passedQueueIndicesRef.current, currentIndexRef.current]
+            .filter((index, arrayIndex, allIndices) => allIndices.indexOf(index) === arrayIndex)
+            .sort((left, right) => left - right);
+          const currentQueueWordIds = queueRef.current.map((word) => word.id);
+          const isAtQueueEnd = currentIndexRef.current >= queueRef.current.length - 1;
 
-        if (isDictationRound && clozePrompt && preferences.clozeSentenceAutoPlayEnabled) {
-          const fullSentence = (currentWord.senses[clozePrompt.senseIndex]?.example_sentence ?? '')
-            .replace(/\*\*(.+?)\*\*/g, '$1')
-            .trim();
-          if (fullSentence) {
-            const token = Symbol('correct-readback');
-            correctReadbackTokenRef.current = token;
-            const playKey = `${currentWord.id}-correct-readback`;
-            void playExampleSentence(fullSentence, playKey).then(() => {
-              if (correctReadbackTokenRef.current !== token) return;
-              correctReadbackTokenRef.current = null;
-              advance();
+          setRound1ConfirmedWordIds(new Set(nextConfirmedWordIds));
+          setIsWrong(false);
+          setSubmitError('');
+          setInputValue('');
+          clearAnswerRevealTimeout();
+          setPassedQueueIndices(new Set(nextPassedQueueIndices));
+
+          if (nextConfirmedWordIds.length >= ROUND1_REINFORCEMENT_WORD_LIMIT) {
+            completeRound1WithConfirmedWords({
+              currentIndex: currentIndexRef.current,
+              queueWordIds: currentQueueWordIds,
+              passedQueueIndices: nextPassedQueueIndices,
+              round1ConfirmedWordIds: nextConfirmedWordIds,
             });
             return;
           }
+
+          if (isAtQueueEnd) {
+            if (round1CanWaitForMoreWords) {
+              stopPlayback();
+              setRound1WaitingForMoreWords(true);
+              setSubmitError(
+                `已通过 ${nextConfirmedWordIds.length}/${ROUND1_REINFORCEMENT_WORD_LIMIT} 个词，正在等待下一批新词预载。`,
+              );
+              return;
+            }
+
+            completeRound1WithConfirmedWords({
+              currentIndex: currentIndexRef.current,
+              queueWordIds: currentQueueWordIds,
+              passedQueueIndices: nextPassedQueueIndices,
+              round1ConfirmedWordIds: nextConfirmedWordIds,
+            });
+            return;
+          }
+
+          setRound1WaitingForMoreWords(false);
+          nextWord();
+          return;
         }
 
-        answerRevealTimeoutRef.current = setTimeout(advance, preferences.correctAnswerRevealMs);
+        if (isDictationRound) {
+          setShowAnswer(true);
+          setIsWrong(false);
+          clearAnswerRevealTimeout();
+
+          const advance = () => {
+            answerRevealTimeoutRef.current = null;
+            setShowAnswer(false);
+            markCurrentQueueIndexPassed();
+            nextWord();
+          };
+
+          if (isDictationRound && clozePrompt && preferences.clozeSentenceAutoPlayEnabled) {
+            const fullSentence = (currentWord.senses[clozePrompt.senseIndex]?.example_sentence ?? '')
+              .replace(/\*\*(.+?)\*\*/g, '$1')
+              .trim();
+            if (fullSentence) {
+              const token = Symbol('correct-readback');
+              correctReadbackTokenRef.current = token;
+              const playKey = `${currentWord.id}-correct-readback`;
+              void playExampleSentence(fullSentence, playKey).then(() => {
+                if (correctReadbackTokenRef.current !== token) return;
+                correctReadbackTokenRef.current = null;
+                advance();
+              });
+              return;
+            }
+          }
+
+          answerRevealTimeoutRef.current = setTimeout(advance, preferences.correctAnswerRevealMs);
+          return;
+        }
+
+        nextWord();
         return;
       }
 
-      nextWord();
-      return;
-    }
+      setIsWrong(true);
+      setLastWrongInput(rawInput);
 
-    setIsWrong(true);
-    setLastWrongInput(inputValue);
+      if (isDictationRound) {
+        const newQueue = [...queue];
+        const insertAt = Math.min(currentIndex + Math.floor(Math.random() * 3) + 2, newQueue.length);
+        newQueue.splice(insertAt, 0, currentWord);
+        setQueue(newQueue);
 
-    if (isDictationRound) {
-      const newQueue = [...queue];
-      const insertAt = Math.min(currentIndex + Math.floor(Math.random() * 3) + 2, newQueue.length);
-      newQueue.splice(insertAt, 0, currentWord);
-      setQueue(newQueue);
-
-      setInputValue('');
-      setShowAnswer(true);
-      clearAnswerRevealTimeout();
-      answerRevealTimeoutRef.current = setTimeout(() => {
-        answerRevealTimeoutRef.current = null;
-        setShowAnswer(false);
-        setIsWrong(false);
-        setLastWrongInput(null);
-        nextWord();
-      }, preferences.wrongAnswerRevealMs);
-    }
-  }, [
-    showAnswer,
-    isSubmittingAttempt,
-    isDictationRound,
-    isViewingHistory,
-    inputValue,
-    expectedInput,
-    persistAttempt,
-    currentWord,
-    type,
-    nextWord,
-    clearAnswerRevealTimeout,
-    completeRound1WithConfirmedWords,
-    stopPlayback,
-    queue,
-    currentIndex,
-    preferences.clozeSentenceAutoPlayEnabled,
-    preferences.correctAnswerRevealMs,
-    preferences.wrongAnswerRevealMs,
-    round1CanWaitForMoreWords,
-    round1ConfirmedWordIdsArray,
-    clozePrompt,
-    playExampleSentence,
-    markCurrentQueueIndexPassed,
-  ]);
+        setInputValue('');
+        setShowAnswer(true);
+        clearAnswerRevealTimeout();
+        answerRevealTimeoutRef.current = setTimeout(() => {
+          answerRevealTimeoutRef.current = null;
+          setShowAnswer(false);
+          setIsWrong(false);
+          setLastWrongInput(null);
+          nextWord();
+        }, preferences.wrongAnswerRevealMs);
+      }
+    },
+    [
+      showAnswer,
+      isSubmittingAttempt,
+      isDictationRound,
+      isViewingHistory,
+      inputValue,
+      expectedInput,
+      persistAttempt,
+      currentWord,
+      type,
+      nextWord,
+      clearAnswerRevealTimeout,
+      completeRound1WithConfirmedWords,
+      stopPlayback,
+      queue,
+      currentIndex,
+      preferences.clozeSentenceAutoPlayEnabled,
+      preferences.correctAnswerRevealMs,
+      preferences.wrongAnswerRevealMs,
+      round1CanWaitForMoreWords,
+      round1ConfirmedWordIdsArray,
+      clozePrompt,
+      playExampleSentence,
+      markCurrentQueueIndexPassed,
+    ],
+  );
 
   useEffect(() => {
     if (!isRecallRound) return;
@@ -1479,16 +1526,41 @@ export const LearningEngine = ({
 
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
+    const isComposing = (e.nativeEvent as InputEvent).isComposing === true;
+    let nextValue = val;
+
     if (isDictationRound) {
-      const filtered = val
+      nextValue = val
         .toLowerCase()
         .replace(/[^\p{L}' -]/gu, '')
         .slice(0, expectedInput.length);
-      setInputValue(filtered);
-    } else {
-      setInputValue(val);
     }
+
+    setInputValue(nextValue);
     setIsWrong(false);
+
+    if (
+      type !== 'round1' ||
+      isComposing ||
+      showAnswer ||
+      isSubmittingAttempt ||
+      isViewingHistory ||
+      !currentWord ||
+      !nextValue.trim()
+    ) {
+      return;
+    }
+
+    const isExactMatch = stripDiacritics(nextValue.trim().toLowerCase()) === stripDiacritics(expectedInput);
+    if (!isExactMatch) return;
+
+    const autoSubmitKey = `${currentWord.id}:${expectedInput}`;
+    if (round1AutoSubmitKeyRef.current === autoSubmitKey) return;
+
+    round1AutoSubmitKeyRef.current = autoSubmitKey;
+    window.setTimeout(() => {
+      void validateCurrentInput(nextValue);
+    }, 0);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -1900,6 +1972,12 @@ export const LearningEngine = ({
             key={`${viewedWord.id}:${viewIndex}`}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
+            onTouchStart={handleCardTouchStart}
+            onTouchEnd={handleCardTouchEnd}
+            onTouchCancel={() => {
+              swipeStartRef.current = null;
+            }}
+            style={{ touchAction: 'pan-y' }}
             className="w-full flex min-h-0 flex-col items-center justify-center py-6 sm:min-h-[500px]"
           >
             <motion.div
@@ -1984,7 +2062,7 @@ export const LearningEngine = ({
           <div className="hidden items-center sm:flex">{rightNavigationButton}</div>
         </div>
 
-        {renderProgressBar(displayProgressIndex, initialUniqueCount)}
+        {renderProgressBar(displayProgressIndex, progressQueueLength)}
 
         <div className="w-full max-w-3xl space-y-3 px-4 pb-4 sm:pb-8">
           {submitErrorBanner}
@@ -2039,7 +2117,7 @@ export const LearningEngine = ({
       <InputSessionShell
         type={type}
         currentIndex={displayProgressIndex}
-        queueLength={initialUniqueCount}
+        queueLength={progressQueueLength}
         sessionLeadingAction={sessionLeadingAction}
         sessionActions={sessionActions}
         main={
@@ -2054,7 +2132,7 @@ export const LearningEngine = ({
               onTouchCancel={() => {
                 swipeStartRef.current = null;
               }}
-              style={type === 'round1' ? { touchAction: 'pan-y' } : undefined}
+              style={{ touchAction: 'pan-y' }}
               className="glass relative flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] shadow-[0_24px_64px_rgba(14,26,56,0.08)] sm:rounded-[30px]"
             >
               {mobileWordActionMenu}
@@ -2209,7 +2287,7 @@ export const LearningEngine = ({
                           canPlaySentenceAudio={canPlayExampleAudio && Boolean(viewedClozeFullSentence)}
                           isSentencePlaying={activeExampleKey === viewedClozeSentenceAudioKey}
                           sentenceAudioLocale={audioLocale}
-                          translationText={viewedWord.chinese_definition}
+                          wordInfoText={viewedClozeWordInfoText}
                           onPlaySentence={() => {
                             if (!viewedClozeFullSentence || !viewedClozeSentenceAudioKey) return;
                             void playExampleSentence(viewedClozeFullSentence, viewedClozeSentenceAudioKey);

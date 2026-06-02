@@ -43,6 +43,7 @@ import {
   clearLearningGroupSession,
   fetchGeneratedArticle,
   fetchLearningGroupSession,
+  fetchOfficialResumeTargets,
   markLearningGroupWordsRound1Confirmed,
   markLearningGroupWordsRoundCompleted,
   persistLearningGroupSession,
@@ -60,6 +61,7 @@ import { IslandButton } from './components/shared/AnimalPrimitives';
 import { LibrarySkeleton } from './components/shared/Skeleton';
 import { useDeferredLoading } from './hooks/useDeferredLoading';
 import { fetchHomeOverview, resolveBrowserTimeZone } from './lib/homeApi';
+import { invalidateCachedHomeOverview, readCachedHomeOverview, writeCachedHomeOverview } from './lib/homeOverviewCache';
 import {
   appendNextOfficialBatchToLearningGroup,
   clearOfficialAppendPreparationCache,
@@ -146,6 +148,13 @@ interface HomeStartSelection {
   mode?: OfficialStudyMode | null;
 }
 
+interface FetchStatsOptions {
+  forceRefresh?: boolean;
+  preferCache?: boolean;
+}
+
+type OfficialLearningStartTarget = Pick<HomeOfficialLibraryOption, 'existingGroupCount' | 'libraryId' | 'mode'>;
+
 function areArraysEqual<T>(left: readonly T[] = [], right: readonly T[] = []) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
@@ -181,6 +190,22 @@ function buildLearningProgressSignature(
     progress.passedQueueIndices,
     progress.round1ConfirmedWordIds,
   ]);
+}
+
+const LEARNING_SESSION_ROUND_RANK: Record<LearningRoundType, number> = {
+  round1: 1,
+  round2: 2,
+  round3: 3,
+  article: 4,
+};
+
+function isStaleLearningProgressSnapshot(
+  current: PersistedLearningSession | null,
+  next: LearningSessionSnapshot,
+  groupId: string,
+) {
+  if (!current || current.groupId !== groupId) return false;
+  return LEARNING_SESSION_ROUND_RANK[current.round] > LEARNING_SESSION_ROUND_RANK[next.round];
 }
 
 function AmbientBackground() {
@@ -370,6 +395,9 @@ export default function App() {
   const activeSessionSeedRef = useRef<PersistedLearningSession | null>(null);
   const lastSessionChangeSignatureRef = useRef<string | null>(null);
   const userIdRef = useRef<string | null>(null);
+  const homeStatsInFlightRef = useRef<Promise<void> | null>(null);
+  const homeStatsRequestIdRef = useRef(0);
+  const hasTrustedHomeStatsRef = useRef(false);
   const [round, setRound] = useState<RoundType>('round1');
   const [activeWords, setActiveWords] = useState<Word[]>([]);
   const [activeLearningGroupId, setActiveLearningGroupId] = useState<string | null>(null);
@@ -382,6 +410,8 @@ export default function App() {
   const [sessionStartError, setSessionStartError] = useState('');
   const [isSessionSettingsOpen, setIsSessionSettingsOpen] = useState(false);
   const [stats, setStats] = useState<UserStats>(buildEmptyStats);
+  const [hasTrustedHomeStats, setHasTrustedHomeStats] = useState(false);
+  const [isHomeStatsRefreshing, setIsHomeStatsRefreshing] = useState(false);
   const isSessionRoute = location.pathname.startsWith('/app/session');
   const isHomeRoute = location.pathname.startsWith('/app/home');
   const isIeltsTestRoute =
@@ -474,6 +504,11 @@ export default function App() {
 
   useEffect(() => {
     userIdRef.current = user?.id ?? null;
+    homeStatsRequestIdRef.current += 1;
+    homeStatsInFlightRef.current = null;
+    hasTrustedHomeStatsRef.current = false;
+    setHasTrustedHomeStats(false);
+    setIsHomeStatsRefreshing(false);
   }, [user?.id]);
 
   useEffect(
@@ -516,27 +551,79 @@ export default function App() {
     articleGenerationRef.current = null;
   }, []);
 
-  const fetchStats = useCallback(async () => {
-    if (!user) {
-      setStats(buildEmptyStats());
-      return;
-    }
+  const fetchStats = useCallback(
+    async (options: FetchStatsOptions = {}) => {
+      if (!user) {
+        homeStatsInFlightRef.current = null;
+        hasTrustedHomeStatsRef.current = false;
+        setHasTrustedHomeStats(false);
+        setStats(buildEmptyStats());
+        return;
+      }
 
-    try {
-      const overview = await fetchHomeOverview(resolveBrowserTimeZone());
-      const fallback = buildEmptyStats();
-      setStats({
-        ...fallback,
-        ...overview,
-        orbitDays: overview.orbitDays?.length ? overview.orbitDays : fallback.orbitDays,
-        activityDays: overview.activityDays?.length ? overview.activityDays : fallback.activityDays,
-        routineCard: overview.routineCard ?? fallback.routineCard,
-      });
-    } catch (err) {
-      console.error('Failed to fetch stats:', err);
-      setStats(buildEmptyStats());
-    }
-  }, [user]);
+      const timeZone = resolveBrowserTimeZone();
+      if (options.forceRefresh) {
+        invalidateCachedHomeOverview(user.id, timeZone);
+      } else {
+        const cached = readCachedHomeOverview(user.id, timeZone);
+        if (cached) {
+          if (options.preferCache || !hasTrustedHomeStatsRef.current) {
+            hasTrustedHomeStatsRef.current = true;
+            setHasTrustedHomeStats(true);
+            setStats(cached.stats);
+          }
+          if (options.preferCache && cached.isFresh) {
+            return;
+          }
+        }
+      }
+
+      if (homeStatsInFlightRef.current && !options.forceRefresh) {
+        return homeStatsInFlightRef.current;
+      }
+
+      const requestId = homeStatsRequestIdRef.current + 1;
+      homeStatsRequestIdRef.current = requestId;
+      const request = (async () => {
+        setIsHomeStatsRefreshing(true);
+        try {
+          const overview = await fetchHomeOverview(timeZone);
+          if (userIdRef.current !== user.id || homeStatsRequestIdRef.current !== requestId) {
+            return;
+          }
+          const fallback = buildEmptyStats();
+          const nextStats = {
+            ...fallback,
+            ...overview,
+            orbitDays: overview.orbitDays?.length ? overview.orbitDays : fallback.orbitDays,
+            activityDays: overview.activityDays?.length ? overview.activityDays : fallback.activityDays,
+            routineCard: overview.routineCard ?? fallback.routineCard,
+          };
+          writeCachedHomeOverview(user.id, timeZone, nextStats);
+          hasTrustedHomeStatsRef.current = true;
+          setHasTrustedHomeStats(true);
+          setStats(nextStats);
+        } catch (err) {
+          console.error('Failed to fetch stats:', err);
+          if (userIdRef.current !== user.id || homeStatsRequestIdRef.current !== requestId) {
+            return;
+          }
+          if (!hasTrustedHomeStatsRef.current) {
+            setStats(buildEmptyStats());
+          }
+        } finally {
+          if (homeStatsInFlightRef.current === request) {
+            setIsHomeStatsRefreshing(false);
+            homeStatsInFlightRef.current = null;
+          }
+        }
+      })();
+
+      homeStatsInFlightRef.current = request;
+      return request;
+    },
+    [user],
+  );
 
   const handleSelectOrbitDate = useCallback((date: string) => {
     setStats((current) => {
@@ -555,11 +642,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    fetchStats();
+    void fetchStats({ preferCache: true });
   }, [fetchStats]);
   useEffect(() => {
     if (location.pathname.startsWith('/app/home')) {
-      void fetchStats();
+      void fetchStats({ preferCache: true });
     }
   }, [fetchStats, location.pathname]);
   useEffect(() => {
@@ -826,7 +913,7 @@ export default function App() {
             invalidateLibraryCache(user.id);
             resetActiveLearningState();
             navigate('/app/home');
-            void fetchStats();
+            void fetchStats({ forceRefresh: true });
             return;
           }
 
@@ -864,7 +951,7 @@ export default function App() {
           invalidateLibraryCache(user.id);
           resetActiveLearningState();
           navigate('/app/home');
-          void fetchStats();
+          void fetchStats({ forceRefresh: true });
           return;
         }
 
@@ -875,7 +962,7 @@ export default function App() {
           invalidateLibraryCache(user.id);
           resetActiveLearningState();
           navigate('/app/home');
-          void fetchStats();
+          void fetchStats({ forceRefresh: true });
           return;
         }
 
@@ -952,6 +1039,42 @@ export default function App() {
     ],
   );
 
+  const tryOpenFreshOfficialActiveGroup = useCallback(
+    async (target: OfficialLearningStartTarget, requestedMode: OfficialStudyMode) => {
+      if (!user) return true;
+
+      setIsStartingSession(true);
+      setSessionStartError('');
+      try {
+        const resumeTargets = await fetchOfficialResumeTargets(user.id, target.libraryId);
+        const activeTarget = resumeTargets.active;
+        if (!activeTarget) return false;
+
+        const activeMode = activeTarget.officialMode ?? target.mode;
+        if (requestedMode !== activeMode) {
+          await reorderActiveOfficialGroup({
+            libraryId: target.libraryId,
+            groupId: activeTarget.groupId,
+            mode: requestedMode,
+          });
+          officialPrefetchKeyRef.current = null;
+          invalidateLibraryCache(user.id);
+          void fetchStats({ forceRefresh: true });
+        }
+
+        await openLearningGroup(activeTarget.groupId);
+        return true;
+      } catch (error) {
+        console.error('Failed to confirm active official learning group:', error);
+        setSessionStartError(error instanceof Error ? error.message : '同步当前官方词库进度时出了点问题，请再试一次。');
+        return true;
+      } finally {
+        setIsStartingSession(false);
+      }
+    },
+    [fetchStats, openLearningGroup, user],
+  );
+
   const handleStart = async (selection: HomeStartSelection = {}) => {
     if (!user) return;
 
@@ -971,7 +1094,7 @@ export default function App() {
       try {
         const dueWords = await fetchDueReviewWords();
         if (dueWords.length === 0) {
-          await fetchStats();
+          await fetchStats({ forceRefresh: true });
           return;
         }
 
@@ -1000,29 +1123,22 @@ export default function App() {
       return;
     }
 
+    if (!hasTrustedHomeStatsRef.current) {
+      setSessionStartError('首页学习数据还在同步，请稍等一下再继续。');
+      void fetchStats({ forceRefresh: true });
+      return;
+    }
+
     if (routineCard.ctaMode === 'continue_learning') {
+      const targetGroupId = routineCard.boundLearningGroupId;
+      if (targetGroupId) {
+        await openLearningGroup(targetGroupId);
+        return;
+      }
+
       if (selectedOfficialOption) {
-        if (selectedOfficialOption.activeGroupId) {
-          const targetMode = selection.mode ?? selectedOfficialOption.mode;
-          if (targetMode !== selectedOfficialOption.mode) {
-            setIsStartingSession(true);
-            try {
-              await reorderActiveOfficialGroup({
-                libraryId: selectedOfficialOption.libraryId,
-                groupId: selectedOfficialOption.activeGroupId,
-                mode: targetMode,
-              });
-              officialPrefetchKeyRef.current = null;
-              invalidateLibraryCache(user.id);
-              void fetchStats();
-            } catch (error) {
-              console.error('Failed to reorder active official group:', error);
-              setSessionStartError(error instanceof Error ? error.message : '切换当前组顺序时出了点问题，请再试一次。');
-              setIsStartingSession(false);
-              return;
-            }
-          }
-          await openLearningGroup(selectedOfficialOption.activeGroupId);
+        const targetMode = selection.mode ?? selectedOfficialOption.mode;
+        if (await tryOpenFreshOfficialActiveGroup(selectedOfficialOption, targetMode)) {
           return;
         }
 
@@ -1031,7 +1147,7 @@ export default function App() {
           const result = await startNextOfficialBatch({
             userId: user.id,
             libraryId: selectedOfficialOption.libraryId,
-            mode: selection.mode ?? selectedOfficialOption.mode,
+            mode: targetMode,
             existingGroupCount: selectedOfficialOption.existingGroupCount,
           });
 
@@ -1053,20 +1169,28 @@ export default function App() {
         return;
       }
 
-      const targetGroupId = routineCard.boundLearningGroupId;
-      if (targetGroupId) {
-        await openLearningGroup(targetGroupId);
-        return;
-      }
-
       const libraryId = routineCard.lastUsedOfficialLibraryId;
       if (libraryId) {
+        const targetMode = routineCard.lastUsedOfficialMode ?? 'sequential';
+        if (
+          await tryOpenFreshOfficialActiveGroup(
+            {
+              libraryId,
+              mode: targetMode,
+              existingGroupCount: routineCard.lastUsedOfficialGroupCount,
+            },
+            targetMode,
+          )
+        ) {
+          return;
+        }
+
         setIsStartingSession(true);
         try {
           const result = await startNextOfficialBatch({
             userId: user.id,
             libraryId,
-            mode: routineCard.lastUsedOfficialMode ?? 'sequential',
+            mode: targetMode,
             existingGroupCount: routineCard.lastUsedOfficialGroupCount,
           });
 
@@ -1091,12 +1215,17 @@ export default function App() {
 
     if (routineCard.ctaMode === 'start_learning') {
       if (selectedOfficialOption) {
+        const targetMode = selection.mode ?? selectedOfficialOption.mode;
+        if (await tryOpenFreshOfficialActiveGroup(selectedOfficialOption, targetMode)) {
+          return;
+        }
+
         setIsStartingSession(true);
         try {
           const result = await startNextOfficialBatch({
             userId: user.id,
             libraryId: selectedOfficialOption.libraryId,
-            mode: selection.mode ?? selectedOfficialOption.mode,
+            mode: targetMode,
             existingGroupCount: selectedOfficialOption.existingGroupCount,
           });
 
@@ -1138,7 +1267,7 @@ export default function App() {
         resetActiveLearningState();
       }
 
-      await fetchStats();
+      await fetchStats({ forceRefresh: true });
       return result;
     },
     [fetchStats, resetActiveLearningState, user],
@@ -1156,6 +1285,10 @@ export default function App() {
       if (!activeLearningGroupId || !user) return;
 
       const currentSeed = activeSessionSeedRef.current;
+      if (isStaleLearningProgressSnapshot(currentSeed, session, activeLearningGroupId)) {
+        return;
+      }
+
       const lastActiveAt = new Date().toISOString();
       const currentWords = activeWordsRef.current;
       const scopedWords =
@@ -1315,7 +1448,7 @@ export default function App() {
 
       if (user) {
         invalidateLibraryCache(user.id);
-        void fetchStats();
+        void fetchStats({ forceRefresh: true });
       }
     },
     [fetchStats, user],
@@ -1325,7 +1458,7 @@ export default function App() {
     (_word: Word) => {
       if (user) {
         invalidateLibraryCache(user.id);
-        void fetchStats();
+        void fetchStats({ forceRefresh: true });
       }
     },
     [fetchStats, user],
@@ -1370,7 +1503,7 @@ export default function App() {
         invalidateLibraryCache(user.id);
         resetActiveLearningState();
         navigate('/app/home');
-        void fetchStats();
+        void fetchStats({ forceRefresh: true });
         return;
       }
 
@@ -1450,7 +1583,7 @@ export default function App() {
           invalidateLibraryCache(user.id);
           resetActiveLearningState();
           navigate('/app/home');
-          void fetchStats();
+          void fetchStats({ forceRefresh: true });
           return;
         }
 
@@ -1478,7 +1611,7 @@ export default function App() {
         invalidateLibraryCache(user.id);
         resetActiveLearningState();
         navigate('/app/home');
-        void fetchStats();
+        void fetchStats({ forceRefresh: true });
       };
 
       const advanceToArticle = (completedAt: string, groupCompleted: boolean) => {
@@ -1517,7 +1650,7 @@ export default function App() {
           throw error;
         });
 
-        void markRoutineStepCompleted(user.id, {
+        await markRoutineStepCompleted(user.id, {
           step: 'round2',
           groupId: activeLearningGroupId,
           timeZone: resolveBrowserTimeZone(),
@@ -1548,7 +1681,7 @@ export default function App() {
           return;
         }
 
-        void markRoutineStepCompleted(user.id, {
+        await markRoutineStepCompleted(user.id, {
           step: 'round3',
           groupId: activeLearningGroupId,
           timeZone: resolveBrowserTimeZone(),
@@ -1585,7 +1718,7 @@ export default function App() {
           throw error;
         });
 
-        void markRoutineStepCompleted(user.id, {
+        await markRoutineStepCompleted(user.id, {
           step: 'round3',
           groupId: activeLearningGroupId,
           timeZone: resolveBrowserTimeZone(),
@@ -1627,7 +1760,7 @@ export default function App() {
     setReviewSummary([]);
     setSessionStartError('');
     resetActiveLearningState();
-    void fetchStats();
+    void fetchStats({ forceRefresh: true });
   };
 
   const handleRetryArticleGeneration = useCallback(() => {
@@ -1749,6 +1882,7 @@ export default function App() {
       onClick={() => {
         setIsSessionSettingsOpen(false);
         navigate(lastNonSessionAppPathRef.current || '/app/home');
+        void fetchStats({ forceRefresh: true });
       }}
       className="inline-flex h-7 w-7 items-center justify-center rounded-xl border border-white/80 bg-white/80 text-[#4f46e5] shadow-[0_6px_14px_rgba(79,70,229,0.14)] backdrop-blur-xl transition-all active:scale-95"
     >
@@ -1793,7 +1927,15 @@ export default function App() {
     <div className="glass mx-auto max-w-3xl rounded-apple-lg p-16 text-center shadow-xl">
       <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">这里还没有内容</p>
       <h2 className="mt-4 text-3xl font-black text-text-primary">回到首页，查看今天的学习安排。</h2>
-      <IslandButton onClick={() => navigate('/app/home')} className="mt-8" tone="mint" size="large">
+      <IslandButton
+        onClick={() => {
+          navigate('/app/home');
+          void fetchStats({ forceRefresh: true });
+        }}
+        className="mt-8"
+        tone="mint"
+        size="large"
+      >
         回到首页
       </IslandButton>
     </div>
@@ -1869,6 +2011,7 @@ export default function App() {
                             }}
                             onOpenOfficialLibrary={() => navigate('/app/library?tab=system')}
                             onDeleteOfficialLibrary={handleDeleteOfficialLibrary}
+                            isDataPending={!hasTrustedHomeStats && (isHomeStatsRefreshing || isHomeRoute)}
                             isLoading={isStartingSession}
                           />
                         }
@@ -1878,7 +2021,7 @@ export default function App() {
                         element={
                           <LibraryView
                             onLibraryMutated={() => {
-                              void fetchStats();
+                              void fetchStats({ forceRefresh: true });
                             }}
                             onStartLearningGroup={handleStartLearningGroup}
                           />
@@ -1894,7 +2037,7 @@ export default function App() {
                           <LibraryGroupDetailView
                             isStartingLearningGroup={isStartingSession}
                             onLibraryMutated={() => {
-                              void fetchStats();
+                              void fetchStats({ forceRefresh: true });
                             }}
                             onStartLearningGroup={handleStartLearningGroup}
                           />
@@ -1906,7 +2049,7 @@ export default function App() {
                           <LibraryGroupDetailView
                             isStartingLearningGroup={isStartingSession}
                             onLibraryMutated={() => {
-                              void fetchStats();
+                              void fetchStats({ forceRefresh: true });
                             }}
                             onStartLearningGroup={handleStartLearningGroup}
                           />

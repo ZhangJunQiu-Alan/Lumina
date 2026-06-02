@@ -31,6 +31,7 @@ interface HomeViewProps {
   onStart: (selection?: { libraryId?: OfficialLibraryId | null; mode?: OfficialStudyMode | null }) => void;
   onOpenOfficialLibrary: () => void;
   onDeleteOfficialLibrary?: (libraryId: OfficialLibraryId) => Promise<unknown> | unknown;
+  isDataPending?: boolean;
   isLoading?: boolean;
 }
 
@@ -471,6 +472,7 @@ export const HomeView = ({
   onStart,
   onOpenOfficialLibrary,
   onDeleteOfficialLibrary,
+  isDataPending = false,
   isLoading = false,
 }: HomeViewProps) => {
   const routineCard = stats.routineCard;
@@ -506,6 +508,7 @@ export const HomeView = ({
   const [isDeletingLibrary, setIsDeletingLibrary] = useState(false);
   const [deleteLibraryError, setDeleteLibraryError] = useState('');
   const canDeleteSelectedLibrary = Boolean(onDeleteOfficialLibrary && selectedOfficialOption);
+  const isStartDisabled = isLoading || isDataPending;
 
   useEffect(() => {
     if (officialOptions.length === 0) {
@@ -742,13 +745,13 @@ export const HomeView = ({
                           label: '去官方词库挑选并加入',
                           onSelect: onOpenOfficialLibrary,
                         }}
-                        disabled={isDeletingLibrary}
+                        disabled={isDeletingLibrary || isDataPending}
                         className="min-w-0 flex-1"
                       />
                       <button
                         type="button"
                         onClick={openDeleteLibraryDialog}
-                        disabled={!canDeleteSelectedLibrary || isDeletingLibrary}
+                        disabled={!canDeleteSelectedLibrary || isDeletingLibrary || isDataPending}
                         aria-label={selectedOfficialOption ? `删除${selectedOfficialOption.title}` : '删除学习词典'}
                         className="group flex h-11 w-11 shrink-0 items-center justify-center rounded-[17px] border border-[#f0d8c8]/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,246,240,0.9))] text-[#b87960] shadow-[0_10px_24px_rgba(112,78,46,0.10),inset_0_-2px_0_rgba(166,96,70,0.07)] outline-none transition-all hover:-translate-y-0.5 hover:border-[#e5b6a4] hover:bg-white hover:text-[#c45744] focus-visible:ring-4 focus-visible:ring-[#c45744]/14 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 sm:h-12 sm:w-12"
                       >
@@ -773,7 +776,7 @@ export const HomeView = ({
                     value={displayedMode}
                     options={modeDropdownOptions}
                     onChange={handleModeChange}
-                    disabled={officialOptions.length === 0}
+                    disabled={officialOptions.length === 0 || isDataPending}
                     className="sm:w-[9.5rem]"
                   />
                 </div>
@@ -793,10 +796,10 @@ export const HomeView = ({
 
           <button
             onClick={handleStart}
-            disabled={isLoading}
+            disabled={isStartDisabled}
             className="home-cta relative mt-5 flex w-full items-center justify-center overflow-hidden rounded-[26px] border-2 border-[#ffcc00] bg-[#ffcc00] py-3.5 text-[16px] font-black text-[#3d2f1c] shadow-[0_6px_0_0_#e0b800] transition-all hover:brightness-105 active:translate-y-1 active:shadow-[0_2px_0_0_#e0b800] disabled:opacity-50 sm:py-4 sm:text-[18px] xl:mt-10 xl:rounded-[30px] xl:py-6 xl:text-[22px]"
           >
-            {isLoading ? '准备中...' : routineCard.ctaLabel}
+            {isLoading ? '准备中...' : isDataPending ? '同步中...' : routineCard.ctaLabel}
           </button>
         </motion.section>
       </main>

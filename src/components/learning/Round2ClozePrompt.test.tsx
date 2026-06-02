@@ -30,6 +30,13 @@ describe('Round2ClozePrompt', () => {
     expect(screen.getByText('优秀团队会谨慎分配稀缺资源。')).toBeInTheDocument();
   });
 
+  it('uses explicit word info instead of the default dictation hint', () => {
+    render(<Round2ClozePrompt prompt={prompt} inputValue="" wordInfoText="v. 分配" />);
+
+    expect(screen.getByText('v. 分配')).toHaveClass('text-base', 'md:text-lg', 'text-black');
+    expect(screen.queryByText('根据语境听写单词')).not.toBeInTheDocument();
+  });
+
   it('uses an explicit translation text instead of the sentence translation', () => {
     render(<Round2ClozePrompt prompt={prompt} inputValue="" translationText="分配；调拨" />);
 
