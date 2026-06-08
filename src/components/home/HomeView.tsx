@@ -31,6 +31,7 @@ interface HomeViewProps {
   onStart: (selection?: { libraryId?: OfficialLibraryId | null; mode?: OfficialStudyMode | null }) => void;
   onOpenOfficialLibrary: () => void;
   onDeleteOfficialLibrary?: (libraryId: OfficialLibraryId) => Promise<unknown> | unknown;
+  requestedOfficialLibraryId?: OfficialLibraryId | null;
   isDataPending?: boolean;
   isLoading?: boolean;
 }
@@ -42,6 +43,7 @@ function cx(...parts: Array<string | false | undefined>) {
 }
 
 const EMPTY_OFFICIAL_LIBRARY_OPTIONS: HomeOfficialLibraryOption[] = [];
+const SELECTED_OFFICIAL_LIBRARY_STORAGE_KEY = 'lumina.home.selectedOfficialLibraryId.v1';
 const OFFICIAL_STUDY_MODE_STORAGE_KEY = 'lumina.home.officialStudyMode.v1';
 
 interface StoredOfficialStudyModePreference {
@@ -81,6 +83,40 @@ function readStoredOfficialStudyMode(libraryId?: string | null): OfficialStudyMo
   const stored = parseStoredOfficialStudyModePreference();
   const libraryMode = libraryId ? stored.byLibrary?.[libraryId] : undefined;
   return libraryMode ?? stored.global ?? null;
+}
+
+function readStoredOfficialLibraryId(officialOptions: readonly HomeOfficialLibraryOption[]): OfficialLibraryId | null {
+  if (typeof window === 'undefined' || officialOptions.length === 0) return null;
+
+  try {
+    const storedLibraryId = window.localStorage.getItem(SELECTED_OFFICIAL_LIBRARY_STORAGE_KEY);
+    const matchingOption = officialOptions.find((option) => option.libraryId === storedLibraryId);
+    return matchingOption?.libraryId ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredOfficialLibraryId(libraryId: string | null | undefined) {
+  if (typeof window === 'undefined' || !libraryId) return;
+
+  try {
+    window.localStorage.setItem(SELECTED_OFFICIAL_LIBRARY_STORAGE_KEY, libraryId);
+  } catch {
+    // Losing this preference should not block the learning flow.
+  }
+}
+
+function removeStoredOfficialLibraryId(libraryId?: string | null) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    if (!libraryId || window.localStorage.getItem(SELECTED_OFFICIAL_LIBRARY_STORAGE_KEY) === libraryId) {
+      window.localStorage.removeItem(SELECTED_OFFICIAL_LIBRARY_STORAGE_KEY);
+    }
+  } catch {
+    // Losing this preference should not block deleting a learning dictionary.
+  }
 }
 
 function writeStoredOfficialStudyMode(libraryId: string | null | undefined, mode: OfficialStudyMode) {
@@ -472,13 +508,13 @@ export const HomeView = ({
   onStart,
   onOpenOfficialLibrary,
   onDeleteOfficialLibrary,
+  requestedOfficialLibraryId = null,
   isDataPending = false,
   isLoading = false,
 }: HomeViewProps) => {
   const routineCard = stats.routineCard;
   const officialOptions = routineCard.officialLibraryOptions ?? EMPTY_OFFICIAL_LIBRARY_OPTIONS;
   const shouldShowOfficialControls = officialOptions.length > 0 || routineCard.ctaMode === 'start_learning';
-  const defaultLibraryId = routineCard.selectedOfficialLibraryId ?? officialOptions[0]?.libraryId ?? '';
   const libraryDropdownOptions = useMemo(
     () =>
       officialOptions.map((option) => ({
@@ -494,7 +530,28 @@ export const HomeView = ({
     ],
     [],
   );
-  const [selectedLibraryId, setSelectedLibraryId] = useState<string>(defaultLibraryId);
+  const [selectedLibraryId, setSelectedLibraryId] = useState<string>(
+    () =>
+      requestedOfficialLibraryId ??
+      readStoredOfficialLibraryId(officialOptions) ??
+      routineCard.selectedOfficialLibraryId ??
+      officialOptions[0]?.libraryId ??
+      '',
+  );
+  // Re-read the persisted choice only when the options or the current selection
+  // change: handleLibraryChange writes localStorage in lockstep with
+  // setSelectedLibraryId, so this stays fresh without reading on every render.
+  const storedOfficialLibraryId = useMemo(
+    () => readStoredOfficialLibraryId(officialOptions),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectedLibraryId is the write signal, not read in the body
+    [officialOptions, selectedLibraryId],
+  );
+  const defaultLibraryId =
+    requestedOfficialLibraryId ??
+    storedOfficialLibraryId ??
+    routineCard.selectedOfficialLibraryId ??
+    officialOptions[0]?.libraryId ??
+    '';
   const selectedOfficialOption = useMemo(
     () => officialOptions.find((option) => option.libraryId === selectedLibraryId) ?? officialOptions[0] ?? null,
     [officialOptions, selectedLibraryId],
@@ -509,6 +566,8 @@ export const HomeView = ({
   const [deleteLibraryError, setDeleteLibraryError] = useState('');
   const canDeleteSelectedLibrary = Boolean(onDeleteOfficialLibrary && selectedOfficialOption);
   const isStartDisabled = isLoading || isDataPending;
+  const ctaLabel =
+    routineCard.ctaMode === 'start_learning' && selectedOfficialOption ? '开始学习' : routineCard.ctaLabel;
 
   useEffect(() => {
     if (officialOptions.length === 0) {
@@ -516,10 +575,24 @@ export const HomeView = ({
       return;
     }
 
+    if (
+      requestedOfficialLibraryId &&
+      selectedLibraryId !== requestedOfficialLibraryId &&
+      officialOptions.some((option) => option.libraryId === requestedOfficialLibraryId)
+    ) {
+      setSelectedLibraryId(requestedOfficialLibraryId);
+      return;
+    }
+
+    if (!requestedOfficialLibraryId && storedOfficialLibraryId && selectedLibraryId !== storedOfficialLibraryId) {
+      setSelectedLibraryId(storedOfficialLibraryId);
+      return;
+    }
+
     if (!officialOptions.some((option) => option.libraryId === selectedLibraryId)) {
       setSelectedLibraryId(defaultLibraryId);
     }
-  }, [defaultLibraryId, officialOptions, selectedLibraryId]);
+  }, [defaultLibraryId, officialOptions, requestedOfficialLibraryId, selectedLibraryId, storedOfficialLibraryId]);
 
   useEffect(() => {
     const storedMode = readStoredOfficialStudyMode(selectedOfficialOption?.libraryId ?? defaultLibraryId);
@@ -544,6 +617,7 @@ export const HomeView = ({
     const storedMode = readStoredOfficialStudyMode(libraryId);
     hasUserSelectedModeRef.current = Boolean(storedMode);
     setSelectedLibraryId(libraryId);
+    writeStoredOfficialLibraryId(libraryId);
     setSelectedMode(storedMode ?? nextOption?.mode ?? routineCard.lastUsedOfficialMode ?? 'sequential');
   };
 
@@ -554,6 +628,11 @@ export const HomeView = ({
   };
 
   const handleStart = () => {
+    if (routineCard.ctaMode === 'start_learning' && !selectedOfficialOption) {
+      onOpenOfficialLibrary();
+      return;
+    }
+
     onStart(
       selectedOfficialOption
         ? {
@@ -584,6 +663,7 @@ export const HomeView = ({
     try {
       await onDeleteOfficialLibrary(deleteCandidate.libraryId);
       removeStoredOfficialStudyMode(deleteCandidate.libraryId);
+      removeStoredOfficialLibraryId(deleteCandidate.libraryId);
       setSelectedLibraryId('');
       setDeleteCandidate(null);
     } catch (error) {
@@ -799,7 +879,7 @@ export const HomeView = ({
             disabled={isStartDisabled}
             className="home-cta relative mt-5 flex w-full items-center justify-center overflow-hidden rounded-[26px] border-2 border-[#ffcc00] bg-[#ffcc00] py-3.5 text-[16px] font-black text-[#3d2f1c] shadow-[0_6px_0_0_#e0b800] transition-all hover:brightness-105 active:translate-y-1 active:shadow-[0_2px_0_0_#e0b800] disabled:opacity-50 sm:py-4 sm:text-[18px] xl:mt-10 xl:rounded-[30px] xl:py-6 xl:text-[22px]"
           >
-            {isLoading ? '准备中...' : isDataPending ? '同步中...' : routineCard.ctaLabel}
+            {isLoading ? '准备中...' : isDataPending ? '同步中...' : ctaLabel}
           </button>
         </motion.section>
       </main>

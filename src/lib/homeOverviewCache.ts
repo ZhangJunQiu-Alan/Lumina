@@ -133,3 +133,17 @@ export function invalidateCachedHomeOverview(userId: string, timeZone: string, o
     // Cache invalidation is best-effort; the next live request still refreshes stats.
   }
 }
+
+export function isCachedHomeOverviewCompatibleWithActiveLearningGroup(
+  stats: UserStats,
+  activeLearningGroupId: string | null | undefined,
+) {
+  if (!activeLearningGroupId) return true;
+
+  const routineCard = stats.routineCard;
+  if (routineCard.ctaMode === 'continue_learning' && routineCard.boundLearningGroupId === activeLearningGroupId) {
+    return true;
+  }
+
+  return routineCard.officialLibraryOptions.some((option) => option.activeGroupId === activeLearningGroupId);
+}

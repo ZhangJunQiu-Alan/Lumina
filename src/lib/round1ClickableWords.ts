@@ -4,6 +4,11 @@ import { tokenizeClickableText } from './clickableTextTokenizer';
 const ROUND1_RELATION_VISIBLE_LIMIT = 2;
 const ROUND1_EXAMPLE_VISIBLE_LIMIT = 2;
 
+export interface Round1PreloadTargets {
+  highValueWords: string[];
+  lowValueWords: string[];
+}
+
 const trimDisplayText = (value: string | null | undefined) => value?.trim() ?? '';
 
 const hasDisplayText = (value: string | null | undefined) => trimDisplayText(value).length > 0;
@@ -27,38 +32,51 @@ function addClickableWordsFromText(words: Set<string>, text: string | null | und
   }
 }
 
-export function extractRound1ClickableWords(word: Word): string[] {
-  const words = new Set<string>();
+export function extractRound1PreloadTargets(word: Word): Round1PreloadTargets {
+  const highValueWords = new Set<string>();
+  const lowValueWords = new Set<string>();
 
-  addClickableWordsFromText(words, word.word);
-  addClickableWordsFromText(words, word.memory_tip);
-  addClickableWordsFromText(words, word.morphology.summaryZh);
+  addClickableWordsFromText(highValueWords, word.word);
+  addClickableWordsFromText(lowValueWords, word.memory_tip);
+  addClickableWordsFromText(lowValueWords, word.morphology.summaryZh);
 
   for (const item of getRound1WordItems(word.derivedWords)) {
-    addClickableWordsFromText(words, item.word);
-    addClickableWordsFromText(words, getRelationDetailText(item));
+    addClickableWordsFromText(highValueWords, item.word);
+    addClickableWordsFromText(lowValueWords, getRelationDetailText(item));
   }
 
   for (const item of getRound1WordItems(word.synonyms, ROUND1_RELATION_VISIBLE_LIMIT)) {
-    addClickableWordsFromText(words, item.word);
-    addClickableWordsFromText(words, getRelationDetailText(item));
+    addClickableWordsFromText(highValueWords, item.word);
+    addClickableWordsFromText(lowValueWords, getRelationDetailText(item));
   }
 
   for (const item of getRound1WordItems(word.antonyms, ROUND1_RELATION_VISIBLE_LIMIT)) {
-    addClickableWordsFromText(words, item.word);
-    addClickableWordsFromText(words, getRelationDetailText(item));
+    addClickableWordsFromText(highValueWords, item.word);
+    addClickableWordsFromText(lowValueWords, getRelationDetailText(item));
   }
 
   for (const pair of getRound1WordItems(word.confusingPairs)) {
-    addClickableWordsFromText(words, pair.word);
-    addClickableWordsFromText(words, pair.difference);
+    addClickableWordsFromText(highValueWords, pair.word);
+    addClickableWordsFromText(lowValueWords, pair.difference);
   }
 
   for (const sense of word.senses
     .filter((item) => hasDisplayText(item.example_sentence))
     .slice(0, ROUND1_EXAMPLE_VISIBLE_LIMIT)) {
-    addClickableWordsFromText(words, sense.example_sentence);
+    addClickableWordsFromText(lowValueWords, sense.example_sentence);
   }
 
-  return [...words];
+  for (const highValueWord of highValueWords) {
+    lowValueWords.delete(highValueWord);
+  }
+
+  return {
+    highValueWords: [...highValueWords],
+    lowValueWords: [...lowValueWords],
+  };
+}
+
+export function extractRound1ClickableWords(word: Word): string[] {
+  const targets = extractRound1PreloadTargets(word);
+  return [...targets.highValueWords, ...targets.lowValueWords];
 }

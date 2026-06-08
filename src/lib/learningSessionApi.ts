@@ -10,6 +10,7 @@ import type {
   Word,
 } from '../types';
 import { toConfusingPairs, toWordMorphology, toWordRelations } from '../types';
+import { normalizeRound2ChoiceDistractors } from '../../shared/round2ChoiceDistractors';
 import { supabase } from './supabase';
 import {
   OFFICIAL_LIBRARY_DEFINITIONS,
@@ -29,6 +30,7 @@ import {
   normalizeSessionPassedQueueIndices,
   normalizeSessionQueueWordIds,
   normalizeSessionRound1ConfirmedWordIds,
+  repairRound1ConfirmedSessionQueue,
   reconcileSessionWithRound2History,
 } from './learningSession';
 
@@ -115,6 +117,7 @@ interface VocabularyItemRow {
   memory_tip: string | null;
   audio_uk_url: string | null;
   audio_us_url: string | null;
+  round2_choice_distractors?: unknown;
   vocabulary_senses: VocabularySenseRow[];
   vocabulary_morphology_parts?: VocabularyMorphologyPartRow[] | null;
   vocabulary_relations?: VocabularyRelationRow[] | null;
@@ -157,9 +160,13 @@ function isMissingRound1ConfirmedColumnError(error: { message?: string } | null 
 
 function isMissingRichVocabularySchemaError(error: { message?: string } | null | undefined) {
   const message = error?.message ?? '';
-  return ['morphology_summary_zh', 'vocabulary_morphology_parts', 'vocabulary_relations', 'sort_order'].some((part) =>
-    message.includes(part),
-  );
+  return [
+    'morphology_summary_zh',
+    'vocabulary_morphology_parts',
+    'vocabulary_relations',
+    'sort_order',
+    'round2_choice_distractors',
+  ].some((part) => message.includes(part));
 }
 
 function isMissingLearningGroupWordProgressSchemaError(error: { message?: string } | null | undefined) {
@@ -252,6 +259,7 @@ function mapGroupWord(row: LearningGroupWordRow): Word | null {
     antonyms: toWordRelations(mapRelations(vocabularyItem.vocabulary_relations ?? [], 'antonym')),
     confusingPairs,
     confusing_pair: confusingPairs[0],
+    round2ChoiceDistractors: normalizeRound2ChoiceDistractors(vocabularyItem.round2_choice_distractors),
     memory_tip: vocabularyItem.memory_tip ?? '',
     audio_uk_url: vocabularyItem.audio_uk_url,
     audio_us_url: vocabularyItem.audio_us_url,
@@ -809,6 +817,7 @@ export async function fetchLearningGroupSession(
           memory_tip,
           audio_uk_url,
           audio_us_url,
+          round2_choice_distractors,
           vocabulary_senses (
             pos,
             meaning_zh,
@@ -993,6 +1002,7 @@ export async function fetchLearningGroupSession(
     .filter((row) => row.memory_state === 'mastered')
     .map((row) => row.vocabulary_item_id);
   let activeWords = filterMasteredSessionWords(words, masteredWordIds);
+  const activeWordIds = new Set(activeWords.map((word) => word.id));
   const group = groupData;
   const article = articleResult.data?.content ?? null;
   const round2Attempts = (round2AttemptResult.data ?? []) as GroupRound2AttemptRow[];
@@ -1005,12 +1015,19 @@ export async function fetchLearningGroupSession(
   if (session && session.round !== 'round1') {
     const confirmedWordIds =
       dbConfirmedWordIds.length > 0
-        ? dbConfirmedWordIds
-        : normalizeSessionRound1ConfirmedWordIds(session.round1ConfirmedWordIds);
+        ? dbConfirmedWordIds.filter((wordId) => activeWordIds.has(wordId))
+        : normalizeSessionRound1ConfirmedWordIds(session.round1ConfirmedWordIds).filter((wordId) =>
+            activeWordIds.has(wordId),
+          );
+    const repairedQueueWordIds =
+      confirmedWordIds.length > 0
+        ? repairRound1ConfirmedSessionQueue(session.queueWordIds, confirmedWordIds)
+        : session.queueWordIds;
     activeWords = filterWordsToRound1Confirmed(activeWords, confirmedWordIds);
     session = normalizePersistedLearningSession(
       {
         ...session,
+        queueWordIds: repairedQueueWordIds,
         round1ConfirmedWordIds: confirmedWordIds.length > 0 ? confirmedWordIds : session.round1ConfirmedWordIds,
       },
       activeWords,

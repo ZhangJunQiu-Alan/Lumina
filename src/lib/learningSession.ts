@@ -87,6 +87,31 @@ export function normalizeSessionRound1ConfirmedWordIds(value: unknown): string[]
   return limitRound1ReinforcementWordIds(result);
 }
 
+export function getNewRound1ConfirmedWordIds(previousValue: unknown, nextValue: unknown): string[] {
+  const previousIds = new Set(normalizeSessionRound1ConfirmedWordIds(previousValue));
+  return normalizeSessionRound1ConfirmedWordIds(nextValue).filter((wordId) => !previousIds.has(wordId));
+}
+
+export function repairRound1ConfirmedSessionQueue(queueValue: unknown, confirmedValue: unknown): string[] {
+  const queueWordIds = normalizeSessionQueueWordIds(queueValue);
+  const confirmedWordIds = normalizeSessionRound1ConfirmedWordIds(confirmedValue);
+  if (confirmedWordIds.length === 0) return queueWordIds;
+
+  const queueWordIdSet = new Set(queueWordIds);
+  const missingConfirmedWordIds = confirmedWordIds.filter((wordId) => !queueWordIdSet.has(wordId));
+  if (missingConfirmedWordIds.length === 0) return queueWordIds;
+
+  const queueHasDuplicates = queueWordIdSet.size !== queueWordIds.length;
+  const confirmedWordIdSet = new Set(confirmedWordIds);
+  const queueHasNonConfirmedWords = queueWordIds.some((wordId) => !confirmedWordIdSet.has(wordId));
+
+  if (queueHasDuplicates || queueHasNonConfirmedWords) {
+    return [...queueWordIds, ...missingConfirmedWordIds];
+  }
+
+  return confirmedWordIds;
+}
+
 export function clampSessionIndex(currentIndex: number, queueLength: number) {
   if (queueLength <= 0) return 0;
   if (!Number.isFinite(currentIndex)) return 0;

@@ -8,10 +8,12 @@ import {
   createResumeCandidate,
   filterMasteredSessionWords,
   filterWordsToRound1Confirmed,
+  getNewRound1ConfirmedWordIds,
   isCoreLearningComplete,
   normalizePersistedLearningSession,
   normalizeSessionQueueWordIds,
   normalizeSessionRound1ConfirmedWordIds,
+  repairRound1ConfirmedSessionQueue,
   rebuildSessionQueue,
   reconcileSessionWithRound2History,
 } from './learningSession';
@@ -25,7 +27,11 @@ const emptyWordExtras = {
   synonyms: [],
   antonyms: [],
   confusingPairs: [],
-} satisfies Pick<Word, 'morphology' | 'derivedWords' | 'synonyms' | 'antonyms' | 'confusingPairs'>;
+  round2ChoiceDistractors: [],
+} satisfies Pick<
+  Word,
+  'morphology' | 'derivedWords' | 'synonyms' | 'antonyms' | 'confusingPairs' | 'round2ChoiceDistractors'
+>;
 
 const words: Word[] = [
   {
@@ -120,6 +126,20 @@ describe('learning session domain', () => {
       'w2',
     ]);
     expect(filterMasteredSessionWords(words, ['w2']).map((word) => word.id)).toEqual(['w1', 'w3']);
+  });
+
+  it('detects newly confirmed round 1 words from normalized session snapshots', () => {
+    expect(getNewRound1ConfirmedWordIds(['w1', 'w2'], ['w1', 'w2', 'w3', 'w3', '', null])).toEqual(['w3']);
+    expect(getNewRound1ConfirmedWordIds([], [' w1 ', 'w2'])).toEqual(['w1', 'w2']);
+
+    const manyWordIds = Array.from({ length: 45 }, (_, index) => `w${index + 1}`);
+    expect(getNewRound1ConfirmedWordIds(manyWordIds.slice(0, 29), manyWordIds)).toEqual(['w30']);
+  });
+
+  it('repairs stale reinforcement queues from round 1 confirmed words', () => {
+    expect(repairRound1ConfirmedSessionQueue(['w1', 'w2'], ['w1', 'w2', 'w3'])).toEqual(['w1', 'w2', 'w3']);
+    expect(repairRound1ConfirmedSessionQueue(['w1', 'w2', 'w2'], ['w1', 'w2', 'w3'])).toEqual(['w1', 'w2', 'w2', 'w3']);
+    expect(repairRound1ConfirmedSessionQueue(['w1', 'custom'], ['w1', 'w2'])).toEqual(['w1', 'custom', 'w2']);
   });
 
   it('falls back to the live word list when a saved session queue is stale', () => {

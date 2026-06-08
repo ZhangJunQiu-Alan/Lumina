@@ -23,6 +23,13 @@ export interface EnrichedWordConfusion {
   difference_zh: string;
 }
 
+export interface Round2ChoiceDistractor {
+  word: string;
+  pos: string;
+  meaning_zh: string;
+  relation?: string;
+}
+
 export interface ArticleSentence {
   en: string;
   zh: string;

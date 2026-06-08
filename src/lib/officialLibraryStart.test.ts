@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PersistedVocabularyEntry } from './importFlow';
 import {
-  appendNextOfficialBatchToLearningGroup,
   clearOfficialAppendPreparationCache,
   preloadNextOfficialBatchForAppend,
   type AppendNextOfficialBatchInput,
@@ -14,9 +13,6 @@ const testState = vi.hoisted(() => ({
   persistEnrichedVocabularyEntries: vi.fn(),
   apiFetch: vi.fn(),
   invalidateLibraryCache: vi.fn(),
-  learningGroupWordsInsert: vi.fn(),
-  learningGroupWordsSelectEq: vi.fn(),
-  reviewStatesUpsert: vi.fn(),
 }));
 
 vi.mock('./supabase', () => ({
@@ -68,32 +64,6 @@ function makeEntry(id: string, word: string): PersistedVocabularyEntry {
   };
 }
 
-function installSupabaseTableMocks(
-  existingRows: Array<{ vocabulary_item_id: string; sequence_no: number | null }> = [],
-) {
-  testState.learningGroupWordsSelectEq.mockResolvedValue({ data: existingRows, error: null });
-  testState.learningGroupWordsInsert.mockResolvedValue({ error: null });
-  testState.reviewStatesUpsert.mockResolvedValue({ error: null });
-  testState.from.mockImplementation((table: string) => {
-    if (table === 'learning_group_words') {
-      return {
-        select: vi.fn(() => ({
-          eq: testState.learningGroupWordsSelectEq,
-        })),
-        insert: testState.learningGroupWordsInsert,
-      };
-    }
-
-    if (table === 'review_states') {
-      return {
-        upsert: testState.reviewStatesUpsert,
-      };
-    }
-
-    throw new Error(`Unexpected table: ${table}`);
-  });
-}
-
 function buildInput(overrides: Partial<AppendNextOfficialBatchInput> = {}): AppendNextOfficialBatchInput {
   return {
     userId: 'user-1',
@@ -111,8 +81,7 @@ describe('official library append preparation cache', () => {
     vi.clearAllMocks();
   });
 
-  it('reuses an in-flight preloaded next batch when appending', async () => {
-    installSupabaseTableMocks();
+  it('reuses an in-flight next-batch preload without writing durable group rows', async () => {
     const entry = makeEntry('v1', 'abandon');
     let resolveRpc: (value: { data: Array<{ word: string; word_position: number }>; error: null }) => void = () => {};
     testState.rpc.mockReturnValue(
@@ -124,23 +93,21 @@ describe('official library append preparation cache', () => {
 
     const input = buildInput();
     const preloadPromise = preloadNextOfficialBatchForAppend(input);
-    const appendPromise = appendNextOfficialBatchToLearningGroup(input);
+    const secondPreloadPromise = preloadNextOfficialBatchForAppend(input);
 
     expect(testState.rpc).toHaveBeenCalledTimes(1);
 
     resolveRpc({ data: [{ word: 'abandon', word_position: 0 }], error: null });
 
     await preloadPromise;
-    const result = await appendPromise;
+    await secondPreloadPromise;
 
     expect(testState.fetchVocabularyEntriesByWords).toHaveBeenCalledTimes(1);
-    expect(testState.learningGroupWordsInsert).toHaveBeenCalledTimes(1);
-    expect(testState.reviewStatesUpsert).toHaveBeenCalledTimes(1);
-    expect(result?.appendedWords.map((word) => word.word)).toEqual(['abandon']);
+    expect(testState.from).not.toHaveBeenCalled();
+    expect(testState.invalidateLibraryCache).not.toHaveBeenCalled();
   });
 
-  it('drops the append preparation cache after a successful append', async () => {
-    installSupabaseTableMocks();
+  it('allows a scoped next-batch preload cache entry to be cleared', async () => {
     const firstEntry = makeEntry('v1', 'abandon');
     const secondEntry = makeEntry('v2', 'ability');
     testState.rpc
@@ -152,8 +119,8 @@ describe('official library append preparation cache', () => {
 
     const input = buildInput();
     await preloadNextOfficialBatchForAppend(input);
-    await appendNextOfficialBatchToLearningGroup(input);
-    await appendNextOfficialBatchToLearningGroup(input);
+    clearOfficialAppendPreparationCache(input);
+    await preloadNextOfficialBatchForAppend(input);
 
     expect(testState.rpc).toHaveBeenCalledTimes(2);
     expect(testState.fetchVocabularyEntriesByWords).toHaveBeenCalledTimes(2);

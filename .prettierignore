@@ -9,4 +9,5 @@ docs
 content
 public
 src/data
+qa-artifacts
 **/*.md

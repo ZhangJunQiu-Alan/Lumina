@@ -863,6 +863,10 @@ function buildRoutineCard(input: {
   const lastUsedOfficialMode = lastUsedOfficialLibrary?.mode ?? null;
   const lastUsedOfficialGroupCount = lastUsedOfficialLibrary?.groupCount ?? 0;
   const selectedOfficialLibraryId = officialLibraryOptions[0]?.libraryId ?? lastUsedOfficialLibraryId;
+  const selectedOfficialOption =
+    officialLibraryOptions.find((option) => option.libraryId === selectedOfficialLibraryId) ??
+    officialLibraryOptions[0] ??
+    null;
   const lastUsedOfficialTitle = lastUsedOfficialLibrary
     ? (OFFICIAL_LIBRARY_TITLES[lastUsedOfficialLibrary.libraryId] ?? lastUsedOfficialLibrary.title)
     : null;
@@ -958,14 +962,14 @@ function buildRoutineCard(input: {
     state,
     title: '开始新的学习旅程',
     subtitle: reviewAlreadyDone ? '复习已完成，继续今天的新组学习' : '从 Round 1 开始今天的主线任务',
-    ctaLabel: '开始学习',
+    ctaLabel: selectedOfficialOption ? '开始学习' : '先选择学习词库',
     ctaMode: 'start_learning',
     boundLearningGroupId,
     visibleSteps,
     lastUsedOfficialLibraryId,
     lastUsedOfficialMode,
     lastUsedOfficialGroupCount,
-    selectedOfficialLibraryId,
+    selectedOfficialLibraryId: selectedOfficialOption?.libraryId ?? selectedOfficialLibraryId,
     officialLibraryOptions,
   } satisfies RoutineCardPayload;
 }

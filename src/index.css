@@ -2942,6 +2942,7 @@ select:focus-visible {
 .landing-practice-section,
 .landing-bank-detail,
 .landing-continuity-section,
+.landing-faq-section,
 .landing-contact-section,
 .landing-final-band {
   border: 1.5px solid rgba(216, 205, 185, 0.72);
@@ -2957,6 +2958,7 @@ select:focus-visible {
 .landing-practice-section,
 .landing-bank-detail,
 .landing-continuity-section,
+.landing-faq-section,
 .landing-contact-section,
 .landing-final-band {
   margin-top: 1.35rem;
@@ -3292,6 +3294,95 @@ select:focus-visible {
 
 .landing-continuity-list p {
   color: rgba(255, 253, 243, 0.72);
+}
+
+.landing-faq-section {
+  display: grid;
+  grid-template-columns: minmax(0, 0.62fr) minmax(0, 1.38fr);
+  gap: clamp(1.4rem, 3vw, 2.35rem);
+  align-items: start;
+  border-color: rgba(187, 219, 169, 0.86);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(111, 186, 44, 0.13), transparent 26rem),
+    linear-gradient(135deg, rgba(244, 251, 236, 0.82), rgba(255, 253, 247, 0.86) 48%, rgba(255, 248, 226, 0.76)),
+    rgba(255, 253, 247, 0.8);
+}
+
+.landing-faq-copy {
+  position: sticky;
+  top: 6rem;
+}
+
+.landing-faq-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.landing-faq-item {
+  overflow: hidden;
+  border: 1.5px solid rgba(216, 205, 185, 0.78);
+  border-radius: 22px;
+  background: rgba(255, 253, 247, 0.78);
+  box-shadow: 0 2px 0 rgba(189, 174, 160, 0.22);
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.landing-faq-item--open {
+  border-color: rgba(47, 143, 88, 0.38);
+  background: rgba(255, 253, 247, 0.94);
+  box-shadow:
+    0 3px 0 rgba(115, 157, 87, 0.18),
+    0 14px 30px rgba(80, 62, 33, 0.08);
+}
+
+.landing-faq-question {
+  display: flex;
+  width: 100%;
+  min-height: 4.4rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+  color: #24523d;
+  text-align: left;
+  font-size: 1.06rem;
+  font-weight: 1000;
+  line-height: 1.35;
+}
+
+.landing-faq-question svg {
+  flex-shrink: 0;
+  color: #2f8f58;
+  transform: rotate(90deg);
+  transition: transform 0.22s ease;
+}
+
+.landing-faq-item--open .landing-faq-question {
+  color: #2f8f58;
+}
+
+.landing-faq-item--open .landing-faq-question svg {
+  transform: rotate(-90deg);
+}
+
+.landing-faq-answer {
+  overflow: hidden;
+}
+
+.landing-faq-answer > div {
+  border-top: 1px solid rgba(216, 205, 185, 0.68);
+  padding: 0.05rem 1.15rem 1.1rem;
+}
+
+.landing-faq-answer p {
+  margin: 0.85rem 0 0;
+  color: #716858;
+  font-size: 0.96rem;
+  font-weight: 800;
+  line-height: 1.82;
 }
 
 .landing-contact-section {
@@ -3699,6 +3790,7 @@ select:focus-visible {
   .landing-practice-section,
   .landing-bank-detail,
   .landing-continuity-section,
+  .landing-faq-section,
   .landing-contact-section,
   .landing-final-band {
     grid-template-columns: 1fr;
@@ -3713,6 +3805,10 @@ select:focus-visible {
   .landing-practice-grid {
     grid-column: auto;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .landing-faq-copy {
+    position: static;
   }
 
   .landing-inline-cta {
@@ -3938,6 +4034,7 @@ select:focus-visible {
   .landing-practice-section,
   .landing-bank-detail,
   .landing-continuity-section,
+  .landing-faq-section,
   .landing-contact-section,
   .landing-final-band {
     border-radius: 22px;
@@ -3948,6 +4045,25 @@ select:focus-visible {
   .landing-contact-copy h2,
   .landing-final-band h2 {
     font-size: 1.75rem;
+  }
+
+  .landing-faq-section {
+    gap: 1rem;
+  }
+
+  .landing-faq-question {
+    min-height: 3.9rem;
+    padding: 0.92rem 0.95rem;
+    font-size: 0.98rem;
+  }
+
+  .landing-faq-answer > div {
+    padding: 0 0.95rem 0.95rem;
+  }
+
+  .landing-faq-answer p {
+    font-size: 0.88rem;
+    line-height: 1.72;
   }
 
   .landing-route-steps,

@@ -16,11 +16,13 @@ CREATE TABLE IF NOT EXISTS vocabulary_items (
   memory_tip    TEXT,
   audio_uk_url  TEXT,
   audio_us_url  TEXT,
+  round2_choice_distractors JSONB NOT NULL DEFAULT '[]'::jsonb,
   source_type   TEXT DEFAULT 'custom',  -- 'system' | 'custom'
   enrichment_level TEXT NOT NULL DEFAULT 'full',
   created_at    TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(word),
-  CHECK (enrichment_level IN ('lite', 'full'))
+  CHECK (enrichment_level IN ('lite', 'full')),
+  CHECK (jsonb_typeof(round2_choice_distractors) = 'array')
 );
 
 -- Per-POS senses (one word → many senses)
@@ -979,24 +981,6 @@ BEGIN
     item.vocabulary_item_id,
     item.ordinality::INTEGER - 1
   FROM unnest(p_vocabulary_item_ids) WITH ORDINALITY AS item(vocabulary_item_id, ordinality);
-
-  INSERT INTO public.review_states (
-    user_id,
-    vocabulary_item_id,
-    memory_state,
-    interval_days,
-    next_review_at,
-    graduated_at
-  )
-  SELECT
-    v_user_id,
-    item.vocabulary_item_id,
-    'new',
-    NULL,
-    NULL,
-    NULL
-  FROM unnest(p_vocabulary_item_ids) AS item(vocabulary_item_id)
-  ON CONFLICT (user_id, vocabulary_item_id) DO NOTHING;
 
   RETURN v_group_id;
 END;

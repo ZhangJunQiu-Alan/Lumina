@@ -9,7 +9,7 @@ import { buildOfficialBatchFromRows, getOfficialLibraryDefinition, type Official
 import { invalidateLibraryCache } from './libraryCache';
 import { AI_CONTENT_FEATURES_ENABLED } from './aiFeatures';
 import { supabase } from './supabase';
-import { toWord, type EnrichedWord, type OfficialLibraryId, type Word } from '../types';
+import { type EnrichedWord, type OfficialLibraryId, type Word } from '../types';
 import { normalizeWordKey } from '../../shared/wordBatch';
 
 export interface StartNextOfficialBatchInput {
@@ -32,10 +32,6 @@ export interface AppendNextOfficialBatchInput {
   libraryId: OfficialLibraryId;
   mode: OfficialStudyMode;
   existingGroupCount: number;
-}
-
-export interface AppendNextOfficialBatchResult {
-  appendedWords: Word[];
 }
 
 export interface ReorderActiveOfficialGroupInput {
@@ -209,86 +205,6 @@ export async function startNextOfficialBatch({
     libraryId,
     mode,
   };
-}
-
-export async function appendNextOfficialBatchToLearningGroup({
-  userId,
-  groupId,
-  libraryId,
-  mode,
-  existingGroupCount,
-}: AppendNextOfficialBatchInput): Promise<AppendNextOfficialBatchResult | null> {
-  const appendInput = {
-    userId,
-    groupId,
-    libraryId,
-    mode,
-    existingGroupCount,
-  };
-  const nextBatch = await prepareNextOfficialBatchEntriesForAppend(appendInput);
-  if (!nextBatch) return null;
-
-  try {
-    const { data: existingRows, error: existingRowsError } = await supabase
-      .from('learning_group_words')
-      .select('vocabulary_item_id, sequence_no')
-      .eq('learning_group_id', groupId);
-
-    if (existingRowsError) {
-      throw new Error(`learning_group_words lookup failed: ${existingRowsError.message}`);
-    }
-
-    const existingIds = new Set(
-      ((existingRows ?? []) as Array<{ vocabulary_item_id: string }>)
-        .map((row) => row.vocabulary_item_id)
-        .filter(Boolean),
-    );
-    const entriesToAppend = nextBatch.entries.filter((entry) => !existingIds.has(entry.id));
-    if (entriesToAppend.length === 0) {
-      return { appendedWords: [] };
-    }
-
-    const maxSequenceNo = ((existingRows ?? []) as Array<{ sequence_no: number | null }>).reduce(
-      (max, row) => Math.max(max, row.sequence_no ?? -1),
-      -1,
-    );
-
-    const { error: insertWordsError } = await supabase.from('learning_group_words').insert(
-      entriesToAppend.map((entry, index) => ({
-        learning_group_id: groupId,
-        vocabulary_item_id: entry.id,
-        sequence_no: maxSequenceNo + index + 1,
-      })),
-    );
-
-    if (insertWordsError) {
-      throw new Error(`learning_group_words append failed: ${insertWordsError.message}`);
-    }
-
-    const { error: reviewStateError } = await supabase.from('review_states').upsert(
-      entriesToAppend.map((entry) => ({
-        user_id: userId,
-        vocabulary_item_id: entry.id,
-        memory_state: 'new',
-        interval_days: null,
-        next_review_at: null,
-        graduated_at: null,
-      })),
-      { onConflict: 'user_id,vocabulary_item_id', ignoreDuplicates: true },
-    );
-
-    if (reviewStateError) {
-      throw new Error(`review_states append failed: ${reviewStateError.message}`);
-    }
-
-    invalidateLibraryCache(userId);
-
-    return {
-      appendedWords: entriesToAppend.map(toWord),
-    };
-  } finally {
-    clearOfficialAppendPreparationCache(appendInput);
-  }
 }
 
 export async function reorderActiveOfficialGroup({

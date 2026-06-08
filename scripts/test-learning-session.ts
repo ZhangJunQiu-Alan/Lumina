@@ -31,7 +31,11 @@ const emptyWordExtras = {
   synonyms: [],
   antonyms: [],
   confusingPairs: [],
-} satisfies Pick<Word, 'morphology' | 'derivedWords' | 'synonyms' | 'antonyms' | 'confusingPairs'>;
+  round2ChoiceDistractors: [],
+} satisfies Pick<
+  Word,
+  'morphology' | 'derivedWords' | 'synonyms' | 'antonyms' | 'confusingPairs' | 'round2ChoiceDistractors'
+>;
 
 const words: Word[] = [
   {

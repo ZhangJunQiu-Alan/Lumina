@@ -88,8 +88,53 @@ function formatClozeWordInfo(pos: string | undefined | null, meaning: string | u
   return trimmedMeaning || trimmedPos || '';
 }
 
+function hashString(value: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function stableShuffle<T>(items: T[], seed: string) {
+  return items
+    .map((item, index) => ({
+      item,
+      index,
+      score: hashString(`${seed}:${index}`),
+    }))
+    .sort((left, right) => left.score - right.score || left.index - right.index)
+    .map(({ item }) => item);
+}
+
+function getRound2ChoiceDistractors(word: Word | null | undefined) {
+  return Array.isArray(word?.round2ChoiceDistractors) ? word.round2ChoiceDistractors : [];
+}
+
 function isWordQueuePrefix(prefix: Word[], full: Word[]) {
   return prefix.length <= full.length && prefix.every((word, index) => word.id === full[index]?.id);
+}
+
+function resolveRound1ConfirmedWordIdsForQueue(queue: Word[], confirmedWordIds: Iterable<string>) {
+  const confirmedSet = new Set(confirmedWordIds);
+  return limitRound1ReinforcementWordIds(queue.map((word) => word.id).filter((wordId) => confirmedSet.has(wordId)));
+}
+
+const CORRECT_READBACK_WORD_MS = 550;
+const CORRECT_READBACK_TIMEOUT_BUFFER_MS = 3000;
+const CORRECT_READBACK_TIMEOUT_MIN_MS = 5000;
+const CORRECT_READBACK_TIMEOUT_MAX_MS = 30000;
+
+function getCorrectReadbackTimeoutMs(sentence: string, playbackRate: number) {
+  const words = sentence.match(/[A-Za-z0-9]+(?:['-][A-Za-z0-9]+)*/g) ?? [];
+  const normalizedRate = playbackRate > 0 ? playbackRate : 1;
+  const estimatedMs = Math.ceil((Math.max(words.length, 1) * CORRECT_READBACK_WORD_MS) / normalizedRate);
+
+  return Math.min(
+    CORRECT_READBACK_TIMEOUT_MAX_MS,
+    Math.max(CORRECT_READBACK_TIMEOUT_MIN_MS, estimatedMs + CORRECT_READBACK_TIMEOUT_BUFFER_MS),
+  );
 }
 
 export interface LearningSessionSnapshot {
@@ -104,6 +149,20 @@ interface OptimisticallyRemovedWord {
   word: Word;
   wasCompleted: boolean;
   wasRound1Confirmed: boolean;
+}
+
+interface Round2ChoiceOption {
+  id: string;
+  word: string;
+  pos: string;
+  meaningZh: string;
+  isCorrect: boolean;
+}
+
+interface Round2ChoiceSelection {
+  wordId: string;
+  optionId: string;
+  wasCorrect: boolean;
 }
 
 export const LearningEngine = ({
@@ -220,11 +279,8 @@ export const LearningEngine = ({
     [passedQueueIndices],
   );
   const round1ConfirmedWordIdsArray = useMemo(
-    () =>
-      limitRound1ReinforcementWordIds(
-        words.map((word) => word.id).filter((wordId) => round1ConfirmedWordIds.has(wordId)),
-      ),
-    [round1ConfirmedWordIds, words],
+    () => resolveRound1ConfirmedWordIdsForQueue(queue, round1ConfirmedWordIds),
+    [queue, round1ConfirmedWordIds],
   );
 
   const [audioLocale, setAudioLocale] = useState<PronunciationLocale>(preferences.defaultPronunciationLocale);
@@ -237,6 +293,7 @@ export const LearningEngine = ({
   const [reportIssueType, setReportIssueType] = useState<VocabularyIssueType>('definition');
   const [reportNote, setReportNote] = useState('');
   const [dictationPhoneticVisible, setDictationPhoneticVisible] = useState(true);
+  const [round2ChoiceSelection, setRound2ChoiceSelection] = useState<Round2ChoiceSelection | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const mobileActionMenuRef = useRef<HTMLDivElement | null>(null);
   const desktopActionMenuRef = useRef<HTMLDivElement | null>(null);
@@ -254,6 +311,7 @@ export const LearningEngine = ({
   const lastSessionSnapshotSignatureRef = useRef<string | null>(null);
   const round1CompletionInFlightRef = useRef(false);
   const round1AutoSubmitKeyRef = useRef<string | null>(null);
+  const round3AutoSubmitKeyRef = useRef<string | null>(null);
   const round1SubmittedInputKeyRef = useRef<string | null>(null);
   const preferencesRef = useRef(preferences);
   const canPlayExampleAudio = useMemo(() => typeof Audio !== 'undefined' || isBrowserSpeechSupported(), []);
@@ -313,12 +371,38 @@ export const LearningEngine = ({
   );
   const viewedClozeSentenceAudioKey =
     viewedClozePrompt && viewedWord ? `${viewedWord.id}:${viewIndex}:cloze-sentence` : '';
+  const round2ChoiceOptions = useMemo<Round2ChoiceOption[]>(() => {
+    const distractors = getRound2ChoiceDistractors(viewedWord);
+    if (type !== 'round2' || !viewedWord || distractors.length !== 3) return [];
+
+    const primarySense = viewedWord.senses[0];
+    const correctOption: Round2ChoiceOption = {
+      id: 'correct',
+      word: viewedWord.word,
+      pos: primarySense?.pos || viewedWord.pos_tags[0] || '',
+      meaningZh: primarySense?.meaning_zh || viewedWord.chinese_definition,
+      isCorrect: true,
+    };
+    const distractorOptions: Round2ChoiceOption[] = distractors.map((item, index) => ({
+      id: `distractor-${index}`,
+      word: item.word,
+      pos: item.pos,
+      meaningZh: item.meaning_zh,
+      isCorrect: false,
+    }));
+
+    return stableShuffle([correctOption, ...distractorOptions], `${viewedWord.id}:${viewedWord.word}:round2-choice`);
+  }, [type, viewedWord]);
+  const hasRound2ChoiceOptions = round2ChoiceOptions.length === 4;
+  const activeRound2ChoiceSelection =
+    round2ChoiceSelection && round2ChoiceSelection.wordId === viewedWord.id ? round2ChoiceSelection : null;
+  const isRound2ChoiceRevealed = hasRound2ChoiceOptions && (isViewingHistory || Boolean(activeRound2ChoiceSelection));
   const expectedInput = (clozePrompt ? clozePrompt.expectedForm : (currentWord?.word ?? '')).trim().toLowerCase();
   const viewedExpectedInput = viewedClozePrompt
     ? viewedClozePrompt.expectedForm.trim().toLowerCase()
     : (viewedWord?.word ?? '').trim().toLowerCase();
   const displayedInputValue = isViewingHistory ? viewedExpectedInput : inputValue;
-  const roundSource = type === 'review' ? 'review' : type === 'round3' ? 'round3' : null;
+  const roundSource = type === 'review' ? 'review' : type === 'round3' ? 'round3' : type === 'round2' ? 'round2' : null;
   const activePronunciationLocale = playbackTarget?.kind === 'pronunciation' ? playbackTarget.locale : null;
   const activeExampleKey = playbackTarget?.kind === 'example' ? playbackTarget.key : null;
 
@@ -385,8 +469,10 @@ export const LearningEngine = ({
     setReportTargetWord(null);
     setReportIssueType('definition');
     setReportNote('');
+    setRound2ChoiceSelection(null);
     round1CompletionInFlightRef.current = false;
     round1AutoSubmitKeyRef.current = null;
+    round3AutoSubmitKeyRef.current = null;
     round1SubmittedInputKeyRef.current = null;
     setCompletedWordIds(new Set(initialEngineState.initialCompletedIds));
     setPassedQueueIndices(new Set(initialEngineState.initialPassedQueueIndices));
@@ -414,6 +500,10 @@ export const LearningEngine = ({
     },
     [],
   );
+
+  useEffect(() => {
+    setRound2ChoiceSelection(null);
+  }, [currentWord?.id, type]);
 
   useEffect(() => {
     if (viewIndex === currentIndex) {
@@ -732,9 +822,9 @@ export const LearningEngine = ({
       if (type !== 'round1') return false;
       if (round1CompletionInFlightRef.current) return true;
 
-      const confirmedWordIds = limitRound1ReinforcementWordIds(
-        overrides.round1ConfirmedWordIds ?? round1ConfirmedWordIdsArray,
-      );
+      const confirmedWordIds =
+        overrides.round1ConfirmedWordIds ??
+        resolveRound1ConfirmedWordIdsForQueue(queueRef.current, round1ConfirmedWordIdsRef.current);
 
       if (confirmedWordIds.length === 0) {
         setSubmitError(getRound1NoConfirmedMessage());
@@ -764,7 +854,6 @@ export const LearningEngine = ({
       getRound1NoConfirmedMessage,
       onComplete,
       passedQueueIndicesArray,
-      round1ConfirmedWordIdsArray,
       stopPlayback,
       type,
     ],
@@ -790,6 +879,7 @@ export const LearningEngine = ({
     setShowAnswer(false);
     setSubmitError('');
     setRound1WaitingForMoreWords(false);
+    setRound2ChoiceSelection(null);
   }, [currentIndex, currentWord?.id, queue.length, round1ConfirmedWordIds, round1WaitingForMoreWords, type]);
 
   useEffect(() => {
@@ -834,6 +924,8 @@ export const LearningEngine = ({
   const nextWord = useCallback(() => {
     clearAnswerRevealTimeout();
     stopPlayback();
+    round3AutoSubmitKeyRef.current = null;
+    setRound2ChoiceSelection(null);
     if (currentIndexRef.current < queueRef.current.length - 1) {
       const nextIndex = currentIndexRef.current + 1;
       currentIndexRef.current = nextIndex;
@@ -880,7 +972,7 @@ export const LearningEngine = ({
     return [...indices].sort((left, right) => left - right);
   }, [currentIndex, currentWord, passedQueueIndicesArray, queue, type]);
   const currentNavigationSlot = navigableQueueIndices.indexOf(viewIndex);
-  const isCardNavigationLocked = showAnswer || isSubmittingAttempt;
+  const isCardNavigationLocked = showAnswer || isSubmittingAttempt || Boolean(activeRound2ChoiceSelection);
   const canNavigateLeft = !isCardNavigationLocked && currentNavigationSlot > 0;
   const canNavigateRight =
     !isCardNavigationLocked && currentNavigationSlot >= 0 && currentNavigationSlot < navigableQueueIndices.length - 1;
@@ -985,6 +1077,7 @@ export const LearningEngine = ({
         setLastWrongInput(null);
         setShowAnswer(false);
         setSubmitError('');
+        setRound2ChoiceSelection(null);
         const nextPassedQueueIndices = new Set<number>();
         passedQueueIndicesRef.current = nextPassedQueueIndices;
         setPassedQueueIndices(nextPassedQueueIndices);
@@ -1020,6 +1113,7 @@ export const LearningEngine = ({
       setLastWrongInput(null);
       setShowAnswer(false);
       setSubmitError('');
+      setRound2ChoiceSelection(null);
       const nextPassedQueueIndices = new Set<number>();
       for (const index of passedQueueIndicesRef.current) {
         const mappedIndex = indexMap.get(index);
@@ -1289,6 +1383,13 @@ export const LearningEngine = ({
   const handleRound3PrimaryAction = useCallback(() => {
     if (isViewingHistory) return;
 
+    if (type === 'round2' && getRound2ChoiceDistractors(currentWord).length === 3) {
+      if (!activeRound2ChoiceSelection) return;
+      markCurrentQueueIndexPassed();
+      nextWord();
+      return;
+    }
+
     if (!showAnswer) {
       setSubmitError('');
       setShowAnswer(true);
@@ -1297,7 +1398,15 @@ export const LearningEngine = ({
 
     markCurrentQueueIndexPassed();
     nextWord();
-  }, [isViewingHistory, markCurrentQueueIndexPassed, showAnswer, nextWord]);
+  }, [
+    activeRound2ChoiceSelection,
+    currentWord,
+    isViewingHistory,
+    markCurrentQueueIndexPassed,
+    nextWord,
+    showAnswer,
+    type,
+  ]);
 
   const handleRound3Unknown = useCallback(async () => {
     if (isViewingHistory || !showAnswer || isSubmittingAttempt) return;
@@ -1328,6 +1437,21 @@ export const LearningEngine = ({
     showAnswer,
   ]);
 
+  const handleRound2ChoiceSelect = useCallback(
+    (option: Round2ChoiceOption) => {
+      if (isViewingHistory || isSubmittingAttempt || !currentWord || activeRound2ChoiceSelection) return;
+
+      setSubmitError('');
+      setRound2ChoiceSelection({
+        wordId: currentWord.id,
+        optionId: option.id,
+        wasCorrect: option.isCorrect,
+      });
+      void persistAttempt(option.isCorrect);
+    },
+    [activeRound2ChoiceSelection, currentWord, isSubmittingAttempt, isViewingHistory, persistAttempt],
+  );
+
   const validateCurrentInput = useCallback(
     async (rawInput = inputValue) => {
       // 防止重复提交
@@ -1352,17 +1476,21 @@ export const LearningEngine = ({
           return next;
         });
         if (type === 'round1') {
-          const currentConfirmedWordIds = round1ConfirmedWordIdsArray.includes(currentWord.id)
-            ? round1ConfirmedWordIdsArray
-            : [...round1ConfirmedWordIdsArray, currentWord.id];
-          const nextConfirmedWordIds = limitRound1ReinforcementWordIds(currentConfirmedWordIds);
+          const nextRound1ConfirmedWordIdSet = new Set(round1ConfirmedWordIdsRef.current);
+          nextRound1ConfirmedWordIdSet.add(currentWord.id);
+          const nextConfirmedWordIds = resolveRound1ConfirmedWordIdsForQueue(
+            queueRef.current,
+            nextRound1ConfirmedWordIdSet,
+          );
           const nextPassedQueueIndices = [...passedQueueIndicesRef.current, currentIndexRef.current]
             .filter((index, arrayIndex, allIndices) => allIndices.indexOf(index) === arrayIndex)
             .sort((left, right) => left - right);
           const currentQueueWordIds = queueRef.current.map((word) => word.id);
           const isAtQueueEnd = currentIndexRef.current >= queueRef.current.length - 1;
 
-          setRound1ConfirmedWordIds(new Set(nextConfirmedWordIds));
+          const nextConfirmedWordIdSet = new Set(nextConfirmedWordIds);
+          round1ConfirmedWordIdsRef.current = nextConfirmedWordIdSet;
+          setRound1ConfirmedWordIds(nextConfirmedWordIdSet);
           setIsWrong(false);
           setSubmitError('');
           setInputValue('');
@@ -1423,11 +1551,20 @@ export const LearningEngine = ({
               const token = Symbol('correct-readback');
               correctReadbackTokenRef.current = token;
               const playKey = `${currentWord.id}-correct-readback`;
-              void playExampleSentence(fullSentence, playKey).then(() => {
+              const finishCorrectReadback = () => {
                 if (correctReadbackTokenRef.current !== token) return;
                 correctReadbackTokenRef.current = null;
+                if (answerRevealTimeoutRef.current !== null) {
+                  clearTimeout(answerRevealTimeoutRef.current);
+                  answerRevealTimeoutRef.current = null;
+                }
                 advance();
-              });
+              };
+              answerRevealTimeoutRef.current = setTimeout(
+                finishCorrectReadback,
+                getCorrectReadbackTimeoutMs(fullSentence, preferences.speechPlaybackRate),
+              );
+              void playExampleSentence(fullSentence, playKey).then(finishCorrectReadback, finishCorrectReadback);
               return;
             }
           }
@@ -1479,9 +1616,9 @@ export const LearningEngine = ({
       currentIndex,
       preferences.clozeSentenceAutoPlayEnabled,
       preferences.correctAnswerRevealMs,
+      preferences.speechPlaybackRate,
       preferences.wrongAnswerRevealMs,
       round1CanWaitForMoreWords,
-      round1ConfirmedWordIdsArray,
       clozePrompt,
       playExampleSentence,
       markCurrentQueueIndexPassed,
@@ -1539,25 +1676,21 @@ export const LearningEngine = ({
     setInputValue(nextValue);
     setIsWrong(false);
 
-    if (
-      type !== 'round1' ||
-      isComposing ||
-      showAnswer ||
-      isSubmittingAttempt ||
-      isViewingHistory ||
-      !currentWord ||
-      !nextValue.trim()
-    ) {
+    if (isComposing || showAnswer || isSubmittingAttempt || isViewingHistory || !currentWord || !nextValue.trim()) {
       return;
     }
+
+    const canAutoSubmit = type === 'round1' || type === 'round3';
+    if (!canAutoSubmit) return;
 
     const isExactMatch = stripDiacritics(nextValue.trim().toLowerCase()) === stripDiacritics(expectedInput);
     if (!isExactMatch) return;
 
-    const autoSubmitKey = `${currentWord.id}:${expectedInput}`;
-    if (round1AutoSubmitKeyRef.current === autoSubmitKey) return;
+    const autoSubmitKey = `${type}:${currentWord.id}:${expectedInput}`;
+    const autoSubmitKeyRef = type === 'round3' ? round3AutoSubmitKeyRef : round1AutoSubmitKeyRef;
+    if (autoSubmitKeyRef.current === autoSubmitKey) return;
 
-    round1AutoSubmitKeyRef.current = autoSubmitKey;
+    autoSubmitKeyRef.current = autoSubmitKey;
     window.setTimeout(() => {
       void validateCurrentInput(nextValue);
     }, 0);
@@ -2019,43 +2152,88 @@ export const LearningEngine = ({
               {viewedWord.pos_tags[0]}
             </div>
 
-            <AnimatePresence>
-              {shouldShowRound3Answer && (
-                <motion.div
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="mt-4 text-center"
-                >
-                  <div className="[&_span]:bg-black/5">
-                    <WordSenseList word={viewedWord} centered />
-                  </div>
-                  {round3ExampleSentence && (
-                    <div className="mx-auto mt-4 w-full max-w-xl">
-                      <ExampleSentenceList
-                        items={[
-                          {
-                            key: round3ExampleKey,
-                            sentence: round3ExampleSentence,
-                          },
-                        ]}
-                        locale={audioLocale}
-                        activeExampleKey={activeExampleKey}
-                        canPlayAudio={canPlayExampleAudio}
-                        onPlayExample={({ sentence, key }) => {
-                          void playExampleSentence(sentence, key);
-                        }}
-                        emptyMessage="这个词目前还没有例句。"
-                        variant="inline"
-                      />
-                    </div>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {hasRound2ChoiceOptions ? (
+              <div className="grid w-full max-w-2xl gap-3 sm:grid-cols-2">
+                {round2ChoiceOptions.map((option) => {
+                  const isSelected = activeRound2ChoiceSelection?.optionId === option.id;
+                  const isWrongSelection = isRound2ChoiceRevealed && isSelected && !option.isCorrect;
+                  const label = formatClozeWordInfo(option.pos, option.meaningZh) || option.meaningZh || option.word;
+                  const displayLabel = isRound2ChoiceRevealed ? `${label}：${option.word}` : label;
 
-            {!shouldShowRound3Answer && (
-              <p className="text-text-secondary/40 text-sm mt-8">先自己判断，再决定要不要展开答案。</p>
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => handleRound2ChoiceSelect(option)}
+                      disabled={isViewingHistory || Boolean(activeRound2ChoiceSelection)}
+                      aria-label={`Round2 选项 ${displayLabel}`}
+                      className={cx(
+                        'flex min-h-[5rem] w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left text-base font-black leading-7 shadow-[0_14px_34px_rgba(14,26,56,0.06)] transition-all active:scale-[0.99] disabled:cursor-default sm:px-5',
+                        !isRound2ChoiceRevealed &&
+                          'border-white/80 bg-white/78 text-text-primary hover:-translate-y-0.5 hover:bg-white',
+                        isRound2ChoiceRevealed &&
+                          option.isCorrect &&
+                          'border-[#16A34A]/25 bg-[#ECFDF5] text-[#15803D] shadow-[0_14px_34px_rgba(22,163,74,0.12)]',
+                        isWrongSelection &&
+                          'border-apple-red/30 bg-apple-red/10 text-apple-red shadow-[0_14px_34px_rgba(224,90,90,0.12)]',
+                        isRound2ChoiceRevealed &&
+                          !option.isCorrect &&
+                          !isWrongSelection &&
+                          'border-white/70 bg-white/58 text-text-secondary/70',
+                      )}
+                    >
+                      <span className="min-w-0 [overflow-wrap:anywhere]">{displayLabel}</span>
+                      {isRound2ChoiceRevealed && option.isCorrect && <CheckCircle2 className="h-5 w-5 shrink-0" />}
+                      {isWrongSelection && <XCircle className="h-5 w-5 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <>
+                <AnimatePresence>
+                  {shouldShowRound3Answer && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 16 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      className="mt-4 text-center"
+                    >
+                      <div className="[&_span]:bg-black/5">
+                        <WordSenseList word={viewedWord} centered />
+                      </div>
+                      {round3ExampleSentence && (
+                        <div className="mx-auto mt-4 w-full max-w-xl">
+                          <ExampleSentenceList
+                            items={[
+                              {
+                                key: round3ExampleKey,
+                                sentence: round3ExampleSentence,
+                              },
+                            ]}
+                            locale={audioLocale}
+                            activeExampleKey={activeExampleKey}
+                            canPlayAudio={canPlayExampleAudio}
+                            onPlayExample={({ sentence, key }) => {
+                              void playExampleSentence(sentence, key);
+                            }}
+                            emptyMessage="这个词目前还没有例句。"
+                            variant="inline"
+                          />
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {!shouldShowRound3Answer && (
+                  <p className="text-text-secondary/40 text-sm mt-8">先自己判断，再决定要不要展开答案。</p>
+                )}
+              </>
+            )}
+
+            {hasRound2ChoiceOptions && !isRound2ChoiceRevealed && (
+              <p className="text-text-secondary/40 text-sm mt-8">选择最贴近的中文释义。</p>
             )}
           </motion.div>
 
@@ -2066,45 +2244,71 @@ export const LearningEngine = ({
 
         <div className="w-full max-w-3xl space-y-3 px-4 pb-4 sm:pb-8">
           {submitErrorBanner}
-          <div
-            className={cx(
-              'grid gap-3',
-              showAnswer && !isViewingHistory ? 'sm:grid-cols-[minmax(0,0.72fr)_minmax(0,1fr)]' : 'grid-cols-1',
-            )}
-          >
-            {showAnswer && !isViewingHistory && (
+          {hasRound2ChoiceOptions ? (
+            <>
+              {activeRound2ChoiceSelection && !isViewingHistory && (
+                <button
+                  type="button"
+                  onClick={handleRound3PrimaryAction}
+                  disabled={isSubmittingAttempt}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0ea5e9] px-5 py-4 font-bold text-white shadow-[0_16px_34px_rgba(14,165,233,0.22)] transition-all hover:scale-[1.01] hover:bg-[#0284c7] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 disabled:hover:bg-[#0ea5e9]"
+                >
+                  继续下一个词
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              )}
+              {isViewingHistory && (
+                <button
+                  type="button"
+                  disabled
+                  className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-2xl bg-[#0ea5e9] px-5 py-4 font-bold text-white opacity-50"
+                >
+                  回看中
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              )}
+            </>
+          ) : (
+            <div
+              className={cx(
+                'grid gap-3',
+                showAnswer && !isViewingHistory ? 'sm:grid-cols-[minmax(0,0.72fr)_minmax(0,1fr)]' : 'grid-cols-1',
+              )}
+            >
+              {showAnswer && !isViewingHistory && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleRound3Unknown();
+                  }}
+                  disabled={isSubmittingAttempt}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl border border-apple-red/20 bg-apple-red/10 px-5 py-4 font-bold text-apple-red transition-all hover:scale-[1.01] hover:bg-apple-red/15 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+                >
+                  {isSubmittingAttempt ? <Loader2 className="h-5 w-5 animate-spin" /> : <XCircle className="h-5 w-5" />}
+                  不认识
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => {
-                  void handleRound3Unknown();
-                }}
-                disabled={isSubmittingAttempt}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl border border-apple-red/20 bg-apple-red/10 px-5 py-4 font-bold text-apple-red transition-all hover:scale-[1.01] hover:bg-apple-red/15 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+                onClick={handleRound3PrimaryAction}
+                disabled={isViewingHistory || isSubmittingAttempt}
+                className="w-full py-4 bg-[#0ea5e9] text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-[0_16px_34px_rgba(14,165,233,0.22)] hover:scale-[1.01] hover:bg-[#0284c7] active:scale-[0.99] transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 disabled:hover:bg-[#0ea5e9]"
               >
-                {isSubmittingAttempt ? <Loader2 className="h-5 w-5 animate-spin" /> : <XCircle className="h-5 w-5" />}
-                不认识
+                {isViewingHistory
+                  ? '回看中'
+                  : isSubmittingAttempt
+                    ? '正在写回…'
+                    : showAnswer
+                      ? '继续下一个词'
+                      : '展开释义'}
+                {isSubmittingAttempt ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <ChevronRight className="w-5 h-5" />
+                )}
               </button>
-            )}
-            <button
-              type="button"
-              onClick={handleRound3PrimaryAction}
-              disabled={isViewingHistory || isSubmittingAttempt}
-              className="w-full py-4 bg-[#0ea5e9] text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-[0_16px_34px_rgba(14,165,233,0.22)] hover:scale-[1.01] hover:bg-[#0284c7] active:scale-[0.99] transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 disabled:hover:bg-[#0ea5e9]"
-            >
-              {isViewingHistory
-                ? '回看中'
-                : isSubmittingAttempt
-                  ? '正在写回…'
-                  : showAnswer
-                    ? '继续下一个词'
-                    : '展开释义'}
-              {isSubmittingAttempt ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <ChevronRight className="w-5 h-5" />
-              )}
-            </button>
-          </div>
+            </div>
+          )}
         </div>
       </div>
     );

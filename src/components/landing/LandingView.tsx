@@ -1,4 +1,5 @@
-import { motion } from 'motion/react';
+import { useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   ArrowRight,
   BarChart3,
@@ -214,6 +215,47 @@ const continuityItems: IconCopy[] = [
   },
 ];
 
+const faqItems = [
+  {
+    question: 'Lumina 是什么？',
+    answer: [
+      'Lumina 是一款面向中文英语学习者的单词记忆与雅思训练工具。',
+      '“Lumina” 源自拉丁语，有“光芒”“光辉”的意思。这个名字也代表了我做这个项目的初衷：希望它能成为一个真正对别人有帮助的产品。往小了说，是我自己在学习和做事中践行“知行合一”；往大了说，也希望它能通过技术帮助更多人更高效地学习英语。',
+    ],
+  },
+  {
+    question: 'Lumina 免费吗？',
+    answer: [
+      '目前 Lumina 是免费的，而且我会尽量长期保持免费。',
+      '因为我现在还在新加坡留学，个人经济压力不算大，所以这个项目一开始并不是为了赚钱。我更希望它先成为一个真正好用、能帮助学习者的工具。',
+      '不过也想提前说明一下：Lumina 后续会陆续加入一些 AI 功能，例如 AI 口语练习、个性化学习辅助等。这类功能可能会产生较高的服务成本。因此，如果未来某些功能的成本非常高，不排除会对部分高级 AI 功能进行收费，用来覆盖服务器和 AI 调用成本。',
+    ],
+  },
+  {
+    question: 'Lumina 支持哪些平台？',
+    answer: [
+      '目前 Lumina 主要支持网页端，后续会逐步考虑支持更多平台，包括 App、Windows 和 MacOS。Lumina 的学习进度会跟随账号自动同步。',
+    ],
+  },
+  {
+    question: '可以背自己的单词吗？',
+    answer: [
+      '当然可以。',
+      '这也是我最初开发 Lumina 的重要原因之一：我希望能有一个工具，不只是背固定词库，也能把自己平时在生活中、视频里、文章里、考试材料中遇到的单词保存下来，变成自己的长期词库。',
+      '你可以在个人词库中导入自己的单词。导入后，系统会自动整理词条信息，例如释义、音标、例句、构词、近义词、反义词和记忆提示等。之后，这些单词也可以进入 Lumina 的学习流程和复习系统。',
+    ],
+  },
+  {
+    question: 'Lumina 和其他背单词 App 有什么区别？',
+    answer: [
+      '很多背单词软件会更强调“词库很大”“单词很多”，但真正到考试、阅读或听力中需要回忆时，效果不一定理想。',
+      'Lumina 更关注的是：你是否真的能记住、能回忆、能在真实语境中使用。',
+      '所以 Lumina 把“听写”和“主动回忆”放在默认学习路径中。相比只是看一遍单词，听写和回忆会迫使你真正调动记忆，从而提高单词掌握程度。',
+      '同时，Lumina 也把词汇学习和考试训练连接起来。目前主要支持雅思阅读和听力训练。你在做题时遇到的生词，可以快速加入个人词库，并进入后续学习和复习流程。',
+    ],
+  },
+];
+
 const reviewTimeline = [
   { label: '新学', value: '首次记忆' },
   { label: '1 天后', value: '快速回看' },
@@ -292,6 +334,7 @@ function MemoryCurveChart() {
 export const LandingView = () => {
   const navigate = useNavigate();
   const { isAuthenticated, isAuthLoading } = useAuth();
+  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
 
   const primaryTarget = isAuthenticated ? '/app/home' : '/auth?mode=register';
   const ieltsTarget = isAuthenticated ? '/app/ielts' : `/auth?mode=login&next=${encodeURIComponent('/app/ielts')}`;
@@ -642,6 +685,58 @@ export const LandingView = () => {
                     <h3>{item.title}</h3>
                     <p>{item.text}</p>
                   </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+
+        <section id="faq" className="landing-faq-section" aria-labelledby="landing-faq-title">
+          <div className="landing-section-copy landing-faq-copy">
+            <p>常见问题</p>
+            <h2 id="landing-faq-title">开始使用前，先把关键问题说清楚。</h2>
+            <span>
+              这里回答 Lumina 的定位、费用、平台和个人词库能力。每次只展开一个答案，阅读时不会被其他内容打断。
+            </span>
+          </div>
+
+          <div className="landing-faq-list">
+            {faqItems.map((item, index) => {
+              const isOpen = openFaqIndex === index;
+              const contentId = `landing-faq-answer-${index}`;
+
+              return (
+                <article key={item.question} className={`landing-faq-item${isOpen ? ' landing-faq-item--open' : ''}`}>
+                  <button
+                    type="button"
+                    aria-expanded={isOpen}
+                    aria-controls={contentId}
+                    onClick={() => setOpenFaqIndex((current) => (current === index ? null : index))}
+                    className="landing-faq-question"
+                  >
+                    <span>{item.question}</span>
+                    <ChevronRight className="h-5 w-5" aria-hidden="true" />
+                  </button>
+
+                  <AnimatePresence initial={false}>
+                    {isOpen && (
+                      <motion.div
+                        id={contentId}
+                        key="content"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.22, ease: 'easeOut' }}
+                        className="landing-faq-answer"
+                      >
+                        <div>
+                          {item.answer.map((paragraph) => (
+                            <p key={paragraph}>{paragraph}</p>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </article>
               );
             })}

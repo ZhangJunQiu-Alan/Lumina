@@ -35,6 +35,7 @@ import { invalidateLibraryCache } from './lib/libraryCache';
 import {
   createInitialLearningSession,
   filterWordsToRound1Confirmed,
+  getNewRound1ConfirmedWordIds,
   isCoreLearningRound,
   normalizePersistedLearningSession,
   normalizeSessionRound1ConfirmedWordIds,
@@ -61,9 +62,14 @@ import { IslandButton } from './components/shared/AnimalPrimitives';
 import { LibrarySkeleton } from './components/shared/Skeleton';
 import { useDeferredLoading } from './hooks/useDeferredLoading';
 import { fetchHomeOverview, resolveBrowserTimeZone } from './lib/homeApi';
-import { invalidateCachedHomeOverview, readCachedHomeOverview, writeCachedHomeOverview } from './lib/homeOverviewCache';
 import {
-  appendNextOfficialBatchToLearningGroup,
+  invalidateCachedHomeOverview,
+  isCachedHomeOverviewCompatibleWithActiveLearningGroup,
+  readCachedHomeOverview,
+  writeCachedHomeOverview,
+} from './lib/homeOverviewCache';
+import { shouldForceHomeRefreshForNavigation } from './lib/homeNavigation';
+import {
   clearOfficialAppendPreparationCache,
   preloadNextOfficialBatchForAppend,
   reorderActiveOfficialGroup,
@@ -74,7 +80,6 @@ import {
   getOfficialLibraryDefinition,
   isOfficialLibraryId,
   OFFICIAL_APPEND_PRELOAD_REMAINING_THRESHOLD,
-  OFFICIAL_PREFETCH_REMAINING_THRESHOLD,
 } from './lib/officialLibrary';
 import { toRoutineDateKey } from './lib/routineDate';
 import { AI_CONTENT_FEATURES_ENABLED, PERSONAL_VOCAB_IMPORT_ENABLED } from './lib/aiFeatures';
@@ -345,7 +350,7 @@ function buildEmptyStats(): UserStats {
       state: 'not_started',
       title: '开始今天的学习',
       subtitle: '先完成第一轮，再进入回忆与听写',
-      ctaLabel: '开始学习',
+      ctaLabel: '先选择学习词库',
       ctaMode: 'start_learning',
       boundLearningGroupId: null,
       lastUsedOfficialLibraryId: null,
@@ -388,7 +393,6 @@ export default function App() {
   const sessionAutoRestoreRef = useRef<string | null>(null);
   const lastNonSessionAppPathRef = useRef('/app/home');
   const officialAppendPreloadKeyRef = useRef<string | null>(null);
-  const officialPrefetchKeyRef = useRef<string | null>(null);
   const articleGenerationRef = useRef<ArticleGenerationJob | null>(null);
   const articleGenerationRunIdRef = useRef(0);
   const activeWordsRef = useRef<Word[]>([]);
@@ -398,11 +402,14 @@ export default function App() {
   const homeStatsInFlightRef = useRef<Promise<void> | null>(null);
   const homeStatsRequestIdRef = useRef(0);
   const hasTrustedHomeStatsRef = useRef(false);
+  const homeOverviewDirtyRef = useRef(false);
+  const forceNextHomeRefreshRef = useRef(false);
+  const pendingLearningHomeSyncsRef = useRef<Set<Promise<void>>>(new Set());
+  const homeRefreshAfterSyncRef = useRef<Promise<void> | null>(null);
   const [round, setRound] = useState<RoundType>('round1');
   const [activeWords, setActiveWords] = useState<Word[]>([]);
   const [activeLearningGroupId, setActiveLearningGroupId] = useState<string | null>(null);
   const [activeSessionSeed, setActiveSessionSeedState] = useState<PersistedLearningSession | null>(null);
-  const [round1AppendExhaustedGroupIds, setRound1AppendExhaustedGroupIds] = useState<Set<string>>(() => new Set());
   const [articleSentences, setArticleSentences] = useState<ArticleSentence[] | null>(null);
   const [articleGenerationError, setArticleGenerationError] = useState('');
   const [isStartingSession, setIsStartingSession] = useState(false);
@@ -506,6 +513,10 @@ export default function App() {
     userIdRef.current = user?.id ?? null;
     homeStatsRequestIdRef.current += 1;
     homeStatsInFlightRef.current = null;
+    homeOverviewDirtyRef.current = false;
+    forceNextHomeRefreshRef.current = false;
+    pendingLearningHomeSyncsRef.current.clear();
+    homeRefreshAfterSyncRef.current = null;
     hasTrustedHomeStatsRef.current = false;
     setHasTrustedHomeStats(false);
     setIsHomeStatsRefreshing(false);
@@ -562,11 +573,13 @@ export default function App() {
       }
 
       const timeZone = resolveBrowserTimeZone();
-      if (options.forceRefresh) {
+      const mustRefreshHomeOverview = options.forceRefresh || homeOverviewDirtyRef.current;
+      if (mustRefreshHomeOverview) {
         invalidateCachedHomeOverview(user.id, timeZone);
       } else {
         const cached = readCachedHomeOverview(user.id, timeZone);
-        if (cached) {
+        const activeGroupId = activeLearningGroupIdRef.current ?? activeSessionSeedRef.current?.groupId ?? null;
+        if (cached && isCachedHomeOverviewCompatibleWithActiveLearningGroup(cached.stats, activeGroupId)) {
           if (options.preferCache || !hasTrustedHomeStatsRef.current) {
             hasTrustedHomeStatsRef.current = true;
             setHasTrustedHomeStats(true);
@@ -578,7 +591,7 @@ export default function App() {
         }
       }
 
-      if (homeStatsInFlightRef.current && !options.forceRefresh) {
+      if (homeStatsInFlightRef.current && !mustRefreshHomeOverview) {
         return homeStatsInFlightRef.current;
       }
 
@@ -600,6 +613,7 @@ export default function App() {
             routineCard: overview.routineCard ?? fallback.routineCard,
           };
           writeCachedHomeOverview(user.id, timeZone, nextStats);
+          homeOverviewDirtyRef.current = false;
           hasTrustedHomeStatsRef.current = true;
           setHasTrustedHomeStats(true);
           setStats(nextStats);
@@ -625,6 +639,67 @@ export default function App() {
     [user],
   );
 
+  const markHomeOverviewDirty = useCallback(() => {
+    homeOverviewDirtyRef.current = true;
+    const userId = userIdRef.current;
+    if (userId) {
+      invalidateCachedHomeOverview(userId, resolveBrowserTimeZone());
+    }
+  }, []);
+
+  const trackLearningHomeSync = useCallback(
+    (promise: Promise<void>) => {
+      markHomeOverviewDirty();
+      const trackedPromise = promise.finally(() => {
+        pendingLearningHomeSyncsRef.current.delete(trackedPromise);
+      });
+      pendingLearningHomeSyncsRef.current.add(trackedPromise);
+      void trackedPromise.catch(() => {
+        // Individual sync tasks log their own failures; refresh should still continue.
+      });
+      return trackedPromise;
+    },
+    [markHomeOverviewDirty],
+  );
+
+  const waitForPendingLearningHomeSync = useCallback(async () => {
+    while (pendingLearningHomeSyncsRef.current.size > 0) {
+      await Promise.allSettled([...pendingLearningHomeSyncsRef.current]);
+    }
+  }, []);
+
+  const refreshHomeStatsAfterLearningSync = useCallback(() => {
+    if (homeRefreshAfterSyncRef.current) {
+      return homeRefreshAfterSyncRef.current;
+    }
+
+    const refreshPromise = (async () => {
+      await waitForPendingLearningHomeSync();
+      await fetchStats({ forceRefresh: true });
+    })();
+    const trackedRefresh = refreshPromise.finally(() => {
+      if (homeRefreshAfterSyncRef.current === trackedRefresh) {
+        homeRefreshAfterSyncRef.current = null;
+      }
+    });
+    homeRefreshAfterSyncRef.current = trackedRefresh;
+    return trackedRefresh;
+  }, [fetchStats, waitForPendingLearningHomeSync]);
+
+  const navigateWithFreshHomeStats = useCallback(
+    (targetPath = '/app/home') => {
+      setIsSessionSettingsOpen(false);
+      if (targetPath.startsWith('/app/home')) {
+        forceNextHomeRefreshRef.current = true;
+      }
+      navigate(targetPath);
+      if (targetPath.startsWith('/app/home')) {
+        void refreshHomeStatsAfterLearningSync();
+      }
+    },
+    [navigate, refreshHomeStatsAfterLearningSync],
+  );
+
   const handleSelectOrbitDate = useCallback((date: string) => {
     setStats((current) => {
       const selectedDay = current.orbitDays.find((day) => day.date === date);
@@ -646,21 +721,26 @@ export default function App() {
   }, [fetchStats]);
   useEffect(() => {
     if (location.pathname.startsWith('/app/home')) {
+      const shouldForceRefresh =
+        forceNextHomeRefreshRef.current || homeOverviewDirtyRef.current || pendingLearningHomeSyncsRef.current.size > 0;
+      forceNextHomeRefreshRef.current = false;
+      if (shouldForceRefresh) {
+        void refreshHomeStatsAfterLearningSync();
+        return;
+      }
       void fetchStats({ preferCache: true });
     }
-  }, [fetchStats, location.pathname]);
+  }, [fetchStats, location.pathname, refreshHomeStatsAfterLearningSync]);
   useEffect(() => {
     if (!user) {
       cancelArticleGeneration();
       activeLearningGroupIdRef.current = null;
       officialAppendPreloadKeyRef.current = null;
-      officialPrefetchKeyRef.current = null;
       clearOfficialAppendPreparationCache();
       lastSessionChangeSignatureRef.current = null;
       setActiveWords([]);
       setActiveLearningGroupId(null);
       setActiveSessionSeed(null);
-      setRound1AppendExhaustedGroupIds(new Set());
       setReviewSummary([]);
       setArticleSentences(null);
       setArticleGenerationError('');
@@ -672,13 +752,11 @@ export default function App() {
     cancelArticleGeneration();
     activeLearningGroupIdRef.current = null;
     officialAppendPreloadKeyRef.current = null;
-    officialPrefetchKeyRef.current = null;
     clearOfficialAppendPreparationCache();
     lastSessionChangeSignatureRef.current = null;
     setActiveWords([]);
     setActiveLearningGroupId(null);
     setActiveSessionSeed(null);
-    setRound1AppendExhaustedGroupIds(new Set());
     setArticleSentences(null);
     setArticleGenerationError('');
     setRound('round1');
@@ -912,8 +990,7 @@ export default function App() {
             });
             invalidateLibraryCache(user.id);
             resetActiveLearningState();
-            navigate('/app/home');
-            void fetchStats({ forceRefresh: true });
+            navigateWithFreshHomeStats('/app/home');
             return;
           }
 
@@ -950,8 +1027,7 @@ export default function App() {
           });
           invalidateLibraryCache(user.id);
           resetActiveLearningState();
-          navigate('/app/home');
-          void fetchStats({ forceRefresh: true });
+          navigateWithFreshHomeStats('/app/home');
           return;
         }
 
@@ -961,8 +1037,7 @@ export default function App() {
           });
           invalidateLibraryCache(user.id);
           resetActiveLearningState();
-          navigate('/app/home');
-          void fetchStats({ forceRefresh: true });
+          navigateWithFreshHomeStats('/app/home');
           return;
         }
 
@@ -978,13 +1053,6 @@ export default function App() {
         setReviewSummary([]);
         setArticleGenerationError('');
         officialAppendPreloadKeyRef.current = null;
-        officialPrefetchKeyRef.current = null;
-        setRound1AppendExhaustedGroupIds((current) => {
-          if (!current.has(groupId)) return current;
-          const next = new Set(current);
-          next.delete(groupId);
-          return next;
-        });
         setActiveWords(sessionWords);
         activeLearningGroupIdRef.current = groupId;
         setActiveLearningGroupId(groupId);
@@ -1003,13 +1071,19 @@ export default function App() {
         await persistLearningGroupSession(user.id, nextSession);
         invalidateLibraryCache(user.id);
         if (isCoreLearningRound(nextSession.round)) {
-          void bindRoutineMainLearningGroup(user.id, {
-            groupId,
-            round: nextSession.round,
-            timeZone: resolveBrowserTimeZone(),
-          }).catch((error) => {
-            console.error('Failed to bind daily routine main learning group:', error);
-          });
+          trackLearningHomeSync(
+            bindRoutineMainLearningGroup(user.id, {
+              groupId,
+              round: nextSession.round,
+              timeZone: resolveBrowserTimeZone(),
+            })
+              .catch((error) => {
+                console.error('Failed to bind daily routine main learning group:', error);
+              })
+              .then(() => undefined),
+          );
+        } else {
+          markHomeOverviewDirty();
         }
 
         if (
@@ -1030,11 +1104,13 @@ export default function App() {
       articleReinforcementEnabled,
       dictationRoundEnabled,
       ensureArticleForGroup,
-      fetchStats,
+      markHomeOverviewDirty,
       navigate,
+      navigateWithFreshHomeStats,
       recallRoundEnabled,
       resetActiveLearningState,
       setActiveSessionSeed,
+      trackLearningHomeSync,
       user,
     ],
   );
@@ -1057,7 +1133,6 @@ export default function App() {
             groupId: activeTarget.groupId,
             mode: requestedMode,
           });
-          officialPrefetchKeyRef.current = null;
           invalidateLibraryCache(user.id);
           void fetchStats({ forceRefresh: true });
         }
@@ -1243,11 +1318,11 @@ export default function App() {
           setIsStartingSession(false);
         }
       }
-      navigate('/app/library');
+      navigate('/app/library?tab=system');
       return;
     }
 
-    navigate('/app/library');
+    navigate('/app/library?tab=system');
   };
 
   const handleDeleteOfficialLibrary = useCallback(
@@ -1261,7 +1336,6 @@ export default function App() {
         activeLearningGroupIdRef.current && result.preservedRoutineGroupIds?.includes(activeLearningGroupIdRef.current),
       );
 
-      officialPrefetchKeyRef.current = null;
       invalidateLibraryCache(user.id);
       if (deletedActiveSession && !activeGroupPreserved) {
         resetActiveLearningState();
@@ -1337,27 +1411,43 @@ export default function App() {
       lastSessionChangeSignatureRef.current = nextSignature;
       setActiveSessionSeed(sessionSeed);
 
-      void persistLearningGroupSession(user.id, sessionSeed).catch((error) => {
+      const persistSessionPromise = persistLearningGroupSession(user.id, sessionSeed).catch((error) => {
         console.error('Failed to persist learning session snapshot:', error);
       });
-
-      if (isCoreLearningRound(sessionSeed.round)) {
-        void bindRoutineMainLearningGroup(user.id, {
-          groupId: activeLearningGroupId,
-          round: sessionSeed.round,
-          timeZone: resolveBrowserTimeZone(),
-        }).catch((error) => {
-          console.error('Failed to refresh daily routine main learning group:', error);
-        });
-      }
+      const newlyConfirmedWordIds = getNewRound1ConfirmedWordIds(
+        currentSeed?.groupId === activeLearningGroupId ? currentSeed.round1ConfirmedWordIds : [],
+        sessionSeed.round1ConfirmedWordIds,
+      );
+      const markRound1ProgressPromise =
+        newlyConfirmedWordIds.length > 0
+          ? markLearningGroupWordsRound1Confirmed(activeLearningGroupId, newlyConfirmedWordIds, {
+              round2Required: recallRoundEnabled,
+              round3Required: dictationRoundEnabled,
+            })
+              .then(() => {
+                invalidateLibraryCache(user.id);
+              })
+              .catch((error) => {
+                console.error('Failed to sync round1 confirmed word progress:', error);
+              })
+          : Promise.resolve();
+      const bindRoutinePromise = isCoreLearningRound(sessionSeed.round)
+        ? bindRoutineMainLearningGroup(user.id, {
+            groupId: activeLearningGroupId,
+            round: sessionSeed.round,
+            timeZone: resolveBrowserTimeZone(),
+          }).catch((error) => {
+            console.error('Failed to refresh daily routine main learning group:', error);
+          })
+        : Promise.resolve();
+      trackLearningHomeSync(
+        Promise.all([persistSessionPromise, markRound1ProgressPromise, bindRoutinePromise]).then(() => undefined),
+      );
 
       const libraryId = sessionSeed.libraryId;
       const mode = sessionSeed.officialMode;
       const confirmedCount = session.round1ConfirmedWordIds.length;
       const remainingLoadedCount = session.queueWordIds.length - confirmedCount;
-      const officialGroupCount =
-        stats.routineCard.officialLibraryOptions.find((item) => item.libraryId === libraryId)?.existingGroupCount ??
-        stats.routineCard.lastUsedOfficialGroupCount;
       const officialAppendInput =
         libraryId && mode
           ? {
@@ -1365,7 +1455,9 @@ export default function App() {
               groupId: activeLearningGroupId,
               libraryId,
               mode,
-              existingGroupCount: officialGroupCount,
+              existingGroupCount:
+                stats.routineCard.officialLibraryOptions.find((item) => item.libraryId === libraryId)
+                  ?.existingGroupCount ?? stats.routineCard.lastUsedOfficialGroupCount,
             }
           : null;
       const appendPreloadKey = `${activeLearningGroupId}:${session.queueWordIds.length}:preload`;
@@ -1381,64 +1473,16 @@ export default function App() {
           console.error('Failed to preload next official batch:', error);
         });
       }
-
-      const prefetchKey = `${activeLearningGroupId}:${session.queueWordIds.length}`;
-      if (
-        session.round === 'round1' &&
-        officialAppendInput &&
-        remainingLoadedCount <= OFFICIAL_PREFETCH_REMAINING_THRESHOLD &&
-        officialPrefetchKeyRef.current !== prefetchKey
-      ) {
-        officialPrefetchKeyRef.current = prefetchKey;
-        void appendNextOfficialBatchToLearningGroup(officialAppendInput)
-          .then((result) => {
-            const appendedWords = result?.appendedWords ?? [];
-            if (appendedWords.length === 0) {
-              setRound1AppendExhaustedGroupIds((current) => {
-                if (current.has(activeLearningGroupId)) return current;
-                const next = new Set(current);
-                next.add(activeLearningGroupId);
-                return next;
-              });
-              return;
-            }
-            officialAppendPreloadKeyRef.current = null;
-            setRound1AppendExhaustedGroupIds((current) => {
-              if (!current.has(activeLearningGroupId)) return current;
-              const next = new Set(current);
-              next.delete(activeLearningGroupId);
-              return next;
-            });
-            setActiveWords((currentWords) => {
-              const currentIds = new Set(currentWords.map((word) => word.id));
-              const nextWords = [...currentWords, ...appendedWords.filter((word) => !currentIds.has(word.id))];
-              activeWordsRef.current = nextWords;
-              return nextWords;
-            });
-            setActiveSessionSeed((current) =>
-              current && current.groupId === activeLearningGroupId
-                ? {
-                    ...current,
-                    queueWordIds: [
-                      ...current.queueWordIds,
-                      ...appendedWords
-                        .map((word) => word.id)
-                        .filter((wordId) => !current.queueWordIds.includes(wordId)),
-                    ],
-                    lastActiveAt: new Date().toISOString(),
-                  }
-                : current,
-            );
-            invalidateLibraryCache(user.id);
-          })
-          .catch((error) => {
-            officialAppendPreloadKeyRef.current = null;
-            officialPrefetchKeyRef.current = null;
-            console.error('Failed to prefetch next official batch:', error);
-          });
-      }
     },
-    [activeLearningGroupId, stats.routineCard, setActiveSessionSeed, user],
+    [
+      activeLearningGroupId,
+      dictationRoundEnabled,
+      recallRoundEnabled,
+      stats.routineCard,
+      setActiveSessionSeed,
+      trackLearningHomeSync,
+      user,
+    ],
   );
 
   const handleSessionWordMastered = useCallback(
@@ -1502,8 +1546,7 @@ export default function App() {
         });
         invalidateLibraryCache(user.id);
         resetActiveLearningState();
-        navigate('/app/home');
-        void fetchStats({ forceRefresh: true });
+        navigateWithFreshHomeStats('/app/home');
         return;
       }
 
@@ -1582,8 +1625,7 @@ export default function App() {
           });
           invalidateLibraryCache(user.id);
           resetActiveLearningState();
-          navigate('/app/home');
-          void fetchStats({ forceRefresh: true });
+          navigateWithFreshHomeStats('/app/home');
           return;
         }
 
@@ -1598,9 +1640,11 @@ export default function App() {
         setActiveSessionSeed(nextSession);
         lastSessionChangeSignatureRef.current = buildLearningProgressSignature(activeLearningGroupId, nextSession);
         setRound(nextRound);
-        void persistLearningGroupSession(user.id, nextSession).catch((error) => {
-          console.error('Failed to persist round transition:', error);
-        });
+        trackLearningHomeSync(
+          persistLearningGroupSession(user.id, nextSession).catch((error) => {
+            console.error('Failed to persist round transition:', error);
+          }),
+        );
         return;
       }
 
@@ -1610,8 +1654,7 @@ export default function App() {
         });
         invalidateLibraryCache(user.id);
         resetActiveLearningState();
-        navigate('/app/home');
-        void fetchStats({ forceRefresh: true });
+        navigateWithFreshHomeStats('/app/home');
       };
 
       const advanceToArticle = (completedAt: string, groupCompleted: boolean) => {
@@ -1744,23 +1787,23 @@ export default function App() {
       activeSessionSeed?.round1ConfirmedWordIds,
       articleReinforcementEnabled,
       ensureArticleForGroup,
-      fetchStats,
       dictationRoundEnabled,
       navigate,
+      navigateWithFreshHomeStats,
       recallRoundEnabled,
       resetActiveLearningState,
       round,
       setActiveSessionSeed,
+      trackLearningHomeSync,
       user,
     ],
   );
 
   const handleReviewResultsBackHome = () => {
-    navigate('/app/home');
     setReviewSummary([]);
     setSessionStartError('');
     resetActiveLearningState();
-    void fetchStats({ forceRefresh: true });
+    navigateWithFreshHomeStats('/app/home');
   };
 
   const handleRetryArticleGeneration = useCallback(() => {
@@ -1772,23 +1815,7 @@ export default function App() {
     void ensureArticleForGroup(activeLearningGroupId, activeWords);
   }, [activeLearningGroupId, activeWords, cancelArticleGeneration, ensureArticleForGroup]);
 
-  const round1CanWaitForMoreWords = useMemo(
-    () =>
-      round === 'round1' &&
-      Boolean(
-        activeLearningGroupId &&
-        activeSessionSeed?.libraryId &&
-        activeSessionSeed?.officialMode &&
-        !round1AppendExhaustedGroupIds.has(activeLearningGroupId),
-      ),
-    [
-      activeLearningGroupId,
-      activeSessionSeed?.libraryId,
-      activeSessionSeed?.officialMode,
-      round,
-      round1AppendExhaustedGroupIds,
-    ],
-  );
+  const round1CanWaitForMoreWords = false;
 
   const handleSignOut = async () => {
     resetActiveLearningState();
@@ -1807,6 +1834,25 @@ export default function App() {
     if (location.pathname.startsWith('/app/profile')) return '/app/profile';
     return '/app/home';
   })();
+
+  const handleSidebarNavigate = useCallback(
+    (targetPath: string) => {
+      const hasPendingHomeSync = pendingLearningHomeSyncsRef.current.size > 0;
+      if (
+        shouldForceHomeRefreshForNavigation(
+          location.pathname,
+          targetPath,
+          homeOverviewDirtyRef.current || hasPendingHomeSync,
+        )
+      ) {
+        navigateWithFreshHomeStats(targetPath);
+        return;
+      }
+
+      navigate(targetPath);
+    },
+    [location.pathname, navigate, navigateWithFreshHomeStats],
+  );
 
   useEffect(() => {
     if (!isSessionRoute) {
@@ -1880,9 +1926,7 @@ export default function App() {
       aria-label="返回"
       title="返回"
       onClick={() => {
-        setIsSessionSettingsOpen(false);
-        navigate(lastNonSessionAppPathRef.current || '/app/home');
-        void fetchStats({ forceRefresh: true });
+        navigateWithFreshHomeStats(lastNonSessionAppPathRef.current || '/app/home');
       }}
       className="inline-flex h-7 w-7 items-center justify-center rounded-xl border border-white/80 bg-white/80 text-[#4f46e5] shadow-[0_6px_14px_rgba(79,70,229,0.14)] backdrop-blur-xl transition-all active:scale-95"
     >
@@ -1929,8 +1973,7 @@ export default function App() {
       <h2 className="mt-4 text-3xl font-black text-text-primary">回到首页，查看今天的学习安排。</h2>
       <IslandButton
         onClick={() => {
-          navigate('/app/home');
-          void fetchStats({ forceRefresh: true });
+          navigateWithFreshHomeStats('/app/home');
         }}
         className="mt-8"
         tone="mint"
@@ -1947,7 +1990,7 @@ export default function App() {
         <div className="min-h-screen flex selection:bg-apple-blue/20">
           <AmbientBackground />
           {!isIeltsTestRoute && (
-            <Sidebar activePath={activeNavPath} onNavigate={(to) => navigate(to)} hideOnMobile={isSessionRoute} />
+            <Sidebar activePath={activeNavPath} onNavigate={handleSidebarNavigate} hideOnMobile={isSessionRoute} />
           )}
           <WhatsNewModal />
 
@@ -2011,6 +2054,7 @@ export default function App() {
                             }}
                             onOpenOfficialLibrary={() => navigate('/app/library?tab=system')}
                             onDeleteOfficialLibrary={handleDeleteOfficialLibrary}
+                            requestedOfficialLibraryId={requestedOfficialLibraryId}
                             isDataPending={!hasTrustedHomeStats && (isHomeStatsRefreshing || isHomeRoute)}
                             isLoading={isStartingSession}
                           />

@@ -5,12 +5,18 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    # Run the full validation suite once a day without blocking every PR.
+    - cron: '0 19 * * *'
+  workflow_dispatch:
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -20,6 +26,61 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Detect changed areas
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          event_name="${{ github.event_name }}"
+          zero_sha="0000000000000000000000000000000000000000"
+          base_sha=""
+          head_sha="${{ github.sha }}"
+
+          if [ "$event_name" = "pull_request" ]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+            head_sha="${{ github.event.pull_request.head.sha }}"
+          elif [ "$event_name" = "push" ]; then
+            base_sha="${{ github.event.before }}"
+          fi
+
+          if [ -n "$base_sha" ] &&
+            [ "$base_sha" != "$zero_sha" ] &&
+            git cat-file -e "$base_sha^{commit}" 2>/dev/null &&
+            git cat-file -e "$head_sha^{commit}" 2>/dev/null; then
+            git diff --name-only "$base_sha" "$head_sha" > /tmp/lumina-changed-files
+          else
+            git ls-files > /tmp/lumina-changed-files
+          fi
+
+          changed_any() {
+            local pattern="$1"
+            if [ "$event_name" != "pull_request" ]; then
+              echo "true"
+              return
+            fi
+            if grep -E -q "$pattern" /tmp/lumina-changed-files; then
+              echo "true"
+            else
+              echo "false"
+            fi
+          }
+
+          {
+            echo "dependencies=$(changed_any '^(package(-lock)?\.json|\.github/workflows/ci\.yml)$')"
+            echo "edge=$(changed_any '^(\.github/workflows/ci\.yml|supabase/functions/|supabase/schema\.sql|shared/server/|shared/types\.ts|server/)')"
+            echo "ielts=$(changed_any '^(\.github/workflows/ci\.yml|src/components/ielts/|src/lib/ielts|scripts/.*ielts|shared/server/ielts|supabase/functions/.*ielts|src/data/.*ielts)')"
+            echo "review=$(changed_any '^(\.github/workflows/ci\.yml|src/lib/review|src/components/review/|shared/server/review|server/review|supabase/functions/.*review|scripts/test-review-rules\.ts)')"
+            echo "cloze=$(changed_any '^(\.github/workflows/ci\.yml|src/components/learning/Round2|src/components/learning/.*Cloze|scripts/test-cloze\.ts)')"
+            echo "enrichment=$(changed_any '^(\.github/workflows/ci\.yml|scripts/test-enrichment|shared/server/vocab\.ts|server/vocab|supabase/functions/.*vocab|src/lib/importFlow\.ts)')"
+            echo "clickable_text=$(changed_any '^(\.github/workflows/ci\.yml|src/lib/(clickableTextTokenizer|round1ClickableWords|round1Preload)\.ts|scripts/test-clickable-text-tokenizer\.ts|src/components/learning/Round1)')"
+            echo "word_batch=$(changed_any '^(\.github/workflows/ci\.yml|scripts/test-word-batch\.ts|src/lib/officialLibrary|src/lib/officialLibraryStart|shared/server/official|server/official)')"
+            echo "round2_distractors=$(changed_any '^(\.github/workflows/ci\.yml|shared/round2ChoiceDistractors\.ts|scripts/.*round2.*distractor|src/components/learning/.*Round2|src/types\.ts|shared/types\.ts)')"
+            echo "routine_date=$(changed_any '^(\.github/workflows/ci\.yml|src/lib/routineDate\.ts|scripts/test-routine-date\.ts|shared/server/home\.ts|server/home|supabase/functions/.*home)')"
+            echo "official_library=$(changed_any '^(\.github/workflows/ci\.yml|src/lib/officialLibrary|src/lib/libraryApi|src/components/library/|shared/server/home\.ts|server/home|scripts/test-official-library\.ts|src/data/.*vocab)')"
+            echo "hardening=$(changed_any '^(\.github/workflows/ci\.yml|scripts/test-enterprise-hardening-contracts\.ts|shared/|server/|supabase/functions/)')"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Lint
         run: npm run lint
@@ -33,6 +94,10 @@ jobs:
       - name: Run Unit Tests
         run: npm run test:unit
 
+      - name: Run Session Tests
+        if: github.event_name == 'pull_request'
+        run: npm run test:session
+
       - name: Build
         run: npm run build
         env:
@@ -40,25 +105,67 @@ jobs:
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
       - name: Check production API gateway
+        if: github.event_name != 'pull_request'
         run: npm run check:production-api-base
 
       - name: Run Core Tests
+        if: github.event_name != 'pull_request'
         run: npm run test:core
         env:
           # Mock envs for script validation if needed
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
+      - name: Run Review Tests
+        if: github.event_name == 'pull_request' && steps.changes.outputs.review == 'true'
+        run: npm run test:review
+
+      - name: Run Cloze Tests
+        if: github.event_name == 'pull_request' && steps.changes.outputs.cloze == 'true'
+        run: npm run test:cloze
+
+      - name: Run Enrichment Tests
+        if: github.event_name == 'pull_request' && steps.changes.outputs.enrichment == 'true'
+        run: npm run test:enrichment
+
+      - name: Run Clickable Text Tests
+        if: github.event_name == 'pull_request' && steps.changes.outputs.clickable_text == 'true'
+        run: npm run test:clickable-text
+
+      - name: Run Word Batch Tests
+        if: github.event_name == 'pull_request' && steps.changes.outputs.word_batch == 'true'
+        run: npm run test:word-batch
+
+      - name: Run Round 2 Distractor Tests
+        if: github.event_name == 'pull_request' && steps.changes.outputs.round2_distractors == 'true'
+        run: npm run test:round2-distractors
+
+      - name: Run Routine Date Tests
+        if: github.event_name == 'pull_request' && steps.changes.outputs.routine_date == 'true'
+        run: npm run test:routine-date
+
+      - name: Run Official Library Tests
+        if: github.event_name == 'pull_request' && steps.changes.outputs.official_library == 'true'
+        run: npm run test:official-library
+
+      - name: Run Hardening Tests
+        if: github.event_name == 'pull_request' && steps.changes.outputs.hardening == 'true'
+        run: npm run test:hardening
+
       - name: Run IELTS Tests
+        if: github.event_name != 'pull_request' || steps.changes.outputs.ielts == 'true'
         run: npm run test:ielts
 
       - name: Setup Deno
+        if: github.event_name != 'pull_request' || steps.changes.outputs.edge == 'true'
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
 
       - name: Check Edge Function Types
+        if: github.event_name != 'pull_request' || steps.changes.outputs.edge == 'true'
         run: npm run check:edge
 
       - name: Audit Dependencies
+        if: github.event_name != 'pull_request' || steps.changes.outputs.dependencies == 'true'
         run: npm run check:audit

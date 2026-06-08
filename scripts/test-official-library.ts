@@ -10,7 +10,6 @@ import {
   isOfficialGroupName,
   OFFICIAL_APPEND_PRELOAD_REMAINING_THRESHOLD,
   OFFICIAL_BATCH_SIZE,
-  OFFICIAL_PREFETCH_REMAINING_THRESHOLD,
   resolveOfficialStudyModeFromGroupName,
   resolveOfficialLibraryStartMode,
   sortWordsByOfficialOrder,
@@ -35,9 +34,8 @@ function makeGroupSummary(overrides: Partial<LibraryGroupSummary> = {}): Library
 
 assert.equal(new Set(IELTS_WORDS_FLAT.map((word) => word.trim().toLowerCase())).size, IELTS_WORDS_FLAT.length);
 assert.equal(new Set(GRE_ZHENKAO_V7_WORDS.map((word) => word.trim().toLowerCase())).size, GRE_ZHENKAO_V7_WORDS.length);
-assert.equal(OFFICIAL_BATCH_SIZE, 40);
+assert.equal(OFFICIAL_BATCH_SIZE, 30);
 assert.equal(OFFICIAL_APPEND_PRELOAD_REMAINING_THRESHOLD, 15);
-assert.equal(OFFICIAL_PREFETCH_REMAINING_THRESHOLD, 5);
 
 const officialGroups: LibraryGroupSummary[] = [
   makeGroupSummary({
@@ -60,9 +58,9 @@ const lastBatchStart = Math.floor((IELTS_WORDS_FLAT.length - 1) / OFFICIAL_BATCH
 const lastBatchSize = IELTS_WORDS_FLAT.length - lastBatchStart;
 
 const summaryWithoutResume = buildOfficialLibrarySummary('ielts-vocab', officialGroups, null);
-assert.equal(summaryWithoutResume.progress, 80);
+assert.equal(summaryWithoutResume.progress, 60);
 assert.equal(summaryWithoutResume.nextBatchSize, OFFICIAL_BATCH_SIZE);
-assert.equal(summaryWithoutResume.unlockedWordCount, 80);
+assert.equal(summaryWithoutResume.unlockedWordCount, 60);
 assert.equal(summaryWithoutResume.completed, false);
 assert.equal(resolveOfficialLibraryStartMode(summaryWithoutResume), 'new');
 
@@ -175,13 +173,13 @@ assert.equal(resolveOfficialLibraryId(null, '雅思词汇真经 · 0031-0060', '
 const rowsFor = (indices: number[]) => indices.map((index) => ({ word: IELTS_WORDS_FLAT[index], position: index }));
 const range = (start: number, length: number) => Array.from({ length }, (_, k) => start + k);
 
-// Sequential + contiguous positions → "0006-0045" range name, words passed through in order.
+// Sequential + contiguous positions → range name, words passed through in order.
 const seqRows = rowsFor(range(5, OFFICIAL_BATCH_SIZE));
 const seqBatch = buildOfficialBatchFromRows('ielts-vocab', seqRows, 'sequential', 1);
 assert.ok(seqBatch);
 assert.equal(seqBatch.words.length, OFFICIAL_BATCH_SIZE);
 assert.equal(seqBatch.words[0], IELTS_WORDS_FLAT[5]);
-assert.equal(seqBatch.words[39], IELTS_WORDS_FLAT[44]);
+assert.equal(seqBatch.words[29], IELTS_WORDS_FLAT[34]);
 assert.equal(seqBatch.groupName, formatOfficialGroupName('ielts-vocab', 5, OFFICIAL_BATCH_SIZE));
 
 // Sequential with a positional hole (learned word at index 10 skipped) → non-contiguous

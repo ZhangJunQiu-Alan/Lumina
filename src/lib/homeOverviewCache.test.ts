@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { UserStats } from '../types';
 import {
   invalidateCachedHomeOverview,
+  isCachedHomeOverviewCompatibleWithActiveLearningGroup,
   readCachedHomeOverview,
   resolveHomeOverviewCacheKey,
   writeCachedHomeOverview,
@@ -36,7 +37,7 @@ function makeStats(overrides: Partial<UserStats> = {}): UserStats {
       state: 'not_started',
       title: '开始今天的学习',
       subtitle: '',
-      ctaLabel: '开始学习',
+      ctaLabel: '先选择学习词库',
       ctaMode: 'start_learning',
       boundLearningGroupId: null,
       visibleSteps: [],
@@ -116,5 +117,22 @@ describe('home overview cache', () => {
     invalidateCachedHomeOverview('user-1', 'Asia/Shanghai', { now, storage });
 
     expect(readCachedHomeOverview('user-1', 'Asia/Shanghai', { now, storage })).toBeNull();
+  });
+
+  it('does not let an empty cached home overview override an active local learning group', () => {
+    expect(isCachedHomeOverviewCompatibleWithActiveLearningGroup(makeStats(), 'group-1')).toBe(false);
+  });
+
+  it('allows cached home overview data that points at the active learning group', () => {
+    const stats = makeStats({
+      routineCard: {
+        ...makeStats().routineCard,
+        ctaMode: 'continue_learning',
+        ctaLabel: '继续学习',
+        boundLearningGroupId: 'group-1',
+      },
+    });
+
+    expect(isCachedHomeOverviewCompatibleWithActiveLearningGroup(stats, 'group-1')).toBe(true);
   });
 });

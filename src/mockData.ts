@@ -47,6 +47,7 @@ export const MOCK_WORDS: Word[] = [
       difference:
         'Pragmatic implies a focus on results and consequences, while practical simply means useful or capable of being put into effect.',
     },
+    round2ChoiceDistractors: [],
   },
   {
     id: '2',
@@ -94,6 +95,7 @@ export const MOCK_WORDS: Word[] = [
       difference:
         'Mitigate means to make less severe; militate (usually with "against") means to be a powerful factor in preventing something.',
     },
+    round2ChoiceDistractors: [],
   },
   {
     id: '3',
@@ -138,6 +140,7 @@ export const MOCK_WORDS: Word[] = [
       difference:
         'Ubiquitous means existing everywhere at once; pervasive means spreading widely throughout an area or a group of people.',
     },
+    round2ChoiceDistractors: [],
   },
   {
     id: '4',
@@ -182,6 +185,7 @@ export const MOCK_WORDS: Word[] = [
       difference:
         'Ambivalent refers to having mixed feelings; ambiguous refers to something having more than one possible meaning.',
     },
+    round2ChoiceDistractors: [],
   },
 ];
 

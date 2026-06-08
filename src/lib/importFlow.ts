@@ -8,6 +8,7 @@ import {
   normalizeWordKey,
   sanitizeWordInput,
 } from '../../shared/wordBatch';
+import { normalizeRound2ChoiceDistractors } from '../../shared/round2ChoiceDistractors';
 
 export type GroupSourceType = 'custom' | 'system';
 export type SavedWordSource = 'import' | 'reading_popup' | 'manual';
@@ -59,6 +60,7 @@ interface VocabularyItemRow {
   source_type: string | null;
   audio_uk_url: string | null;
   audio_us_url: string | null;
+  round2_choice_distractors?: unknown;
   vocabulary_senses: VocabularySenseRow[] | null;
   vocabulary_morphology_parts: VocabularyMorphologyPartRow[] | null;
   vocabulary_relations: VocabularyRelationRow[] | null;
@@ -88,6 +90,7 @@ const vocabularyEntrySelect = `
   source_type,
   audio_uk_url,
   audio_us_url,
+  round2_choice_distractors,
   vocabulary_senses (
     pos,
     meaning_zh,
@@ -140,9 +143,13 @@ const legacyVocabularyEntrySelect = `
 
 function isMissingRichVocabularySchemaError(error: { message?: string } | null | undefined) {
   const message = error?.message ?? '';
-  return ['morphology_summary_zh', 'vocabulary_morphology_parts', 'vocabulary_relations', 'sort_order'].some((part) =>
-    message.includes(part),
-  );
+  return [
+    'morphology_summary_zh',
+    'vocabulary_morphology_parts',
+    'vocabulary_relations',
+    'sort_order',
+    'round2_choice_distractors',
+  ].some((part) => message.includes(part));
 }
 
 function mapVocabularyEntry(row: VocabularyItemRow): PersistedVocabularyEntry {
@@ -210,6 +217,7 @@ function mapVocabularyEntry(row: VocabularyItemRow): PersistedVocabularyEntry {
     confusions,
     confused_word: confusedWord?.word ?? null,
     confused_diff_zh: confusedWord?.difference_zh ?? null,
+    round2_choice_distractors: normalizeRound2ChoiceDistractors(row.round2_choice_distractors),
     memory_tip: row.memory_tip ?? '',
     source_type: row.source_type,
     audio_uk_url: row.audio_uk_url,

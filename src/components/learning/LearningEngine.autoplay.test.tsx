@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LearningPreferences, PersistedLearningSession, Word } from '../../types';
+import { attemptBuffer } from '../../lib/attemptBuffer';
+import { fetchExampleAudioUrl } from '../../lib/exampleAudio';
 import { markReviewWordMastered } from '../../lib/reviewApi';
 import { LearningEngine, type LearningSessionSnapshot } from './LearningEngine';
 
@@ -104,6 +106,7 @@ function makeWord(overrides: Partial<Word> = {}): Word {
     synonyms: [],
     antonyms: [],
     confusingPairs: [],
+    round2ChoiceDistractors: [],
     memory_tip: '',
     audio_uk_url: 'https://example.com/daily-uk.mp3',
     audio_us_url: 'https://example.com/daily-us.mp3',
@@ -132,10 +135,55 @@ function makeWords(count: number) {
   );
 }
 
+function makeRound2ChoiceWord(overrides: Partial<Word> = {}): Word {
+  return makeWord({
+    id: 'enemy-id',
+    word: 'enemy',
+    phonetic: '/enemi/',
+    ipa_uk: '/enemi/',
+    ipa_us: '/enemi/',
+    pos_tags: ['n'],
+    chinese_definition: '敌人；仇敌',
+    senses: [
+      {
+        pos: 'n',
+        meaning_zh: '敌人；仇敌',
+        example_sentence: 'He has many enemies.',
+        example_translation_zh: '他有很多敌人。',
+      },
+    ],
+    example_sentences: ['He has many enemies.'],
+    round2ChoiceDistractors: [
+      {
+        word: 'rival',
+        pos: 'n',
+        meaning_zh: '对手；竞争者',
+      },
+      {
+        word: 'opponent',
+        pos: 'n',
+        meaning_zh: '反对者；对手',
+      },
+      {
+        word: 'adversary',
+        pos: 'n',
+        meaning_zh: '敌手；对抗者',
+      },
+    ],
+    audio_uk_url: 'https://example.com/enemy-uk.mp3',
+    audio_us_url: 'https://example.com/enemy-us.mp3',
+    ...overrides,
+  });
+}
+
 function submitRound1Word(word: string) {
-  const input = screen.getByPlaceholderText('拼写');
+  const input = (screen.queryByPlaceholderText('拼写') ?? screen.getByLabelText('拼写输入')) as HTMLInputElement;
   fireEvent.change(input, { target: { value: word } });
   fireEvent.submit(input.closest('form') as HTMLFormElement);
+}
+
+function typeRound3Word(word: string) {
+  fireEvent.change(screen.getByLabelText('拼写输入'), { target: { value: word } });
 }
 
 function swipeCardByText(text: string, direction: 'left' | 'right') {
@@ -156,6 +204,12 @@ function createDeferred<T>() {
   });
 
   return { promise, resolve, reject };
+}
+
+async function flushPromises(count = 5) {
+  for (let index = 0; index < count; index += 1) {
+    await Promise.resolve();
+  }
 }
 
 function installAudioMock() {
@@ -189,10 +243,22 @@ function installAudioMock() {
 
     this.defaultPlaybackRate = 1;
     this.playbackRate = 1;
-    this.onended = instance.onended;
-    this.onerror = instance.onerror;
     this.play = instance.play;
     this.pause = instance.pause;
+    Object.defineProperty(this, 'onended', {
+      get: () => instance.onended,
+      set: (handler: (() => void) | null) => {
+        instance.onended = handler;
+      },
+      configurable: true,
+    });
+    Object.defineProperty(this, 'onerror', {
+      get: () => instance.onerror,
+      set: (handler: (() => void) | null) => {
+        instance.onerror = handler;
+      },
+      configurable: true,
+    });
   });
   vi.stubGlobal('Audio', AudioMock);
 
@@ -214,6 +280,7 @@ describe('LearningEngine autoplay', () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -401,6 +468,236 @@ describe('LearningEngine autoplay', () => {
     expect(screen.queryByText('每日的')).not.toBeInTheDocument();
   });
 
+  it('auto-submits round 3 when the input exactly matches without pressing Enter', async () => {
+    vi.mocked(fetchExampleAudioUrl).mockResolvedValueOnce('/audio/daily-sentence.mp3');
+    const { AudioMock } = installAudioMock();
+    const words = [
+      makeWord(),
+      makeWord({
+        id: 'w2',
+        word: 'fume',
+        pos_tags: ['n'],
+        chinese_definition: '烟雾',
+        senses: [
+          {
+            pos: 'n',
+            meaning_zh: '烟雾',
+            example_sentence: 'The fume filled the room.',
+            example_translation_zh: '烟雾充满了房间。',
+          },
+        ],
+        example_sentences: ['The fume filled the room.'],
+      }),
+    ];
+
+    render(<LearningEngine type="round3" words={words} onComplete={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText('拼写输入'), { target: { value: 'daily' } });
+
+    await waitFor(() =>
+      expect(attemptBuffer.pushAttempt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          vocabularyItemId: 'w1',
+          source: 'round3',
+          wasCorrect: true,
+        }),
+      ),
+    );
+    await waitFor(() => expect(AudioMock).toHaveBeenCalledWith('/audio/daily-sentence.mp3'));
+    expect(screen.queryByText('n. 烟雾')).not.toBeInTheDocument();
+  });
+
+  it('waits for round 3 correct sentence playback to finish before advancing', async () => {
+    vi.mocked(fetchExampleAudioUrl).mockResolvedValueOnce('/audio/daily-sentence.mp3');
+    const { AudioMock, instances } = installAudioMock();
+    const words = [
+      makeWord(),
+      makeWord({
+        id: 'w2',
+        word: 'fume',
+        pos_tags: ['n'],
+        chinese_definition: '烟雾',
+        senses: [
+          {
+            pos: 'n',
+            meaning_zh: '烟雾',
+            example_sentence: 'The fume filled the room.',
+            example_translation_zh: '烟雾充满了房间。',
+          },
+        ],
+        example_sentences: ['The fume filled the room.'],
+      }),
+    ];
+
+    render(<LearningEngine type="round3" words={words} onComplete={vi.fn()} />);
+
+    typeRound3Word('daily');
+
+    await waitFor(() => expect(AudioMock).toHaveBeenCalledWith('/audio/daily-sentence.mp3'));
+    expect(screen.getByText('adj. 每天发生的或使用的。')).toBeInTheDocument();
+    expect(screen.queryByText('n. 烟雾')).not.toBeInTheDocument();
+
+    await act(async () => {
+      instances[0]?.onended?.();
+    });
+
+    await waitFor(() => expect(screen.getByText('n. 烟雾')).toBeInTheDocument());
+  });
+
+  it('advances round 3 after the correct sentence playback fallback timeout', async () => {
+    vi.useFakeTimers();
+    vi.mocked(fetchExampleAudioUrl).mockResolvedValueOnce('/audio/daily-sentence.mp3');
+    const { AudioMock } = installAudioMock();
+    const words = [
+      makeWord(),
+      makeWord({
+        id: 'w2',
+        word: 'fume',
+        pos_tags: ['n'],
+        chinese_definition: '烟雾',
+        senses: [
+          {
+            pos: 'n',
+            meaning_zh: '烟雾',
+            example_sentence: 'The fume filled the room.',
+            example_translation_zh: '烟雾充满了房间。',
+          },
+        ],
+        example_sentences: ['The fume filled the room.'],
+      }),
+    ];
+
+    render(<LearningEngine type="round3" words={words} onComplete={vi.fn()} />);
+
+    typeRound3Word('daily');
+
+    await act(async () => {
+      vi.advanceTimersByTime(0);
+      await flushPromises();
+    });
+
+    expect(AudioMock).toHaveBeenCalledWith('/audio/daily-sentence.mp3');
+    expect(screen.queryByText('n. 烟雾')).not.toBeInTheDocument();
+
+    await act(async () => {
+      vi.advanceTimersByTime(30000);
+      await flushPromises();
+    });
+
+    expect(screen.getByText('n. 烟雾')).toBeInTheDocument();
+  });
+
+  it('renders round 2 as four-choice recall when distractors are complete', () => {
+    render(<LearningEngine type="round2" words={[makeRound2ChoiceWord()]} onComplete={vi.fn()} />);
+
+    expect(screen.getAllByRole('button', { name: /Round2 选项/ })).toHaveLength(4);
+    expect(screen.queryByRole('button', { name: '展开释义' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '继续下一个词' })).not.toBeInTheDocument();
+
+    const correctOption = screen.getByRole('button', { name: /n\. 敌人；仇敌/ });
+    expect(correctOption).toHaveTextContent('n. 敌人；仇敌');
+    expect(correctOption).not.toHaveTextContent('enemy');
+    expect(screen.queryByText('rival')).not.toBeInTheDocument();
+  });
+
+  it('reveals round 2 choice answers and records a correct attempt', async () => {
+    render(<LearningEngine type="round2" words={[makeRound2ChoiceWord()]} onComplete={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /n\. 敌人；仇敌/ }));
+
+    await waitFor(() => expect(attemptBuffer.pushAttempt).toHaveBeenCalledTimes(1));
+    expect(attemptBuffer.pushAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        vocabularyItemId: 'enemy-id',
+        source: 'round2',
+        wasCorrect: true,
+      }),
+    );
+
+    const correctOption = screen.getByRole('button', { name: /n\. 敌人；仇敌：enemy/ });
+    expect(correctOption.className).toContain('text-[#15803D]');
+    expect(screen.getByText('n. 对手；竞争者：rival')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '继续下一个词' })).toBeInTheDocument();
+  });
+
+  it('marks a wrong round 2 choice red while revealing the correct answer', async () => {
+    render(<LearningEngine type="round2" words={[makeRound2ChoiceWord()]} onComplete={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /n\. 对手；竞争者/ }));
+
+    await waitFor(() => expect(attemptBuffer.pushAttempt).toHaveBeenCalledTimes(1));
+    expect(attemptBuffer.pushAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        vocabularyItemId: 'enemy-id',
+        source: 'round2',
+        wasCorrect: false,
+      }),
+    );
+
+    expect(screen.getByRole('button', { name: /n\. 对手；竞争者：rival/ }).className).toContain('text-apple-red');
+    expect(screen.getByRole('button', { name: /n\. 敌人；仇敌：enemy/ }).className).toContain('text-[#15803D]');
+  });
+
+  it('moves to the next round 2 word after a revealed choice is continued', async () => {
+    const words = [
+      makeRound2ChoiceWord(),
+      makeWord({
+        id: 'second-id',
+        word: 'second',
+        pos_tags: ['adj'],
+        chinese_definition: '第二的',
+        senses: [
+          {
+            pos: 'adj',
+            meaning_zh: '第二的',
+            example_sentence: 'This is the second card.',
+            example_translation_zh: '这是第二张卡。',
+          },
+        ],
+      }),
+    ];
+
+    render(<LearningEngine type="round2" words={words} onComplete={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /n\. 敌人；仇敌/ }));
+    fireEvent.click(screen.getByRole('button', { name: '继续下一个词' }));
+
+    await waitFor(() => expect(screen.getAllByText('second').length).toBeGreaterThan(0));
+  });
+
+  it('falls back to the original round 2 recall card when distractors are incomplete', () => {
+    render(
+      <LearningEngine
+        type="round2"
+        words={[
+          makeRound2ChoiceWord({
+            round2ChoiceDistractors: [
+              {
+                word: 'rival',
+                pos: 'n',
+                meaning_zh: '对手；竞争者',
+              },
+            ],
+          }),
+        ]}
+        onComplete={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryAllByRole('button', { name: /Round2 选项/ })).toHaveLength(0);
+    expect(screen.getByRole('button', { name: '展开释义' })).toBeInTheDocument();
+  });
+
+  it('falls back to the original round 2 recall card when old word data omits distractors', () => {
+    const legacyWord = makeRound2ChoiceWord();
+    delete (legacyWord as Partial<Word>).round2ChoiceDistractors;
+
+    render(<LearningEngine type="round2" words={[legacyWord]} onComplete={vi.fn()} />);
+
+    expect(screen.queryAllByRole('button', { name: /Round2 选项/ })).toHaveLength(0);
+    expect(screen.getByRole('button', { name: '展开释义' })).toBeInTheDocument();
+  });
+
   it('does not render the round 1 manual entry button', () => {
     render(<LearningEngine type="round1" words={makeWords(2)} onComplete={vi.fn()} />);
 
@@ -442,7 +739,27 @@ describe('LearningEngine autoplay', () => {
     const snapshot = onComplete.mock.calls[0]?.[0] as LearningSessionSnapshot;
     expect(snapshot.round).toBe('round1');
     expect(snapshot.round1ConfirmedWordIds).toEqual(words.slice(0, 30).map((word) => word.id));
-  });
+  }, 10000);
+
+  it('keeps the 30th round 1 word after an earlier wrong answer is corrected', async () => {
+    const words = makeWords(31);
+    const onComplete = vi.fn();
+
+    render(<LearningEngine type="round1" words={words} onComplete={onComplete} />);
+
+    for (const [index, word] of words.slice(0, 30).entries()) {
+      if (index === 5) {
+        submitRound1Word('carbon');
+      }
+      submitRound1Word(word.word);
+    }
+
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+    const snapshot = onComplete.mock.calls[0]?.[0] as LearningSessionSnapshot;
+    expect(snapshot.round1ConfirmedWordIds).toHaveLength(30);
+    expect(snapshot.round1ConfirmedWordIds).toContain(words[29].id);
+    expect(snapshot.round1ConfirmedWordIds).toEqual(words.slice(0, 30).map((word) => word.id));
+  }, 10000);
 
   it('only completes round 1 once and stops emitting round 1 snapshots while completing', async () => {
     const words = makeWords(31);
@@ -461,7 +778,7 @@ describe('LearningEngine autoplay', () => {
         (call) => (call[0] as LearningSessionSnapshot).round1ConfirmedWordIds.length >= 30,
       ),
     ).toBe(false);
-  });
+  }, 10000);
 
   it('uses the round 1 reinforcement limit as the progress target for long official queues', async () => {
     const words = makeWords(70);

@@ -213,6 +213,20 @@ function hasPasswordRecoveryMarker(search: string, hash: string) {
   return searchParams.get('type') === 'recovery' || hashParams.get('type') === 'recovery';
 }
 
+function isAuthMode(value: string | null): value is AuthMode {
+  return value === 'login' || value === 'register' || value === 'forgot' || value === 'reset';
+}
+
+function resolveAuthMode(search: string, hash: string): AuthMode {
+  if (hasPasswordRecoveryMarker(search, hash)) {
+    return 'reset';
+  }
+
+  const searchParams = new URLSearchParams(search);
+  const nextMode = searchParams.get('mode');
+  return isAuthMode(nextMode) ? nextMode : 'login';
+}
+
 function AuthField({
   icon: Icon,
   label,
@@ -268,7 +282,7 @@ export const AuthView = () => {
     resendSignupConfirmation,
   } = useAuth();
 
-  const [mode, setMode] = useState<AuthMode>('login');
+  const [mode, setMode] = useState<AuthMode>(() => resolveAuthMode(location.search, location.hash));
   const [form, setForm] = useState<FormState>(defaultFormState);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -291,11 +305,9 @@ export const AuthView = () => {
   const story = storyCopy[mode];
 
   useEffect(() => {
-    const nextMode = searchParams.get('mode');
-    if (nextMode === 'login' || nextMode === 'register' || nextMode === 'forgot' || nextMode === 'reset') {
-      setMode(nextMode);
-    }
-  }, [searchParams]);
+    const nextMode = resolveAuthMode(location.search, location.hash);
+    setMode((currentMode) => (currentMode === nextMode ? currentMode : nextMode));
+  }, [location.hash, location.search]);
 
   useEffect(() => {
     if (isPasswordRecovery || isPasswordRecoveryUrl) {

@@ -3,7 +3,7 @@ import { tokenizeClickableText } from '../src/components/shared/ClickableText.ts
 import { coerceIeltsReadingDraft } from '../src/lib/ieltsReadingDraft.ts';
 import { isStopWord } from '../src/lib/stopWords.ts';
 import { extractIeltsReadingLookupWords } from '../src/lib/ieltsReadingLookupWords.ts';
-import { extractRound1ClickableWords } from '../src/lib/round1ClickableWords.ts';
+import { extractRound1ClickableWords, extractRound1PreloadTargets } from '../src/lib/round1ClickableWords.ts';
 import type { Word } from '../src/types.ts';
 
 const simpleTokens = tokenizeClickableText('The salt is on the table.');
@@ -24,6 +24,14 @@ assert.deepEqual(
 assert.equal(
   mixedTokens.some((token) => token.kind === 'cjk' && token.text === '盐'),
   true,
+);
+
+const noisyTokens = tokenizeClickableText(
+  "oxygen O2 H2O h o n ox oxy- -gen hydro- earth's DNA well-developed isn't o'clock",
+);
+assert.deepEqual(
+  noisyTokens.filter((token) => token.kind === 'content').map((token) => token.normalized),
+  ['oxygen', 'well-developed', "isn't", "o'clock"],
 );
 
 assert.deepEqual(
@@ -106,6 +114,7 @@ const round1Word: Word = {
     { word: 'neglect', meaningZh: 'third antonym hidden', noteZh: '' },
   ],
   confusingPairs: [{ word: 'assess', difference: 'assess rates value while analyze separates parts' }],
+  round2ChoiceDistractors: [],
   memory_tip: "Don't just look; analyze the pattern and compare signals.",
   audio_uk_url: null,
   audio_us_url: null,
@@ -113,6 +122,7 @@ const round1Word: Word = {
 
 const round1ClickableWords = extractRound1ClickableWords(round1Word);
 const round1ClickableWordSet = new Set(round1ClickableWords);
+const round1PreloadTargets = extractRound1PreloadTargets(round1Word);
 
 for (const expected of [
   'analyze',
@@ -146,8 +156,48 @@ for (const excluded of [
   'probe',
   'neglect',
   'keyword',
+  "earth's",
+  'h2o',
+  'o2',
+  'oxy-',
+  '-gen',
+  'hydro-',
+  'h',
+  'o',
+  'n',
+  'ox',
 ]) {
   assert.equal(round1ClickableWordSet.has(excluded), false, `${excluded} should not be preloaded`);
+}
+
+for (const expectedHighValueWord of ['analyze', 'analysis', 'inspect', 'examine', 'ignore', 'overlook', 'assess']) {
+  assert.equal(
+    round1PreloadTargets.highValueWords.includes(expectedHighValueWord),
+    true,
+    `${expectedHighValueWord} should preload lookup and audio`,
+  );
+  assert.equal(
+    round1PreloadTargets.lowValueWords.includes(expectedHighValueWord),
+    false,
+    `${expectedHighValueWord} should not be duplicated in lookup-only preloads`,
+  );
+}
+
+for (const expectedLookupOnlyWord of [
+  'pattern',
+  'signals',
+  'prefix',
+  'decode',
+  'salt',
+  'table',
+  'researchers',
+  'method',
+]) {
+  assert.equal(
+    round1PreloadTargets.lowValueWords.includes(expectedLookupOnlyWord),
+    true,
+    `${expectedLookupOnlyWord} should preload lookup only`,
+  );
 }
 
 assert.equal(

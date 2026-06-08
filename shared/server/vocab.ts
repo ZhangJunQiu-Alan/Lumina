@@ -8,6 +8,8 @@ import {
 import { logger } from './logger.ts';
 import type { MemoryState } from './review-domain.ts';
 import { supabaseAdmin } from './supabase.ts';
+import { normalizeRound2ChoiceDistractors } from '../round2ChoiceDistractors.ts';
+import type { Round2ChoiceDistractor } from '../types.ts';
 import { analyzeWordBatch, formatDuplicateWordsMessage, normalizeWordKey, sanitizeWordInput } from '../wordBatch.ts';
 
 export type EnrichmentLevel = 'lite' | 'full';
@@ -26,6 +28,7 @@ export interface VocabularyItemRow {
   created_at: string | null;
   audio_uk_url: string | null;
   audio_us_url: string | null;
+  round2_choice_distractors: unknown;
 }
 
 export interface WordLookupResult {
@@ -81,6 +84,7 @@ export interface PersistedFullVocabularyEntry extends GeminiWordResult {
   source_type: string | null;
   audio_uk_url: string | null;
   audio_us_url: string | null;
+  round2_choice_distractors: Round2ChoiceDistractor[];
 }
 
 interface VocabularySenseRow {
@@ -140,7 +144,8 @@ const vocabularyItemSelect = `
   enrichment_level,
   created_at,
   audio_uk_url,
-  audio_us_url
+  audio_us_url,
+  round2_choice_distractors
 `;
 
 const fullVocabularyEntrySelect = `
@@ -374,6 +379,7 @@ function mapFullVocabularyEntry(row: FullVocabularyItemRow): PersistedFullVocabu
     confusions,
     confused_word: confusions[0]?.word ?? null,
     confused_diff_zh: confusions[0]?.difference_zh ?? null,
+    round2_choice_distractors: normalizeRound2ChoiceDistractors(row.round2_choice_distractors),
     memory_tip: row.memory_tip ?? '',
     forms: [],
     source_type: row.source_type,

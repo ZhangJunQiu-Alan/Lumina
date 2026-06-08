@@ -46,6 +46,13 @@ export interface ConfusingPair {
   difference: string;
 }
 
+export interface Round2ChoiceDistractor {
+  word: string;
+  pos: string;
+  meaning_zh: string;
+  relation?: string;
+}
+
 export function toWordMorphology(morphology: EnrichedMorphology | null | undefined): WordMorphology {
   return {
     summaryZh: morphology?.summary_zh ?? '',
@@ -91,6 +98,7 @@ export interface Word {
   antonyms: WordRelation[];
   confusingPairs: ConfusingPair[];
   confusing_pair?: ConfusingPair;
+  round2ChoiceDistractors: Round2ChoiceDistractor[];
   memory_tip?: string;
   audio_uk_url?: string | null;
   audio_us_url?: string | null;
@@ -117,6 +125,7 @@ export interface EnrichedWord {
   synonyms: EnrichedWordRelation[];
   antonyms: EnrichedWordRelation[];
   confusions: EnrichedWordConfusion[];
+  round2_choice_distractors?: Round2ChoiceDistractor[];
   // Deprecated compatibility aliases for older scripts.
   confused_word?: string | null;
   confused_diff_zh?: string | null;
@@ -176,6 +185,7 @@ export function toWord(e: EnrichedWord): Word {
     antonyms: toWordRelations(e.antonyms),
     confusingPairs,
     confusing_pair: confusingPairs[0],
+    round2ChoiceDistractors: e.round2_choice_distractors ?? [],
     memory_tip: e.memory_tip,
     audio_uk_url: e.audio_uk_url,
     audio_us_url: e.audio_us_url,
