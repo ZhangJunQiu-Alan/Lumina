@@ -24,7 +24,7 @@ import {
   SPEECH_PLAYBACK_RATE_OPTIONS,
   WRONG_ANSWER_REVEAL_OPTIONS,
 } from '../../lib/learningPreferences';
-import { AI_CONTENT_FEATURES_ENABLED } from '../../lib/aiFeatures';
+import { ARTICLE_REINFORCEMENT_ENABLED } from '../../lib/aiFeatures';
 import type { LearningPreferences, PronunciationLocale, SpeechPlaybackRate } from '../../types';
 
 type PreferenceKey = keyof LearningPreferences;
@@ -435,7 +435,7 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
             />
           }
         />
-        {AI_CONTENT_FEATURES_ENABLED && (
+        {ARTICLE_REINFORCEMENT_ENABLED && (
           <SettingRow
             icon={FileText}
             title="文章巩固"

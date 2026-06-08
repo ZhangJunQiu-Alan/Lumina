@@ -82,7 +82,7 @@ import {
   OFFICIAL_APPEND_PRELOAD_REMAINING_THRESHOLD,
 } from './lib/officialLibrary';
 import { toRoutineDateKey } from './lib/routineDate';
-import { AI_CONTENT_FEATURES_ENABLED, PERSONAL_VOCAB_IMPORT_ENABLED } from './lib/aiFeatures';
+import { ARTICLE_REINFORCEMENT_ENABLED, PERSONAL_VOCAB_IMPORT_ENABLED } from './lib/aiFeatures';
 import type { LearningSessionSnapshot } from './components/learning/LearningEngine';
 
 // --- Lazy loaded views ---
@@ -426,7 +426,7 @@ export default function App() {
     location.pathname.startsWith('/app/ielts-listening/test/');
   const recallRoundEnabled = learningPreferences.reinforcementRound3Enabled;
   const dictationRoundEnabled = learningPreferences.round2Enabled;
-  const articleReinforcementEnabled = AI_CONTENT_FEATURES_ENABLED && learningPreferences.reinforcementArticleEnabled;
+  const articleReinforcementEnabled = ARTICLE_REINFORCEMENT_ENABLED && learningPreferences.reinforcementArticleEnabled;
   const requestedOfficialLibraryId = useMemo(() => {
     const params = new URLSearchParams(location.search);
     const value = params.get('officialLibraryId');
@@ -1031,7 +1031,7 @@ export default function App() {
           return;
         }
 
-        if (!AI_CONTENT_FEATURES_ENABLED && restoredOrInitialSession.round === 'article') {
+        if (!ARTICLE_REINFORCEMENT_ENABLED && restoredOrInitialSession.round === 'article') {
           await clearLearningGroupSession(user.id, groupId, { markCompleted: true }).catch((error) => {
             console.error('Failed to close article-only learning session:', error);
           });
@@ -2116,7 +2116,7 @@ export default function App() {
                         element={
                           activeWords.length === 0 ? (
                             sessionEmptyState
-                          ) : round === 'article' && AI_CONTENT_FEATURES_ENABLED ? (
+                          ) : round === 'article' && ARTICLE_REINFORCEMENT_ENABLED ? (
                             articleSentences === null ? (
                               articleGenerationError ? (
                                 <motion.div
