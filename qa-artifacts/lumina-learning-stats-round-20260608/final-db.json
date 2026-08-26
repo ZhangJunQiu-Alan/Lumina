@@ -1,0 +1,58 @@
+{
+  "group": {
+    "id": "2aa2fa9c-64ba-4088-8379-c633c91867f1",
+    "name": "雅思词汇真经 · 顺序 · 第2组 · 40词",
+    "status": "completed",
+    "round": null,
+    "currentIndex": null,
+    "queueLength": null,
+    "completedAt": "2026-06-08T05:19:41.801+00:00"
+  },
+  "rows": {
+    "count": 70,
+    "round1": 30,
+    "round2": 30,
+    "round3": 30,
+    "learned": 30,
+    "first": "granite",
+    "last": "southwest"
+  },
+  "reviewStates": {
+    "total": 140,
+    "counts": {
+      "stable_recall": 45,
+      "new": 80,
+      "fuzzy": 7,
+      "slow_recall": 8
+    }
+  },
+  "routine": {
+    "status": "completed",
+    "completed_steps_json": [
+      "round1",
+      "round2",
+      "round3"
+    ],
+    "main_learning_group_id": "2aa2fa9c-64ba-4088-8379-c633c91867f1",
+    "day_kind": "learning_day"
+  },
+  "eventCounts": {
+    "round2:wrong": 6,
+    "round2:correct": 24,
+    "round3:correct": 30
+  },
+  "groups": [
+    {
+      "id": "2aa2fa9c-64ba-4088-8379-c633c91867f1",
+      "name": "雅思词汇真经 · 顺序 · 第2组 · 40词",
+      "status": "completed",
+      "completed_at": "2026-06-08T05:19:41.801+00:00"
+    },
+    {
+      "id": "ed8404d1-50e3-477c-8d7a-2b3aec338036",
+      "name": "雅思词汇真经 · 0001-0040",
+      "status": "completed",
+      "completed_at": "2026-06-08T04:56:42.036+00:00"
+    }
+  ]
+}

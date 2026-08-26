@@ -308,6 +308,11 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
     yearlySummary.attempts > 0 ? Math.round((yearlySummary.correct / yearlySummary.attempts) * 100) : null;
   const trendAccuracy =
     trendSummary.attempts > 0 ? Math.round((trendSummary.correct / trendSummary.attempts) * 100) : null;
+  const hasLearningActivity =
+    yearlySummary.activeDays > 0 ||
+    yearlySummary.learned > 0 ||
+    yearlySummary.reviewed > 0 ||
+    yearlySummary.attempts > 0;
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
@@ -322,83 +327,97 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
         />
       </section>
 
-      <section className="glass rounded-[34px] p-5 md:p-7">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-apple-blue">Learning Trend</p>
-            <h3 className="mt-2 text-2xl font-black tracking-tight text-text-primary">每日学习趋势</h3>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 rounded-2xl bg-white/70 px-4 py-3 text-sm font-black text-[#2f261d]">
-              <TrendingUp className="h-4 w-4 text-apple-orange" />
-              {trendAccuracy === null ? '正确率 --' : `正确率 ${trendAccuracy}%`}
+      {!hasLearningActivity ? (
+        <section className="glass px-6 py-14 text-center md:px-10 md:py-20">
+          <p className="text-[11px] font-black uppercase tracking-[0.24em] text-apple-blue">Learning record</p>
+          <h3 className="mt-3 text-2xl font-black tracking-tight text-text-primary">
+            完成第一组学习后，趋势会从这里开始。
+          </h3>
+          <p className="mx-auto mt-3 max-w-lg text-sm leading-7 text-text-secondary">
+            目前还没有可绘制的数据。开始学习后，这里会显示每日新学、复习、正确率和年度活跃记录。
+          </p>
+        </section>
+      ) : (
+        <>
+          <section className="glass rounded-[34px] p-5 md:p-7">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-apple-blue">Learning Trend</p>
+                <h3 className="mt-2 text-2xl font-black tracking-tight text-text-primary">每日学习趋势</h3>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2 rounded-2xl bg-white/70 px-4 py-3 text-sm font-black text-[#2f261d]">
+                  <TrendingUp className="h-4 w-4 text-apple-orange" />
+                  {trendAccuracy === null ? '正确率 --' : `正确率 ${trendAccuracy}%`}
+                </div>
+                <select
+                  value={trendRange}
+                  onChange={(event) => setTrendRange(Number(event.target.value) as TrendRange)}
+                  className="rounded-2xl border border-black/[0.06] bg-white/80 px-4 py-3 text-sm font-black text-[#2f261d] outline-none transition-colors focus:border-apple-blue/40"
+                >
+                  {trendRanges.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-            <select
-              value={trendRange}
-              onChange={(event) => setTrendRange(Number(event.target.value) as TrendRange)}
-              className="rounded-2xl border border-black/[0.06] bg-white/80 px-4 py-3 text-sm font-black text-[#2f261d] outline-none transition-colors focus:border-apple-blue/40"
-            >
-              {trendRanges.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-[22px] bg-white/55 p-4">
-            <p className="text-xs font-black text-text-secondary">新学</p>
-            <p className="mt-1 text-2xl font-black text-apple-blue">{trendSummary.learned}</p>
-          </div>
-          <div className="rounded-[22px] bg-white/55 p-4">
-            <p className="text-xs font-black text-text-secondary">复习</p>
-            <p className="mt-1 text-2xl font-black text-apple-green">{trendSummary.reviewed}</p>
-          </div>
-          <div className="rounded-[22px] bg-white/55 p-4">
-            <p className="text-xs font-black text-text-secondary">作答</p>
-            <p className="mt-1 text-2xl font-black text-apple-orange">{trendSummary.attempts}</p>
-          </div>
-        </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-[22px] bg-white/55 p-4">
+                <p className="text-xs font-black text-text-secondary">新学</p>
+                <p className="mt-1 text-2xl font-black text-apple-blue">{trendSummary.learned}</p>
+              </div>
+              <div className="rounded-[22px] bg-white/55 p-4">
+                <p className="text-xs font-black text-text-secondary">复习</p>
+                <p className="mt-1 text-2xl font-black text-apple-green">{trendSummary.reviewed}</p>
+              </div>
+              <div className="rounded-[22px] bg-white/55 p-4">
+                <p className="text-xs font-black text-text-secondary">作答</p>
+                <p className="mt-1 text-2xl font-black text-apple-orange">{trendSummary.attempts}</p>
+              </div>
+            </div>
 
-        <div className="mt-5 rounded-[28px] border border-black/[0.04] bg-white/58 p-4">
-          <div className="mb-3 flex flex-wrap items-center gap-4 text-xs font-black text-text-secondary">
-            <span className="inline-flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full bg-apple-blue" />
-              新学
-            </span>
-            <span className="inline-flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full bg-apple-green" />
-              复习
-            </span>
-            <span className="inline-flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full bg-apple-orange" />
-              正确率
-            </span>
-          </div>
-          <TrendChart days={trendDays} />
-        </div>
-      </section>
+            <div className="mt-5 rounded-[28px] border border-black/[0.04] bg-white/58 p-4">
+              <div className="mb-3 flex flex-wrap items-center gap-4 text-xs font-black text-text-secondary">
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-apple-blue" />
+                  新学
+                </span>
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-apple-green" />
+                  复习
+                </span>
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-apple-orange" />
+                  正确率
+                </span>
+              </div>
+              <TrendChart days={trendDays} />
+            </div>
+          </section>
 
-      <section className="glass rounded-[34px] p-5 md:p-7">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-apple-green">Activity Heatmap</p>
-            <h3 className="mt-2 text-2xl font-black tracking-tight text-text-primary">年度学习记录</h3>
-          </div>
-          <div className="flex items-center gap-2 text-xs font-black text-text-secondary">
-            <span>少</span>
-            {[0, 2, 8, 20, 35].map((value) => (
-              <span key={value} className={cx('h-3 w-3 rounded-[3px] border', getActivityTone(value))} />
-            ))}
-            <span>多</span>
-          </div>
-        </div>
-        <div className="mt-6 rounded-[28px] border border-black/[0.04] bg-white/58 p-4">
-          <ActivityHeatmap days={activityDays} />
-        </div>
-      </section>
+          <section className="glass rounded-[34px] p-5 md:p-7">
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-apple-green">Activity Heatmap</p>
+                <h3 className="mt-2 text-2xl font-black tracking-tight text-text-primary">年度学习记录</h3>
+              </div>
+              <div className="flex items-center gap-2 text-xs font-black text-text-secondary">
+                <span>少</span>
+                {[0, 2, 8, 20, 35].map((value) => (
+                  <span key={value} className={cx('h-3 w-3 rounded-[3px] border', getActivityTone(value))} />
+                ))}
+                <span>多</span>
+              </div>
+            </div>
+            <div className="mt-6 rounded-[28px] border border-black/[0.04] bg-white/58 p-4">
+              <ActivityHeatmap days={activityDays} />
+            </div>
+          </section>
+        </>
+      )}
 
       <section className="glass relative overflow-hidden rounded-[36px] p-6 md:p-8">
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">

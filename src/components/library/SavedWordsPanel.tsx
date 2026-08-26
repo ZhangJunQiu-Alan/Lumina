@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import {
   AlertCircle,
@@ -102,6 +102,11 @@ export function SavedWordsPanel({
   const [deletingWordId, setDeletingWordId] = useState<string | null>(null);
   const [isClearingMastered, setIsClearingMastered] = useState(false);
   const [confirmingClearMastered, setConfirmingClearMastered] = useState(false);
+  const onLibraryMutatedRef = useRef(onLibraryMutated);
+
+  useEffect(() => {
+    onLibraryMutatedRef.current = onLibraryMutated;
+  }, [onLibraryMutated]);
 
   useEffect(() => {
     let active = true;
@@ -132,7 +137,7 @@ export function SavedWordsPanel({
         if (cleanupChanged) {
           invalidateLibraryCache(userId);
           try {
-            await onLibraryMutated?.();
+            await onLibraryMutatedRef.current?.();
           } catch {
             // Stats refresh should not block saved-word cleanup.
           }
@@ -173,7 +178,7 @@ export function SavedWordsPanel({
     return () => {
       active = false;
     };
-  }, [onLibraryMutated, userId]);
+  }, [userId]);
 
   const availableWords = useMemo(() => savedWords.filter((entry) => !entry.isInActiveLearningGroup), [savedWords]);
   const availableWordIds = useMemo(

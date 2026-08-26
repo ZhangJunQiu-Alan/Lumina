@@ -1,0 +1,24 @@
+{
+  "email": "codex-lumina-fullround-20260608030347@example.com",
+  "userId": "f7611061-b82c-44f6-9f8a-ba6e7a6a1932",
+  "group": {
+    "id": "66eaffab-bff3-4eb9-b1c8-3de76632384f",
+    "group_name": "雅思词汇真经 · 0001-0040",
+    "session_round": "round3",
+    "session_current_index": 0,
+    "queueLength": 29,
+    "passedQueueLength": 0,
+    "round1ConfirmedLength": 29,
+    "completed_at": null
+  },
+  "learningGroupWords": {
+    "total": 70,
+    "round1_confirmed": 30,
+    "round2_completed": 29,
+    "round3_completed": 0,
+    "learned": 0
+  },
+  "reviewEventCounts": {
+    "round2:correct": 29
+  }
+}

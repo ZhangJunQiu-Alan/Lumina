@@ -102,9 +102,9 @@ export const RoundIndicator = ({
   };
   const colors: Record<RoundType, string> = {
     review: 'bg-apple-red',
-    round1: 'bg-[#4f46e5]',
-    round2: 'bg-[#0ea5e9]',
-    round3: 'bg-[#2563eb]',
+    round1: 'bg-apple-blue',
+    round2: 'bg-[#2f7890]',
+    round3: 'bg-[#687caf]',
     article: 'bg-apple-green',
   };
   return (
@@ -137,9 +137,9 @@ export const SessionProgress = ({
   const isComplete = queueLength > 0 && displayIndex >= queueLength;
   const fillColors: Record<RoundType, string> = {
     review: 'from-apple-red/70 to-apple-red',
-    round1: 'from-[#8b5cf6] via-[#6366f1] to-[#4f46e5]',
-    round2: 'from-[#67e8f9] via-[#38bdf8] to-[#0ea5e9]',
-    round3: 'from-[#60a5fa] via-[#3b82f6] to-[#2563eb]',
+    round1: 'from-[#79b6aa] to-[#0e8f88]',
+    round2: 'from-[#75b5c2] to-[#2f7890]',
+    round3: 'from-[#9aa8cb] to-[#687caf]',
     article: 'from-apple-green/70 to-apple-green',
   };
 
@@ -155,7 +155,7 @@ export const SessionProgress = ({
       <div className="absolute inset-0 overflow-hidden rounded-full bg-[#cfd7e2] shadow-inner">
         <div
           className={cx(
-            'absolute inset-y-0 left-0 rounded-full bg-gradient-to-r shadow-[0_0_10px_rgba(79,70,229,0.35)] transition-all duration-500 ease-out',
+            'absolute inset-y-0 left-0 rounded-full bg-gradient-to-r shadow-[0_0_10px_rgba(14,143,136,0.24)] transition-all duration-500 ease-out',
             fillColors[type],
           )}
           style={{
@@ -195,7 +195,7 @@ export const PronunciationControls = ({
   <div className="flex flex-wrap items-center gap-2 sm:gap-3">
     <span
       className={cx(
-        'rounded-xl sm:rounded-2xl bg-[#4f46e5] font-black tracking-tight text-white shadow-[0_12px_30px_rgba(79,70,229,0.18)]',
+        'rounded-xl sm:rounded-2xl bg-apple-blue font-black tracking-tight text-white shadow-[0_12px_30px_rgba(14,143,136,0.16)]',
         size === 'small'
           ? 'px-2.5 py-1 sm:px-3.5 sm:py-1.5 text-[12px] sm:text-[13px]'
           : 'px-3 py-1.5 sm:px-4 sm:py-2 text-base sm:text-lg',
@@ -214,8 +214,8 @@ export const PronunciationControls = ({
             ? 'px-2 py-1 sm:px-2.5 sm:py-1.5 text-[7px] sm:text-[9px]'
             : 'px-2.5 py-1.5 sm:px-3 sm:py-2 text-[10px] sm:text-xs',
           audioLocale === loc
-            ? 'bg-[#4f46e5] text-white shadow-[0_10px_24px_rgba(79,70,229,0.16)]'
-            : 'bg-[#eef2ff] text-[#4f46e5] hover:bg-[#e0e7ff]',
+            ? 'bg-apple-blue text-white shadow-[0_10px_24px_rgba(14,143,136,0.14)]'
+            : 'bg-apple-blue/10 text-apple-blue hover:bg-apple-blue/15',
         )}
       >
         {activePronunciationLocale === loc ? (

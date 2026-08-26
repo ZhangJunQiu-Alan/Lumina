@@ -5,7 +5,18 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      {
+        name: 'lumina-strip-animal-island-fonts',
+        enforce: 'pre',
+        transform(code, id) {
+          if (!id.includes('animal-island-ui/dist/index.css')) return null;
+          return code.replace(/@font-face\{[^}]+\}/g, '');
+        },
+      },
+      tailwindcss(),
+    ],
     build: {
       rollupOptions: {
         output: {

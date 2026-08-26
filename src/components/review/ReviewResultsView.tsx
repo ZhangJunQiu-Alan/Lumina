@@ -48,14 +48,41 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
     (item) => item.transition.from !== null && item.transition.from === item.transition.to,
   ).length;
 
+  if (items.length === 0) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mx-auto w-full max-w-2xl">
+        <div className="glass rounded-[28px] p-6 text-center jelly-shadow sm:p-10">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-apple-blue/10 text-apple-blue">
+            <Trophy className="h-7 w-7" />
+          </div>
+          <p className="mt-6 text-xs font-bold uppercase tracking-widest text-text-secondary">状态更新</p>
+          <h2 className="mt-2 text-2xl font-black text-text-primary sm:text-3xl">暂无本轮结果</h2>
+          <p className="mx-auto mt-3 max-w-md text-sm font-bold leading-6 text-text-secondary">
+            完成一轮词汇学习或复习后，这里会展示每个词的记忆状态变化。
+          </p>
+          <IslandButton
+            htmlType="button"
+            onClick={onBackHome}
+            tone="mint"
+            size="large"
+            icon={<ArrowRight className="h-5 w-5" />}
+            className="mt-7"
+          >
+            回首页开始学习
+          </IslandButton>
+        </div>
+      </motion.div>
+    );
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="w-full max-w-4xl mx-auto space-y-6"
+      className="mx-auto w-full max-w-4xl space-y-6"
     >
-      <div className="glass rounded-apple-lg p-10 jelly-shadow">
-        <div className="flex items-center justify-between gap-6">
+      <div className="glass rounded-[28px] p-6 jelly-shadow sm:p-10">
+        <div className="flex items-start justify-between gap-4 sm:items-center sm:gap-6">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">状态更新</p>
             <h2 className="mt-2 text-3xl font-black">这一轮完成了</h2>
@@ -64,8 +91,8 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
               {downgradedCount} 个 · 掌握 {graduatedCount} 个
             </p>
           </div>
-          <div className="w-16 h-16 rounded-2xl bg-apple-green/10 text-apple-green flex items-center justify-center">
-            <Trophy className="w-8 h-8" />
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-apple-green/10 text-apple-green sm:h-16 sm:w-16">
+            <Trophy className="h-7 w-7 sm:h-8 sm:w-8" />
           </div>
         </div>
       </div>
@@ -77,7 +104,7 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.04 }}
-            className="glass rounded-2xl p-6 jelly-shadow flex items-center justify-between gap-4"
+            className="glass flex flex-col gap-4 rounded-2xl p-5 jelly-shadow sm:flex-row sm:items-center sm:justify-between sm:p-6"
           >
             <div>
               <p className="text-xl font-black">{item.word}</p>

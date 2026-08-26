@@ -10,18 +10,24 @@ import {
   generateArticle,
 } from '../shared/server/gemini.ts';
 import {
+  completeReviewSession,
   fetchDueReviewWords,
   markVocabularyMastered,
   markVocabularyUnknown,
   recordReviewAttempt,
   recordBatchReviewAttempts,
+  startReviewSession,
 } from '../shared/server/review.ts';
 import { getOrCreateAudio, batchGenerateAudio } from '../shared/server/audio.ts';
 import { ExampleAudioValidationError, getOrCreateExampleAudio } from '../shared/server/exampleAudio.ts';
 import {
+  createLearningGroupFromSavedWords,
   deleteLearningGroup,
   deleteOfficialLearningLibrary,
   discardActiveOfficialLearningGroup,
+  getLibraryGroupDetail,
+  getLibraryOverview,
+  getSavedWords,
   removeWordFromLibrary,
   reorderActiveOfficialLearningGroup,
   saveWordToLibrary,
@@ -29,8 +35,31 @@ import {
 } from '../shared/server/library.ts';
 import { cleanupSavedLibrary } from '../shared/server/savedLibraryCleanup.ts';
 import { requireAuth, type AuthenticatedRequest } from './auth.js';
+import {
+  authenticateLocalUser,
+  createLocalUser,
+  isLocalAuthEnabled,
+  readBearerToken,
+  updateLocalPassword,
+  verifyLocalAccessToken,
+} from '../shared/server/localAuth.ts';
 import { getHomeOverview } from '../shared/server/home.ts';
+import {
+  getUserLearningPreferences,
+  resolveLearningPreferencesPatch,
+  saveUserLearningPreferences,
+} from '../shared/server/settings.ts';
+import {
+  completeLearningRound,
+  getLearningSession,
+  saveLearningSession,
+  startOfficialLearningSession,
+  validateLearningRoundInput,
+  validateOfficialLibraryId,
+  validateOfficialStudyMode,
+} from '../shared/server/learning.ts';
 import { submitIeltsListeningAttempt, submitIeltsReadingAttempt } from '../shared/server/ieltsAttempts.ts';
+import { getIeltsDashboard, getIeltsListeningTest, getIeltsReadingTest } from '../shared/server/ieltsDashboard.ts';
 import {
   ensureLiteVocabularyEntry,
   lemmatizeVocabularyWord,
@@ -43,7 +72,7 @@ import {
   type VocabularySourceType,
 } from '../shared/server/vocab.ts';
 import { isOfficialLibraryId } from '../shared/officialLibraryLite.ts';
-import { isAiContentFeaturesEnabled } from '../shared/runtime.ts';
+import { isAiContentFeaturesEnabled, isIeltsListeningEnabled } from '../shared/runtime.ts';
 import {
   consumeExpensiveRateLimit,
   countStringArray,
@@ -51,6 +80,7 @@ import {
   isRateLimitExceeded,
   type ExpensiveApiGroup,
 } from '../shared/expensiveRateLimit.ts';
+import { localStoragePublicRoot } from '../shared/server/supabase.ts';
 
 const app = express();
 
@@ -106,6 +136,7 @@ const configuredOrigins = (process.env.LUMINA_APP_ORIGINS ?? '')
   .filter(Boolean);
 const allowedOrigins = new Set([...defaultAllowedOrigins, ...configuredOrigins, appOrigin].filter(Boolean));
 const aiContentFeaturesEnabled = isAiContentFeaturesEnabled();
+const ieltsListeningEnabled = isIeltsListeningEnabled();
 
 function resolveClientIp(req: AuthenticatedRequest) {
   const forwardedFor = req.header('x-forwarded-for')?.split(',')[0]?.trim();
@@ -213,7 +244,107 @@ app.options('*', (req, res) => {
   res.sendStatus(204);
 });
 
+app.use(
+  '/storage/v1/object/public',
+  express.static(localStoragePublicRoot, {
+    immutable: true,
+    maxAge: '1h',
+  }),
+);
+
 app.use(express.json());
+
+function sendLocalAuthDisabled(res: Response) {
+  return res.status(503).json({ error: 'Local auth is not enabled.' });
+}
+
+app.get('/api/auth/session', async (req, res) => {
+  if (!isLocalAuthEnabled()) {
+    return sendLocalAuthDisabled(res);
+  }
+
+  const accessToken = readBearerToken(req.header('Authorization'));
+  if (!accessToken) {
+    return res.status(401).json({ error: 'Missing bearer token' });
+  }
+
+  try {
+    const { session } = await verifyLocalAccessToken(accessToken);
+    return res.json({ session });
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+});
+
+app.post('/api/auth/sign-in', async (req, res) => {
+  if (!isLocalAuthEnabled()) {
+    return sendLocalAuthDisabled(res);
+  }
+
+  const email = typeof req.body?.email === 'string' ? req.body.email : '';
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  try {
+    const session = await authenticateLocalUser(email, password);
+    return res.json({ session });
+  } catch {
+    return res.status(401).json({ error: '邮箱或密码不正确。' });
+  }
+});
+
+app.post('/api/auth/sign-up', async (req, res) => {
+  if (!isLocalAuthEnabled()) {
+    return sendLocalAuthDisabled(res);
+  }
+
+  const email = typeof req.body?.email === 'string' ? req.body.email : '';
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  const fullName = typeof req.body?.fullName === 'string' ? req.body.fullName : '';
+  try {
+    const session = await createLocalUser({ email, password, fullName });
+    return res.status(201).json({ session });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Sign up failed.';
+    return res.status(400).json({ error: message });
+  }
+});
+
+app.post('/api/auth/update-password', requireAuth, async (req: AuthenticatedRequest, res) => {
+  if (!isLocalAuthEnabled()) {
+    return sendLocalAuthDisabled(res);
+  }
+
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  try {
+    await updateLocalPassword(req.authUserId!, password);
+    return res.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Password update failed.';
+    return res.status(400).json({ error: message });
+  }
+});
+
+app.post('/api/auth/reset-password', async (_req, res) => {
+  if (!isLocalAuthEnabled()) {
+    return sendLocalAuthDisabled(res);
+  }
+
+  return res.json({
+    ok: true,
+    message: 'Password reset email is not configured yet. Please sign up again or contact support.',
+  });
+});
+
+app.post('/api/auth/resend-confirmation', async (_req, res) => {
+  if (!isLocalAuthEnabled()) {
+    return sendLocalAuthDisabled(res);
+  }
+
+  return res.json({ ok: true });
+});
+
+app.post('/api/auth/sign-out', async (_req, res) => {
+  return res.json({ ok: true });
+});
 
 function resolveSavedWordSource(value: unknown): SavedWordSource | null {
   if (value === undefined || value === null) return 'reading_popup';
@@ -636,6 +767,7 @@ app.post('/api/ielts/reading/attempts', requireAuth, async (req: AuthenticatedRe
 
 // POST /api/ielts/listening/attempts
 app.post('/api/ielts/listening/attempts', requireAuth, async (req: AuthenticatedRequest, res) => {
+  if (!ieltsListeningEnabled) return res.status(404).json({ error: 'IELTS listening is disabled.' });
   const userId = req.authUserId!;
   const responseCount = Array.isArray(req.body?.responses) ? req.body.responses.length : 0;
 
@@ -657,6 +789,53 @@ app.post('/api/ielts/listening/attempts', requireAuth, async (req: Authenticated
   }
 });
 
+app.get('/api/ielts/dashboard', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.authUserId!;
+  try {
+    const data = await getIeltsDashboard(userId);
+    res.json({
+      data: ieltsListeningEnabled ? data : { ...data, listeningBooks: [], listeningAttempts: [] },
+    });
+  } catch (e) {
+    logger.error('API Error: /api/ielts/dashboard', e, {
+      endpoint: '/api/ielts/dashboard',
+      user_id: userId,
+    });
+    return sendInternalError(res);
+  }
+});
+
+app.get('/api/ielts/reading/tests/:testId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { testId } = req.params;
+  try {
+    const data = await getIeltsReadingTest(testId);
+    if (!data) return res.status(404).json({ error: 'IELTS reading test not found' });
+    res.json({ data });
+  } catch (e) {
+    logger.error(`API Error: /api/ielts/reading/tests/${testId}`, e, {
+      endpoint: `/api/ielts/reading/tests/${testId}`,
+      user_id: req.authUserId,
+    });
+    return sendInternalError(res);
+  }
+});
+
+app.get('/api/ielts/listening/tests/:testId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  if (!ieltsListeningEnabled) return res.status(404).json({ error: 'IELTS listening is disabled.' });
+  const { testId } = req.params;
+  try {
+    const data = await getIeltsListeningTest(testId);
+    if (!data) return res.status(404).json({ error: 'IELTS listening test not found' });
+    res.json({ data });
+  } catch (e) {
+    logger.error(`API Error: /api/ielts/listening/tests/${testId}`, e, {
+      endpoint: `/api/ielts/listening/tests/${testId}`,
+      user_id: req.authUserId,
+    });
+    return sendInternalError(res);
+  }
+});
+
 // GET /api/review/due
 app.get('/api/review/due', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.authUserId!;
@@ -667,6 +846,44 @@ app.get('/api/review/due', requireAuth, async (req: AuthenticatedRequest, res) =
     res.json({ data: words });
   } catch (e) {
     logger.error('API Error: /api/review/due', e, { endpoint: '/api/review/due', user_id: userId, timezone: timeZone });
+    return sendInternalError(res);
+  }
+});
+
+// POST /api/review/session/start
+app.post('/api/review/session/start', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.authUserId!;
+  const { timeZone } = req.body ?? {};
+
+  try {
+    const words = await startReviewSession(userId, {
+      timeZone: typeof timeZone === 'string' ? timeZone : null,
+    });
+    res.json({ data: { words } });
+  } catch (e) {
+    logger.error('API Error: /api/review/session/start', e, {
+      endpoint: '/api/review/session/start',
+      user_id: userId,
+    });
+    return sendInternalError(res);
+  }
+});
+
+// POST /api/review/session/complete
+app.post('/api/review/session/complete', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.authUserId!;
+  const { timeZone } = req.body ?? {};
+
+  try {
+    const data = await completeReviewSession(userId, {
+      timeZone: typeof timeZone === 'string' ? timeZone : null,
+    });
+    res.json({ data });
+  } catch (e) {
+    logger.error('API Error: /api/review/session/complete', e, {
+      endpoint: '/api/review/session/complete',
+      user_id: userId,
+    });
     return sendInternalError(res);
   }
 });
@@ -684,6 +901,172 @@ app.get('/api/home/overview', requireAuth, async (req: AuthenticatedRequest, res
       endpoint: '/api/home/overview',
       user_id: userId,
       timezone: timeZone,
+    });
+    return sendInternalError(res);
+  }
+});
+
+// GET /api/settings/learning-preferences
+app.get('/api/settings/learning-preferences', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.authUserId!;
+
+  try {
+    const preferences = await getUserLearningPreferences(userId);
+    res.json({ data: preferences });
+  } catch (e) {
+    logger.error('API Error: /api/settings/learning-preferences', e, {
+      endpoint: '/api/settings/learning-preferences',
+      user_id: userId,
+    });
+    return sendInternalError(res);
+  }
+});
+
+// POST /api/settings/learning-preferences
+app.post('/api/settings/learning-preferences', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.authUserId!;
+  const patch = resolveLearningPreferencesPatch(req.body);
+
+  try {
+    const preferences = await saveUserLearningPreferences(userId, patch);
+    res.json({ data: preferences });
+  } catch (e) {
+    logger.error('API Error: /api/settings/learning-preferences', e, {
+      endpoint: '/api/settings/learning-preferences',
+      user_id: userId,
+    });
+    return sendInternalError(res);
+  }
+});
+
+// GET /api/library/overview
+app.get('/api/library/overview', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.authUserId!;
+
+  try {
+    const overview = await getLibraryOverview(userId);
+    res.json({ data: overview });
+  } catch (e) {
+    logger.error('API Error: /api/library/overview', e, {
+      endpoint: '/api/library/overview',
+      user_id: userId,
+    });
+    return sendInternalError(res);
+  }
+});
+
+// GET /api/library/groups/:groupId
+app.get('/api/library/groups/:groupId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { groupId } = req.params;
+  if (!groupId) return res.status(400).json({ error: 'Missing group ID' });
+
+  const userId = req.authUserId!;
+  try {
+    const detail = await getLibraryGroupDetail(userId, groupId);
+    res.json({ data: detail });
+  } catch (e) {
+    logger.error(`API Error: /api/library/groups/${groupId}`, e, {
+      endpoint: `/api/library/groups/${groupId}`,
+      user_id: userId,
+    });
+    return sendInternalError(res);
+  }
+});
+
+// GET /api/learning/groups/:groupId
+app.get('/api/learning/groups/:groupId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { groupId } = req.params;
+  if (!groupId) return res.status(400).json({ error: 'Missing group ID' });
+
+  const userId = req.authUserId!;
+  try {
+    const data = await getLearningSession(userId, groupId);
+    if (!data) return res.status(404).json({ error: 'Learning group not found' });
+    res.json({ data });
+  } catch (e) {
+    logger.error(`API Error: /api/learning/groups/${groupId}`, e, {
+      endpoint: `/api/learning/groups/${groupId}`,
+      user_id: userId,
+    });
+    return sendInternalError(res);
+  }
+});
+
+// POST /api/learning/official/:libraryId/start
+app.post('/api/learning/official/:libraryId/start', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { libraryId } = req.params;
+  const { mode, timeZone } = req.body ?? {};
+  if (!validateOfficialLibraryId(libraryId)) return res.status(400).json({ error: 'Unknown official library' });
+  if (!validateOfficialStudyMode(mode)) return res.status(400).json({ error: 'Unknown study mode' });
+
+  const userId = req.authUserId!;
+  try {
+    const data = await startOfficialLearningSession(userId, {
+      libraryId,
+      mode,
+      timeZone: typeof timeZone === 'string' ? timeZone : null,
+    });
+    res.json({ data });
+  } catch (e) {
+    logger.error(`API Error: /api/learning/official/${libraryId}/start`, e, {
+      endpoint: `/api/learning/official/${libraryId}/start`,
+      user_id: userId,
+      mode,
+    });
+    return sendInternalError(res);
+  }
+});
+
+// POST /api/learning/groups/:groupId/session
+app.post('/api/learning/groups/:groupId/session', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { groupId } = req.params;
+  const { round, currentIndex, queueWordIds, passedQueueIndices, round1ConfirmedWordIds, timeZone } = req.body ?? {};
+  if (!groupId) return res.status(400).json({ error: 'Missing group ID' });
+  if (!validateLearningRoundInput(round) || !Array.isArray(queueWordIds)) {
+    return res.status(400).json({ error: 'Invalid learning session' });
+  }
+
+  const userId = req.authUserId!;
+  try {
+    const data = await saveLearningSession(userId, groupId, {
+      round,
+      currentIndex: Number(currentIndex) || 0,
+      queueWordIds,
+      passedQueueIndices: Array.isArray(passedQueueIndices) ? passedQueueIndices : [],
+      round1ConfirmedWordIds: Array.isArray(round1ConfirmedWordIds) ? round1ConfirmedWordIds : [],
+      timeZone: typeof timeZone === 'string' ? timeZone : null,
+    });
+    res.json({ data });
+  } catch (e) {
+    logger.error(`API Error: /api/learning/groups/${groupId}/session`, e, {
+      endpoint: `/api/learning/groups/${groupId}/session`,
+      user_id: userId,
+      round,
+    });
+    return sendInternalError(res);
+  }
+});
+
+// POST /api/learning/groups/:groupId/complete-round
+app.post('/api/learning/groups/:groupId/complete-round', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { groupId } = req.params;
+  const { round, confirmedWordIds, timeZone } = req.body ?? {};
+  if (!groupId) return res.status(400).json({ error: 'Missing group ID' });
+  if (!validateLearningRoundInput(round)) return res.status(400).json({ error: 'Invalid learning round' });
+
+  const userId = req.authUserId!;
+  try {
+    const data = await completeLearningRound(userId, groupId, {
+      round,
+      confirmedWordIds: Array.isArray(confirmedWordIds) ? confirmedWordIds : [],
+      timeZone: typeof timeZone === 'string' ? timeZone : null,
+    });
+    res.json({ data });
+  } catch (e) {
+    logger.error(`API Error: /api/learning/groups/${groupId}/complete-round`, e, {
+      endpoint: `/api/learning/groups/${groupId}/complete-round`,
+      user_id: userId,
+      round,
     });
     return sendInternalError(res);
   }
@@ -785,6 +1168,20 @@ app.post('/api/library/official/:libraryId/reorder-active', requireAuth, async (
 });
 
 // POST /api/library/saved-words
+app.get('/api/library/saved-words', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.authUserId!;
+  try {
+    const data = await getSavedWords(userId);
+    res.json({ data });
+  } catch (e) {
+    logger.error('API Error: GET /api/library/saved-words', e, {
+      endpoint: '/api/library/saved-words',
+      user_id: userId,
+    });
+    return sendInternalError(res);
+  }
+});
+
 app.post('/api/library/saved-words', requireAuth, async (req: AuthenticatedRequest, res) => {
   const { vocabularyItemId } = req.body ?? {};
   const source = resolveSavedWordSource(req.body?.source);
@@ -807,6 +1204,25 @@ app.post('/api/library/saved-words', requireAuth, async (req: AuthenticatedReque
       user_id: userId,
       vocabulary_item_id: vocabularyItemId,
       source,
+    });
+    return sendInternalError(res);
+  }
+});
+
+app.post('/api/library/saved-words/learning-group', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const vocabularyItemIds = req.body?.vocabularyItemIds;
+  if (!Array.isArray(vocabularyItemIds) || vocabularyItemIds.some((id) => typeof id !== 'string')) {
+    return res.status(400).json({ error: 'Invalid vocabulary item IDs' });
+  }
+
+  const userId = req.authUserId!;
+  try {
+    const data = await createLearningGroupFromSavedWords(userId, vocabularyItemIds);
+    res.json({ data });
+  } catch (e) {
+    logger.error('API Error: /api/library/saved-words/learning-group', e, {
+      endpoint: '/api/library/saved-words/learning-group',
+      user_id: userId,
     });
     return sendInternalError(res);
   }

@@ -10,7 +10,6 @@ import {
   Compass,
   FileQuestion,
   FileText,
-  Headphones,
   Layers,
   Mail,
   MessageCircle,
@@ -45,9 +44,9 @@ const heroBullets: IconCopy[] = [
     text: '自动安排复习，记忆更牢固',
   },
   {
-    icon: Headphones,
+    icon: BookOpenCheck,
     title: '在线 IELTS 练习',
-    text: '听力与阅读专项训练，实战模考',
+    text: '学术阅读真题训练与复盘',
   },
   {
     icon: Layers,
@@ -68,7 +67,7 @@ const mapNodes = [
     step: '02',
     title: '考试',
     subtitle: 'IELTS 练习',
-    text: '听力 & 阅读专项训练',
+    text: '学术阅读真题训练',
     className: 'landing-map-card--ielts',
   },
   {
@@ -81,23 +80,23 @@ const mapNodes = [
 ];
 
 const memoryStats = [
-  { value: '32', label: '新学单词' },
-  { value: '48', label: '待复习' },
-  { value: '1286', label: '已掌握' },
+  { value: '—', label: '新学单词' },
+  { value: '—', label: '待复习' },
+  { value: '—', label: '已掌握' },
 ];
 
 const ieltsRows = [
-  { icon: Headphones, title: '听力训练', text: '剑桥真题精选' },
-  { icon: FileText, title: '阅读训练', text: '多题型专项实践' },
+  { icon: FileText, title: '阅读训练', text: '剑桥真题分册练习' },
+  { icon: BarChart3, title: '答题复盘', text: '得分、用时与错题回看' },
 ];
 
 const ieltsStats = [
-  { value: '12', label: '模考次数' },
-  { value: '6.5', label: '平均分' },
-  { value: '7.0', label: '目标分' },
+  { value: '—', label: '模考次数' },
+  { value: '—', label: '平均分' },
+  { value: '—', label: '目标分' },
 ];
 
-const questionTags = ['语法词汇', '阅读理解', '完形填空', '写作训练', '口语话题', '听力理解'];
+const questionTags = ['语法词汇', '阅读理解', '完形填空', '写作训练', '口语话题', '自定义材料'];
 
 const proofItems: IconCopy[] = [
   { icon: Compass, title: '科学学习', text: '基于认知科学与记忆理论' },
@@ -125,7 +124,7 @@ const workflowSteps: IconCopy[] = [
   {
     icon: Target,
     title: '练习结果回流',
-    text: '阅读、听力和题库中的错误会回到复习节奏里，下一轮更有针对性。',
+    text: '阅读和题库中的错误会回到复习节奏里，下一轮更有针对性。',
   },
 ];
 
@@ -149,9 +148,9 @@ const memoryEngineItems: IconCopy[] = [
 
 const ieltsDetailItems: IconCopy[] = [
   {
-    icon: Headphones,
-    title: '听力专项',
-    text: '按题型和材料拆解训练，记录错因与完成进度。',
+    icon: Target,
+    title: '限时训练',
+    text: '按真实考试节奏完成阅读，记录用时、得分与错因。',
   },
   {
     icon: FileText,
@@ -175,8 +174,8 @@ const questionBankGroups = [
     items: ['主旨题', '细节题', '判断题'],
   },
   {
-    title: '听力理解',
-    items: ['填空题', '选择题', '地图题'],
+    title: '考试复盘',
+    items: ['错题回看', '时间分配', '生词归档'],
   },
   {
     title: '写作口语',
@@ -251,7 +250,7 @@ const faqItems = [
       '很多背单词软件会更强调“词库很大”“单词很多”，但真正到考试、阅读或听力中需要回忆时，效果不一定理想。',
       'Lumina 更关注的是：你是否真的能记住、能回忆、能在真实语境中使用。',
       '所以 Lumina 把“听写”和“主动回忆”放在默认学习路径中。相比只是看一遍单词，听写和回忆会迫使你真正调动记忆，从而提高单词掌握程度。',
-      '同时，Lumina 也把词汇学习和考试训练连接起来。目前主要支持雅思阅读和听力训练。你在做题时遇到的生词，可以快速加入个人词库，并进入后续学习和复习流程。',
+      '同时，Lumina 也把词汇学习和考试训练连接起来。目前开放雅思学术阅读训练。你在做题时遇到的生词，可以快速加入个人词库，并进入后续学习和复习流程。',
     ],
   },
 ];
@@ -460,11 +459,11 @@ export const LandingView = () => {
             <article id="exam-zone" className="landing-feature-panel landing-feature-panel--ielts">
               <div className="landing-panel-heading">
                 <span className="landing-panel-icon landing-panel-icon--blue">
-                  <Headphones className="h-8 w-8" />
+                  <BookOpenCheck className="h-8 w-8" />
                 </span>
                 <div>
                   <h2>IELTS 在线练习</h2>
-                  <p>听力 & 阅读专项训练，真题模考</p>
+                  <p>学术阅读专项训练，真题模考</p>
                 </div>
               </div>
               <div className="landing-ielts-list">
@@ -614,7 +613,7 @@ export const LandingView = () => {
         <section className="landing-practice-section" aria-labelledby="landing-practice-title">
           <div className="landing-section-copy">
             <p>IELTS 备考专区</p>
-            <h2 id="landing-practice-title">听力、阅读和模考记录，放在同一个备考面板里。</h2>
+            <h2 id="landing-practice-title">阅读训练和模考记录，放在同一个备考面板里。</h2>
             <span>
               IELTS 不只是刷题入口。练习材料、完成情况、错题和目标分会一起保存，复盘时能看见自己在哪类题上反复失分。
             </span>
@@ -646,7 +645,7 @@ export const LandingView = () => {
             <p>题库中心</p>
             <h2 id="landing-bank-title">未来扩展更多题型，也沿用同一套学习底座。</h2>
             <span>
-              题库中心会逐步覆盖词汇语法、阅读理解、听力理解、写作口语、校内练习和自定义材料。新模块增加练习场景，不打断已有复习节奏。
+              题库中心会逐步覆盖词汇语法、阅读理解、考试复盘、写作口语、校内练习和自定义材料。新模块增加练习场景，不打断已有复习节奏。
             </span>
           </div>
 

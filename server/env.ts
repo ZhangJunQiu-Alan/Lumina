@@ -17,16 +17,42 @@ function present(value: string | undefined): value is string {
 }
 
 const aiEnabled = (process.env.LUMINA_AI_FEATURES_ENABLED ?? '').toLowerCase() === 'true';
+const localAuthEnabled = Boolean(process.env.LUMINA_AUTH_JWT_SECRET?.trim() && process.env.DATABASE_URL?.trim());
+const localDataUrl = process.env.LUMINA_DATA_URL?.trim() || process.env.SUPABASE_URL?.trim();
+const legacySupabaseEnabled = (process.env.LUMINA_ALLOW_LEGACY_SUPABASE ?? '').toLowerCase() === 'true';
+const localPostgrestEnabled = Boolean(
+  process.env.LUMINA_POSTGREST_URL?.trim() &&
+    process.env.LUMINA_SERVICE_ROLE_JWT?.trim() &&
+    localDataUrl,
+);
 
 const errors: string[] = [];
 const warnings: string[] = [];
 
-// ── Supabase (always required) ──────────────────────────────────────────────
-if (!present(process.env.SUPABASE_URL) && !present(process.env.VITE_SUPABASE_URL)) {
-  errors.push('SUPABASE_URL (or VITE_SUPABASE_URL) is required — the Supabase project URL.');
-}
-if (!present(process.env.LUMINA_SUPABASE_SERVICE_ROLE_KEY) && !present(process.env.SUPABASE_SERVICE_ROLE_KEY)) {
-  errors.push('SUPABASE_SERVICE_ROLE_KEY (or LUMINA_SUPABASE_SERVICE_ROLE_KEY) is required — the service-role key.');
+// ── Data/Auth backend ───────────────────────────────────────────────────────
+if (localAuthEnabled || localPostgrestEnabled) {
+  if (!localAuthEnabled) {
+    errors.push('LUMINA_AUTH_JWT_SECRET and DATABASE_URL are required for local auth.');
+  }
+  if (!localPostgrestEnabled) {
+    errors.push('LUMINA_POSTGREST_URL, LUMINA_SERVICE_ROLE_JWT, and LUMINA_DATA_URL are required for local PostgREST.');
+  }
+  if (!present(process.env.LUMINA_PUBLIC_BASE_URL)) {
+    warnings.push(
+      'LUMINA_PUBLIC_BASE_URL is not set — generated local storage URLs may be relative or point at loopback.',
+    );
+  }
+} else if (legacySupabaseEnabled) {
+  if (!present(process.env.SUPABASE_URL) && !present(process.env.VITE_SUPABASE_URL)) {
+    errors.push('SUPABASE_URL (or VITE_SUPABASE_URL) is required — the Supabase project URL.');
+  }
+  if (!present(process.env.LUMINA_SUPABASE_SERVICE_ROLE_KEY) && !present(process.env.SUPABASE_SERVICE_ROLE_KEY)) {
+    errors.push('SUPABASE_SERVICE_ROLE_KEY (or LUMINA_SUPABASE_SERVICE_ROLE_KEY) is required — the service-role key.');
+  }
+} else {
+  errors.push(
+    'Self-hosted data/auth env vars are required. Set LUMINA_AUTH_JWT_SECRET, DATABASE_URL, LUMINA_POSTGREST_URL, LUMINA_SERVICE_ROLE_JWT, and LUMINA_DATA_URL.',
+  );
 }
 
 // ── AI content features (required only when the master switch is on) ──────────

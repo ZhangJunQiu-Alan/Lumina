@@ -1,6 +1,5 @@
 import { ArrowLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { IslandPanel } from '../shared/AnimalPrimitives';
 
 interface LegalSection {
   title: string;
@@ -18,31 +17,25 @@ const updatedAt = '2026-04-18';
 
 function LegalDocument({ eyebrow, title, intro, sections }: LegalDocumentProps) {
   return (
-    <div className="min-h-screen px-6 py-6">
-      <IslandPanel as="div" variant="elevated" className="mx-auto w-full max-w-5xl p-6 md:p-8">
-        <Link
-          to="/"
-          className="inline-flex items-center gap-2 rounded-full border-2 border-[#d8cdb9] bg-[#fffdf3] px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-text-secondary shadow-[0_3px_0_0_#d4c9b4] transition-colors hover:bg-[#fff9e6]"
-        >
+    <main className="legal-page">
+      <article className="legal-document">
+        <Link to="/" className="legal-back-link">
           <ArrowLeft className="h-3.5 w-3.5" />
           返回首页
         </Link>
 
-        <div className="mt-8 max-w-3xl">
-          <p className="text-xs font-bold uppercase tracking-[0.24em] text-apple-blue">{eyebrow}</p>
-          <h1 className="mt-4 text-4xl font-black tracking-tight text-text-primary md:text-5xl">{title}</h1>
-          <p className="mt-4 text-base leading-8 text-text-secondary">{intro}</p>
-          <p className="mt-4 text-xs font-bold uppercase tracking-[0.22em] text-text-secondary">更新日期 {updatedAt}</p>
-        </div>
+        <header className="legal-header">
+          <p>{eyebrow}</p>
+          <h1>{title}</h1>
+          <div>{intro}</div>
+          <time dateTime={updatedAt}>更新日期 {updatedAt}</time>
+        </header>
 
-        <div className="mt-10 space-y-5">
+        <div className="legal-sections">
           {sections.map((section) => (
-            <section
-              key={section.title}
-              className="rounded-[28px] border-2 border-[#e8dcc8] bg-[#fffdf3]/82 p-6 shadow-[0_4px_0_0_#d4c9b4]"
-            >
-              <h2 className="text-2xl font-black text-text-primary">{section.title}</h2>
-              <div className="mt-4 space-y-3 text-sm leading-7 text-text-secondary">
+            <section key={section.title}>
+              <h2>{section.title}</h2>
+              <div>
                 {section.paragraphs.map((paragraph) => (
                   <p key={paragraph}>{paragraph}</p>
                 ))}
@@ -50,8 +43,8 @@ function LegalDocument({ eyebrow, title, intro, sections }: LegalDocumentProps) 
             </section>
           ))}
         </div>
-      </IslandPanel>
-    </div>
+      </article>
+    </main>
   );
 }
 

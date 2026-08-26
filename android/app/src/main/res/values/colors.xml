@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="lumina_icon_background">#FFF9ED</color>
+    <color name="lumina_window_background">#FFF9ED</color>
+</resources>

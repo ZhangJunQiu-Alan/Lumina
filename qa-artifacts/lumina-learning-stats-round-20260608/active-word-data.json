@@ -1,0 +1,375 @@
+{
+  "group": {
+    "id": "2aa2fa9c-64ba-4088-8379-c633c91867f1",
+    "group_name": "雅思词汇真经 · 顺序 · 第2组 · 40词",
+    "status": "active",
+    "session_round": "round1",
+    "session_current_index": 0,
+    "session_queue_word_ids": [
+      "93de597a-174f-4322-836e-4005884b7576",
+      "a66838c9-604d-439b-afbc-753b0fbb5098",
+      "d54ced66-07e6-41f3-8875-7521d2e9ad25",
+      "2522763b-405c-481b-a125-769aabca863b",
+      "cfbd1ed8-efe5-49b6-bdf8-4edc3d19a36e",
+      "cd6027fd-e28a-460a-b7d4-34456432060f",
+      "e411b7ac-bc21-414a-977d-a02668c1c4b1",
+      "4c5dddfe-8002-4d43-837c-e47b5fe74dc6",
+      "756fbd94-689b-45b5-8548-34eb809fa80a",
+      "5cdd046e-3301-4179-81b5-a779f874f65f",
+      "84572c29-950d-4f01-83cf-f88954f056fb",
+      "0e7f8166-ab66-4343-aeb0-0ec2223f3d32",
+      "2296cb86-49ba-4345-bae4-3d2cf01ce5c6",
+      "57695269-0cbd-40d3-9e13-4892331c0504",
+      "577de5f2-e8e9-4a0e-84b7-fe24225d8744",
+      "45926f2f-8714-46e5-8864-8732b2152742",
+      "ae1b295d-068f-43d5-9028-75e5d3a254be",
+      "37f990c8-0e92-4e1f-a7ab-075897e6fb03",
+      "a4b5e5a8-be75-415e-9aa4-546c0052fbb6",
+      "3ef63ebb-4567-4807-9328-47fe6a5b7100",
+      "7014cb83-a430-4d1e-b2a8-98de2f750f87",
+      "148f3a7c-b6a4-41fa-92d3-14c215ddcb6a",
+      "d2c49673-aeaa-4ae7-b6b1-a819532a6a2c",
+      "4749fd5b-4e73-4f20-b9d2-950117425a4c",
+      "c9d8da1e-4818-481a-9f00-b11848d8ca24",
+      "34a81b08-a6ed-4d66-8ef0-33388d03e446",
+      "aa18b58b-5689-436b-8656-bd6d0e011c48",
+      "f2e53ee8-e801-47e5-9f23-d493ab77f70c",
+      "f20c397a-2d36-4fa5-b4b4-652d482af2bb",
+      "079bf4f8-4b67-44ab-9626-6a89ffb4cee6",
+      "c1889660-6a90-404f-8f36-b2509dbdeeb7",
+      "d0ed78ad-e679-41c1-9d6a-efd6df9ff124",
+      "db77fe4f-a635-47ea-9f28-6dd4e3fac86f",
+      "0e97c05e-14e4-4d6f-9335-399d97927243",
+      "77d1c601-763c-4845-8799-c8f59dff2814",
+      "9f763a32-c46d-4213-83f1-85e5498377f3",
+      "2c672b69-815f-4e3b-917d-ed6e1dab2487",
+      "504b161e-7011-4d02-a48e-31110e6f1fd6",
+      "35e88388-828c-4bfa-9ecb-0d25a1565dfe",
+      "7045318f-d459-42ad-b0d0-cb1488b099b3"
+    ],
+    "session_round1_confirmed_word_ids": []
+  },
+  "queueLength": 40,
+  "words": [
+    {
+      "i": 0,
+      "seq": 0,
+      "id": "93de597a-174f-4322-836e-4005884b7576",
+      "word": "granite",
+      "meaning": "花岗岩",
+      "sense": "花岗岩"
+    },
+    {
+      "i": 1,
+      "seq": 1,
+      "id": "a66838c9-604d-439b-afbc-753b0fbb5098",
+      "word": "gust",
+      "meaning": "一阵狂风",
+      "sense": "一阵狂风；（情感的）迸发"
+    },
+    {
+      "i": 2,
+      "seq": 2,
+      "id": "d54ced66-07e6-41f3-8875-7521d2e9ad25",
+      "word": "breeze",
+      "meaning": "微风，和风",
+      "sense": "微风，和风"
+    },
+    {
+      "i": 3,
+      "seq": 3,
+      "id": "2522763b-405c-481b-a125-769aabca863b",
+      "word": "monsoon",
+      "meaning": "季风；雨季",
+      "sense": "（南亚和东南亚地区的）季风"
+    },
+    {
+      "i": 4,
+      "seq": 4,
+      "id": "cfbd1ed8-efe5-49b6-bdf8-4edc3d19a36e",
+      "word": "gale",
+      "meaning": "大风，狂风",
+      "sense": "大风，狂风（风力8-10级）"
+    },
+    {
+      "i": 5,
+      "seq": 5,
+      "id": "cd6027fd-e28a-460a-b7d4-34456432060f",
+      "word": "hurricane",
+      "meaning": "飓风",
+      "sense": "飓风，（尤指西大西洋的）热带风暴"
+    },
+    {
+      "i": 6,
+      "seq": 6,
+      "id": "e411b7ac-bc21-414a-977d-a02668c1c4b1",
+      "word": "tornado",
+      "meaning": "龙卷风",
+      "sense": "龙卷风，陆龙卷"
+    },
+    {
+      "i": 7,
+      "seq": 7,
+      "id": "4c5dddfe-8002-4d43-837c-e47b5fe74dc6",
+      "word": "typhoon",
+      "meaning": "台风",
+      "sense": "台风（西北太平洋地区的热带气旋）"
+    },
+    {
+      "i": 8,
+      "seq": 8,
+      "id": "756fbd94-689b-45b5-8548-34eb809fa80a",
+      "word": "volcano",
+      "meaning": "火山",
+      "sense": "火山"
+    },
+    {
+      "i": 9,
+      "seq": 9,
+      "id": "5cdd046e-3301-4179-81b5-a779f874f65f",
+      "word": "erupt",
+      "meaning": "（火山）爆发；突然发生",
+      "sense": "（火山）爆发，喷发"
+    },
+    {
+      "i": 10,
+      "seq": 10,
+      "id": "84572c29-950d-4f01-83cf-f88954f056fb",
+      "word": "marine",
+      "meaning": "海洋的；海生的",
+      "sense": "海洋的；海生的；海事的"
+    },
+    {
+      "i": 11,
+      "seq": 11,
+      "id": "0e7f8166-ab66-4343-aeb0-0ec2223f3d32",
+      "word": "navigation",
+      "meaning": "航行；导航",
+      "sense": "航行；导航；航海术"
+    },
+    {
+      "i": 12,
+      "seq": 12,
+      "id": "2296cb86-49ba-4345-bae4-3d2cf01ce5c6",
+      "word": "gulf",
+      "meaning": "海湾；巨大的分歧",
+      "sense": "海湾 (比 bay 大)"
+    },
+    {
+      "i": 13,
+      "seq": 13,
+      "id": "57695269-0cbd-40d3-9e13-4892331c0504",
+      "word": "beach",
+      "meaning": "海滩；沙滩",
+      "sense": "海滩；沙滩"
+    },
+    {
+      "i": 14,
+      "seq": 14,
+      "id": "577de5f2-e8e9-4a0e-84b7-fe24225d8744",
+      "word": "coast",
+      "meaning": "海岸；沿海地区",
+      "sense": "海岸；沿海地区"
+    },
+    {
+      "i": 15,
+      "seq": 15,
+      "id": "45926f2f-8714-46e5-8864-8732b2152742",
+      "word": "shore",
+      "meaning": "海岸；湖岸",
+      "sense": "海岸；湖岸；河岸"
+    },
+    {
+      "i": 16,
+      "seq": 16,
+      "id": "ae1b295d-068f-43d5-9028-75e5d3a254be",
+      "word": "tide",
+      "meaning": "潮汐；潮流",
+      "sense": "潮汐；潮流；趋势"
+    },
+    {
+      "i": 17,
+      "seq": 17,
+      "id": "37f990c8-0e92-4e1f-a7ab-075897e6fb03",
+      "word": "current",
+      "meaning": "水流；气流；电流；当前的",
+      "sense": "水流；气流；电流；趋势"
+    },
+    {
+      "i": 18,
+      "seq": 18,
+      "id": "a4b5e5a8-be75-415e-9aa4-546c0052fbb6",
+      "word": "brook",
+      "meaning": "小溪；容忍",
+      "sense": "小溪；小河"
+    },
+    {
+      "i": 19,
+      "seq": 19,
+      "id": "3ef63ebb-4567-4807-9328-47fe6a5b7100",
+      "word": "stream",
+      "meaning": "溪流；水流；流动；连续不断地",
+      "sense": "溪流；小河；一股（水、光等）；人流；趋势"
+    },
+    {
+      "i": 20,
+      "seq": 20,
+      "id": "7014cb83-a430-4d1e-b2a8-98de2f750f87",
+      "word": "source",
+      "meaning": "来源，源头",
+      "sense": "来源，出处；源头，发源地"
+    },
+    {
+      "i": 21,
+      "seq": 21,
+      "id": "148f3a7c-b6a4-41fa-92d3-14c215ddcb6a",
+      "word": "shallow",
+      "meaning": "浅的；肤浅的",
+      "sense": "浅的；肤浅的，浅薄的"
+    },
+    {
+      "i": 22,
+      "seq": 22,
+      "id": "d2c49673-aeaa-4ae7-b6b1-a819532a6a2c",
+      "word": "superficial",
+      "meaning": "肤浅的；表面的",
+      "sense": "表面的；肤浅的；粗略的"
+    },
+    {
+      "i": 23,
+      "seq": 23,
+      "id": "4749fd5b-4e73-4f20-b9d2-950117425a4c",
+      "word": "flat",
+      "meaning": "平的；公寓",
+      "sense": "平的，平坦的；单调的；泄了气的"
+    },
+    {
+      "i": 24,
+      "seq": 24,
+      "id": "c9d8da1e-4818-481a-9f00-b11848d8ca24",
+      "word": "smooth",
+      "meaning": "光滑的；顺利的",
+      "sense": "光滑的，平滑的；顺利的，流畅的"
+    },
+    {
+      "i": 25,
+      "seq": 25,
+      "id": "34a81b08-a6ed-4d66-8ef0-33388d03e446",
+      "word": "rough",
+      "meaning": "粗糙的；大致的",
+      "sense": "表面不平的，粗糙的"
+    },
+    {
+      "i": 26,
+      "seq": 26,
+      "id": "aa18b58b-5689-436b-8656-bd6d0e011c48",
+      "word": "sandy",
+      "meaning": "含沙的；沙色的",
+      "sense": "多沙的，沙质的"
+    },
+    {
+      "i": 27,
+      "seq": 27,
+      "id": "f2e53ee8-e801-47e5-9f23-d493ab77f70c",
+      "word": "stony",
+      "meaning": "多石的；冷酷的",
+      "sense": "多石的，石质的"
+    },
+    {
+      "i": 28,
+      "seq": 28,
+      "id": "f20c397a-2d36-4fa5-b4b4-652d482af2bb",
+      "word": "vertical",
+      "meaning": "垂直的，竖直的",
+      "sense": "垂直的，竖直的"
+    },
+    {
+      "i": 29,
+      "seq": 29,
+      "id": "079bf4f8-4b67-44ab-9626-6a89ffb4cee6",
+      "word": "steep",
+      "meaning": "陡峭的；急剧的",
+      "sense": "陡峭的，险峻的"
+    },
+    {
+      "i": 30,
+      "seq": 30,
+      "id": "c1889660-6a90-404f-8f36-b2509dbdeeb7",
+      "word": "parallel",
+      "meaning": "平行的；相似的",
+      "sense": "平行的"
+    },
+    {
+      "i": 31,
+      "seq": 31,
+      "id": "d0ed78ad-e679-41c1-9d6a-efd6df9ff124",
+      "word": "narrow",
+      "meaning": "狭窄的",
+      "sense": "狭窄的"
+    },
+    {
+      "i": 32,
+      "seq": 32,
+      "id": "db77fe4f-a635-47ea-9f28-6dd4e3fac86f",
+      "word": "oceania",
+      "meaning": "大洋洲",
+      "sense": "大洋洲（包括澳大利亚、新西兰及太平洋岛屿的区域）"
+    },
+    {
+      "i": 33,
+      "seq": 33,
+      "id": "0e97c05e-14e4-4d6f-9335-399d97927243",
+      "word": "mainland",
+      "meaning": "大陆，本土",
+      "sense": "大陆，本土（相对于岛屿）"
+    },
+    {
+      "i": 34,
+      "seq": 34,
+      "id": "77d1c601-763c-4845-8799-c8f59dff2814",
+      "word": "peninsula",
+      "meaning": "半岛",
+      "sense": "半岛"
+    },
+    {
+      "i": 35,
+      "seq": 35,
+      "id": "9f763a32-c46d-4213-83f1-85e5498377f3",
+      "word": "climate",
+      "meaning": "气候",
+      "sense": "气候，一个地区长期的天气状况"
+    },
+    {
+      "i": 36,
+      "seq": 36,
+      "id": "2c672b69-815f-4e3b-917d-ed6e1dab2487",
+      "word": "weather",
+      "meaning": "天气",
+      "sense": "天气，气象"
+    },
+    {
+      "i": 37,
+      "seq": 37,
+      "id": "504b161e-7011-4d02-a48e-31110e6f1fd6",
+      "word": "meteorology",
+      "meaning": "气象学",
+      "sense": "气象学"
+    },
+    {
+      "i": 38,
+      "seq": 38,
+      "id": "35e88388-828c-4bfa-9ecb-0d25a1565dfe",
+      "word": "mild",
+      "meaning": "温和的，轻微的",
+      "sense": "(天气)温和的，暖和的"
+    },
+    {
+      "i": 39,
+      "seq": 39,
+      "id": "7045318f-d459-42ad-b0d0-cb1488b099b3",
+      "word": "heating",
+      "meaning": "暖气，供暖系统",
+      "sense": "供暖，暖气设备"
+    }
+  ]
+}

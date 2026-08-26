@@ -6,13 +6,170 @@ import {
   isOfficialLibraryId,
   resolveLibraryGroupSourceType,
   resolveOfficialLibraryId,
+  resolveOfficialStudyModeFromGroupName,
 } from '../officialLibraryLite.ts';
 import { isCoreLearningComplete } from '../learningSessionLite.ts';
-import type { OfficialLibraryId, OfficialStudyMode } from '../types.ts';
+import type { LearningRoundType, OfficialLibraryId, OfficialStudyMode } from '../types.ts';
 import { isOfficialDiscardableRound, resolveActuallyLearnedWordIds } from '../officialDiscard.ts';
 import { isReorderableOfficialRound, reorderOfficialSessionQueue } from '../officialSessionReorder.ts';
+import { OFFICIAL_LIBRARY_TITLES, OFFICIAL_LIBRARY_TOTALS } from './home.ts';
 
 const ROUTINE_DAY_RESET_HOUR = 5;
+const LIBRARY_PAGE_SIZE = 1000;
+const LIBRARY_QUERY_CHUNK_SIZE = 100;
+const OFFICIAL_LIBRARY_IDS: OfficialLibraryId[] = [
+  'ielts-vocab',
+  'gre-zhenkao-v7',
+  'cet4-vocab',
+  'cet6-vocab',
+  'npee-vocab',
+  'gaokao-vocab',
+  'tem4-vocab',
+  'tem8-vocab',
+];
+
+interface LibraryLearningGroupRow {
+  id: string;
+  group_name: string | null;
+  source_type: 'custom' | 'system' | null;
+  library_id: string | null;
+  status: 'active' | 'completed' | null;
+  created_at: string;
+  completed_at: string | null;
+  session_round: string | null;
+  session_last_active_at: string | null;
+}
+
+interface LibraryGroupWordCountRow {
+  learning_group_id: string;
+  vocabulary_item_id: string;
+}
+
+interface LibraryReviewStateWordRow {
+  vocabulary_item_id: string;
+  vocabulary_items: { word: string | null } | { word: string | null }[] | null;
+}
+
+interface OfficialVocabLibraryRow {
+  library_id: string;
+  word_key: string;
+}
+
+interface LibraryVocabularySenseRow {
+  pos: string | null;
+  example_sentence: string | null;
+  example_translation_zh: string | null;
+}
+
+interface LibraryVocabularyItemDetailRow {
+  id: string;
+  word: string;
+  ipa_uk: string | null;
+  primary_meaning_zh: string | null;
+  memory_tip: string | null;
+  vocabulary_senses: LibraryVocabularySenseRow[] | null;
+}
+
+interface LibraryGroupWordDetailRow {
+  vocabulary_item_id: string;
+  sequence_no: number | null;
+  vocabulary_items: LibraryVocabularyItemDetailRow | LibraryVocabularyItemDetailRow[] | null;
+}
+
+interface LibraryReviewStateDetailRow {
+  vocabulary_item_id: string;
+  memory_state: MemoryState;
+  next_review_at: string | null;
+  last_result: ReviewResultType | null;
+}
+
+interface SavedWordVocabularyItemRow {
+  id: string;
+  word: string | null;
+  ipa_uk: string | null;
+  primary_meaning_zh: string | null;
+  enrichment_level: 'lite' | 'full' | null;
+  vocabulary_senses: Array<{ example_sentence: string | null }> | null;
+}
+
+interface SavedWordRow {
+  id: string;
+  vocabulary_item_id: string;
+  source: 'import' | 'reading_popup' | 'manual' | 'migration' | null;
+  saved_at: string | null;
+  vocabulary_items: SavedWordVocabularyItemRow | SavedWordVocabularyItemRow[] | null;
+}
+
+export interface LibraryGroupSummaryPayload {
+  id: string;
+  title: string;
+  createdAt: string;
+  wordCount: number;
+  sourceType: 'custom' | 'system';
+  libraryId: OfficialLibraryId | null;
+  status: 'active' | 'completed';
+  sessionRound: LearningRoundType | null;
+  completedAt: string | null;
+}
+
+export interface OfficialLibraryOverviewPayload {
+  libraryId: OfficialLibraryId;
+  title: string;
+  description: string;
+  totalWordCount: number;
+  existingGroupCount: number;
+  loadedWordCount: number;
+  unlockedWordCount: number;
+  completedMemoryWordCount: number;
+  activeGroupId: string | null;
+  activeRound: LearningRoundType | null;
+  mode: OfficialStudyMode;
+}
+
+export interface LibraryOverviewPayload {
+  officialLibraries: OfficialLibraryOverviewPayload[];
+  groups: LibraryGroupSummaryPayload[];
+}
+
+export interface LibraryGroupWordPayload {
+  id: string;
+  word: string;
+  phonetic: string;
+  meaning: string;
+  memoryTip: string;
+  posTags: string[];
+  examples: Array<{ sentence: string; translation: string }>;
+  memoryState: MemoryState;
+  nextReviewAt: string | null;
+  lastResult: ReviewResultType | null;
+  sequenceNo: number;
+}
+
+export interface LibraryGroupDetailPayload {
+  group: LibraryGroupSummaryPayload | null;
+  words: LibraryGroupWordPayload[];
+}
+
+export interface SavedWordEntryPayload {
+  id: string;
+  vocabularyItemId: string;
+  word: string;
+  phonetic: string;
+  meaning: string;
+  exampleSentence: string;
+  enrichmentLevel: 'lite' | 'full';
+  source: 'import' | 'reading_popup' | 'manual' | 'migration';
+  savedAt: string;
+  memoryState: MemoryState;
+  nextReviewAt: string | null;
+  lastResult: ReviewResultType | null;
+  isInActiveLearningGroup: boolean;
+}
+
+export interface CreateSavedWordsLearningGroupResult {
+  groupId: string;
+  wordCount: number;
+}
 
 interface GroupWordRow {
   vocabulary_item_id: string;
@@ -64,6 +221,325 @@ function isSystemLibraryGroup(sourceType: string | null, libraryId: string | nul
       groupName,
     ) === 'system'
   );
+}
+
+function asArray<T>(value: T | T[] | null | undefined): T[] {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function isLearningRoundType(value: string | null | undefined): value is LearningRoundType {
+  return value === 'round1' || value === 'round2' || value === 'round3' || value === 'article';
+}
+
+function getLibraryGroupActivityTime(group: LibraryLearningGroupRow) {
+  return Math.max(
+    Date.parse(group.session_last_active_at ?? '') || 0,
+    Date.parse(group.completed_at ?? '') || 0,
+    Date.parse(group.created_at) || 0,
+  );
+}
+
+function mapLibraryGroupSummary(group: LibraryLearningGroupRow, wordCount: number): LibraryGroupSummaryPayload {
+  const sourceType = resolveLibraryGroupSourceType(group.source_type, group.library_id, group.group_name);
+  const libraryId = resolveOfficialLibraryId(group.library_id, group.group_name, group.source_type);
+  const completed = isCoreLearningComplete({
+    status: group.status,
+    completedAt: group.completed_at,
+    sessionRound: isLearningRoundType(group.session_round) ? group.session_round : null,
+  });
+
+  return {
+    id: group.id,
+    title: group.group_name?.trim() || '未命名学习组',
+    createdAt: group.created_at,
+    wordCount,
+    sourceType,
+    libraryId,
+    status: completed ? 'completed' : 'active',
+    sessionRound: isLearningRoundType(group.session_round) ? group.session_round : null,
+    completedAt: group.completed_at,
+  };
+}
+
+async function fetchLibraryLearningGroups(userId: string) {
+  const rows: LibraryLearningGroupRow[] = [];
+
+  for (let from = 0; ; from += LIBRARY_PAGE_SIZE) {
+    const { data, error } = await supabaseAdmin
+      .from('learning_groups')
+      .select(
+        `
+        id,
+        group_name,
+        source_type,
+        library_id,
+        status,
+        created_at,
+        completed_at,
+        session_round,
+        session_last_active_at
+      `,
+      )
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .range(from, from + LIBRARY_PAGE_SIZE - 1);
+
+    if (error) {
+      throw new Error(`library learning_groups lookup failed: ${error.message}`);
+    }
+
+    const page = (data ?? []) as LibraryLearningGroupRow[];
+    rows.push(...page);
+    if (page.length < LIBRARY_PAGE_SIZE) break;
+  }
+
+  return rows;
+}
+
+async function fetchLibraryGroupWordRows(groupIds: string[]) {
+  const rows: LibraryGroupWordCountRow[] = [];
+
+  for (let offset = 0; offset < groupIds.length; offset += LIBRARY_QUERY_CHUNK_SIZE) {
+    const chunk = groupIds.slice(offset, offset + LIBRARY_QUERY_CHUNK_SIZE);
+
+    for (let from = 0; ; from += LIBRARY_PAGE_SIZE) {
+      const { data, error } = await supabaseAdmin
+        .from('learning_group_words')
+        .select('learning_group_id, vocabulary_item_id')
+        .in('learning_group_id', chunk)
+        .range(from, from + LIBRARY_PAGE_SIZE - 1);
+
+      if (error) {
+        throw new Error(`library learning_group_words lookup failed: ${error.message}`);
+      }
+
+      const page = (data ?? []) as LibraryGroupWordCountRow[];
+      rows.push(...page);
+      if (page.length < LIBRARY_PAGE_SIZE) break;
+    }
+  }
+
+  return rows;
+}
+
+async function fetchOfficialCompletionCounts(userId: string) {
+  const completedWordKeys = new Set<string>();
+
+  for (let from = 0; ; from += LIBRARY_PAGE_SIZE) {
+    const { data, error } = await supabaseAdmin
+      .from('review_states')
+      .select('vocabulary_item_id, vocabulary_items!inner(word)')
+      .eq('user_id', userId)
+      .in('memory_state', ['stable_recall', 'mastered'])
+      .order('vocabulary_item_id', { ascending: true })
+      .range(from, from + LIBRARY_PAGE_SIZE - 1);
+
+    if (error) {
+      throw new Error(`library review_states completion lookup failed: ${error.message}`);
+    }
+
+    const page = (data ?? []) as unknown as LibraryReviewStateWordRow[];
+    for (const row of page) {
+      const word = asArray(row.vocabulary_items)[0]?.word?.trim().toLowerCase();
+      if (word) completedWordKeys.add(word);
+    }
+    if (page.length < LIBRARY_PAGE_SIZE) break;
+  }
+
+  const completedByLibrary = new Map<OfficialLibraryId, Set<string>>(
+    OFFICIAL_LIBRARY_IDS.map((libraryId) => [libraryId, new Set<string>()]),
+  );
+  const wordKeys = [...completedWordKeys];
+
+  for (let offset = 0; offset < wordKeys.length; offset += LIBRARY_QUERY_CHUNK_SIZE) {
+    const chunk = wordKeys.slice(offset, offset + LIBRARY_QUERY_CHUNK_SIZE);
+
+    for (let from = 0; ; from += LIBRARY_PAGE_SIZE) {
+      const { data, error } = await supabaseAdmin
+        .from('official_vocab')
+        .select('library_id, word_key')
+        .in('word_key', chunk)
+        .range(from, from + LIBRARY_PAGE_SIZE - 1);
+
+      if (error) {
+        throw new Error(`official_vocab completion lookup failed: ${error.message}`);
+      }
+
+      const page = (data ?? []) as OfficialVocabLibraryRow[];
+      for (const row of page) {
+        if (isOfficialLibraryId(row.library_id)) {
+          completedByLibrary.get(row.library_id)?.add(row.word_key);
+        }
+      }
+      if (page.length < LIBRARY_PAGE_SIZE) break;
+    }
+  }
+
+  return new Map(OFFICIAL_LIBRARY_IDS.map((libraryId) => [libraryId, completedByLibrary.get(libraryId)?.size ?? 0]));
+}
+
+export async function getLibraryOverview(userId: string): Promise<LibraryOverviewPayload> {
+  const groups = await fetchLibraryLearningGroups(userId);
+  const groupWordRows = await fetchLibraryGroupWordRows(groups.map((group) => group.id));
+  const completedMemoryCounts = await fetchOfficialCompletionCounts(userId);
+  const wordCountByGroup = new Map<string, number>();
+
+  for (const row of groupWordRows) {
+    wordCountByGroup.set(row.learning_group_id, (wordCountByGroup.get(row.learning_group_id) ?? 0) + 1);
+  }
+
+  const groupSummaries = groups.map((group) => mapLibraryGroupSummary(group, wordCountByGroup.get(group.id) ?? 0));
+  const officialLibraries = OFFICIAL_LIBRARY_IDS.map((libraryId) => {
+    const libraryGroups = groups.filter(
+      (group) => resolveOfficialLibraryId(group.library_id, group.group_name, group.source_type) === libraryId,
+    );
+    const sortedGroups = [...libraryGroups].sort(
+      (left, right) => getLibraryGroupActivityTime(right) - getLibraryGroupActivityTime(left),
+    );
+    const activeGroup =
+      sortedGroups.find((group) => {
+        const summary = mapLibraryGroupSummary(group, wordCountByGroup.get(group.id) ?? 0);
+        return summary.status === 'active' && summary.sessionRound !== 'article';
+      }) ?? null;
+    const referenceGroup = activeGroup ?? sortedGroups[0] ?? null;
+    const loadedWordCount = libraryGroups.reduce((count, group) => count + (wordCountByGroup.get(group.id) ?? 0), 0);
+    const unlockedWordCount = libraryGroups.reduce((count, group) => {
+      const summary = mapLibraryGroupSummary(group, wordCountByGroup.get(group.id) ?? 0);
+      return summary.status === 'completed' ? count + summary.wordCount : count;
+    }, 0);
+    const totalWordCount = OFFICIAL_LIBRARY_TOTALS[libraryId];
+
+    return {
+      libraryId,
+      title: OFFICIAL_LIBRARY_TITLES[libraryId],
+      description: `${totalWordCount} 词，每组 30 词；已学过的词会自动跳过。`,
+      totalWordCount,
+      existingGroupCount: libraryGroups.length,
+      loadedWordCount: Math.min(loadedWordCount, totalWordCount),
+      unlockedWordCount: Math.min(unlockedWordCount, totalWordCount),
+      completedMemoryWordCount: Math.min(completedMemoryCounts.get(libraryId) ?? 0, totalWordCount),
+      activeGroupId: activeGroup?.id ?? null,
+      activeRound: isLearningRoundType(activeGroup?.session_round) ? activeGroup.session_round : null,
+      mode: referenceGroup
+        ? resolveOfficialStudyModeFromGroupName(libraryId, referenceGroup.group_name)
+        : ('sequential' as const),
+    } satisfies OfficialLibraryOverviewPayload;
+  });
+
+  return {
+    officialLibraries,
+    groups: groupSummaries,
+  };
+}
+
+export async function getLibraryGroupDetail(userId: string, groupId: string): Promise<LibraryGroupDetailPayload> {
+  const { data: groupData, error: groupError } = await supabaseAdmin
+    .from('learning_groups')
+    .select(
+      `
+      id,
+      group_name,
+      source_type,
+      library_id,
+      status,
+      created_at,
+      completed_at,
+      session_round,
+      session_last_active_at
+    `,
+    )
+    .eq('id', groupId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (groupError) {
+    throw new Error(`library learning_group detail lookup failed: ${groupError.message}`);
+  }
+  if (!groupData) {
+    return { group: null, words: [] };
+  }
+
+  const { data: wordData, error: wordError } = await supabaseAdmin
+    .from('learning_group_words')
+    .select(
+      `
+      vocabulary_item_id,
+      sequence_no,
+      vocabulary_items!inner (
+        id,
+        word,
+        ipa_uk,
+        primary_meaning_zh,
+        memory_tip,
+        vocabulary_senses (
+          pos,
+          example_sentence,
+          example_translation_zh
+        )
+      )
+    `,
+    )
+    .eq('learning_group_id', groupId)
+    .order('sequence_no', { ascending: true });
+
+  if (wordError) {
+    throw new Error(`library learning_group_words detail lookup failed: ${wordError.message}`);
+  }
+
+  const wordRows = (wordData ?? []) as unknown as LibraryGroupWordDetailRow[];
+  const vocabularyItemIds = wordRows.map((row) => row.vocabulary_item_id).filter(Boolean);
+  const reviewStateByWordId = new Map<string, LibraryReviewStateDetailRow>();
+
+  for (let offset = 0; offset < vocabularyItemIds.length; offset += LIBRARY_QUERY_CHUNK_SIZE) {
+    const chunk = vocabularyItemIds.slice(offset, offset + LIBRARY_QUERY_CHUNK_SIZE);
+    const { data, error } = await supabaseAdmin
+      .from('review_states')
+      .select('vocabulary_item_id, memory_state, next_review_at, last_result')
+      .eq('user_id', userId)
+      .in('vocabulary_item_id', chunk);
+
+    if (error) {
+      throw new Error(`library review_states detail lookup failed: ${error.message}`);
+    }
+
+    for (const row of (data ?? []) as LibraryReviewStateDetailRow[]) {
+      reviewStateByWordId.set(row.vocabulary_item_id, row);
+    }
+  }
+
+  const words = wordRows.flatMap((row) => {
+    const vocabularyItem = asArray(row.vocabulary_items)[0];
+    if (!vocabularyItem) return [];
+    const reviewState = reviewStateByWordId.get(vocabularyItem.id);
+    const senses = vocabularyItem.vocabulary_senses ?? [];
+
+    return [
+      {
+        id: vocabularyItem.id,
+        word: vocabularyItem.word,
+        phonetic: vocabularyItem.ipa_uk ?? '',
+        meaning: vocabularyItem.primary_meaning_zh ?? '',
+        memoryTip: vocabularyItem.memory_tip ?? '',
+        posTags: senses.map((sense) => sense.pos?.trim() ?? '').filter(Boolean),
+        examples: senses
+          .filter((sense) => Boolean(sense.example_sentence?.trim()))
+          .map((sense) => ({
+            sentence: sense.example_sentence?.trim() ?? '',
+            translation: sense.example_translation_zh?.trim() ?? '',
+          })),
+        memoryState: reviewState?.memory_state ?? 'new',
+        nextReviewAt: reviewState?.next_review_at ?? null,
+        lastResult: reviewState?.last_result ?? null,
+        sequenceNo: row.sequence_no ?? 0,
+      } satisfies LibraryGroupWordPayload,
+    ];
+  });
+
+  return {
+    group: mapLibraryGroupSummary(groupData as LibraryLearningGroupRow, words.length),
+    words,
+  };
 }
 
 export interface DeleteLearningGroupResult {
@@ -391,6 +867,160 @@ export async function saveWordToLibrary(
     saved: true,
     fullEnrichmentQueued: queueResult.queued,
   };
+}
+
+export async function getSavedWords(userId: string): Promise<SavedWordEntryPayload[]> {
+  const { data, error } = await supabaseAdmin
+    .from('user_saved_words')
+    .select(
+      `
+      id,
+      vocabulary_item_id,
+      source,
+      saved_at,
+      vocabulary_items!inner (
+        id,
+        word,
+        ipa_uk,
+        primary_meaning_zh,
+        enrichment_level,
+        vocabulary_senses (
+          example_sentence
+        )
+      )
+    `,
+    )
+    .eq('user_id', userId)
+    .order('saved_at', { ascending: true });
+
+  if (error) {
+    throw new Error(`user_saved_words lookup failed: ${error.message}`);
+  }
+
+  const rows = (data ?? []) as unknown as SavedWordRow[];
+  const vocabularyItemIds = rows.map((row) => row.vocabulary_item_id).filter(Boolean);
+  const reviewStateByWordId = new Map<string, LibraryReviewStateDetailRow>();
+
+  for (let offset = 0; offset < vocabularyItemIds.length; offset += LIBRARY_QUERY_CHUNK_SIZE) {
+    const chunk = vocabularyItemIds.slice(offset, offset + LIBRARY_QUERY_CHUNK_SIZE);
+    const { data: reviewData, error: reviewError } = await supabaseAdmin
+      .from('review_states')
+      .select('vocabulary_item_id, memory_state, next_review_at, last_result')
+      .eq('user_id', userId)
+      .in('vocabulary_item_id', chunk);
+
+    if (reviewError) {
+      throw new Error(`saved words review_states lookup failed: ${reviewError.message}`);
+    }
+
+    for (const row of (reviewData ?? []) as LibraryReviewStateDetailRow[]) {
+      reviewStateByWordId.set(row.vocabulary_item_id, row);
+    }
+  }
+
+  const { data: activeGroups, error: activeGroupsError } = await supabaseAdmin
+    .from('learning_groups')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('source_type', 'custom')
+    .eq('status', 'active');
+
+  if (activeGroupsError) {
+    throw new Error(`saved words active groups lookup failed: ${activeGroupsError.message}`);
+  }
+
+  const activeGroupIds = (activeGroups ?? []).map((group) => group.id).filter(Boolean);
+  const activeWordIds = new Set<string>();
+  for (let offset = 0; offset < activeGroupIds.length; offset += LIBRARY_QUERY_CHUNK_SIZE) {
+    const chunk = activeGroupIds.slice(offset, offset + LIBRARY_QUERY_CHUNK_SIZE);
+    const { data: activeWords, error: activeWordsError } = await supabaseAdmin
+      .from('learning_group_words')
+      .select('vocabulary_item_id')
+      .in('learning_group_id', chunk);
+
+    if (activeWordsError) {
+      throw new Error(`saved words active group words lookup failed: ${activeWordsError.message}`);
+    }
+    for (const row of (activeWords ?? []) as GroupWordRow[]) {
+      activeWordIds.add(row.vocabulary_item_id);
+    }
+  }
+
+  return rows.flatMap((row) => {
+    const vocabularyItem = asArray(row.vocabulary_items)[0];
+    if (!vocabularyItem?.id || !vocabularyItem.word) return [];
+    const reviewState = reviewStateByWordId.get(vocabularyItem.id);
+    const exampleSentence =
+      vocabularyItem.vocabulary_senses?.map((sense) => sense.example_sentence?.trim() ?? '').find(Boolean) ?? '';
+
+    return [
+      {
+        id: row.id,
+        vocabularyItemId: vocabularyItem.id,
+        word: vocabularyItem.word,
+        phonetic: vocabularyItem.ipa_uk ?? '',
+        meaning: vocabularyItem.primary_meaning_zh ?? '',
+        exampleSentence,
+        enrichmentLevel: vocabularyItem.enrichment_level ?? 'full',
+        source: row.source ?? 'manual',
+        savedAt: row.saved_at ?? new Date(0).toISOString(),
+        memoryState: reviewState?.memory_state ?? 'new',
+        nextReviewAt: reviewState?.next_review_at ?? null,
+        lastResult: reviewState?.last_result ?? null,
+        isInActiveLearningGroup: activeWordIds.has(vocabularyItem.id),
+      } satisfies SavedWordEntryPayload,
+    ];
+  });
+}
+
+export async function createLearningGroupFromSavedWords(
+  userId: string,
+  vocabularyItemIds: string[],
+): Promise<CreateSavedWordsLearningGroupResult> {
+  const uniqueIds = Array.from(new Set(vocabularyItemIds.map((id) => id.trim()).filter(Boolean)));
+  if (uniqueIds.length !== 30) {
+    throw new Error('需要刚好 30 个生词才能开始一组。');
+  }
+
+  const { data: savedRows, error: savedError } = await supabaseAdmin
+    .from('user_saved_words')
+    .select('vocabulary_item_id')
+    .eq('user_id', userId)
+    .in('vocabulary_item_id', uniqueIds);
+
+  if (savedError) {
+    throw new Error(`saved words group validation failed: ${savedError.message}`);
+  }
+  if ((savedRows ?? []).length !== uniqueIds.length) {
+    throw new Error('有些词已经不在生词库中，请刷新后再试。');
+  }
+
+  const { count, error: countError } = await supabaseAdmin
+    .from('learning_groups')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('source_type', 'custom');
+
+  if (countError) {
+    throw new Error(`custom learning group count failed: ${countError.message}`);
+  }
+
+  const { data: groupId, error } = await supabaseAdmin.rpc('create_learning_group_exclusive', {
+    p_user_id: userId,
+    p_group_name: `我的词库 · 第 ${(count ?? 0) + 1} 组 · 30 词`,
+    p_source_type: 'custom',
+    p_library_id: null,
+    p_vocabulary_item_ids: uniqueIds,
+  });
+
+  if (error) {
+    throw new Error(`create_learning_group_exclusive: ${error.message}`);
+  }
+  if (typeof groupId !== 'string' || !groupId) {
+    throw new Error('创建学习组失败，请稍后重试。');
+  }
+
+  return { groupId, wordCount: uniqueIds.length };
 }
 
 export async function removeWordFromLibrary(

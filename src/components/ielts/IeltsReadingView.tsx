@@ -729,7 +729,6 @@ export function IeltsReadingHomeView() {
                     Cambridge IELTS {book.bookNumber}
                   </p>
                   <h3 className="mt-2 text-2xl font-black text-text-primary">{book.title}</h3>
-                  {book.sourceLabel && <p className="mt-2 text-xs font-bold text-text-secondary">{book.sourceLabel}</p>}
                 </div>
                 <div className="rounded-2xl bg-apple-green/10 px-3 py-2 text-sm font-black text-apple-green">
                   {book.tests.length} 套
@@ -1007,7 +1006,7 @@ function ResultPanel({
           </button>
         </div>
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-5">
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
           {[
             { label: '正确率', value: `${summary.accuracyPercent}%`, tone: 'text-apple-blue' },
             { label: '已答', value: summary.answeredCount, tone: 'text-text-primary' },
@@ -1023,7 +1022,7 @@ function ResultPanel({
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-5 md:grid-cols-8 lg:grid-cols-10">
+      <div className="grid grid-cols-5 gap-2 sm:gap-3 md:grid-cols-8 lg:grid-cols-10">
         {reviewItems.map(({ question, isCorrect, isWrong, isUnanswered }) => {
           return (
             <button
@@ -1518,8 +1517,8 @@ export function IeltsReadingTestView() {
   }
 
   return (
-    <div className="min-h-full bg-[#edf3ff] px-4 pb-8 pt-5 sm:px-6 lg:px-8 lg:pt-8">
-      <div className="mx-auto w-full max-w-[1840px] space-y-6 [zoom:0.9]">
+    <div className="min-h-full bg-[#f4f7f5] px-4 pb-8 pt-5 sm:px-6 lg:px-8 lg:pt-8">
+      <div className="mx-auto w-full max-w-[1840px] space-y-6 lg:[zoom:0.9]">
         <header className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 items-center gap-4">
             <button
@@ -1531,13 +1530,13 @@ export function IeltsReadingTestView() {
               <ArrowLeft className="h-6 w-6" />
             </button>
             <div className="min-w-0">
-              <h2 className="truncate text-2xl font-black tracking-tight text-text-primary sm:text-3xl">
+              <h2 className="text-xl font-black leading-tight tracking-tight text-text-primary sm:truncate sm:text-3xl">
                 Cambridge {test.bookNumber} · Academic · Test {test.testNumber}
               </h2>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 overflow-x-auto pb-1 xl:pb-0">
+          <div className="grid grid-cols-2 gap-3 sm:flex sm:items-center sm:overflow-x-auto sm:pb-1 xl:pb-0">
             <button
               type="button"
               aria-pressed={practiceMode}
@@ -1547,7 +1546,7 @@ export function IeltsReadingTestView() {
               }}
               disabled={isLockedByTimeout || isSubmitting}
               className={cx(
-                'inline-flex h-16 min-w-[178px] shrink-0 items-center justify-between gap-4 rounded-full border px-5 text-sm font-black transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+                'order-1 inline-flex h-14 min-w-0 shrink-0 items-center justify-between gap-3 rounded-[16px] border px-4 text-sm font-black transition-colors disabled:cursor-not-allowed disabled:opacity-60 sm:order-none sm:h-16 sm:min-w-[178px] sm:rounded-full sm:px-5',
                 practiceMode
                   ? 'border-apple-blue bg-apple-blue text-white'
                   : 'border-[#dfe6f2] bg-white text-text-secondary hover:border-apple-blue/25 hover:text-text-primary',
@@ -1571,14 +1570,14 @@ export function IeltsReadingTestView() {
             </button>
             <div
               className={cx(
-                'inline-flex h-16 shrink-0 items-center gap-3 rounded-[18px] bg-white px-5 text-xl font-black tracking-[0.08em] text-text-primary shadow-[0_14px_30px_rgba(31,45,75,0.08)]',
+                'order-3 inline-flex h-14 min-w-0 shrink-0 items-center justify-center gap-2 rounded-[16px] bg-white px-3 text-lg font-black tracking-[0.08em] text-text-primary shadow-[0_14px_30px_rgba(31,45,75,0.08)] sm:order-none sm:h-16 sm:gap-3 sm:px-5 sm:text-xl',
                 !practiceMode && remainingSeconds <= 300 && 'text-apple-red',
               )}
             >
               <Clock3 className="h-5 w-5 text-text-secondary" />
               <span>{formatElapsedTime(timerSeconds)}</span>
             </div>
-            <div className="inline-flex h-16 shrink-0 items-center gap-3 rounded-[18px] bg-white px-5 text-xl font-black tracking-[0.12em] text-text-primary shadow-[0_14px_30px_rgba(31,45,75,0.08)]">
+            <div className="order-4 inline-flex h-14 min-w-0 shrink-0 items-center justify-center gap-2 rounded-[16px] bg-white px-3 text-lg font-black tracking-[0.12em] text-text-primary shadow-[0_14px_30px_rgba(31,45,75,0.08)] sm:order-none sm:h-16 sm:gap-3 sm:px-5 sm:text-xl">
               <PenLine className="h-5 w-5 text-text-secondary" />
               <span>{String(answeredCount).padStart(2, '0')}</span>
               <span className="text-text-secondary">/</span>
@@ -1588,7 +1587,7 @@ export function IeltsReadingTestView() {
               type="button"
               onClick={handleSubmitClick}
               disabled={isSubmitting}
-              className="inline-flex h-16 shrink-0 items-center justify-center gap-2 rounded-[18px] bg-apple-blue px-8 text-base font-black text-white shadow-[0_18px_34px_rgba(25,200,185,0.26)] transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+              className="order-2 inline-flex h-14 min-w-0 shrink-0 items-center justify-center gap-2 rounded-[16px] bg-apple-blue px-4 text-sm font-black text-white shadow-[0_18px_34px_rgba(14,143,136,0.18)] transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 sm:order-none sm:h-16 sm:px-8 sm:text-base"
             >
               {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
               {isSubmitting ? '提交中' : isLockedByTimeout ? '重新提交' : '交卷'}
@@ -1597,7 +1596,7 @@ export function IeltsReadingTestView() {
         </header>
 
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex gap-3 overflow-x-auto pb-1">
+          <div className="grid grid-cols-3 gap-2 sm:flex sm:gap-3 sm:overflow-x-auto sm:pb-1">
             {test.passages.map((passage) => {
               const counts = countPassageAnswers(passage, answers);
               return (
@@ -1609,13 +1608,17 @@ export function IeltsReadingTestView() {
                     setPane('passage');
                   }}
                   className={cx(
-                    'inline-flex h-14 min-w-[190px] shrink-0 items-center justify-center gap-3 rounded-[16px] border px-5 text-base font-black transition-colors',
+                    'inline-flex h-12 min-w-0 shrink-0 items-center justify-center gap-1.5 rounded-[14px] border px-2 text-sm font-black transition-colors sm:h-14 sm:min-w-[190px] sm:gap-3 sm:rounded-[16px] sm:px-5 sm:text-base',
                     selectedPassage === passage.number
                       ? 'border-apple-blue bg-apple-blue text-white'
                       : 'border-[#dfe6f2] bg-white text-text-primary hover:border-apple-blue/25',
                   )}
                 >
-                  Passage {passage.number}
+                  <span>
+                    <span className="hidden sm:inline">Passage </span>
+                    <span className="sm:hidden">P</span>
+                    {passage.number}
+                  </span>
                   <span
                     className={cx(
                       'rounded-lg px-2 py-1 text-xs font-black',

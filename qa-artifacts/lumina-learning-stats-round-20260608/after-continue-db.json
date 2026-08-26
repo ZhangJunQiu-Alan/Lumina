@@ -1,0 +1,52 @@
+[
+  {
+    "id": "2aa2fa9c-64ba-4088-8379-c633c91867f1",
+    "name": "雅思词汇真经 · 顺序 · 第2组 · 40词",
+    "status": "active",
+    "round": "round1",
+    "currentIndex": 0,
+    "queueLength": 40,
+    "wordCount": 40,
+    "round1": 0,
+    "round2": 0,
+    "round3": 0,
+    "learned": 0,
+    "queueWords": [
+      {
+        "i": 0
+      },
+      {
+        "i": 1
+      },
+      {
+        "i": 2
+      },
+      {
+        "i": 3
+      },
+      {
+        "i": 4
+      }
+    ],
+    "first": "granite",
+    "last": "heating",
+    "completed_at": null
+  },
+  {
+    "id": "ed8404d1-50e3-477c-8d7a-2b3aec338036",
+    "name": "雅思词汇真经 · 0001-0040",
+    "status": "completed",
+    "round": null,
+    "currentIndex": null,
+    "queueLength": null,
+    "wordCount": 70,
+    "round1": 30,
+    "round2": 30,
+    "round3": 30,
+    "learned": 30,
+    "queueWords": [],
+    "first": "atmosphere",
+    "last": "ocean",
+    "completed_at": "2026-06-08T04:56:42.036+00:00"
+  }
+]

@@ -23,7 +23,6 @@ import type {
   OrbitDayStatus,
   UserStats,
 } from '../../types';
-import { LuminaLogo } from '../brand/LuminaLogo';
 
 interface HomeViewProps {
   stats: UserStats;
@@ -692,12 +691,9 @@ export const HomeView = ({
       </div>
 
       <header className="home-header relative z-10 mb-4 sm:mb-6 xl:mb-10">
-        <LuminaLogo
-          size={48}
-          className="gap-4 sm:gap-5"
-          markClassName="drop-shadow-none"
-          wordmarkClassName="h-8 sm:h-10 md:h-11"
-        />
+        <p className="home-header-kicker">Today · 今日学习</p>
+        <h1 className="home-header-title">你的学习台</h1>
+        <p className="home-header-copy">先完成今天最重要的一组，再回来看长期变化。</p>
       </header>
 
       <main className="home-dashboard-grid relative z-10 grid items-start gap-8 xl:gap-12 lg:grid-cols-2">

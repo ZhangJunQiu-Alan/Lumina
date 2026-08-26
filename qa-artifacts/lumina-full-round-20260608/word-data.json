@@ -1,0 +1,1379 @@
+{
+  "email": "codex-lumina-fullround-20260608030347@example.com",
+  "userId": "f7611061-b82c-44f6-9f8a-ba6e7a6a1932",
+  "group": {
+    "id": "66eaffab-bff3-4eb9-b1c8-3de76632384f",
+    "group_name": "雅思词汇真经 · 0001-0040",
+    "session_round": "round1",
+    "session_current_index": 5,
+    "session_queue_word_ids": [
+      "331ba1d3-187a-48e2-9ecf-211faee7748d",
+      "322da17c-45c7-4e8a-a452-8d7adad269ad",
+      "4c11c25c-71db-45c8-a82e-37b3b899f6b3",
+      "2dbba0f1-00ba-4966-ac5c-ca9793c153df",
+      "271ea6ee-7b39-4bfe-94dc-a3cf31e4bb7e",
+      "c5f60d58-f510-4e77-b1ac-77405e1307fa",
+      "b7a97548-9d3c-4f01-8f0d-d89a66d90ed9",
+      "22a99258-5868-4fcf-9d05-6d88d4b39e18",
+      "d97848e7-a608-4166-9336-0af9861102b7",
+      "f3260f83-fa61-411a-8fbd-175c148ec30b",
+      "74e0c06d-4043-4f08-9c4d-44d7839c0cc7",
+      "8e5112d6-03c2-4eeb-bcc2-c6afd57c97a7",
+      "0ef1559a-579e-4e94-91b8-da0b95bacdcb",
+      "2f943ae4-a433-450c-b166-b39e40f68c30",
+      "9f5a7ff2-3ece-4e50-9f9f-3edc5e822ca9",
+      "84f293c2-02c4-4f8e-bc3f-ff1823265021",
+      "dcce2af3-a780-4cca-9dc4-31d2c3f35b65",
+      "651d5cef-9bea-4344-ba73-149ba6a9787c",
+      "42263007-4228-4b1f-a1e6-af0f68bf7910",
+      "646933fe-4519-4f93-95be-e3f8d8276863",
+      "1682df4c-1e72-4112-9c74-82e03646f740",
+      "b69c00c4-7ce9-46f3-86ef-daea033434f9",
+      "0350b6e9-226b-465d-9817-6377f0ed27d3",
+      "cb8c0663-e6d0-4a70-9d01-018336abc1d5",
+      "8e3981ac-1494-4efa-926d-57df4874c0cc",
+      "62b10a49-62be-44bd-8989-8639c915ba69",
+      "49a7ba57-fe8e-4739-ab30-82ddddf127b6",
+      "40b78078-13c6-4a4a-8fe6-0036e90ab7b6",
+      "4f80c913-f212-4dd9-89b9-a2065edf76f0",
+      "388bfe95-a595-4aae-b8e0-63e6ce5c8729",
+      "93de597a-174f-4322-836e-4005884b7576",
+      "a66838c9-604d-439b-afbc-753b0fbb5098",
+      "d54ced66-07e6-41f3-8875-7521d2e9ad25",
+      "2522763b-405c-481b-a125-769aabca863b",
+      "cfbd1ed8-efe5-49b6-bdf8-4edc3d19a36e",
+      "cd6027fd-e28a-460a-b7d4-34456432060f",
+      "e411b7ac-bc21-414a-977d-a02668c1c4b1",
+      "4c5dddfe-8002-4d43-837c-e47b5fe74dc6",
+      "756fbd94-689b-45b5-8548-34eb809fa80a",
+      "5cdd046e-3301-4179-81b5-a779f874f65f"
+    ],
+    "session_round1_confirmed_word_ids": [
+      "331ba1d3-187a-48e2-9ecf-211faee7748d",
+      "322da17c-45c7-4e8a-a452-8d7adad269ad",
+      "4c11c25c-71db-45c8-a82e-37b3b899f6b3",
+      "2dbba0f1-00ba-4966-ac5c-ca9793c153df",
+      "271ea6ee-7b39-4bfe-94dc-a3cf31e4bb7e"
+    ],
+    "created_at": "2026-06-08T03:05:51.2178+00:00"
+  },
+  "queueLength": 40,
+  "words": [
+    {
+      "id": "331ba1d3-187a-48e2-9ecf-211faee7748d",
+      "word": "atmosphere",
+      "primary_meaning_zh": "大气层；气氛",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "biosphere",
+          "relation": "semantic_near",
+          "meaning_zh": "生物圈；生命存在的区域"
+        },
+        {
+          "pos": "n",
+          "word": "stratosphere",
+          "relation": "semantic_near",
+          "meaning_zh": "平流层；大气高层"
+        },
+        {
+          "pos": "n",
+          "word": "climate",
+          "relation": "semantic_near",
+          "meaning_zh": "气候；长期天气状况"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "大气层，（某行星的）大气"
+        },
+        {
+          "pos": "n",
+          "meaning_zh": "气氛，氛围"
+        }
+      ]
+    },
+    {
+      "id": "322da17c-45c7-4e8a-a452-8d7adad269ad",
+      "word": "hydrosphere",
+      "primary_meaning_zh": "水圈",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "lithosphere",
+          "relation": "semantic_near",
+          "meaning_zh": "岩石圈；地球固体外层"
+        },
+        {
+          "pos": "n",
+          "word": "atmosphere",
+          "relation": "semantic_near",
+          "meaning_zh": "大气层；空气环境"
+        },
+        {
+          "pos": "n",
+          "word": "biosphere",
+          "relation": "semantic_near",
+          "meaning_zh": "生物圈；生命系统范围"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "水圈（地球表面所有水的总称）"
+        }
+      ]
+    },
+    {
+      "id": "4c11c25c-71db-45c8-a82e-37b3b899f6b3",
+      "word": "lithosphere",
+      "primary_meaning_zh": "岩石圈",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "crust",
+          "relation": "semantic_near",
+          "meaning_zh": "地壳；外层硬壳"
+        },
+        {
+          "pos": "n",
+          "word": "mantle",
+          "relation": "semantic_near",
+          "meaning_zh": "地幔；地壳下层"
+        },
+        {
+          "pos": "n",
+          "word": "hydrosphere",
+          "relation": "semantic_near",
+          "meaning_zh": "水圈；地球水体总称"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "岩石圈（地球坚硬的外部）"
+        }
+      ]
+    },
+    {
+      "id": "2dbba0f1-00ba-4966-ac5c-ca9793c153df",
+      "word": "oxygen",
+      "primary_meaning_zh": "氧；氧气",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "hydrogen",
+          "relation": "semantic_near",
+          "meaning_zh": "氢；最轻的气体元素"
+        },
+        {
+          "pos": "n",
+          "word": "nitrogen",
+          "relation": "semantic_near",
+          "meaning_zh": "氮；空气中的主要气体"
+        },
+        {
+          "pos": "n",
+          "word": "carbon dioxide",
+          "relation": "semantic_near",
+          "meaning_zh": "二氧化碳；含碳气体"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "氧；氧气"
+        }
+      ]
+    },
+    {
+      "id": "271ea6ee-7b39-4bfe-94dc-a3cf31e4bb7e",
+      "word": "oxide",
+      "primary_meaning_zh": "氧化物",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "carbonate",
+          "relation": "semantic_near",
+          "meaning_zh": "碳酸盐；含碳酸根化合物"
+        },
+        {
+          "pos": "n",
+          "word": "nitrate",
+          "relation": "semantic_near",
+          "meaning_zh": "硝酸盐；含硝酸根化合物"
+        },
+        {
+          "pos": "n",
+          "word": "sulfide",
+          "relation": "semantic_near",
+          "meaning_zh": "硫化物；含硫化合物"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "氧化物"
+        }
+      ]
+    },
+    {
+      "id": "c5f60d58-f510-4e77-b1ac-77405e1307fa",
+      "word": "carbon dioxide",
+      "primary_meaning_zh": "二氧化碳",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "methane",
+          "relation": "semantic_near",
+          "meaning_zh": "甲烷；温室气体之一"
+        },
+        {
+          "pos": "n",
+          "word": "oxygen",
+          "relation": "semantic_near",
+          "meaning_zh": "氧；维持呼吸的气体"
+        },
+        {
+          "pos": "n",
+          "word": "nitrogen",
+          "relation": "semantic_near",
+          "meaning_zh": "氮；空气中的主要气体"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "二氧化碳"
+        }
+      ]
+    },
+    {
+      "id": "b7a97548-9d3c-4f01-8f0d-d89a66d90ed9",
+      "word": "hydrogen",
+      "primary_meaning_zh": "氢；氢气",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "oxygen",
+          "relation": "semantic_near",
+          "meaning_zh": "氧；维持呼吸的气体"
+        },
+        {
+          "pos": "n",
+          "word": "nitrogen",
+          "relation": "semantic_near",
+          "meaning_zh": "氮；空气中的主要气体"
+        },
+        {
+          "pos": "n",
+          "word": "carbon dioxide",
+          "relation": "semantic_near",
+          "meaning_zh": "二氧化碳；含碳气体"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "氢；氢气"
+        }
+      ]
+    },
+    {
+      "id": "22a99258-5868-4fcf-9d05-6d88d4b39e18",
+      "word": "core",
+      "primary_meaning_zh": "核心；果核",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "crust",
+          "relation": "semantic_near",
+          "meaning_zh": "地壳；地球外层"
+        },
+        {
+          "pos": "n",
+          "word": "mantle",
+          "relation": "semantic_near",
+          "meaning_zh": "地幔；地壳与地核之间的层"
+        },
+        {
+          "pos": "n",
+          "word": "nucleus",
+          "relation": "semantic_near",
+          "meaning_zh": "核心；中心部分"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "核心；中心部分；果核"
+        },
+        {
+          "pos": "v",
+          "meaning_zh": "去掉…的果核"
+        }
+      ]
+    },
+    {
+      "id": "d97848e7-a608-4166-9336-0af9861102b7",
+      "word": "crust",
+      "primary_meaning_zh": "外壳；地壳；面包皮",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "mantle",
+          "relation": "semantic_near",
+          "meaning_zh": "地幔；地壳下方的厚层"
+        },
+        {
+          "pos": "n",
+          "word": "core",
+          "relation": "semantic_near",
+          "meaning_zh": "地核；中心部分"
+        },
+        {
+          "pos": "n",
+          "word": "lithosphere",
+          "relation": "semantic_near",
+          "meaning_zh": "岩石圈；地球固体外层"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "（某物的）硬外层；地壳；面包皮"
+        }
+      ]
+    },
+    {
+      "id": "f3260f83-fa61-411a-8fbd-175c148ec30b",
+      "word": "mantle",
+      "primary_meaning_zh": "地幔；覆盖物；斗篷",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "crust",
+          "relation": "semantic_near",
+          "meaning_zh": "地壳；地球外层硬壳"
+        },
+        {
+          "pos": "n",
+          "word": "core",
+          "relation": "semantic_near",
+          "meaning_zh": "地核；地球中心部分"
+        },
+        {
+          "pos": "n",
+          "word": "lithosphere",
+          "relation": "semantic_near",
+          "meaning_zh": "岩石圈；地球固体外层"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "地幔"
+        },
+        {
+          "pos": "n",
+          "meaning_zh": "（文学）斗篷；覆盖物"
+        }
+      ]
+    },
+    {
+      "id": "74e0c06d-4043-4f08-9c4d-44d7839c0cc7",
+      "word": "longitude",
+      "primary_meaning_zh": "经度",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "latitude",
+          "relation": "semantic_near",
+          "meaning_zh": "纬度；南北位置坐标"
+        },
+        {
+          "pos": "n",
+          "word": "altitude",
+          "relation": "semantic_near",
+          "meaning_zh": "海拔；高度"
+        },
+        {
+          "pos": "n",
+          "word": "equator",
+          "relation": "semantic_near",
+          "meaning_zh": "赤道；零纬线"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "经度"
+        }
+      ]
+    },
+    {
+      "id": "8e5112d6-03c2-4eeb-bcc2-c6afd57c97a7",
+      "word": "latitude",
+      "primary_meaning_zh": "纬度；自由范围",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "longitude",
+          "relation": "semantic_near",
+          "meaning_zh": "经度；东西位置坐标"
+        },
+        {
+          "pos": "n",
+          "word": "altitude",
+          "relation": "semantic_near",
+          "meaning_zh": "海拔；高度"
+        },
+        {
+          "pos": "n",
+          "word": "equator",
+          "relation": "semantic_near",
+          "meaning_zh": "赤道；零纬线"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "纬度"
+        },
+        {
+          "pos": "n",
+          "meaning_zh": "（行动或言论的）自由范围"
+        }
+      ]
+    },
+    {
+      "id": "0ef1559a-579e-4e94-91b8-da0b95bacdcb",
+      "word": "horizon",
+      "primary_meaning_zh": "地平线；眼界",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "skyline",
+          "relation": "semantic_near",
+          "meaning_zh": "天际线；天空与建筑的轮廓线"
+        },
+        {
+          "pos": "n",
+          "word": "altitude",
+          "relation": "semantic_near",
+          "meaning_zh": "海拔；高度"
+        },
+        {
+          "pos": "n",
+          "word": "latitude",
+          "relation": "semantic_near",
+          "meaning_zh": "纬度；地理位置线"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "地平线"
+        },
+        {
+          "pos": "n",
+          "meaning_zh": "（知识、经验等的）范围，眼界"
+        }
+      ]
+    },
+    {
+      "id": "2f943ae4-a433-450c-b166-b39e40f68c30",
+      "word": "altitude",
+      "primary_meaning_zh": "海拔；高度",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "latitude",
+          "relation": "semantic_near",
+          "meaning_zh": "纬度；南北位置坐标"
+        },
+        {
+          "pos": "n",
+          "word": "longitude",
+          "relation": "semantic_near",
+          "meaning_zh": "经度；东西位置坐标"
+        },
+        {
+          "pos": "n",
+          "word": "elevation",
+          "relation": "semantic_near",
+          "meaning_zh": "海拔；抬升高度"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "海拔；高度"
+        }
+      ]
+    },
+    {
+      "id": "9f5a7ff2-3ece-4e50-9f9f-3edc5e822ca9",
+      "word": "disaster",
+      "primary_meaning_zh": "灾难；灾祸",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "catastrophe",
+          "relation": "semantic_near",
+          "meaning_zh": "大灾难；严重灾祸"
+        },
+        {
+          "pos": "n",
+          "word": "calamity",
+          "relation": "semantic_near",
+          "meaning_zh": "灾祸；不幸事件"
+        },
+        {
+          "pos": "n",
+          "word": "mishap",
+          "relation": "semantic_near",
+          "meaning_zh": "小事故；意外差错"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "灾难；灾祸；彻底的失败"
+        }
+      ]
+    },
+    {
+      "id": "84f293c2-02c4-4f8e-bc3f-ff1823265021",
+      "word": "mishap",
+      "primary_meaning_zh": "小事故，不幸",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "accident",
+          "relation": "semantic_near",
+          "meaning_zh": "事故；意外事件"
+        },
+        {
+          "pos": "n",
+          "word": "disaster",
+          "relation": "semantic_near",
+          "meaning_zh": "灾难；严重事故"
+        },
+        {
+          "pos": "n",
+          "word": "calamity",
+          "relation": "semantic_near",
+          "meaning_zh": "灾祸；重大不幸"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "小事故；不幸的事"
+        }
+      ]
+    },
+    {
+      "id": "dcce2af3-a780-4cca-9dc4-31d2c3f35b65",
+      "word": "catastrophic",
+      "primary_meaning_zh": "灾难性的，毁灭性的",
+      "round2_choice_distractors": [
+        {
+          "pos": "adj",
+          "word": "disastrous",
+          "relation": "semantic_near",
+          "meaning_zh": "灾难性的；造成严重损害的"
+        },
+        {
+          "pos": "adj",
+          "word": "destructive",
+          "relation": "semantic_near",
+          "meaning_zh": "破坏性的；造成毁坏的"
+        },
+        {
+          "pos": "adj",
+          "word": "devastating",
+          "relation": "semantic_near",
+          "meaning_zh": "毁灭性的；打击极大的"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "adj",
+          "meaning_zh": "灾难性的；毁灭性的；极糟糕的"
+        }
+      ]
+    },
+    {
+      "id": "651d5cef-9bea-4344-ba73-149ba6a9787c",
+      "word": "calamity",
+      "primary_meaning_zh": "灾难，祸患",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "disaster",
+          "relation": "semantic_near",
+          "meaning_zh": "灾难；严重事故"
+        },
+        {
+          "pos": "n",
+          "word": "catastrophe",
+          "relation": "semantic_near",
+          "meaning_zh": "大灾难；惨祸"
+        },
+        {
+          "pos": "n",
+          "word": "mishap",
+          "relation": "semantic_near",
+          "meaning_zh": "小事故；意外差错"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "大灾祸；灾难；不幸事件"
+        }
+      ]
+    },
+    {
+      "id": "42263007-4228-4b1f-a1e6-af0f68bf7910",
+      "word": "endanger",
+      "primary_meaning_zh": "危及，使遭受危险",
+      "round2_choice_distractors": [
+        {
+          "pos": "v",
+          "word": "jeopardise",
+          "relation": "semantic_near",
+          "meaning_zh": "危及；使处于危险"
+        },
+        {
+          "pos": "v",
+          "word": "threaten",
+          "relation": "semantic_near",
+          "meaning_zh": "威胁；可能伤害"
+        },
+        {
+          "pos": "v",
+          "word": "imperil",
+          "relation": "semantic_near",
+          "meaning_zh": "使陷入危险；危害"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "v",
+          "meaning_zh": "危及；使濒临灭绝"
+        }
+      ]
+    },
+    {
+      "id": "646933fe-4519-4f93-95be-e3f8d8276863",
+      "word": "jeopardise",
+      "primary_meaning_zh": "危及，损害",
+      "round2_choice_distractors": [
+        {
+          "pos": "v",
+          "word": "endanger",
+          "relation": "semantic_near",
+          "meaning_zh": "危及；使处于危险"
+        },
+        {
+          "pos": "v",
+          "word": "threaten",
+          "relation": "semantic_near",
+          "meaning_zh": "威胁；可能伤害"
+        },
+        {
+          "pos": "v",
+          "word": "risk",
+          "relation": "semantic_near",
+          "meaning_zh": "冒险；使承受风险"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "v",
+          "meaning_zh": "使处于险境；危及；损害"
+        }
+      ]
+    },
+    {
+      "id": "1682df4c-1e72-4112-9c74-82e03646f740",
+      "word": "destructive",
+      "primary_meaning_zh": "破坏性的，毁灭性的",
+      "round2_choice_distractors": [
+        {
+          "pos": "adj",
+          "word": "catastrophic",
+          "relation": "semantic_near",
+          "meaning_zh": "灾难性的；造成严重后果的"
+        },
+        {
+          "pos": "adj",
+          "word": "devastating",
+          "relation": "semantic_near",
+          "meaning_zh": "毁灭性的；破坏极大的"
+        },
+        {
+          "pos": "adj",
+          "word": "damaging",
+          "relation": "semantic_near",
+          "meaning_zh": "有损害的；造成伤害的"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "adj",
+          "meaning_zh": "破坏性的；毁灭性的"
+        }
+      ]
+    },
+    {
+      "id": "b69c00c4-7ce9-46f3-86ef-daea033434f9",
+      "word": "el nino",
+      "primary_meaning_zh": "厄尔尼诺现象",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "La Nina",
+          "relation": "confusable",
+          "meaning_zh": "拉尼娜现象；相反的海温异常"
+        },
+        {
+          "pos": "n",
+          "word": "monsoon",
+          "relation": "semantic_near",
+          "meaning_zh": "季风；季节性风系"
+        },
+        {
+          "pos": "n",
+          "word": "climate anomaly",
+          "relation": "semantic_near",
+          "meaning_zh": "气候异常；偏离常态的气候现象"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "厄尔尼诺现象（指东太平洋海水每隔数年异常升温的现象）"
+        }
+      ]
+    },
+    {
+      "id": "0350b6e9-226b-465d-9817-6377f0ed27d3",
+      "word": "greenhouse",
+      "primary_meaning_zh": "温室，暖房",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "conservatory",
+          "relation": "semantic_near",
+          "meaning_zh": "温室；玻璃暖房"
+        },
+        {
+          "pos": "n",
+          "word": "nursery",
+          "relation": "semantic_near",
+          "meaning_zh": "育苗场；幼苗培育处"
+        },
+        {
+          "pos": "n",
+          "word": "glasshouse",
+          "relation": "semantic_near",
+          "meaning_zh": "玻璃温室；暖房"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "温室，暖房"
+        },
+        {
+          "pos": "adj",
+          "meaning_zh": "温室的；引起温室效应的"
+        }
+      ]
+    },
+    {
+      "id": "cb8c0663-e6d0-4a70-9d01-018336abc1d5",
+      "word": "phenomenon",
+      "primary_meaning_zh": "现象；非凡的人或事物",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "occurrence",
+          "relation": "semantic_near",
+          "meaning_zh": "事件；发生的事情"
+        },
+        {
+          "pos": "n",
+          "word": "event",
+          "relation": "semantic_near",
+          "meaning_zh": "事件；现象性发生"
+        },
+        {
+          "pos": "n",
+          "word": "manifestation",
+          "relation": "semantic_near",
+          "meaning_zh": "表现；显现出来的形式"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "现象（尤指自然、社会现象）"
+        },
+        {
+          "pos": "n",
+          "meaning_zh": "杰出的人；非凡的事物"
+        }
+      ]
+    },
+    {
+      "id": "8e3981ac-1494-4efa-926d-57df4874c0cc",
+      "word": "pebble",
+      "primary_meaning_zh": "鹅卵石，小圆石",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "gravel",
+          "relation": "semantic_near",
+          "meaning_zh": "砾石；小碎石"
+        },
+        {
+          "pos": "n",
+          "word": "cobble",
+          "relation": "semantic_near",
+          "meaning_zh": "圆石；鹅卵石"
+        },
+        {
+          "pos": "n",
+          "word": "boulder",
+          "relation": "semantic_near",
+          "meaning_zh": "巨石；大圆石"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "鹅卵石，小圆石"
+        }
+      ]
+    },
+    {
+      "id": "62b10a49-62be-44bd-8989-8639c915ba69",
+      "word": "magnet",
+      "primary_meaning_zh": "磁铁，磁石",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "compass",
+          "relation": "semantic_near",
+          "meaning_zh": "指南针；利用磁性的仪器"
+        },
+        {
+          "pos": "n",
+          "word": "lodestone",
+          "relation": "semantic_near",
+          "meaning_zh": "磁石；天然磁铁矿"
+        },
+        {
+          "pos": "n",
+          "word": "electromagnet",
+          "relation": "semantic_near",
+          "meaning_zh": "电磁铁；通电产生磁性的装置"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "磁铁，磁石"
+        },
+        {
+          "pos": "n",
+          "meaning_zh": "有吸引力的人或物"
+        }
+      ]
+    },
+    {
+      "id": "49a7ba57-fe8e-4739-ab30-82ddddf127b6",
+      "word": "ore",
+      "primary_meaning_zh": "矿石",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "mineral",
+          "relation": "semantic_near",
+          "meaning_zh": "矿物；天然无机物"
+        },
+        {
+          "pos": "n",
+          "word": "deposit",
+          "relation": "semantic_near",
+          "meaning_zh": "矿床；沉积物"
+        },
+        {
+          "pos": "n",
+          "word": "metallic rock",
+          "relation": "semantic_near",
+          "meaning_zh": "含金属岩石；矿石类岩石"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "矿石，矿砂"
+        }
+      ]
+    },
+    {
+      "id": "40b78078-13c6-4a4a-8fe6-0036e90ab7b6",
+      "word": "mineral",
+      "primary_meaning_zh": "矿物，矿物质",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "ore",
+          "relation": "semantic_near",
+          "meaning_zh": "矿石；可提炼金属的岩石"
+        },
+        {
+          "pos": "n",
+          "word": "crystal",
+          "relation": "semantic_near",
+          "meaning_zh": "晶体；结晶矿物"
+        },
+        {
+          "pos": "n",
+          "word": "gemstone",
+          "relation": "semantic_near",
+          "meaning_zh": "宝石；珍贵矿物"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "矿物"
+        },
+        {
+          "pos": "n",
+          "meaning_zh": "（食物中的）矿物质"
+        },
+        {
+          "pos": "adj",
+          "meaning_zh": "矿物的"
+        }
+      ]
+    },
+    {
+      "id": "4f80c913-f212-4dd9-89b9-a2065edf76f0",
+      "word": "marble",
+      "primary_meaning_zh": "大理石",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "granite",
+          "relation": "semantic_near",
+          "meaning_zh": "花岗岩；坚硬火成岩"
+        },
+        {
+          "pos": "n",
+          "word": "limestone",
+          "relation": "semantic_near",
+          "meaning_zh": "石灰岩；碳酸钙岩石"
+        },
+        {
+          "pos": "n",
+          "word": "quartz",
+          "relation": "semantic_near",
+          "meaning_zh": "石英；常见矿物"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "大理石"
+        },
+        {
+          "pos": "n",
+          "meaning_zh": "（儿童玩的）玻璃弹珠"
+        },
+        {
+          "pos": "adj",
+          "meaning_zh": "大理石的；有大理石花纹的"
+        }
+      ]
+    },
+    {
+      "id": "388bfe95-a595-4aae-b8e0-63e6ce5c8729",
+      "word": "quartz",
+      "primary_meaning_zh": "石英",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "marble",
+          "relation": "semantic_near",
+          "meaning_zh": "大理石；变质岩"
+        },
+        {
+          "pos": "n",
+          "word": "granite",
+          "relation": "semantic_near",
+          "meaning_zh": "花岗岩；含石英的岩石"
+        },
+        {
+          "pos": "n",
+          "word": "feldspar",
+          "relation": "semantic_near",
+          "meaning_zh": "长石；常见造岩矿物"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "石英"
+        }
+      ]
+    },
+    {
+      "id": "93de597a-174f-4322-836e-4005884b7576",
+      "word": "granite",
+      "primary_meaning_zh": "花岗岩",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "marble",
+          "relation": "semantic_near",
+          "meaning_zh": "大理石；变质岩材料"
+        },
+        {
+          "pos": "n",
+          "word": "basalt",
+          "relation": "semantic_near",
+          "meaning_zh": "玄武岩；火山岩"
+        },
+        {
+          "pos": "n",
+          "word": "quartz",
+          "relation": "semantic_near",
+          "meaning_zh": "石英；花岗岩常见成分"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "花岗岩"
+        },
+        {
+          "pos": "adj",
+          "meaning_zh": "花岗岩般的；坚硬的"
+        }
+      ]
+    },
+    {
+      "id": "a66838c9-604d-439b-afbc-753b0fbb5098",
+      "word": "gust",
+      "primary_meaning_zh": "一阵狂风",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "breeze",
+          "relation": "semantic_near",
+          "meaning_zh": "微风；轻柔的风"
+        },
+        {
+          "pos": "n",
+          "word": "gale",
+          "relation": "semantic_near",
+          "meaning_zh": "大风；强风"
+        },
+        {
+          "pos": "n",
+          "word": "squall",
+          "relation": "semantic_near",
+          "meaning_zh": "突发狂风；短时风暴"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "一阵狂风；（情感的）迸发"
+        },
+        {
+          "pos": "v",
+          "meaning_zh": "（风）猛刮"
+        }
+      ]
+    },
+    {
+      "id": "d54ced66-07e6-41f3-8875-7521d2e9ad25",
+      "word": "breeze",
+      "primary_meaning_zh": "微风，和风",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "gust",
+          "relation": "semantic_near",
+          "meaning_zh": "一阵强风；突风"
+        },
+        {
+          "pos": "n",
+          "word": "draught",
+          "relation": "semantic_near",
+          "meaning_zh": "穿堂风；气流"
+        },
+        {
+          "pos": "n",
+          "word": "gale",
+          "relation": "semantic_near",
+          "meaning_zh": "大风；强风"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "微风，和风"
+        },
+        {
+          "pos": "n",
+          "meaning_zh": "轻而易举的事"
+        },
+        {
+          "pos": "v",
+          "meaning_zh": "轻松地做；轻松地走进/出"
+        }
+      ]
+    },
+    {
+      "id": "2522763b-405c-481b-a125-769aabca863b",
+      "word": "monsoon",
+      "primary_meaning_zh": "季风；雨季",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "trade wind",
+          "relation": "semantic_near",
+          "meaning_zh": "信风；稳定风带"
+        },
+        {
+          "pos": "n",
+          "word": "typhoon",
+          "relation": "semantic_near",
+          "meaning_zh": "台风；热带气旋"
+        },
+        {
+          "pos": "n",
+          "word": "seasonal rain",
+          "relation": "semantic_near",
+          "meaning_zh": "季节性降雨；雨季降水"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "（南亚和东南亚地区的）季风"
+        },
+        {
+          "pos": "n",
+          "meaning_zh": "雨季"
+        }
+      ]
+    },
+    {
+      "id": "cfbd1ed8-efe5-49b6-bdf8-4edc3d19a36e",
+      "word": "gale",
+      "primary_meaning_zh": "大风，狂风",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "gust",
+          "relation": "semantic_near",
+          "meaning_zh": "突风；一阵强风"
+        },
+        {
+          "pos": "n",
+          "word": "storm",
+          "relation": "semantic_near",
+          "meaning_zh": "风暴；暴风雨"
+        },
+        {
+          "pos": "n",
+          "word": "breeze",
+          "relation": "semantic_near",
+          "meaning_zh": "微风；轻风"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "大风，狂风（风力8-10级）"
+        },
+        {
+          "pos": "n",
+          "meaning_zh": "（情感、笑声等的）迸发"
+        }
+      ]
+    },
+    {
+      "id": "cd6027fd-e28a-460a-b7d4-34456432060f",
+      "word": "hurricane",
+      "primary_meaning_zh": "飓风",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "typhoon",
+          "relation": "confusable",
+          "meaning_zh": "台风；西北太平洋热带气旋"
+        },
+        {
+          "pos": "n",
+          "word": "tornado",
+          "relation": "semantic_near",
+          "meaning_zh": "龙卷风；旋转风柱"
+        },
+        {
+          "pos": "n",
+          "word": "cyclone",
+          "relation": "semantic_near",
+          "meaning_zh": "气旋；旋转风暴系统"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "飓风，（尤指西大西洋的）热带风暴"
+        }
+      ]
+    },
+    {
+      "id": "e411b7ac-bc21-414a-977d-a02668c1c4b1",
+      "word": "tornado",
+      "primary_meaning_zh": "龙卷风",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "hurricane",
+          "relation": "semantic_near",
+          "meaning_zh": "飓风；大范围热带风暴"
+        },
+        {
+          "pos": "n",
+          "word": "typhoon",
+          "relation": "semantic_near",
+          "meaning_zh": "台风；热带气旋"
+        },
+        {
+          "pos": "n",
+          "word": "whirlwind",
+          "relation": "semantic_near",
+          "meaning_zh": "旋风；小型旋转气流"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "龙卷风，陆龙卷"
+        }
+      ]
+    },
+    {
+      "id": "4c5dddfe-8002-4d43-837c-e47b5fe74dc6",
+      "word": "typhoon",
+      "primary_meaning_zh": "台风",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "hurricane",
+          "relation": "confusable",
+          "meaning_zh": "飓风；大西洋热带气旋"
+        },
+        {
+          "pos": "n",
+          "word": "cyclone",
+          "relation": "semantic_near",
+          "meaning_zh": "气旋；旋转风暴系统"
+        },
+        {
+          "pos": "n",
+          "word": "monsoon",
+          "relation": "semantic_near",
+          "meaning_zh": "季风；季节性风系"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "台风（西北太平洋地区的热带气旋）"
+        }
+      ]
+    },
+    {
+      "id": "756fbd94-689b-45b5-8548-34eb809fa80a",
+      "word": "volcano",
+      "primary_meaning_zh": "火山",
+      "round2_choice_distractors": [
+        {
+          "pos": "n",
+          "word": "crater",
+          "relation": "semantic_near",
+          "meaning_zh": "火山口；坑状口"
+        },
+        {
+          "pos": "n",
+          "word": "magma chamber",
+          "relation": "semantic_near",
+          "meaning_zh": "岩浆房；地下岩浆储存区"
+        },
+        {
+          "pos": "n",
+          "word": "geyser",
+          "relation": "semantic_near",
+          "meaning_zh": "间歇泉；喷发热泉"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "n",
+          "meaning_zh": "火山"
+        }
+      ]
+    },
+    {
+      "id": "5cdd046e-3301-4179-81b5-a779f874f65f",
+      "word": "erupt",
+      "primary_meaning_zh": "（火山）爆发；突然发生",
+      "round2_choice_distractors": [
+        {
+          "pos": "v",
+          "word": "explode",
+          "relation": "semantic_near",
+          "meaning_zh": "爆炸；突然爆发"
+        },
+        {
+          "pos": "v",
+          "word": "spew",
+          "relation": "semantic_near",
+          "meaning_zh": "喷出；涌出"
+        },
+        {
+          "pos": "v",
+          "word": "emit",
+          "relation": "semantic_near",
+          "meaning_zh": "排放；释放出来"
+        }
+      ],
+      "senses": [
+        {
+          "pos": "v",
+          "meaning_zh": "（火山）爆发，喷发"
+        },
+        {
+          "pos": "v",
+          "meaning_zh": "（战争、情感等）突然发生，爆发"
+        }
+      ]
+    }
+  ]
+}

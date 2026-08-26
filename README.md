@@ -4,6 +4,10 @@ Lumina 是一款面向中文英语学习者的词汇记忆与雅思真题训练�
 
 它不是一个只记录“背过 / 没背过”的单词表，而是一套围绕真实记忆状态运行的学习系统：每个词都会被记录为 `new`、`fuzzy`、`slow_recall`、`stable_recall` 或 `mastered`，系统再根据状态安排复习、首页任务、词库展示和长期回顾。
 
+## Android 客户端
+
+原生 Android 客户端位于 [`android/`](./android/README.md)，使用 Kotlin、Jetpack Compose 和现有 Supabase 账号体系。目前已完成账号、原生首页和词库模块：每日指标、7 天学习轨迹、官方词库进度、学习组列表与单词记忆详情均使用真实服务端数据。后续模块会按学习、复习和 IELTS 的顺序逐步迁移。
+
 ## 产品定位
 
 Lumina 适合三类场景：

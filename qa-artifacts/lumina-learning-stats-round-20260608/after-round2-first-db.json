@@ -1,0 +1,21 @@
+{
+  "round": "round2",
+  "currentIndex": 1,
+  "queueLength": 30,
+  "round2Rows": 0,
+  "granite": {
+    "sequence_no": 0,
+    "round2_completed_at": null,
+    "vocabulary_items": {
+      "word": "granite"
+    }
+  },
+  "events": [
+    {
+      "source": "round2",
+      "was_correct": false,
+      "vocabulary_item_id": "93de597a-174f-4322-836e-4005884b7576",
+      "created_at": "2026-06-08T05:14:01.64+00:00"
+    }
+  ]
+}

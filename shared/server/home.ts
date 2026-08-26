@@ -700,7 +700,7 @@ function resolveLastUsedOfficialLibrary(learningGroups: LearningGroupRow[]): Las
   };
 }
 
-const OFFICIAL_LIBRARY_TITLES: Record<OfficialLibraryId, string> = {
+export const OFFICIAL_LIBRARY_TITLES: Record<OfficialLibraryId, string> = {
   'ielts-vocab': '雅思词汇真经',
   'gre-zhenkao-v7': 'GRE 真考词汇',
   'cet4-vocab': '四级核心词汇',

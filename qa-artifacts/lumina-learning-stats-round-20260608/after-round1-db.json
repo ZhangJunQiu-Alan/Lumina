@@ -1,0 +1,47 @@
+{
+  "status": "active",
+  "round": "round2",
+  "currentIndex": 0,
+  "groupWordCount": 70,
+  "queueLength": 30,
+  "confirmedLength": 30,
+  "round1": 30,
+  "round2": 0,
+  "round3": 0,
+  "queueFirst": [
+    {
+      "i": 0,
+      "word": "granite"
+    },
+    {
+      "i": 1,
+      "word": "gust"
+    },
+    {
+      "i": 2,
+      "word": "breeze"
+    },
+    {
+      "i": 3,
+      "word": "monsoon"
+    },
+    {
+      "i": 4,
+      "word": "gale"
+    }
+  ],
+  "queueLast": [
+    {
+      "i": 27,
+      "word": "stony"
+    },
+    {
+      "i": 28,
+      "word": "vertical"
+    },
+    {
+      "i": 29,
+      "word": "steep"
+    }
+  ]
+}

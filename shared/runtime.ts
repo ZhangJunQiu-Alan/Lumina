@@ -35,3 +35,7 @@ export function parsePositiveIntEnv(name: string, fallback: number): number {
 export function isAiContentFeaturesEnabled(): boolean {
   return (getEnv('LUMINA_AI_FEATURES_ENABLED') ?? '').toLowerCase() === 'true';
 }
+
+export function isIeltsListeningEnabled(): boolean {
+  return (getEnv('LUMINA_IELTS_LISTENING_ENABLED') ?? '').toLowerCase() !== 'false';
+}

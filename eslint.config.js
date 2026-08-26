@@ -14,6 +14,7 @@ export default tseslint.config(
       '.playwright-cli/**',
       '.wrangler/**',
       'coverage/**',
+      'android/**/build/**',
       '*.md',
       'package-lock.json',
     ],

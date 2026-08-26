@@ -5,10 +5,7 @@ interface ApiFetchOptions extends RequestInit {
 }
 
 const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
-const supabaseProjectUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
-const derivedApiBaseUrl =
-  import.meta.env.PROD && supabaseProjectUrl ? `${supabaseProjectUrl.replace(/\/+$/, '')}/functions/v1/api` : '';
-const apiBaseUrl = configuredApiBaseUrl || derivedApiBaseUrl;
+const apiBaseUrl = configuredApiBaseUrl || '';
 
 let cachedAccessToken: string | null = null;
 

@@ -161,6 +161,156 @@ interface FutureReviewStateRow {
   next_review_at: string | null;
 }
 
+interface ReviewRoutineRow {
+  id: string;
+  main_learning_group_id: string | null;
+  step_order_json: unknown;
+  completed_steps_json: unknown;
+  status: 'not_started' | 'in_progress' | 'completed' | null;
+}
+
+const REVIEW_DAY_THRESHOLD = 50;
+const ROUTINE_DAY_RESET_HOUR = 5;
+const ROUTINE_STEPS = ['review', 'round1', 'round2', 'round3'] as const;
+
+type RoutineStep = (typeof ROUTINE_STEPS)[number];
+
+function normalizeReviewTimeZone(value?: string | null) {
+  const candidate = value?.trim() || 'UTC';
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: candidate }).format(new Date());
+    return candidate;
+  } catch {
+    return 'UTC';
+  }
+}
+
+function resolveReviewRoutineDate(timeZone?: string | null) {
+  const safeTimeZone = normalizeReviewTimeZone(timeZone);
+  const shifted = new Date(Date.now() - ROUTINE_DAY_RESET_HOUR * 60 * 60 * 1000);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: safeTimeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(shifted);
+  const year = parts.find((part) => part.type === 'year')?.value ?? '0000';
+  const month = parts.find((part) => part.type === 'month')?.value ?? '01';
+  const day = parts.find((part) => part.type === 'day')?.value ?? '01';
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeRoutineSteps(value: unknown): RoutineStep[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (entry): entry is RoutineStep => typeof entry === 'string' && ROUTINE_STEPS.includes(entry as RoutineStep),
+  );
+}
+
+function buildRoutineStepOrder(dueCount: number): RoutineStep[] {
+  if (dueCount > REVIEW_DAY_THRESHOLD) return ['review'];
+  if (dueCount > 0) return ['review', 'round1', 'round2', 'round3'];
+  return ['round1', 'round2', 'round3'];
+}
+
+function routineStatus(
+  stepOrder: RoutineStep[],
+  completedSteps: RoutineStep[],
+  groupId: string | null,
+): ReviewRoutineRow['status'] {
+  if (stepOrder.length > 0 && stepOrder.every((step) => completedSteps.includes(step))) return 'completed';
+  if (completedSteps.length > 0 || groupId) return 'in_progress';
+  return 'not_started';
+}
+
+function isMissingRoutineTableError(error: { message?: string } | null | undefined) {
+  return (error?.message ?? '').includes('daily_routine_progress');
+}
+
+async function ensureReviewRoutine(userId: string, timeZone: string | null | undefined, startingDueCount: number) {
+  const safeTimeZone = normalizeReviewTimeZone(timeZone);
+  const localDate = resolveReviewRoutineDate(safeTimeZone);
+  const existing = await supabaseAdmin
+    .from('daily_routine_progress')
+    .select('id, main_learning_group_id, step_order_json, completed_steps_json, status')
+    .eq('user_id', userId)
+    .eq('local_date', localDate)
+    .maybeSingle();
+
+  if (existing.error) {
+    if (isMissingRoutineTableError(existing.error)) return null;
+    throw new Error(`daily routine lookup failed: ${existing.error.message}`);
+  }
+  if (existing.data) return existing.data as ReviewRoutineRow;
+
+  const stepOrder = buildRoutineStepOrder(startingDueCount);
+  const inserted = await supabaseAdmin
+    .from('daily_routine_progress')
+    .upsert(
+      {
+        user_id: userId,
+        local_date: localDate,
+        timezone: safeTimeZone,
+        day_kind: startingDueCount > REVIEW_DAY_THRESHOLD ? 'review_day' : 'learning_day',
+        starting_due_count: startingDueCount,
+        step_order_json: stepOrder,
+        completed_steps_json: [],
+        status: 'not_started',
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,local_date', ignoreDuplicates: true },
+    )
+    .select('id, main_learning_group_id, step_order_json, completed_steps_json, status')
+    .maybeSingle();
+
+  if (inserted.error) {
+    if (isMissingRoutineTableError(inserted.error)) return null;
+    throw new Error(`daily routine insert failed: ${inserted.error.message}`);
+  }
+  if (inserted.data) return inserted.data as ReviewRoutineRow;
+
+  const refetched = await supabaseAdmin
+    .from('daily_routine_progress')
+    .select('id, main_learning_group_id, step_order_json, completed_steps_json, status')
+    .eq('user_id', userId)
+    .eq('local_date', localDate)
+    .maybeSingle();
+  if (refetched.error) throw new Error(`daily routine refetch failed: ${refetched.error.message}`);
+  return (refetched.data as ReviewRoutineRow | null) ?? null;
+}
+
+async function markReviewRoutineStarted(userId: string, timeZone: string | null | undefined, startingDueCount: number) {
+  const routine = await ensureReviewRoutine(userId, timeZone, startingDueCount);
+  if (!routine) return;
+  const stepOrder = normalizeRoutineSteps(routine.step_order_json);
+  if (!stepOrder.includes('review') || routine.status === 'completed' || routine.status === 'in_progress') return;
+
+  const { error } = await supabaseAdmin
+    .from('daily_routine_progress')
+    .update({ status: 'in_progress', updated_at: new Date().toISOString() })
+    .eq('id', routine.id);
+  if (error) throw new Error(`daily routine review start failed: ${error.message}`);
+}
+
+async function markReviewRoutineCompleted(userId: string, timeZone?: string | null) {
+  const routine = await ensureReviewRoutine(userId, timeZone, 0);
+  if (!routine) return;
+  const stepOrder = normalizeRoutineSteps(routine.step_order_json);
+  if (!stepOrder.includes('review')) return;
+  const currentCompleted = normalizeRoutineSteps(routine.completed_steps_json);
+  const selected = new Set([...currentCompleted, 'review' as const]);
+  const completedSteps = stepOrder.filter((step) => selected.has(step));
+  const { error } = await supabaseAdmin
+    .from('daily_routine_progress')
+    .update({
+      completed_steps_json: completedSteps,
+      status: routineStatus(stepOrder, completedSteps, routine.main_learning_group_id),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', routine.id);
+  if (error) throw new Error(`daily routine review completion failed: ${error.message}`);
+}
+
 function buildWord(row: DueReviewRow) {
   const vocabularyItem = Array.isArray(row.vocabulary_items) ? row.vocabulary_items[0] : row.vocabulary_items;
   const relations = [...(vocabularyItem?.vocabulary_relations ?? [])].sort(
@@ -806,4 +956,27 @@ export async function fetchDueReviewWords(
   const rows = sortDueReviewRows(data);
 
   return rows.map(buildWord);
+}
+
+export async function startReviewSession(userId: string, options: { timeZone?: string | null } = {}) {
+  const words = await fetchDueReviewWords(userId, options);
+  if (words.length > 0) {
+    await markReviewRoutineStarted(userId, options.timeZone, words.length);
+  }
+  return words;
+}
+
+export async function completeReviewSession(userId: string, options: { timeZone?: string | null } = {}) {
+  const remaining = await supabaseAdmin
+    .from('review_states')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .not('next_review_at', 'is', null)
+    .neq('memory_state', 'mastered')
+    .lte('next_review_at', new Date().toISOString());
+  if (remaining.error) throw new Error(`remaining due review count failed: ${remaining.error.message}`);
+  if ((remaining.count ?? 0) > 0) throw new Error('仍有到期词尚未完成，请继续本轮复习。');
+
+  await markReviewRoutineCompleted(userId, options.timeZone);
+  return { completed: true };
 }

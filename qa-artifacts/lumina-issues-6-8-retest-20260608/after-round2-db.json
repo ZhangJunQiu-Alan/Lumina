@@ -1,0 +1,40 @@
+{
+  "round": "round3",
+  "currentIndex": 0,
+  "queueLength": 30,
+  "confirmedLength": 30,
+  "round1Rows": 30,
+  "round2Rows": 30,
+  "round3Rows": 0,
+  "queueLast": [
+    {
+      "i": 27,
+      "seq": 27,
+      "word": "mineral"
+    },
+    {
+      "i": 28,
+      "seq": 28,
+      "word": "marble"
+    },
+    {
+      "i": 29,
+      "seq": 29,
+      "word": "quartz"
+    }
+  ],
+  "round2CompletedLast": [
+    {
+      "seq": 27,
+      "word": "mineral"
+    },
+    {
+      "seq": 28,
+      "word": "marble"
+    },
+    {
+      "seq": 29,
+      "word": "quartz"
+    }
+  ]
+}

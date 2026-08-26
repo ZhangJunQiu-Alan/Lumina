@@ -1,0 +1,313 @@
+{
+  "round": "round2",
+  "currentIndex": 0,
+  "queueLength": 30,
+  "confirmedLength": 30,
+  "round1Rows": 30,
+  "round2Rows": 0,
+  "round3Rows": 0,
+  "queueWords": [
+    {
+      "i": 0,
+      "seq": 0,
+      "word": "atmosphere"
+    },
+    {
+      "i": 1,
+      "seq": 1,
+      "word": "hydrosphere"
+    },
+    {
+      "i": 2,
+      "seq": 2,
+      "word": "lithosphere"
+    },
+    {
+      "i": 3,
+      "seq": 3,
+      "word": "oxygen"
+    },
+    {
+      "i": 4,
+      "seq": 4,
+      "word": "oxide"
+    },
+    {
+      "i": 5,
+      "seq": 5,
+      "word": "carbon dioxide"
+    },
+    {
+      "i": 6,
+      "seq": 6,
+      "word": "hydrogen"
+    },
+    {
+      "i": 7,
+      "seq": 7,
+      "word": "core"
+    },
+    {
+      "i": 8,
+      "seq": 8,
+      "word": "crust"
+    },
+    {
+      "i": 9,
+      "seq": 9,
+      "word": "mantle"
+    },
+    {
+      "i": 10,
+      "seq": 10,
+      "word": "longitude"
+    },
+    {
+      "i": 11,
+      "seq": 11,
+      "word": "latitude"
+    },
+    {
+      "i": 12,
+      "seq": 12,
+      "word": "horizon"
+    },
+    {
+      "i": 13,
+      "seq": 13,
+      "word": "altitude"
+    },
+    {
+      "i": 14,
+      "seq": 14,
+      "word": "disaster"
+    },
+    {
+      "i": 15,
+      "seq": 15,
+      "word": "mishap"
+    },
+    {
+      "i": 16,
+      "seq": 16,
+      "word": "catastrophic"
+    },
+    {
+      "i": 17,
+      "seq": 17,
+      "word": "calamity"
+    },
+    {
+      "i": 18,
+      "seq": 18,
+      "word": "endanger"
+    },
+    {
+      "i": 19,
+      "seq": 19,
+      "word": "jeopardise"
+    },
+    {
+      "i": 20,
+      "seq": 20,
+      "word": "destructive"
+    },
+    {
+      "i": 21,
+      "seq": 21,
+      "word": "el nino"
+    },
+    {
+      "i": 22,
+      "seq": 22,
+      "word": "greenhouse"
+    },
+    {
+      "i": 23,
+      "seq": 23,
+      "word": "phenomenon"
+    },
+    {
+      "i": 24,
+      "seq": 24,
+      "word": "pebble"
+    },
+    {
+      "i": 25,
+      "seq": 25,
+      "word": "magnet"
+    },
+    {
+      "i": 26,
+      "seq": 26,
+      "word": "ore"
+    },
+    {
+      "i": 27,
+      "seq": 27,
+      "word": "mineral"
+    },
+    {
+      "i": 28,
+      "seq": 28,
+      "word": "marble"
+    },
+    {
+      "i": 29,
+      "seq": 29,
+      "word": "quartz"
+    }
+  ],
+  "confirmedWords": [
+    {
+      "i": 0,
+      "seq": 0,
+      "word": "atmosphere"
+    },
+    {
+      "i": 1,
+      "seq": 1,
+      "word": "hydrosphere"
+    },
+    {
+      "i": 2,
+      "seq": 2,
+      "word": "lithosphere"
+    },
+    {
+      "i": 3,
+      "seq": 3,
+      "word": "oxygen"
+    },
+    {
+      "i": 4,
+      "seq": 4,
+      "word": "oxide"
+    },
+    {
+      "i": 5,
+      "seq": 5,
+      "word": "carbon dioxide"
+    },
+    {
+      "i": 6,
+      "seq": 6,
+      "word": "hydrogen"
+    },
+    {
+      "i": 7,
+      "seq": 7,
+      "word": "core"
+    },
+    {
+      "i": 8,
+      "seq": 8,
+      "word": "crust"
+    },
+    {
+      "i": 9,
+      "seq": 9,
+      "word": "mantle"
+    },
+    {
+      "i": 10,
+      "seq": 10,
+      "word": "longitude"
+    },
+    {
+      "i": 11,
+      "seq": 11,
+      "word": "latitude"
+    },
+    {
+      "i": 12,
+      "seq": 12,
+      "word": "horizon"
+    },
+    {
+      "i": 13,
+      "seq": 13,
+      "word": "altitude"
+    },
+    {
+      "i": 14,
+      "seq": 14,
+      "word": "disaster"
+    },
+    {
+      "i": 15,
+      "seq": 15,
+      "word": "mishap"
+    },
+    {
+      "i": 16,
+      "seq": 16,
+      "word": "catastrophic"
+    },
+    {
+      "i": 17,
+      "seq": 17,
+      "word": "calamity"
+    },
+    {
+      "i": 18,
+      "seq": 18,
+      "word": "endanger"
+    },
+    {
+      "i": 19,
+      "seq": 19,
+      "word": "jeopardise"
+    },
+    {
+      "i": 20,
+      "seq": 20,
+      "word": "destructive"
+    },
+    {
+      "i": 21,
+      "seq": 21,
+      "word": "el nino"
+    },
+    {
+      "i": 22,
+      "seq": 22,
+      "word": "greenhouse"
+    },
+    {
+      "i": 23,
+      "seq": 23,
+      "word": "phenomenon"
+    },
+    {
+      "i": 24,
+      "seq": 24,
+      "word": "pebble"
+    },
+    {
+      "i": 25,
+      "seq": 25,
+      "word": "magnet"
+    },
+    {
+      "i": 26,
+      "seq": 26,
+      "word": "ore"
+    },
+    {
+      "i": 27,
+      "seq": 27,
+      "word": "mineral"
+    },
+    {
+      "i": 28,
+      "seq": 28,
+      "word": "marble"
+    },
+    {
+      "i": 29,
+      "seq": 29,
+      "word": "quartz"
+    }
+  ]
+}

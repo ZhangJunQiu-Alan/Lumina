@@ -82,7 +82,11 @@ import {
   OFFICIAL_APPEND_PRELOAD_REMAINING_THRESHOLD,
 } from './lib/officialLibrary';
 import { toRoutineDateKey } from './lib/routineDate';
-import { ARTICLE_REINFORCEMENT_ENABLED, PERSONAL_VOCAB_IMPORT_ENABLED } from './lib/aiFeatures';
+import {
+  ARTICLE_REINFORCEMENT_ENABLED,
+  IELTS_LISTENING_ENABLED,
+  PERSONAL_VOCAB_IMPORT_ENABLED,
+} from './lib/aiFeatures';
 import type { LearningSessionSnapshot } from './components/learning/LearningEngine';
 
 // --- Lazy loaded views ---
@@ -214,18 +218,7 @@ function isStaleLearningProgressSnapshot(
 }
 
 function AmbientBackground() {
-  return (
-    <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
-      <div className="absolute inset-x-0 top-0 h-64 bg-[linear-gradient(180deg,rgba(125,195,149,0.20),rgba(248,248,240,0))]" />
-      <div className="absolute left-[-2rem] top-24 h-48 w-32 rotate-[-10deg] rounded-[70%_35%_70%_35%] border-2 border-apple-green/20 bg-apple-green/8 animate-fluid" />
-      <div
-        className="absolute right-[-1rem] top-36 h-40 w-28 rotate-[18deg] rounded-[35%_70%_35%_70%] border-2 border-apple-teal/20 bg-apple-teal/10 animate-fluid"
-        style={{ animationDelay: '-8s' }}
-      />
-      <div className="absolute bottom-0 left-0 right-0 h-28 bg-[linear-gradient(180deg,rgba(248,248,240,0),rgba(111,186,44,0.11))]" />
-      <div className="absolute inset-0 opacity-[0.16] [background-image:radial-gradient(circle_at_1px_1px,#725d42_1px,transparent_0)] [background-size:32px_32px]" />
-    </div>
-  );
+  return <div className="lumina-ambient" aria-hidden="true" />;
 }
 
 const LoadingShell = ({ isSkeleton = false }: { isSkeleton?: boolean }) => {
@@ -423,7 +416,7 @@ export default function App() {
   const isHomeRoute = location.pathname.startsWith('/app/home');
   const isIeltsTestRoute =
     location.pathname.startsWith('/app/ielts-reading/test/') ||
-    location.pathname.startsWith('/app/ielts-listening/test/');
+    (IELTS_LISTENING_ENABLED && location.pathname.startsWith('/app/ielts-listening/test/'));
   const recallRoundEnabled = learningPreferences.reinforcementRound3Enabled;
   const dictationRoundEnabled = learningPreferences.round2Enabled;
   const articleReinforcementEnabled = ARTICLE_REINFORCEMENT_ENABLED && learningPreferences.reinforcementArticleEnabled;
@@ -1987,7 +1980,7 @@ export default function App() {
   return (
     <SavedWordsProvider>
       <WordPopoverProvider>
-        <div className="min-h-screen flex selection:bg-apple-blue/20">
+        <div className="lumina-app-shell min-h-screen flex selection:bg-apple-blue/20">
           <AmbientBackground />
           {!isIeltsTestRoute && (
             <Sidebar activePath={activeNavPath} onNavigate={handleSidebarNavigate} hideOnMobile={isSessionRoute} />
@@ -2006,14 +1999,14 @@ export default function App() {
                 event.stopPropagation();
               }}
               className={cx(
-                'h-full overflow-y-auto relative z-10',
+                'lumina-app-main h-full overflow-y-auto relative z-10',
                 isSessionRoute
-                  ? 'session-main px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:px-6 md:pt-7 md:pb-7 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10'
+                  ? 'session-main px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:px-6 md:pt-7 md:pb-7 lg:pl-[13.5rem] lg:pr-8 xl:pl-[14rem] xl:pr-10'
                   : isIeltsTestRoute
                     ? 'px-0 py-0'
                     : isHomeRoute
-                      ? 'px-6 pt-4 pb-32 lg:px-6 lg:py-6 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10'
-                      : 'px-6 pt-4 pb-32 lg:px-6 lg:py-6 lg:pl-[8.5rem] lg:pr-8 xl:pl-[9rem] xl:pr-10',
+                      ? 'px-4 pt-4 pb-28 sm:px-6 lg:px-6 lg:py-8 lg:pl-[13.5rem] lg:pr-8 xl:pl-[14rem] xl:pr-10'
+                      : 'px-4 pt-4 pb-28 sm:px-6 lg:px-6 lg:py-8 lg:pl-[13.5rem] lg:pr-8 xl:pl-[14rem] xl:pr-10',
               )}
             >
               <div
@@ -2108,8 +2101,18 @@ export default function App() {
                       <Route path="ielts" element={<IeltsHomeView />} />
                       <Route path="ielts-reading" element={<IeltsReadingHomeView />} />
                       <Route path="ielts-reading/test/:testId" element={<IeltsReadingTestView />} />
-                      <Route path="ielts-listening" element={<IeltsListeningHomeView />} />
-                      <Route path="ielts-listening/test/:testId" element={<IeltsListeningTestView />} />
+                      <Route
+                        path="ielts-listening"
+                        element={
+                          IELTS_LISTENING_ENABLED ? <IeltsListeningHomeView /> : <Navigate to="/app/ielts" replace />
+                        }
+                      />
+                      <Route
+                        path="ielts-listening/test/:testId"
+                        element={
+                          IELTS_LISTENING_ENABLED ? <IeltsListeningTestView /> : <Navigate to="/app/ielts" replace />
+                        }
+                      />
                       <Route path="notebook" element={<NotebookView />} />
                       <Route
                         path="session"

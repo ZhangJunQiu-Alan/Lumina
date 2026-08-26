@@ -6,25 +6,50 @@ import {
   generateArticle,
 } from '../../../shared/server/gemini.ts';
 import {
+  completeReviewSession,
   fetchDueReviewWords,
   markVocabularyMastered,
   markVocabularyUnknown,
   recordBatchReviewAttempts,
   recordReviewAttempt,
+  startReviewSession,
 } from '../../../shared/server/review.ts';
 import { batchGenerateAudio, getOrCreateAudio } from '../../../shared/server/audio.ts';
 import { ExampleAudioValidationError, getOrCreateExampleAudio } from '../../../shared/server/exampleAudio.ts';
 import {
+  createLearningGroupFromSavedWords,
   deleteLearningGroup,
   deleteOfficialLearningLibrary,
   discardActiveOfficialLearningGroup,
+  getLibraryGroupDetail,
+  getLibraryOverview,
+  getSavedWords,
   removeWordFromLibrary,
   reorderActiveOfficialLearningGroup,
   saveWordToLibrary,
 } from '../../../shared/server/library.ts';
 import { cleanupSavedLibrary } from '../../../shared/server/savedLibraryCleanup.ts';
 import { getHomeOverview } from '../../../shared/server/home.ts';
+import {
+  getUserLearningPreferences,
+  resolveLearningPreferencesPatch,
+  saveUserLearningPreferences,
+} from '../../../shared/server/settings.ts';
+import {
+  completeLearningRound,
+  getLearningSession,
+  saveLearningSession,
+  startOfficialLearningSession,
+  validateLearningRoundInput,
+  validateOfficialLibraryId,
+  validateOfficialStudyMode,
+} from '../../../shared/server/learning.ts';
 import { submitIeltsListeningAttempt, submitIeltsReadingAttempt } from '../../../shared/server/ieltsAttempts.ts';
+import {
+  getIeltsDashboard,
+  getIeltsListeningTest,
+  getIeltsReadingTest,
+} from '../../../shared/server/ieltsDashboard.ts';
 import { supabaseAdmin } from '../../../shared/server/supabase.ts';
 import {
   ensureLiteVocabularyEntry,
@@ -37,7 +62,7 @@ import {
   sanitizeLookupWord,
 } from '../../../shared/server/vocab.ts';
 import { isOfficialLibraryId } from '../../../shared/officialLibraryLite.ts';
-import { isAiContentFeaturesEnabled } from '../../../shared/runtime.ts';
+import { isAiContentFeaturesEnabled, isIeltsListeningEnabled } from '../../../shared/runtime.ts';
 import {
   consumeExpensiveRateLimit,
   countStringArray,
@@ -67,6 +92,9 @@ const configuredOrigins = (Deno.env.get('LUMINA_APP_ORIGINS') ?? '')
 
 const allowedOrigins = new Set([...DEFAULT_ALLOWED_ORIGINS, ...configuredOrigins]);
 const aiContentFeaturesEnabled = isAiContentFeaturesEnabled();
+const ieltsListeningEnabled = isIeltsListeningEnabled();
+const supabaseUrl = Deno.env.get('SUPABASE_URL')?.replace(/\/+$/, '') ?? '';
+const supabasePublicKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const requestIdHeader = 'X-Request-Id';
 const requestIds = new WeakMap<Request, string>();
 
@@ -269,6 +297,49 @@ function statusFromEnrichmentError(error: unknown) {
   return 500;
 }
 
+async function supabaseAuthRequest(path: string, init: RequestInit) {
+  if (!supabaseUrl || !supabasePublicKey) {
+    throw new Error('Supabase Auth is not configured.');
+  }
+
+  return fetch(`${supabaseUrl}/auth/v1${path}`, {
+    ...init,
+    headers: {
+      apikey: supabasePublicKey,
+      Authorization: `Bearer ${supabasePublicKey}`,
+      'Content-Type': 'application/json',
+      ...(init.headers ?? {}),
+    },
+  });
+}
+
+async function readSupabaseAuthResponse(response: Response) {
+  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  const message =
+    (typeof payload.error_description === 'string' && payload.error_description) ||
+    (typeof payload.msg === 'string' && payload.msg) ||
+    (typeof payload.message === 'string' && payload.message) ||
+    'Authentication failed.';
+  return { payload, message };
+}
+
+function sessionFromAccessToken(accessToken: string, user: Record<string, unknown>) {
+  const payloadSegment = accessToken.split('.')[1] ?? '';
+  const normalizedPayload = payloadSegment.replace(/-/g, '+').replace(/_/g, '/');
+  const paddedPayload = normalizedPayload.padEnd(Math.ceil(normalizedPayload.length / 4) * 4, '=');
+  const payload = JSON.parse(atob(paddedPayload)) as { exp?: number };
+  const expiresAt = payload.exp ?? Math.floor(Date.now() / 1000) + 3600;
+
+  return {
+    access_token: accessToken,
+    refresh_token: '',
+    expires_in: Math.max(0, expiresAt - Math.floor(Date.now() / 1000)),
+    expires_at: expiresAt,
+    token_type: 'bearer',
+    user,
+  };
+}
+
 Deno.serve(async (request) => {
   const start = Date.now();
   const requestId = getRequestId(request);
@@ -295,6 +366,144 @@ Deno.serve(async (request) => {
     }
 
     const body = await readJsonBody(request);
+
+    if (method === 'POST' && path === '/api/auth/sign-in') {
+      const email = typeof body?.email === 'string' ? body.email.trim() : '';
+      const password = typeof body?.password === 'string' ? body.password : '';
+      if (!email || !password) {
+        status = 400;
+        return errorResponse(request, '请输入邮箱和密码。', status);
+      }
+
+      const authResponse = await supabaseAuthRequest('/token?grant_type=password', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
+      const { payload } = await readSupabaseAuthResponse(authResponse);
+      if (!authResponse.ok || typeof payload.access_token !== 'string' || typeof payload.user !== 'object') {
+        status = 401;
+        return errorResponse(request, '邮箱或密码不正确。', status);
+      }
+
+      status = 200;
+      return jsonResponse(request, { session: payload }, status);
+    }
+
+    if (method === 'POST' && path === '/api/auth/sign-up') {
+      const email = typeof body?.email === 'string' ? body.email.trim() : '';
+      const password = typeof body?.password === 'string' ? body.password : '';
+      const fullName = typeof body?.fullName === 'string' ? body.fullName.trim() : '';
+      if (!email || password.length < 8) {
+        status = 400;
+        return errorResponse(request, '请填写有效邮箱和至少 8 位密码。', status);
+      }
+
+      const authResponse = await supabaseAuthRequest('/signup', {
+        method: 'POST',
+        body: JSON.stringify({ email, password, data: { full_name: fullName } }),
+      });
+      const { payload, message } = await readSupabaseAuthResponse(authResponse);
+      if (!authResponse.ok) {
+        status = 400;
+        return errorResponse(request, message, status);
+      }
+
+      status = 200;
+      return jsonResponse(request, {
+        session: typeof payload.access_token === 'string' ? payload : null,
+        user: payload.user ?? null,
+      }, status);
+    }
+
+    if (method === 'GET' && path === '/api/auth/session') {
+      const accessToken = readBearerToken(request.headers.get('Authorization'));
+      if (!accessToken) {
+        status = 401;
+        return errorResponse(request, 'Missing bearer token', status);
+      }
+
+      const { data, error } = await supabaseAdmin.auth.getUser(accessToken);
+      if (error || !data.user) {
+        status = 401;
+        return errorResponse(request, 'Invalid or expired token', status);
+      }
+
+      status = 200;
+      return jsonResponse(
+        request,
+        { session: sessionFromAccessToken(accessToken, data.user as unknown as Record<string, unknown>) },
+        status,
+      );
+    }
+
+    if (method === 'POST' && path === '/api/auth/update-password') {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      const password = typeof body?.password === 'string' ? body.password : '';
+      if (password.length < 8) {
+        status = 400;
+        return errorResponse(request, '密码至少需要 8 位。', status);
+      }
+
+      const { error } = await supabaseAdmin.auth.admin.updateUserById(auth.userId, { password });
+      if (error) {
+        status = 400;
+        return errorResponse(request, error.message, status);
+      }
+
+      status = 200;
+      return jsonResponse(request, { ok: true }, status);
+    }
+
+    if (method === 'POST' && path === '/api/auth/reset-password') {
+      const email = typeof body?.email === 'string' ? body.email.trim() : '';
+      if (!email) {
+        status = 400;
+        return errorResponse(request, '请输入邮箱。', status);
+      }
+
+      const authResponse = await supabaseAuthRequest('/recover', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      });
+      const { message } = await readSupabaseAuthResponse(authResponse);
+      if (!authResponse.ok) {
+        status = 400;
+        return errorResponse(request, message, status);
+      }
+
+      status = 200;
+      return jsonResponse(request, { ok: true }, status);
+    }
+
+    if (method === 'POST' && path === '/api/auth/resend-confirmation') {
+      const email = typeof body?.email === 'string' ? body.email.trim() : '';
+      if (!email) {
+        status = 400;
+        return errorResponse(request, '请输入邮箱。', status);
+      }
+
+      const authResponse = await supabaseAuthRequest('/resend', {
+        method: 'POST',
+        body: JSON.stringify({ type: 'signup', email }),
+      });
+      const { message } = await readSupabaseAuthResponse(authResponse);
+      if (!authResponse.ok) {
+        status = 400;
+        return errorResponse(request, message, status);
+      }
+
+      status = 200;
+      return jsonResponse(request, { ok: true }, status);
+    }
+
+    if (method === 'POST' && path === '/api/auth/sign-out') {
+      status = 200;
+      return jsonResponse(request, { ok: true }, status);
+    }
 
     if (method === 'POST' && path === '/api/vocab/enrich') {
       const auth = await requireExpensiveUser(request, 'ai_vocab', countStringArray(body?.words));
@@ -712,6 +921,10 @@ Deno.serve(async (request) => {
     }
 
     if (method === 'POST' && path === '/api/ielts/listening/attempts') {
+      if (!ieltsListeningEnabled) {
+        status = 404;
+        return errorResponse(request, 'IELTS listening is disabled.', status);
+      }
       const auth = await requireUser(request);
       if (auth.response) {
         status = auth.status ?? 401;
@@ -738,6 +951,88 @@ Deno.serve(async (request) => {
       }
     }
 
+    if (method === 'GET' && path === '/api/ielts/dashboard') {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      try {
+        const data = await getIeltsDashboard(auth.userId);
+        status = 200;
+        return jsonResponse(
+          request,
+          {
+            data: ieltsListeningEnabled ? data : { ...data, listeningBooks: [], listeningAttempts: [] },
+          },
+          status,
+        );
+      } catch (error) {
+        status = 500;
+        logger.error('API Error: /api/ielts/dashboard', error, {
+          endpoint: '/api/ielts/dashboard',
+          user_id: auth.userId,
+        });
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    const ieltsReadingTestMatch = /^\/api\/ielts\/reading\/tests\/([^/]+)$/.exec(path);
+    if (method === 'GET' && ieltsReadingTestMatch) {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      const testId = decodeURIComponent(ieltsReadingTestMatch[1]);
+      try {
+        const data = await getIeltsReadingTest(testId);
+        if (!data) {
+          status = 404;
+          return errorResponse(request, 'IELTS reading test not found', status);
+        }
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error(`API Error: /api/ielts/reading/tests/${testId}`, error, {
+          endpoint: `/api/ielts/reading/tests/${testId}`,
+          user_id: auth.userId,
+        });
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    const ieltsListeningTestMatch = /^\/api\/ielts\/listening\/tests\/([^/]+)$/.exec(path);
+    if (method === 'GET' && ieltsListeningTestMatch) {
+      if (!ieltsListeningEnabled) {
+        status = 404;
+        return errorResponse(request, 'IELTS listening is disabled.', status);
+      }
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      const testId = decodeURIComponent(ieltsListeningTestMatch[1]);
+      try {
+        const data = await getIeltsListeningTest(testId);
+        if (!data) {
+          status = 404;
+          return errorResponse(request, 'IELTS listening test not found', status);
+        }
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error(`API Error: /api/ielts/listening/tests/${testId}`, error, {
+          endpoint: `/api/ielts/listening/tests/${testId}`,
+          user_id: auth.userId,
+        });
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
     if (method === 'GET' && path === '/api/review/due') {
       const auth = await requireUser(request);
       if (auth.response) {
@@ -760,6 +1055,52 @@ Deno.serve(async (request) => {
       }
     }
 
+    if (method === 'POST' && path === '/api/review/session/start') {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      try {
+        const words = await startReviewSession(auth.userId, {
+          timeZone: typeof body?.timeZone === 'string' ? body.timeZone : null,
+        });
+        status = 200;
+        return jsonResponse(request, { data: { words } }, status);
+      } catch (error) {
+        status = 500;
+        logger.error(
+          'API Error: /api/review/session/start',
+          error,
+          requestLogContext(request, { endpoint: '/api/review/session/start', user_id: auth.userId }),
+        );
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    if (method === 'POST' && path === '/api/review/session/complete') {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      try {
+        const data = await completeReviewSession(auth.userId, {
+          timeZone: typeof body?.timeZone === 'string' ? body.timeZone : null,
+        });
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error(
+          'API Error: /api/review/session/complete',
+          error,
+          requestLogContext(request, { endpoint: '/api/review/session/complete', user_id: auth.userId }),
+        );
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
     if (method === 'GET' && path === '/api/home/overview') {
       const auth = await requireUser(request);
       if (auth.response) {
@@ -777,6 +1118,218 @@ Deno.serve(async (request) => {
           endpoint: '/api/home/overview',
           user_id: auth.userId,
           timezone,
+        });
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    if (method === 'GET' && path === '/api/settings/learning-preferences') {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      try {
+        const data = await getUserLearningPreferences(auth.userId);
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error('API Error: /api/settings/learning-preferences', error, {
+          endpoint: '/api/settings/learning-preferences',
+          user_id: auth.userId,
+        });
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    if (method === 'POST' && path === '/api/settings/learning-preferences') {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      try {
+        const data = await saveUserLearningPreferences(auth.userId, resolveLearningPreferencesPatch(body));
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error('API Error: /api/settings/learning-preferences', error, {
+          endpoint: '/api/settings/learning-preferences',
+          user_id: auth.userId,
+        });
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    if (method === 'GET' && path === '/api/library/overview') {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      try {
+        const data = await getLibraryOverview(auth.userId);
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error('API Error: /api/library/overview', error, {
+          endpoint: '/api/library/overview',
+          user_id: auth.userId,
+        });
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    const groupDetailMatch = /^\/api\/library\/groups\/([^/]+)$/.exec(path);
+    if (method === 'GET' && groupDetailMatch) {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      const groupId = decodeURIComponent(groupDetailMatch[1]);
+      if (!groupId) {
+        status = 400;
+        return errorResponse(request, 'Missing group ID', status);
+      }
+      try {
+        const data = await getLibraryGroupDetail(auth.userId, groupId);
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error(`API Error: /api/library/groups/${groupId}`, error, {
+          endpoint: `/api/library/groups/${groupId}`,
+          user_id: auth.userId,
+        });
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    const learningGroupMatch = /^\/api\/learning\/groups\/([^/]+)$/.exec(path);
+    if (method === 'GET' && learningGroupMatch) {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      const groupId = decodeURIComponent(learningGroupMatch[1]);
+      try {
+        const data = await getLearningSession(auth.userId, groupId);
+        if (!data) {
+          status = 404;
+          return errorResponse(request, 'Learning group not found', status);
+        }
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error(`API Error: /api/learning/groups/${groupId}`, error, {
+          endpoint: `/api/learning/groups/${groupId}`,
+          user_id: auth.userId,
+        });
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    const officialLearningStartMatch = /^\/api\/learning\/official\/([^/]+)\/start$/.exec(path);
+    if (method === 'POST' && officialLearningStartMatch) {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      const libraryId = decodeURIComponent(officialLearningStartMatch[1]);
+      if (!validateOfficialLibraryId(libraryId)) {
+        status = 400;
+        return errorResponse(request, 'Unknown official library', status);
+      }
+      if (!validateOfficialStudyMode(body?.mode)) {
+        status = 400;
+        return errorResponse(request, 'Unknown study mode', status);
+      }
+      try {
+        const data = await startOfficialLearningSession(auth.userId, {
+          libraryId,
+          mode: body.mode,
+          timeZone: typeof body.timeZone === 'string' ? body.timeZone : null,
+        });
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error(`API Error: /api/learning/official/${libraryId}/start`, error, {
+          endpoint: `/api/learning/official/${libraryId}/start`,
+          user_id: auth.userId,
+          mode: body.mode,
+        });
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    const learningSessionMatch = /^\/api\/learning\/groups\/([^/]+)\/session$/.exec(path);
+    if (method === 'POST' && learningSessionMatch) {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      const groupId = decodeURIComponent(learningSessionMatch[1]);
+      if (!validateLearningRoundInput(body?.round) || !Array.isArray(body?.queueWordIds)) {
+        status = 400;
+        return errorResponse(request, 'Invalid learning session', status);
+      }
+      try {
+        const data = await saveLearningSession(auth.userId, groupId, {
+          round: body.round,
+          currentIndex: Number(body.currentIndex) || 0,
+          queueWordIds: body.queueWordIds,
+          passedQueueIndices: Array.isArray(body.passedQueueIndices) ? body.passedQueueIndices : [],
+          round1ConfirmedWordIds: Array.isArray(body.round1ConfirmedWordIds) ? body.round1ConfirmedWordIds : [],
+          timeZone: typeof body.timeZone === 'string' ? body.timeZone : null,
+        });
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error(`API Error: /api/learning/groups/${groupId}/session`, error, {
+          endpoint: `/api/learning/groups/${groupId}/session`,
+          user_id: auth.userId,
+          round: body.round,
+        });
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    const learningCompleteMatch = /^\/api\/learning\/groups\/([^/]+)\/complete-round$/.exec(path);
+    if (method === 'POST' && learningCompleteMatch) {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      const groupId = decodeURIComponent(learningCompleteMatch[1]);
+      if (!validateLearningRoundInput(body?.round)) {
+        status = 400;
+        return errorResponse(request, 'Invalid learning round', status);
+      }
+      try {
+        const data = await completeLearningRound(auth.userId, groupId, {
+          round: body.round,
+          confirmedWordIds: Array.isArray(body.confirmedWordIds) ? body.confirmedWordIds : [],
+          timeZone: typeof body.timeZone === 'string' ? body.timeZone : null,
+        });
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error(`API Error: /api/learning/groups/${groupId}/complete-round`, error, {
+          endpoint: `/api/learning/groups/${groupId}/complete-round`,
+          user_id: auth.userId,
+          round: body.round,
         });
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }
@@ -885,6 +1438,26 @@ Deno.serve(async (request) => {
       }
     }
 
+    if (method === 'GET' && path === '/api/library/saved-words') {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      try {
+        const data = await getSavedWords(auth.userId);
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error('API Error: GET /api/library/saved-words', error, {
+          endpoint: '/api/library/saved-words',
+          user_id: auth.userId,
+        });
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
     if (method === 'POST' && path === '/api/library/saved-words') {
       const auth = await requireUser(request);
       if (auth.response) {
@@ -911,6 +1484,33 @@ Deno.serve(async (request) => {
           user_id: auth.userId,
           vocabulary_item_id: body.vocabularyItemId,
           source,
+        });
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    if (method === 'POST' && path === '/api/library/saved-words/learning-group') {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      if (
+        !Array.isArray(body?.vocabularyItemIds) ||
+        body.vocabularyItemIds.some((id: unknown) => typeof id !== 'string')
+      ) {
+        status = 400;
+        return errorResponse(request, 'Invalid vocabulary item IDs', status);
+      }
+      try {
+        const data = await createLearningGroupFromSavedWords(auth.userId, body.vocabularyItemIds);
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error('API Error: /api/library/saved-words/learning-group', error, {
+          endpoint: '/api/library/saved-words/learning-group',
+          user_id: auth.userId,
         });
         return errorResponse(request, error instanceof Error ? error.message : String(error), status);
       }

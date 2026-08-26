@@ -264,7 +264,7 @@ export const Round1ConfusingCard = ({
                           text={difference}
                           targetWords={comparisonWords}
                           onWordClick={onWordClick}
-                          targetClassName="bg-transparent text-lg font-black text-text-primary hover:bg-[#eaf2ff] sm:text-xl"
+                          targetClassName="bg-transparent text-lg font-black text-text-primary hover:bg-apple-blue/10 sm:text-xl"
                         />
                       </p>
                     )}
@@ -304,9 +304,9 @@ export const Round1MemoryTipCard = ({
   targetWords,
   onWordClick,
 }: { memoryTip: string } & Round1LookupProps) => (
-  <aside className="flex min-h-[92px] rounded-[18px] border border-[#4f46e5]/15 bg-[#eef2ff] px-4 py-3 sm:px-5 sm:py-4 lg:min-h-[88px] lg:max-h-[132px] lg:w-full lg:max-w-[430px] lg:self-start lg:overflow-y-auto">
+  <aside className="flex min-h-[92px] rounded-[18px] border border-apple-blue/15 bg-apple-blue/8 px-4 py-3 sm:px-5 sm:py-4 lg:min-h-[88px] lg:max-h-[132px] lg:w-full lg:max-w-[430px] lg:self-start lg:overflow-y-auto">
     <div className="my-auto min-w-0">
-      <p className="text-[11px] sm:text-[12px] font-bold uppercase tracking-[0.22em] text-[#4f46e5]">记忆锦囊</p>
+      <p className="text-[11px] sm:text-[12px] font-bold uppercase tracking-[0.22em] text-apple-blue">记忆锦囊</p>
       <p className="mt-1.5 text-[13px] sm:text-sm leading-6 text-text-primary">
         <Round1LookupText text={memoryTip} targetWords={targetWords} onWordClick={onWordClick} />
       </p>

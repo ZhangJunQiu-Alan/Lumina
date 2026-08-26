@@ -49,6 +49,26 @@ export type OfficialLibraryId =
   | 'tem4-vocab'
   | 'tem8-vocab';
 export type OfficialStudyMode = 'sequential' | 'shuffle';
+export type PronunciationLocale = 'uk' | 'us';
+export type SpeechPlaybackRate = 0.6 | 0.8 | 1;
+export type IeltsTargetScore = 5 | 5.5 | 6 | 6.5 | 7 | 7.5 | 8 | 8.5 | 9;
+
+export interface LearningPreferences {
+  defaultPronunciationLocale: PronunciationLocale;
+  ieltsTargetScore: IeltsTargetScore;
+  speechPlaybackRate: SpeechPlaybackRate;
+  autoPlayEnabled: boolean;
+  autoPlayRepeatCount: 1 | 2 | 3;
+  autoPlayRepeatGapMs: number;
+  correctAnswerRevealMs: 800 | 1000 | 1500 | 2000;
+  wrongAnswerRevealMs: 3000 | 5000 | 8000;
+  round2Enabled: boolean;
+  reinforcementRound3Enabled: boolean;
+  reinforcementArticleEnabled: boolean;
+  popoverAutoPlayEnabled: boolean;
+  clozeSentenceAutoPlayEnabled: boolean;
+  memoryTipEnabled: boolean;
+}
 
 export interface HomeOfficialLibraryOption {
   libraryId: OfficialLibraryId;

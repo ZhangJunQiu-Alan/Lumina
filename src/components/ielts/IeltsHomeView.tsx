@@ -27,6 +27,7 @@ import type {
 } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
+import { IELTS_LISTENING_ENABLED } from '../../lib/aiFeatures';
 import { fetchIeltsListeningBooks, fetchRecentIeltsListeningAttempts } from '../../lib/ieltsListeningApi';
 import { fetchIeltsReadingBooks, fetchRecentIeltsReadingAttempts } from '../../lib/ieltsReadingApi';
 import { formatElapsedTime } from '../../lib/ieltsReadingScoring';
@@ -72,15 +73,19 @@ const MODULE_CARD_CONFIGS: ModuleCardConfig[] = [
     actionLabel: '进入阅读训练',
     accent: 'teal',
   },
-  {
-    key: 'listening',
-    icon: Headphones,
-    title: 'Listening',
-    titleZh: '听力',
-    description: '4 个 Section、40 道题、30 分钟。提升听力理解与信息捕捉能力。',
-    actionLabel: '进入听力训练',
-    accent: 'amber',
-  },
+  ...(IELTS_LISTENING_ENABLED
+    ? [
+        {
+          key: 'listening' as const,
+          icon: Headphones,
+          title: 'Listening',
+          titleZh: '听力',
+          description: '4 个 Section、40 道题、30 分钟。提升听力理解与信息捕捉能力。',
+          actionLabel: '进入听力训练',
+          accent: 'amber' as const,
+        },
+      ]
+    : []),
   {
     key: 'writing',
     icon: PenLine,
@@ -276,7 +281,7 @@ function getModuleProgress(model: IeltsDashboardModel, key: DisplayModuleKey) {
 
 function getModuleRoute(key: DisplayModuleKey) {
   if (key === 'reading') return '/app/ielts-reading';
-  if (key === 'listening') return '/app/ielts-listening';
+  if (key === 'listening' && IELTS_LISTENING_ENABLED) return '/app/ielts-listening';
   return null;
 }
 
@@ -591,6 +596,35 @@ function PracticeModuleCard({
         : '暂无可用题库'
     : '即将开放';
 
+  if (config.disabled) {
+    return (
+      <article className="rounded-[18px] border border-black/6 bg-white/58 p-3 sm:rounded-[24px] sm:p-4">
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          <div
+            className={cx(
+              'flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] opacity-70 sm:h-11 sm:w-11 sm:rounded-[15px]',
+              classes.icon,
+            )}
+          >
+            <config.icon className="h-5 w-5 sm:h-6 sm:w-6" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-sm font-black text-text-primary sm:text-base">{config.titleZh}</h3>
+            <p className="mt-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-text-secondary sm:text-[11px]">
+              {config.title}
+            </p>
+          </div>
+        </div>
+        <p className="mt-3 line-clamp-2 text-[11px] font-bold leading-[18px] text-text-secondary sm:text-xs sm:leading-5">
+          {config.description}
+        </p>
+        <span className="mt-3 inline-flex rounded-full bg-black/5 px-3 py-1.5 text-[10px] font-black text-text-secondary sm:text-[11px]">
+          即将开放
+        </span>
+      </article>
+    );
+  }
+
   return (
     <article className="rounded-[18px] border border-white/72 bg-white/82 p-3 shadow-[0_10px_24px_rgba(107,92,67,0.07)] sm:rounded-[24px] sm:p-4 sm:shadow-[0_14px_34px_rgba(107,92,67,0.07)]">
       <div className="flex items-start gap-2.5 sm:gap-3">
@@ -660,11 +694,9 @@ function RecentPracticePanel({
 }) {
   const recentAttempts = model.recentAttempts.slice(0, 3);
   const fallbackRoute =
-    recentAttempts[0]?.moduleKey === 'listening'
+    IELTS_LISTENING_ENABLED && recentAttempts[0]?.moduleKey === 'listening'
       ? '/app/ielts-listening'
-      : model.reading.totalTests > 0
-        ? '/app/ielts-reading'
-        : '/app/ielts-listening';
+      : '/app/ielts-reading';
 
   return (
     <section className="rounded-[18px] border border-white/72 bg-white/82 p-3 shadow-[0_10px_24px_rgba(107,92,67,0.07)] sm:rounded-[24px] sm:p-4 sm:shadow-[0_14px_34px_rgba(107,92,67,0.07)]">
@@ -687,7 +719,7 @@ function RecentPracticePanel({
 
       {recentAttempts.length === 0 ? (
         <div className="mt-3 rounded-[16px] border border-dashed border-black/10 bg-white/52 p-4 text-xs font-bold leading-6 text-text-secondary sm:mt-5 sm:rounded-[24px] sm:p-6 sm:text-sm sm:leading-7">
-          还没有完成过雅思阅读或听力训练。完成第一套后，这里会显示得分、用时和复盘入口。
+          还没有完成过雅思阅读训练。完成第一套后，这里会显示得分、用时和复盘入口。
         </div>
       ) : (
         <div className="mt-1 divide-y divide-black/6 sm:mt-3">
@@ -794,8 +826,8 @@ function RecommendationPanel({
           错题本每周复盘，巩固薄弱点
         </span>
         <span className="inline-flex items-center gap-2">
-          <MessageCircle className="h-4 w-4" />
-          口语练习建议每周 3 次以上
+          <Clock3 className="h-4 w-4" />
+          每周安排一次 60 分钟限时阅读
         </span>
       </div>
     </section>
@@ -916,7 +948,7 @@ function StudyAdvicePanel() {
   const advice = [
     '每天至少完成 1 套真题练习，保持手感与节奏。',
     '错题本每周复盘，巩固薄弱点，提升正确率。',
-    '口语练习建议每周至少 3 次以上，提升流利度与自信心。',
+    '每周安排一次 60 分钟限时阅读，训练完整考试节奏。',
   ];
 
   return (
@@ -967,9 +999,9 @@ export function IeltsHomeView() {
     try {
       const [readingBooks, listeningBooks, readingAttempts, listeningAttempts] = await Promise.all([
         fetchIeltsReadingBooks(),
-        fetchIeltsListeningBooks(),
+        IELTS_LISTENING_ENABLED ? fetchIeltsListeningBooks() : Promise.resolve([]),
         fetchRecentIeltsReadingAttempts(userId, { limit: null }),
-        fetchRecentIeltsListeningAttempts(userId, { limit: null }),
+        IELTS_LISTENING_ENABLED ? fetchRecentIeltsListeningAttempts(userId, { limit: null }) : Promise.resolve([]),
       ]);
       setDashboardData({ readingBooks, listeningBooks, readingAttempts, listeningAttempts });
     } catch (error) {
@@ -1037,7 +1069,7 @@ export function IeltsHomeView() {
             剑桥雅思真题训练
           </h2>
           <p className="mt-2 max-w-3xl text-xs font-bold leading-6 text-text-secondary sm:mt-3 sm:text-sm sm:leading-7">
-            系统练习四大模块，熟悉考试题型与节奏，科学提升雅思能力。
+            先用剑桥学术阅读真题建立考试节奏，写作与口语模块将逐步开放。
           </p>
           <div className="mt-6 hidden flex-wrap gap-3 sm:flex">
             <CapabilityBadge icon={Target} title="贴近真实" subtitle="剑桥 4-18 官方真题" accent="teal" />

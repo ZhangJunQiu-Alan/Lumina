@@ -1,0 +1,52 @@
+{
+  "email": "codexissues68041658@example.com",
+  "userId": "5e1ff996-cda8-43d2-a698-18f88603d14b",
+  "totalReviewStates": 70,
+  "mastered": 0,
+  "todayEvents": {
+    "round2:correct": 29,
+    "round2:wrong": 1,
+    "round3:correct": 1
+  },
+  "routine": {
+    "id": "16b1ec35-e667-4118-8863-34a629d0e9b2",
+    "user_id": "5e1ff996-cda8-43d2-a698-18f88603d14b",
+    "local_date": "2026-06-08",
+    "timezone": "Asia/Shanghai",
+    "day_kind": "learning_day",
+    "starting_due_count": 0,
+    "main_learning_group_id": "ed8404d1-50e3-477c-8d7a-2b3aec338036",
+    "step_order_json": [
+      "round1",
+      "round2",
+      "round3"
+    ],
+    "completed_steps_json": [
+      "round1",
+      "round2",
+      "round3"
+    ],
+    "status": "completed",
+    "created_at": "2026-06-08T04:20:51.565003+00:00",
+    "updated_at": "2026-06-08T04:56:41.857+00:00"
+  },
+  "groups": [
+    {
+      "id": "ed8404d1-50e3-477c-8d7a-2b3aec338036",
+      "name": "雅思词汇真经 · 0001-0040",
+      "status": "completed",
+      "round": null,
+      "currentIndex": null,
+      "queueLength": null,
+      "wordCount": 70,
+      "round1": 30,
+      "round2": 30,
+      "round3": 30,
+      "learned": 30,
+      "first": "atmosphere",
+      "last": "ocean",
+      "created_at": "2026-06-08T04:20:48.756673+00:00",
+      "completed_at": "2026-06-08T04:56:42.036+00:00"
+    }
+  ]
+}

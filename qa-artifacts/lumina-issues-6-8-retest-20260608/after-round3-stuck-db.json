@@ -1,0 +1,9 @@
+{
+  "round": "round3",
+  "currentIndex": 0,
+  "queueLength": 30,
+  "confirmedLength": 30,
+  "round3Rows": 0,
+  "firstRound3At": null,
+  "firstWord": "atmosphere"
+}

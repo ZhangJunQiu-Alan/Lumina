@@ -1,0 +1,38 @@
+{
+  "email": "codexissues35033236@example.com",
+  "userId": "47c374f0-7ace-4f93-b2da-9d03f87d8db9",
+  "group": {
+    "id": "1a080805-bdf9-4d6a-b0f7-09fc6aada2ef",
+    "group_name": "雅思词汇真经 · 0001-0040",
+    "session_round": "round1",
+    "session_current_index": 2,
+    "passedQueueIndices": [
+      0,
+      1
+    ],
+    "round1ConfirmedCount": 2
+  },
+  "firstThree": [
+    {
+      "word": "atmosphere",
+      "round1_confirmed_at": "2026-06-08T03:35:31.827845+00:00",
+      "round2_completed_at": null,
+      "round3_completed_at": null,
+      "learned_at": null
+    },
+    {
+      "word": "hydrosphere",
+      "round1_confirmed_at": "2026-06-08T03:35:37.853443+00:00",
+      "round2_completed_at": null,
+      "round3_completed_at": null,
+      "learned_at": null
+    },
+    {
+      "word": "lithosphere",
+      "round1_confirmed_at": null,
+      "round2_completed_at": null,
+      "round3_completed_at": null,
+      "learned_at": null
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "status": "completed",
+  "round": null,
+  "currentIndex": null,
+  "queueLength": null,
+  "completedAt": "2026-06-08T04:56:42.036+00:00",
+  "round3Rows": 30,
+  "learnedRows": 30,
+  "quartz": {
+    "sequence_no": 29,
+    "round3_completed_at": "2026-06-08T04:56:40.730312+00:00",
+    "learned_at": "2026-06-08T04:56:40.730312+00:00",
+    "vocabulary_items": {
+      "word": "quartz"
+    }
+  }
+}
