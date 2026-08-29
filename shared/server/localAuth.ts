@@ -3,11 +3,7 @@ import { promisify } from 'node:util';
 import pg from 'pg';
 import { getEnv } from '../runtime.ts';
 
-const scryptAsync = promisify(crypto.scrypt) as (
-  password: string,
-  salt: string,
-  keylen: number,
-) => Promise<Buffer>;
+const scryptAsync = promisify(crypto.scrypt) as (password: string, salt: string, keylen: number) => Promise<Buffer>;
 
 const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7;
 const PASSWORD_HASH_PREFIX = 'scrypt';

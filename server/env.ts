@@ -21,9 +21,7 @@ const localAuthEnabled = Boolean(process.env.LUMINA_AUTH_JWT_SECRET?.trim() && p
 const localDataUrl = process.env.LUMINA_DATA_URL?.trim() || process.env.SUPABASE_URL?.trim();
 const legacySupabaseEnabled = (process.env.LUMINA_ALLOW_LEGACY_SUPABASE ?? '').toLowerCase() === 'true';
 const localPostgrestEnabled = Boolean(
-  process.env.LUMINA_POSTGREST_URL?.trim() &&
-    process.env.LUMINA_SERVICE_ROLE_JWT?.trim() &&
-    localDataUrl,
+  process.env.LUMINA_POSTGREST_URL?.trim() && process.env.LUMINA_SERVICE_ROLE_JWT?.trim() && localDataUrl,
 );
 
 const errors: string[] = [];
