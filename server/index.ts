@@ -121,6 +121,7 @@ app.use((req, res, next) => {
 
 const appOrigin = process.env.APP_ORIGIN?.trim();
 const defaultAllowedOrigins = [
+  'https://localhost',
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:3001',

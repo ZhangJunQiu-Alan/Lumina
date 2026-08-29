@@ -57,8 +57,10 @@ export async function submitReviewAttempt(input: SubmitReviewAttemptInput): Prom
 
 export async function submitBatchReviewAttempts(
   attempts: SubmitReviewAttemptInput[],
+  userId?: string,
 ): Promise<ReviewAttemptResponse[]> {
   const response = await apiFetch('/api/review/batch-attempt', {
+    userId,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ attempts }),

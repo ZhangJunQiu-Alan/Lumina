@@ -30,7 +30,7 @@ export const Sidebar = ({ activePath, onNavigate, hideOnMobile = false }: Sideba
         onClick={() => onNavigate('/app/home')}
         aria-label="回到首页"
       >
-        <LuminaLogo size={34} wordmarkClassName="lumina-sidebar__wordmark" />
+        <LuminaLogo size={44} className="lumina-sidebar__logo" wordmarkClassName="lumina-sidebar__wordmark" />
       </button>
 
       <nav className="lumina-sidebar__nav" aria-label="主要导航">

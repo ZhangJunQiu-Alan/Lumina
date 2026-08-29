@@ -8,6 +8,7 @@ import { LandingView } from './components/landing/LandingView';
 import { PrivacyView, TermsView } from './components/legal/LegalView';
 import { IslandPanel } from './components/shared/AnimalPrimitives';
 import { useAuth } from './contexts/AuthContext';
+import { SyncStatus } from './components/shared/SyncStatus';
 
 const App = lazy(() => import('./App'));
 
@@ -74,6 +75,7 @@ import { GlobalErrorBoundary } from './components/shared/GlobalErrorBoundary';
 export default function RootApp() {
   return (
     <GlobalErrorBoundary>
+      <SyncStatus />
       <Routes>
         <Route path="/" element={<LandingView />} />
         <Route path="/auth" element={<PublicOnlyAuthRoute />} />

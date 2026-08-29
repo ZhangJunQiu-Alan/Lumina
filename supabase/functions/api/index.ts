@@ -72,6 +72,7 @@ import {
 } from '../../../shared/expensiveRateLimit.ts';
 
 const DEFAULT_ALLOWED_ORIGINS = [
+  'https://localhost',
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:3001',
@@ -409,10 +410,14 @@ Deno.serve(async (request) => {
       }
 
       status = 200;
-      return jsonResponse(request, {
-        session: typeof payload.access_token === 'string' ? payload : null,
-        user: payload.user ?? null,
-      }, status);
+      return jsonResponse(
+        request,
+        {
+          session: typeof payload.access_token === 'string' ? payload : null,
+          user: payload.user ?? null,
+        },
+        status,
+      );
     }
 
     if (method === 'GET' && path === '/api/auth/session') {

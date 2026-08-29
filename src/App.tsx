@@ -26,6 +26,8 @@ import { WhatsNewModal } from './components/shared/WhatsNewModal';
 import { SessionSettingsDrawer } from './components/settings/SessionSettingsDrawer';
 import { fetchDueReviewWords } from './lib/reviewApi';
 import { attemptBuffer } from './lib/attemptBuffer';
+import { readLocal, writeLocal } from './lib/durableStorage';
+import { cacheLearningRecovery, type ReviewRecovery } from './lib/learningRecovery';
 import { useAuth } from './contexts/AuthContext';
 import { useLearningPreferences } from './contexts/LearningPreferencesContext';
 import { SavedWordsProvider } from './contexts/SavedWordsContext';
@@ -401,6 +403,15 @@ export default function App() {
   const homeRefreshAfterSyncRef = useRef<Promise<void> | null>(null);
   const [round, setRound] = useState<RoundType>('round1');
   const [activeWords, setActiveWords] = useState<Word[]>([]);
+  const [activeReviewRecovery, setActiveReviewRecovery] = useState<ReviewRecovery | null>(null);
+  const handleReviewChange = useCallback(
+    (recovery: ReviewRecovery) => {
+      if (!user) return;
+      writeLocal(`lumina.review-recovery.v1.${user.id}`, recovery);
+      writeLocal(`lumina.last-session-mode.v1.${user.id}`, 'review');
+    },
+    [user],
+  );
   const [activeLearningGroupId, setActiveLearningGroupId] = useState<string | null>(null);
   const [activeSessionSeed, setActiveSessionSeedState] = useState<PersistedLearningSession | null>(null);
   const [articleSentences, setArticleSentences] = useState<ArticleSentence[] | null>(null);
@@ -1160,7 +1171,8 @@ export default function App() {
     if (routineCard.ctaMode === 'start_review' || routineCard.ctaMode === 'continue_review') {
       setIsStartingSession(true);
       try {
-        const dueWords = await fetchDueReviewWords();
+        const recovery = readLocal<ReviewRecovery>(`lumina.review-recovery.v1.${user.id}`);
+        const dueWords = recovery?.words?.length ? recovery.words : await fetchDueReviewWords();
         if (dueWords.length === 0) {
           await fetchStats({ forceRefresh: true });
           return;
@@ -1179,6 +1191,7 @@ export default function App() {
         setActiveLearningGroupId(null);
         setActiveSessionSeed(null);
         setActiveWords(dueWords);
+        setActiveReviewRecovery(recovery?.words?.length ? recovery : null);
         setArticleSentences(null);
         setRound('review');
         navigate('/app/session');
@@ -1404,6 +1417,12 @@ export default function App() {
       lastSessionChangeSignatureRef.current = nextSignature;
       setActiveSessionSeed(sessionSeed);
 
+      cacheLearningRecovery(user.id, activeLearningGroupId, {
+        groupTitle: '',
+        words: scopedWords,
+        session: sessionSeed,
+      });
+
       const persistSessionPromise = persistLearningGroupSession(user.id, sessionSeed).catch((error) => {
         console.error('Failed to persist learning session snapshot:', error);
       });
@@ -1504,6 +1523,7 @@ export default function App() {
   const handleRoundComplete = useCallback(
     async (completedSession?: LearningSessionSnapshot) => {
       if (round === 'review') {
+        if (user) writeLocal(`lumina.review-recovery.v1.${user.id}`, null);
         await attemptBuffer.flush();
 
         if (user) {
@@ -1937,8 +1957,21 @@ export default function App() {
       return;
     }
 
+    if (user && activeWords.length === 0 && readLocal(`lumina.last-session-mode.v1.${user.id}`) === 'review') {
+      const recovery = readLocal<ReviewRecovery>(`lumina.review-recovery.v1.${user.id}`);
+      if (recovery?.words?.length) {
+        setActiveWords(recovery.words);
+        setActiveReviewRecovery(recovery);
+        setActiveLearningGroupId(null);
+        setActiveSessionSeed(null);
+        setRound('review');
+        return;
+      }
+    }
+
     const resumeGroupId =
-      stats.routineCard.ctaMode === 'continue_learning' ? stats.routineCard.boundLearningGroupId : null;
+      (user ? readLocal<string>(`lumina.last-learning.v1.${user.id}`) : null) ??
+      (stats.routineCard.ctaMode === 'continue_learning' ? stats.routineCard.boundLearningGroupId : null);
 
     if (!user || activeWords.length > 0 || isStartingSession || !resumeGroupId) {
       return;
@@ -1955,6 +1988,7 @@ export default function App() {
     isSessionRoute,
     isStartingSession,
     openLearningGroup,
+    setActiveSessionSeed,
     stats.routineCard.boundLearningGroupId,
     stats.routineCard.ctaMode,
     user,
@@ -2001,12 +2035,12 @@ export default function App() {
               className={cx(
                 'lumina-app-main h-full overflow-y-auto relative z-10',
                 isSessionRoute
-                  ? 'session-main px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:px-6 md:pt-7 md:pb-7 lg:pl-[13.5rem] lg:pr-8 xl:pl-[14rem] xl:pr-10'
+                  ? 'session-main px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:px-6 md:pt-7 md:pb-7 lg:pl-[10.25rem] lg:pr-8 xl:pl-[10.75rem] xl:pr-10'
                   : isIeltsTestRoute
                     ? 'px-0 py-0'
                     : isHomeRoute
-                      ? 'px-4 pt-4 pb-28 sm:px-6 lg:px-6 lg:py-8 lg:pl-[13.5rem] lg:pr-8 xl:pl-[14rem] xl:pr-10'
-                      : 'px-4 pt-4 pb-28 sm:px-6 lg:px-6 lg:py-8 lg:pl-[13.5rem] lg:pr-8 xl:pl-[14rem] xl:pr-10',
+                      ? 'px-4 pt-4 pb-28 sm:px-6 lg:px-6 lg:py-8 lg:pl-[10.25rem] lg:pr-8 xl:pl-[10.75rem] xl:pr-10'
+                      : 'px-4 pt-4 pb-28 sm:px-6 lg:px-6 lg:py-8 lg:pl-[10.25rem] lg:pr-8 xl:pl-[10.75rem] xl:pr-10',
               )}
             >
               <div
@@ -2163,11 +2197,14 @@ export default function App() {
                           ) : (
                             <React.Fragment key={`${activeLearningGroupId ?? 'review'}:${round}`}>
                               <LearningEngine
+                                userId={user?.id}
                                 type={round}
                                 words={activeWords}
                                 initialSession={activeSessionSeed}
                                 onComplete={handleRoundComplete}
                                 onSessionChange={handleLearningSessionChange}
+                                initialReviewRecovery={activeReviewRecovery}
+                                onReviewChange={handleReviewChange}
                                 onWordMastered={handleSessionWordMastered}
                                 onWordMasteredRollback={handleSessionWordMasteredRollback}
                                 sessionLeadingAction={sessionBackButton}

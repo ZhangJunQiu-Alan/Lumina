@@ -1,6 +1,7 @@
 import { ReviewAttemptResponse, ReviewAttemptSource } from '../types';
 import { submitBatchReviewAttempts } from './reviewApi';
-import { getCachedAccessToken, resolveApiUrl } from './api';
+import { supabase } from './supabase';
+import { writeLocal } from './durableStorage';
 
 export interface QueuedAttempt {
   clientAttemptId: string;
@@ -14,18 +15,30 @@ export interface QueuedAttempt {
 
 export type AttemptSyncListener = (params: { attempt: QueuedAttempt; result: ReviewAttemptResponse }) => void;
 
-const STORAGE_KEY = 'lumina_attempt_queue';
+const STORAGE_KEY = 'lumina.attempt-queue.v2.';
 const SYNC_THRESHOLD = 5; // 每积攒 5 个词同步一次
 const SYNC_INTERVAL_MS = 30000; // 每 30 秒强制检查一次同步
 
 class AttemptBuffer {
+  private userId: string | null = null;
   private queue: QueuedAttempt[] = [];
   private activeFlush: Promise<boolean> | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private listeners = new Set<AttemptSyncListener>();
 
   constructor() {
-    this.loadFromStorage();
+    supabase.auth.onAuthStateChange((_event, session) => {
+      const userId = session?.user.id ?? null;
+      if (userId === this.userId) return;
+      this.userId = userId;
+      this.queue = [];
+      this.loadFromStorage();
+      if (userId) void this.flush();
+    });
+    if (typeof window !== 'undefined')
+      window.addEventListener('online', () => {
+        void this.flush();
+      });
     this.startTimer();
   }
 
@@ -34,9 +47,9 @@ class AttemptBuffer {
   }
 
   private loadFromStorage() {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !this.userId) return;
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = localStorage.getItem(STORAGE_KEY + this.userId);
       if (stored) {
         const parsed = JSON.parse(stored);
         this.queue = Array.isArray(parsed)
@@ -53,12 +66,9 @@ class AttemptBuffer {
   }
 
   private saveToStorage() {
-    if (typeof window === 'undefined') return;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.queue));
-    } catch (e) {
-      console.error('Failed to save attempt buffer to storage', e);
-    }
+    if (typeof window === 'undefined' || !this.userId) return;
+    writeLocal(STORAGE_KEY + this.userId, this.queue);
+    window.dispatchEvent(new Event('lumina:sync-change'));
   }
 
   private startTimer() {
@@ -91,14 +101,17 @@ class AttemptBuffer {
    * 将一次练习结果加入队列
    */
   async pushAttempt(attempt: Omit<QueuedAttempt, 'clientAttemptId' | 'timestamp'>) {
+    if (!this.userId) throw new Error('请先登录，再保存答题记录。');
     const item: QueuedAttempt = {
       ...attempt,
       clientAttemptId: this.createAttemptId(),
       timestamp: Date.now(),
     };
 
-    this.queue.push(item);
-    this.saveToStorage();
+    const nextQueue = [...this.queue, item];
+    writeLocal(STORAGE_KEY + this.userId, nextQueue);
+    this.queue = nextQueue;
+    window.dispatchEvent(new Event('lumina:sync-change'));
 
     // 如果达到阈值且当前没有正在同步，则触发同步
     if (this.queue.length >= SYNC_THRESHOLD && !this.activeFlush) {
@@ -107,7 +120,9 @@ class AttemptBuffer {
   }
 
   private async flushOnce() {
-    const batchToSync = [...this.queue];
+    const owner = this.userId;
+    if (!owner || navigator.onLine === false) return false;
+    const batchToSync = this.queue.slice(0, 50);
     if (batchToSync.length === 0) return true;
 
     try {
@@ -121,7 +136,10 @@ class AttemptBuffer {
           elapsedMs: item.elapsedMs,
           timestamp: item.timestamp, // 携带产生时间，用于后端冲突校验
         })),
+        owner,
       );
+      if (owner !== this.userId) return false;
+      if (!Array.isArray(results) || results.length !== batchToSync.length) throw new Error('同步结果不完整');
 
       results.forEach((result, index) => {
         const attempt = batchToSync[index];
@@ -162,41 +180,8 @@ class AttemptBuffer {
     }
   }
 
-  /**
-   * 页面隐藏 / 关闭时使用。通过 fetch keepalive 立即把队列送出去，
-   * 不清空本地队列——服务端按 timestamp 做幂等校验，重复到达会被 skip。
-   * 下次启动若前次请求实际到达，重放也是安全的；若未到达，重放即兜底。
-   */
   flushKeepalive() {
-    if (this.queue.length === 0) return;
-    const token = getCachedAccessToken();
-    if (!token) return;
-
-    const snapshot = [...this.queue];
-    const payload = JSON.stringify({
-      attempts: snapshot.map((item) => ({
-        vocabularyItemId: item.vocabularyItemId,
-        learningGroupId: item.learningGroupId,
-        source: item.source,
-        wasCorrect: item.wasCorrect,
-        elapsedMs: item.elapsedMs,
-        timestamp: item.timestamp,
-      })),
-    });
-
-    try {
-      fetch(resolveApiUrl('/api/review/batch-attempt'), {
-        method: 'POST',
-        keepalive: true,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: payload,
-      }).catch(() => {});
-    } catch {
-      // keepalive 超过 64KB 等极端情况会同步抛错，留给下次启动重放
-    }
+    void this.flush();
   }
 
   /**

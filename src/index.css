@@ -4438,7 +4438,8 @@ body {
   box-shadow: 0 8px 24px rgba(20, 43, 54, 0.06) !important;
 }
 
-.lumina-app-shell [class*='bg-white/'] {
+.lumina-app-shell [class^='bg-white/'],
+.lumina-app-shell [class*=' bg-white/'] {
   background-color: rgba(255, 255, 255, 0.88) !important;
 }
 
@@ -4741,26 +4742,32 @@ body {
     right: auto;
     bottom: 1.25rem;
     left: 1.25rem;
-    width: 11.25rem;
+    width: 8rem;
     height: auto;
     flex-direction: column;
     align-items: stretch;
     border: 1px solid rgba(20, 43, 54, 0.11);
     border-radius: 20px;
-    padding: 1rem;
+    padding: 0.75rem;
     box-shadow: 0 14px 44px rgba(20, 43, 54, 0.08);
   }
 
   .lumina-sidebar__brand {
     display: flex;
-    min-height: 3.6rem;
+    min-height: 6.35rem;
     align-items: center;
-    padding: 0 0.45rem 1rem;
+    justify-content: center;
+    padding: 0.35rem 0.25rem 1rem;
     border-bottom: 1px solid #e0e7e4;
   }
 
+  .lumina-sidebar__logo {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
   .lumina-sidebar__wordmark {
-    height: 1.35rem;
+    height: 1.05rem;
     color: #142b36;
   }
 
@@ -4773,8 +4780,8 @@ body {
 
   .lumina-nav-item {
     justify-content: flex-start;
-    gap: 0.8rem;
-    padding: 0 0.85rem;
+    gap: 0.6rem;
+    padding: 0 0.65rem;
   }
 
   .lumina-nav-item__label {
@@ -4812,5 +4819,45 @@ body {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
+  }
+}
+
+.sync-status {
+  position: fixed;
+  z-index: 100;
+  top: env(safe-area-inset-top, 0px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 1.5rem);
+  padding: 0.5rem 0.75rem;
+  border-radius: 0 0 0.75rem 0.75rem;
+  background: #fff4df;
+  color: #503b16;
+  box-shadow: 0 2px 8px #00000015;
+  font-size: 0.75rem;
+}
+.sync-status button {
+  margin-left: 0.75rem;
+  text-decoration: underline;
+}
+.native-app body {
+  overscroll-behavior-y: none;
+}
+.native-app #root {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.constrained-device [class*='glass'],
+.constrained-device [class*='backdrop-blur'] {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .native-app *,
+  .native-app *::before,
+  .native-app *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

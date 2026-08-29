@@ -70,6 +70,18 @@ export const VOCABULARY_ISSUE_OPTIONS: Array<{ type: VocabularyIssueType; label:
 
 export const stripDiacritics = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '');
 
+const WRONG_ANSWER_MIN_GAP = 4;
+const WRONG_ANSWER_GAP_VARIANTS = 2;
+
+export function getWrongAnswerRequeueIndex(currentIndex: number, queueLength: number, randomValue = Math.random()) {
+  const safeCurrentIndex = Math.max(0, Math.round(currentIndex));
+  const safeQueueLength = Math.max(0, Math.round(queueLength));
+  const normalizedRandomValue = Math.min(Math.max(randomValue, 0), 0.999999999);
+  const interveningWordCount = WRONG_ANSWER_MIN_GAP + Math.floor(normalizedRandomValue * WRONG_ANSWER_GAP_VARIANTS);
+
+  return Math.min(safeCurrentIndex + interveningWordCount + 1, safeQueueLength);
+}
+
 export function isTextEditingTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable;

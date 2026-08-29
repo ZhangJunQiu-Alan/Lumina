@@ -9,6 +9,10 @@ export default tseslint.config(
   {
     ignores: [
       'dist/**',
+      'dist-mobile/**',
+      'mobile/android/**/build/**',
+      'mobile/android/app/src/main/assets/**',
+      'mobile/android/capacitor-cordova-android-plugins/**',
       'node_modules/**',
       'output/**',
       '.playwright-cli/**',

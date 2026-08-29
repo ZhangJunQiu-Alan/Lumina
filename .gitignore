@@ -160,3 +160,17 @@ content/ielts-reading/extracted/
 /android/.idea/
 *.jks
 *.keystore
+
+# Capacitor builds and signing material
+/dist-mobile/
+/mobile/android/.gradle/
+/mobile/android/.idea/
+/mobile/android/local.properties
+/mobile/android/**/build/
+/mobile/android/app/src/main/assets/public/
+/mobile/android/app/src/main/assets/capacitor.config.json
+/mobile/android/app/src/main/assets/capacitor.plugins.json
+/.env.mobile.local
+/mobile/signing.local.properties
+/mobile/releases/
+/mobile/android/app/src/androidTest/assets/private-*.json

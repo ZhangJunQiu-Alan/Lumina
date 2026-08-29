@@ -44,6 +44,9 @@ import {
 } from '../../lib/ieltsListeningScoring';
 
 const TEST_DURATION_SECONDS = 30 * 60;
+import { ResumableAudio } from '../shared/ResumableAudio';
+import { writeLocal } from '../../lib/durableStorage';
+import { ieltsSubmissionState } from '../../lib/ieltsSubmission';
 
 interface ListeningDraft {
   startedAt: string;
@@ -77,7 +80,7 @@ function readDraft(userId: string, testId: string): ListeningDraft | null {
 
 function writeDraft(userId: string, testId: string, draft: ListeningDraft) {
   try {
-    window.localStorage.setItem(draftKey(userId, testId), JSON.stringify(draft));
+    writeLocal(draftKey(userId, testId), draft);
   } catch {
     // Ignore local storage failures; the in-memory state still keeps the attempt usable.
   }
@@ -653,15 +656,17 @@ export function IeltsListeningTestView() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<IeltsListeningAttemptResult | null>(null);
   const timeoutSubmitAttempted = useRef(false);
+  const [draftOwner, setDraftOwner] = useState('');
+  const [pendingSubmission, setPendingSubmission] = useState(false);
 
   useEffect(() => {
     if (!testId || !userId || attemptId) return;
     const draft = readDraft(userId, testId);
-    if (!draft) return;
-    setStartedAt(draft.startedAt);
-    setAnswers(draft.answers);
-    setSelectedSection(draft.selectedSection);
-    setFlaggedNumbers(draft.flags ?? []);
+    setStartedAt(draft?.startedAt ?? new Date().toISOString());
+    setAnswers(draft?.answers ?? {});
+    setSelectedSection(draft?.selectedSection ?? 1);
+    setFlaggedNumbers(draft?.flags ?? []);
+    setDraftOwner(`${userId}.${testId}`);
   }, [attemptId, testId, userId]);
 
   useEffect(() => {
@@ -726,14 +731,14 @@ export function IeltsListeningTestView() {
   }, [attemptId, userId]);
 
   useEffect(() => {
-    if (!testId || !userId || result || attemptId) return;
+    if (!testId || !userId || result || attemptId || draftOwner !== `${userId}.${testId}`) return;
     writeDraft(userId, testId, {
       startedAt,
       answers,
       selectedSection,
       flags: flaggedNumbers,
     });
-  }, [answers, attemptId, flaggedNumbers, result, selectedSection, startedAt, testId, userId]);
+  }, [answers, attemptId, draftOwner, flaggedNumbers, result, selectedSection, startedAt, testId, userId]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -750,9 +755,13 @@ export function IeltsListeningTestView() {
   const answeredCount = questions.filter((question) => isAnswered(displayAnswers[question.number])).length;
   const isReviewMode = Boolean(result);
 
-  const setAnswer = useCallback((questionNumber: number, value: IeltsListeningAnswerValue) => {
-    setAnswers((current) => ({ ...current, [questionNumber]: value }));
-  }, []);
+  const setAnswer = useCallback(
+    (questionNumber: number, value: IeltsListeningAnswerValue) => {
+      if (pendingSubmission || isSubmitting || result) return;
+      setAnswers((current) => ({ ...current, [questionNumber]: value }));
+    },
+    [isSubmitting, pendingSubmission, result],
+  );
 
   const toggleFlag = useCallback((questionNumber: number) => {
     setFlaggedNumbers((current) =>
@@ -763,7 +772,7 @@ export function IeltsListeningTestView() {
   }, []);
 
   const submitAttempt = useCallback(async () => {
-    if (!test || !userId || !testId || isSubmitting) return;
+    if (!test || !userId || !testId || isSubmitting || result) return;
     setIsSubmitting(true);
     try {
       const nextResult = await submitIeltsListeningAttempt({
@@ -780,7 +789,19 @@ export function IeltsListeningTestView() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [answers, elapsedSeconds, isSubmitting, startedAt, test, testId, userId]);
+  }, [answers, elapsedSeconds, isSubmitting, result, startedAt, test, testId, userId]);
+
+  useEffect(() => {
+    if (!userId || !testId || attemptId || draftOwner !== `${userId}.${testId}`) return;
+    const recover = () => {
+      const state = ieltsSubmissionState(userId, 'listening', testId, startedAt);
+      setPendingSubmission(state.pending);
+      if (state.receipt && !result && !isSubmitting) void submitAttempt();
+    };
+    recover();
+    window.addEventListener('lumina:sync-change', recover);
+    return () => window.removeEventListener('lumina:sync-change', recover);
+  }, [attemptId, draftOwner, isSubmitting, result, startedAt, submitAttempt, testId, userId]);
 
   useEffect(() => {
     if (!test || result || isSubmitting || timeoutSubmitAttempted.current || remainingSeconds > 0) return;
@@ -789,6 +810,10 @@ export function IeltsListeningTestView() {
   }, [isSubmitting, remainingSeconds, result, submitAttempt, test]);
 
   const handleReset = () => {
+    if (pendingSubmission) {
+      setErrorMsg('请先同步已提交的答卷，再开始新一次练习。');
+      return;
+    }
     if (!testId || !userId) return;
     clearDraft(userId, testId);
     setAnswers({});
@@ -888,14 +913,12 @@ export function IeltsListeningTestView() {
                 </p>
               </div>
               {selectedSectionData?.audioUrl ? (
-                <audio
+                <ResumableAudio
                   key={selectedSectionData.audioUrl}
-                  controls
+                  storageKey={`lumina.audio.v1.${userId}.${testId}.${startedAt}.${selectedSection}`}
                   className="mt-4 w-full"
                   src={selectedSectionData.audioUrl}
-                >
-                  <track kind="captions" />
-                </audio>
+                />
               ) : (
                 <div className="mt-4 rounded-2xl bg-[#fff4df] p-4 text-sm font-bold text-text-secondary">
                   当前 Section 还没有音频 URL。

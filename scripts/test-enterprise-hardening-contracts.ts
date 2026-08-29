@@ -216,7 +216,7 @@ assertIncludes(
 );
 
 const readingSubmit = extractFunction(read('src/lib/ieltsReadingApi.ts'), 'submitIeltsReadingAttempt');
-assertIncludes(readingSubmit, "'/api/ielts/reading/attempts'", 'reading submit path');
+assertIncludes(readingSubmit, "submitDurableIeltsAttempt(userId, 'reading'", 'durable reading submit');
 assert.equal(
   /\.from\('ielts_reading_(?:attempts|responses)'\)/.test(readingSubmit),
   false,
@@ -224,7 +224,10 @@ assert.equal(
 );
 
 const listeningSubmit = extractFunction(read('src/lib/ieltsListeningApi.ts'), 'submitIeltsListeningAttempt');
-assertIncludes(listeningSubmit, "'/api/ielts/listening/attempts'", 'listening submit path');
+assertIncludes(listeningSubmit, "submitDurableIeltsAttempt(userId, 'listening'", 'durable listening submit');
+const durableIelts = read('src/lib/ieltsSubmission.ts');
+assertIncludes(durableIelts, '`/api/ielts/${kind}/attempts`', 'shared IELTS API gateway');
+assertIncludes(durableIelts, 'apiFetch(', 'authenticated IELTS transport');
 assert.equal(
   /\.from\('ielts_listening_(?:attempts|responses)'\)/.test(listeningSubmit),
   false,

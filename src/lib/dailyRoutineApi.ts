@@ -1,6 +1,7 @@
 import type { LearningRoundType, RoutineCardState, RoutineStepKey } from '../types';
 import { resolveTimeZone as normalizeTimeZone, toRoutineDateKey } from './routineDate';
 import { supabase } from './supabase';
+import { enqueueSync, flushSyncQueue, registerSyncHandler } from './syncQueue';
 
 type RoutineDayKind = 'review_day' | 'learning_day';
 
@@ -246,10 +247,11 @@ export async function ensureTodayRoutineProgress(
   options: {
     timeZone?: string;
     startingDueCount?: number;
+    localDate?: string;
   } = {},
 ) {
   const timeZone = resolveTimeZone(options.timeZone);
-  const localDate = resolveRoutineLocalDate(timeZone);
+  const localDate = options.localDate ?? resolveRoutineLocalDate(timeZone);
   const existing = await fetchDailyRoutineProgress(userId, localDate);
 
   if (existing) {
@@ -334,9 +336,34 @@ export async function markRoutineStepCompleted(
     startingDueCount?: number;
   },
 ) {
+  const timeZone = resolveTimeZone(input.timeZone);
+  const localDate = resolveRoutineLocalDate(timeZone);
+  enqueueSync(userId, `routine:${localDate}:${input.step}:${input.groupId ?? ''}`, 'routine-completed', {
+    ...input,
+    timeZone,
+    localDate,
+  });
+  void flushSyncQueue(userId);
+}
+
+registerSyncHandler('routine-completed', async (payload, userId) => {
+  await markRemoteRoutineStepCompleted(userId, payload as Parameters<typeof markRemoteRoutineStepCompleted>[1]);
+});
+
+async function markRemoteRoutineStepCompleted(
+  userId: string,
+  input: {
+    step: RoutineStepKey;
+    groupId?: string | null;
+    timeZone: string;
+    startingDueCount?: number;
+    localDate: string;
+  },
+) {
   const existing = await ensureTodayRoutineProgress(userId, {
     timeZone: input.timeZone,
     startingDueCount: input.startingDueCount,
+    localDate: input.localDate,
   });
   if (!existing) return null;
 

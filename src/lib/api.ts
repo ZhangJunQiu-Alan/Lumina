@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 
 interface ApiFetchOptions extends RequestInit {
   requiresAuth?: boolean;
+  userId?: string;
 }
 
 const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
@@ -45,7 +46,7 @@ function resolveFetchInput(input: RequestInfo | URL) {
 }
 
 export async function apiFetch(input: RequestInfo | URL, init: ApiFetchOptions = {}) {
-  const { requiresAuth = true, headers, ...rest } = init;
+  const { requiresAuth = true, userId, headers, ...rest } = init;
   const requestHeaders = new Headers(headers ?? {});
 
   if (requiresAuth) {
@@ -58,12 +59,14 @@ export async function apiFetch(input: RequestInfo | URL, init: ApiFetchOptions =
     if (!accessToken) {
       throw new Error('请先登录，再继续当前操作。');
     }
+    if (userId && data.session?.user.id !== userId) throw new Error('账号已切换，原账号的数据仍保存在本机。');
 
     requestHeaders.set('Authorization', `Bearer ${accessToken}`);
   }
 
   return fetch(resolveFetchInput(input), {
     ...rest,
+    signal: rest.signal ?? AbortSignal.timeout(20000),
     headers: requestHeaders,
   });
 }

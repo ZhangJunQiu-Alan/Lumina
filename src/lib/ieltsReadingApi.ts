@@ -13,7 +13,8 @@ import type {
   IeltsReadingTestSummary,
 } from '../types';
 import { supabase } from './supabase';
-import { apiFetch } from './api';
+import { submitDurableIeltsAttempt } from './ieltsSubmission';
+import { withOfflineTest } from './offlineTestCache';
 import {
   evaluateIeltsReadingAnswers,
   normalizeIeltsAnswerValue,
@@ -343,6 +344,10 @@ export async function fetchIeltsReadingBooks(): Promise<IeltsReadingBookSummary[
 }
 
 export async function fetchIeltsReadingTestDetail(testId: string): Promise<IeltsReadingTestDetail | null> {
+  return withOfflineTest('reading', testId, () => fetchRemoteReadingTestDetail(testId));
+}
+
+async function fetchRemoteReadingTestDetail(testId: string): Promise<IeltsReadingTestDetail | null> {
   const { data, error } = await supabase
     .from('ielts_reading_tests')
     .select(
@@ -479,7 +484,7 @@ export async function fetchRecentIeltsReadingAttempts(
 }
 
 export async function submitIeltsReadingAttempt({
-  userId: _userId,
+  userId,
   test,
   answers,
   startedAt,
@@ -495,33 +500,21 @@ export async function submitIeltsReadingAttempt({
   const evaluation = evaluateIeltsReadingAnswers(questions, answers);
   const submittedAt = new Date().toISOString();
 
-  const response = await apiFetch('/api/ielts/reading/attempts', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      testId: test.id,
-      startedAt,
-      submittedAt,
-      elapsedSeconds,
-      score: evaluation.score,
-      totalQuestions: evaluation.totalQuestions,
-      responses: evaluation.responses.map((result) => ({
-        questionId: result.questionId,
-        questionNumber: result.questionNumber,
-        response: normalizeIeltsAnswerValue(result.response),
-        correctAnswer: normalizeIeltsAnswerValue(result.correctAnswer),
-        isCorrect: result.isCorrect,
-      })),
-    }),
+  const attempt = await submitDurableIeltsAttempt(userId, 'reading', {
+    testId: test.id,
+    startedAt,
+    submittedAt,
+    elapsedSeconds,
+    score: evaluation.score,
+    totalQuestions: evaluation.totalQuestions,
+    responses: evaluation.responses.map((result) => ({
+      questionId: result.questionId,
+      questionNumber: result.questionNumber,
+      response: normalizeIeltsAnswerValue(result.response),
+      correctAnswer: normalizeIeltsAnswerValue(result.correctAnswer),
+      isCorrect: result.isCorrect,
+    })),
   });
-
-  const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-  if (!response.ok) {
-    throw new Error((payload as { error?: string }).error ?? `HTTP ${response.status}`);
-  }
-
-  const attempt = (payload as { data?: { id?: string; submittedAt?: string } }).data;
-  if (!attempt?.id) throw new Error('ielts_reading_attempts insert failed: missing row');
 
   return {
     id: attempt.id,
@@ -531,7 +524,7 @@ export async function submitIeltsReadingAttempt({
     testNumber: test.testNumber,
     score: evaluation.score,
     totalQuestions: evaluation.totalQuestions,
-    elapsedSeconds,
+    elapsedSeconds: attempt.elapsedSeconds,
     submittedAt: attempt.submittedAt ?? submittedAt,
     responses: evaluation.responses as IeltsReadingResponseResult[],
   };

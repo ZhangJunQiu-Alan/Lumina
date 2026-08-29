@@ -3,10 +3,18 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig } from 'vitest/config';
 
-export default defineConfig(() => {
+export default defineConfig(({ mode }) => {
   return {
     plugins: [
       react(),
+      {
+        name: 'lumina-mobile-fonts',
+        transformIndexHtml(html) {
+          return mode === 'mobile'
+            ? html.replace(/<link\b[^>]*href="https:\/\/fonts\.(?:googleapis|gstatic)\.com[^>]*>/gs, '')
+            : html;
+        },
+      },
       {
         name: 'lumina-strip-animal-island-fonts',
         enforce: 'pre',
@@ -18,6 +26,7 @@ export default defineConfig(() => {
       tailwindcss(),
     ],
     build: {
+      target: mode === 'mobile' ? 'chrome111' : 'modules',
       rollupOptions: {
         output: {
           manualChunks: {

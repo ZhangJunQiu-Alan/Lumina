@@ -6,6 +6,7 @@ import { attemptBuffer } from '../../lib/attemptBuffer';
 import { fetchExampleAudioUrl } from '../../lib/exampleAudio';
 import { markReviewWordMastered } from '../../lib/reviewApi';
 import { LearningEngine, type LearningSessionSnapshot } from './LearningEngine';
+import { getWrongAnswerRequeueIndex } from './learningEngineUtils';
 
 const testState = vi.hoisted(() => ({
   preferences: {
@@ -266,6 +267,55 @@ function installAudioMock() {
 }
 
 describe('LearningEngine autoplay', () => {
+  it('places wrong answers after four or five intervening words', () => {
+    expect(getWrongAnswerRequeueIndex(0, 10, 0)).toBe(5);
+    expect(getWrongAnswerRequeueIndex(0, 10, 0.999999)).toBe(6);
+    expect(getWrongAnswerRequeueIndex(8, 10, 0)).toBe(10);
+  });
+
+  it('requeues a wrong review answer after four intervening words', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const words = makeWords(7);
+    const onReviewChange = vi.fn();
+
+    render(<LearningEngine type="review" words={words} onComplete={vi.fn()} onReviewChange={onReviewChange} />);
+
+    const input = screen.getByLabelText('拼写输入');
+    fireEvent.change(input, { target: { value: 'wrong' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+
+    await waitFor(() =>
+      expect(onReviewChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          words: [words[0], words[1], words[2], words[3], words[4], words[0], words[5], words[6]],
+        }),
+      ),
+    );
+  });
+
+  it('restores a review at its saved queue position, including requeued words', () => {
+    const words = makeWords(3);
+    const onReviewChange = vi.fn();
+    render(
+      <LearningEngine
+        type="review"
+        words={words}
+        onComplete={vi.fn()}
+        initialReviewRecovery={{
+          words: [words[0], words[1], words[0], words[2]],
+          currentIndex: 2,
+          passedQueueIndices: [0, 1],
+        }}
+        onReviewChange={onReviewChange}
+      />,
+    );
+    expect(onReviewChange).toHaveBeenLastCalledWith({
+      runId: expect.any(String),
+      words: [words[0], words[1], words[0], words[2]],
+      currentIndex: 2,
+      passedQueueIndices: [0, 1],
+    });
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     testState.preferences = {
@@ -636,6 +686,71 @@ describe('LearningEngine autoplay', () => {
 
     expect(screen.getByRole('button', { name: /n\. 对手；竞争者：rival/ }).className).toContain('text-apple-red');
     expect(screen.getByRole('button', { name: /n\. 敌人；仇敌：enemy/ }).className).toContain('text-[#15803D]');
+  });
+
+  it('requeues a wrong round 2 choice after four intervening words', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const firstWord = makeRound2ChoiceWord();
+    const remainingWords = makeWords(6);
+    const words = [firstWord, ...remainingWords];
+    const onSessionChange = vi.fn();
+
+    render(<LearningEngine type="round2" words={words} onComplete={vi.fn()} onSessionChange={onSessionChange} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /n\. 对手；竞争者/ }));
+    await waitFor(() => expect(attemptBuffer.pushAttempt).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: '继续下一个词' }));
+
+    await waitFor(() =>
+      expect(onSessionChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          currentIndex: 1,
+          queueWordIds: [
+            firstWord.id,
+            remainingWords[0].id,
+            remainingWords[1].id,
+            remainingWords[2].id,
+            remainingWords[3].id,
+            firstWord.id,
+            remainingWords[4].id,
+            remainingWords[5].id,
+          ],
+        }),
+      ),
+    );
+  });
+
+  it('restores a persisted answer after remount without submitting it twice', async () => {
+    const values = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    });
+    const props = {
+      userId: 'alice',
+      type: 'round2' as const,
+      words: [makeRound2ChoiceWord()],
+      initialSession: {
+        groupId: 'test-group',
+        round: 'round2',
+        currentIndex: 0,
+        queueWordIds: ['enemy-id'],
+        passedQueueIndices: [],
+        round1ConfirmedWordIds: [],
+        lastActiveAt: '2026-08-28',
+        groupCompleted: false,
+        completedAt: null,
+      } as PersistedLearningSession,
+      onComplete: vi.fn(),
+    };
+    const first = render(<LearningEngine {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /n\. 对手；竞争者/ }));
+    await waitFor(() => expect(attemptBuffer.pushAttempt).toHaveBeenCalledTimes(1));
+    first.unmount();
+    render(<LearningEngine {...props} />);
+    expect(screen.getByRole('button', { name: /n\. 对手；竞争者：rival/ }).className).toContain('text-apple-red');
+    expect(screen.getByRole('button', { name: '继续下一个词' })).toBeInTheDocument();
+    expect(attemptBuffer.pushAttempt).toHaveBeenCalledTimes(1);
   });
 
   it('moves to the next round 2 word after a revealed choice is continued', async () => {

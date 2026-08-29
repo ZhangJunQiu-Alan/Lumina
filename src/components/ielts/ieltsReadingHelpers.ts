@@ -89,7 +89,11 @@ export function readDraft(userId: string, testId: string): ReadingDraft | null {
 
 export function writeDraft(userId: string, testId: string, draft: ReadingDraft) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(draftKey(userId, testId), JSON.stringify(draft));
+  try {
+    window.localStorage.setItem(draftKey(userId, testId), JSON.stringify(draft));
+  } catch {
+    window.dispatchEvent(new Event('lumina:storage-error'));
+  }
 }
 
 export function clearDraft(userId: string, testId: string) {

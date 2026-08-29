@@ -1,3 +1,4 @@
+import { ieltsSubmissionState } from '../../lib/ieltsSubmission';
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
@@ -1176,18 +1177,20 @@ export function IeltsReadingTestView() {
   const [timeoutSubmitAttempted, setTimeoutSubmitAttempted] = useState(false);
   const [activeQuestionNumber, setActiveQuestionNumber] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [draftOwner, setDraftOwner] = useState('');
+  const [pendingSubmission, setPendingSubmission] = useState(false);
 
   useEffect(() => {
     if (!testId || !userId) return;
     const draft = readDraft(userId, testId);
-    if (!draft) return;
-    setStartedAt(draft.startedAt);
-    setAnswers(draft.answers);
-    setSelectedPassage(draft.selectedPassage);
-    setFlaggedNumbers(draft.flags ?? []);
-    setAnnotations(draft.annotations ?? []);
-    setFontSize(clampReadingFontSize(draft.fontSize));
-    setPracticeMode(draft.practiceMode);
+    setStartedAt(draft?.startedAt ?? new Date().toISOString());
+    setAnswers(draft?.answers ?? {});
+    setSelectedPassage(draft?.selectedPassage ?? 1);
+    setFlaggedNumbers(draft?.flags ?? []);
+    setAnnotations(draft?.annotations ?? []);
+    setFontSize(clampReadingFontSize(draft?.fontSize));
+    setPracticeMode(draft?.practiceMode ?? false);
+    setDraftOwner(`${userId}.${testId}`);
   }, [testId, userId]);
 
   useEffect(() => {
@@ -1224,7 +1227,7 @@ export function IeltsReadingTestView() {
   }, []);
 
   useEffect(() => {
-    if (!testId || !userId || result) return;
+    if (!testId || !userId || result || draftOwner !== `${userId}.${testId}`) return;
     writeDraft(userId, testId, {
       startedAt,
       answers,
@@ -1236,6 +1239,7 @@ export function IeltsReadingTestView() {
     });
   }, [
     answers,
+    draftOwner,
     annotations,
     flaggedNumbers,
     fontSize,
@@ -1260,7 +1264,7 @@ export function IeltsReadingTestView() {
     ? elapsedSeconds
     : clampIeltsElapsedSeconds(elapsedSeconds, TEST_DURATION_SECONDS);
   const unansweredNumbers = useMemo(() => getUnansweredNumbers(questions, answers), [answers, questions]);
-  const inputsLocked = isSubmitting || isLockedByTimeout;
+  const inputsLocked = isSubmitting || isLockedByTimeout || pendingSubmission;
 
   useEffect(() => {
     if (practiceMode || readingMode !== 'lookup') return;
@@ -1410,7 +1414,7 @@ export function IeltsReadingTestView() {
 
   const submitAttempt = useCallback(
     async (mode: SubmitMode) => {
-      if (!test || !testId || !userId || isSubmitting) return;
+      if (!test || !testId || !userId || isSubmitting || result) return;
 
       setIsSubmitting(true);
       setErrorMsg('');
@@ -1443,8 +1447,20 @@ export function IeltsReadingTestView() {
         setIsSubmitting(false);
       }
     },
-    [answers, closePopover, isSubmitting, startedAt, submitElapsedSeconds, test, testId, userId],
+    [answers, closePopover, isSubmitting, result, startedAt, submitElapsedSeconds, test, testId, userId],
   );
+
+  useEffect(() => {
+    if (!userId || !testId || draftOwner !== `${userId}.${testId}`) return;
+    const recover = () => {
+      const state = ieltsSubmissionState(userId, 'reading', testId, startedAt);
+      setPendingSubmission(state.pending);
+      if (state.receipt && !result && !isSubmitting) void submitAttempt('manual');
+    };
+    recover();
+    window.addEventListener('lumina:sync-change', recover);
+    return () => window.removeEventListener('lumina:sync-change', recover);
+  }, [draftOwner, isSubmitting, result, startedAt, submitAttempt, testId, userId]);
 
   useEffect(() => {
     if (!test || practiceMode || result || isSubmitting || timeoutSubmitAttempted || remainingSeconds > 0) return;
@@ -1475,6 +1491,10 @@ export function IeltsReadingTestView() {
   }, []);
 
   const handleReset = () => {
+    if (pendingSubmission) {
+      setErrorMsg('请先同步已提交的答卷，再开始新一次练习。');
+      return;
+    }
     if (testId && userId) clearDraft(userId, testId);
     closePopover();
     setAnswers({});

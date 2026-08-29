@@ -1,7 +1,13 @@
 import { PostgrestClient } from '@supabase/postgrest-js';
 import type { Session, User } from '@supabase/supabase-js';
 
-type AuthEvent = 'INITIAL_SESSION' | 'SIGNED_IN' | 'SIGNED_OUT' | 'PASSWORD_RECOVERY' | 'TOKEN_REFRESHED' | 'USER_UPDATED';
+type AuthEvent =
+  | 'INITIAL_SESSION'
+  | 'SIGNED_IN'
+  | 'SIGNED_OUT'
+  | 'PASSWORD_RECOVERY'
+  | 'TOKEN_REFRESHED'
+  | 'USER_UPDATED';
 type AuthListener = (event: AuthEvent, session: Session | null) => void;
 type RealtimeCallback = (payload: { new?: Record<string, unknown>; old?: Record<string, unknown> }) => void;
 
@@ -31,7 +37,7 @@ function readStoredSession() {
 
   try {
     const session = JSON.parse(raw) as Session;
-    if (!session?.access_token || !session?.expires_at || session.expires_at <= Math.floor(Date.now() / 1000)) {
+    if (!session?.access_token || !session?.expires_at || !session?.user?.id) {
       window.localStorage.removeItem(SESSION_STORAGE_KEY);
       return null;
     }
@@ -52,6 +58,8 @@ function writeStoredSession(session: Session | null) {
 }
 
 let currentSession: Session | null = readStoredSession();
+let sessionCheck: Promise<{ data: { session: Session | null }; error: Error | null }> | null = null;
+let checkedAt = 0;
 const listeners = new Set<AuthListener>();
 
 function notify(event: AuthEvent, session: Session | null) {
@@ -62,6 +70,7 @@ function notify(event: AuthEvent, session: Session | null) {
 
 function setSession(session: Session | null, event: AuthEvent) {
   currentSession = session;
+  checkedAt = Date.now();
   writeStoredSession(session);
   notify(event, session);
 }
@@ -77,6 +86,7 @@ function normalizeSession(session: Session): Session {
 async function authFetch(path: string, init: RequestInit = {}) {
   const response = await fetch(resolveApiUrl(path), {
     ...init,
+    signal: init.signal ?? AbortSignal.timeout(15000),
     headers: {
       'Content-Type': 'application/json',
       ...(init.headers ?? {}),
@@ -85,7 +95,7 @@ async function authFetch(path: string, init: RequestInit = {}) {
 
   const payload = (await response.json().catch(() => ({}))) as { error?: string; session?: Session };
   if (!response.ok) {
-    throw new Error(payload.error || 'Authentication failed.');
+    throw Object.assign(new Error(payload.error || 'Authentication failed.'), { status: response.status });
   }
   return payload;
 }
@@ -93,6 +103,7 @@ async function authFetch(path: string, init: RequestInit = {}) {
 function createRestClient() {
   const token = currentSession?.access_token ?? '';
   return new PostgrestClient(resolveRestUrl(), {
+    fetch: (input, init) => fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(20000) }),
     headers: {
       ...(configuredSupabasePublishableKey ? { apikey: configuredSupabasePublishableKey } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -148,19 +159,57 @@ export const supabase = {
         return { data: { session: null }, error: null };
       }
 
-      try {
-        const payload = await authFetch('/api/auth/session', {
-          headers: {
-            Authorization: `Bearer ${stored.access_token}`,
-          },
-        });
-        const session = normalizeSession(payload.session!);
-        setSession(session, 'TOKEN_REFRESHED');
-        return { data: { session }, error: null };
-      } catch (error) {
-        setSession(null, 'SIGNED_OUT');
-        return { data: { session: null }, error };
+      if (
+        currentSession?.access_token === stored.access_token &&
+        stored.expires_at! > Date.now() / 1000 + 60 &&
+        Date.now() - checkedAt < 60000
+      ) {
+        return { data: { session: currentSession }, error: null };
       }
+      if (sessionCheck) return sessionCheck;
+      const token = stored.access_token;
+      sessionCheck = (async () => {
+        try {
+          if (stored.expires_at! <= Date.now() / 1000 + 60 && stored.refresh_token && configuredSupabaseUrl) {
+            const response = await fetch(`${configuredSupabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', apikey: configuredSupabasePublishableKey },
+              body: JSON.stringify({ refresh_token: stored.refresh_token }),
+              signal: AbortSignal.timeout(15000),
+            });
+            if (!response.ok)
+              throw Object.assign(new Error('登录续期失败，请重新登录。'), {
+                status: response.status === 400 ? 401 : response.status,
+              });
+            const session = normalizeSession(await response.json());
+            if (currentSession?.access_token === token) setSession(session, 'TOKEN_REFRESHED');
+            return { data: { session: currentSession }, error: null };
+          }
+          const payload = await authFetch('/api/auth/session', {
+            headers: {
+              Authorization: `Bearer ${stored.access_token}`,
+            },
+          });
+          if (currentSession?.access_token !== token) return { data: { session: currentSession }, error: null };
+          const session = normalizeSession({
+            ...stored,
+            ...payload.session,
+            refresh_token: payload.session?.refresh_token || stored.refresh_token,
+          });
+          setSession(session, 'TOKEN_REFRESHED');
+          return { data: { session }, error: null };
+        } catch (error) {
+          if (currentSession?.access_token !== token) return { data: { session: currentSession }, error: null };
+          if ((error as { status?: number }).status === 401 || (error as { status?: number }).status === 403) {
+            setSession(null, 'SIGNED_OUT');
+            return { data: { session: null }, error: error as Error };
+          }
+          return { data: { session: stored }, error: null };
+        }
+      })().finally(() => {
+        sessionCheck = null;
+      });
+      return sessionCheck;
     },
     async signInWithPassword({ email, password }: { email: string; password: string }) {
       try {
@@ -168,9 +217,9 @@ export const supabase = {
           method: 'POST',
           body: JSON.stringify({ email, password }),
         });
-        const session = normalizeSession(payload.session!);
+        const session = payload.session ? normalizeSession(payload.session) : null;
         setSession(session, 'SIGNED_IN');
-        return { data: { session, user: session.user as User }, error: null };
+        return { data: { session, user: session?.user as User }, error: null };
       } catch (error) {
         return { data: { session: null, user: null }, error };
       }
@@ -189,9 +238,9 @@ export const supabase = {
           method: 'POST',
           body: JSON.stringify({ email, password, fullName: options?.data?.full_name ?? '' }),
         });
-        const session = normalizeSession(payload.session!);
-        setSession(session, 'SIGNED_IN');
-        return { data: { session, user: session.user as User }, error: null };
+        const session = payload.session ? normalizeSession(payload.session) : null;
+        if (session) setSession(session, 'SIGNED_IN');
+        return { data: { session, user: session?.user as User }, error: null };
       } catch (error) {
         return { data: { session: null, user: null }, error };
       }

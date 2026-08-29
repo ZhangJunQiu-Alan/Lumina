@@ -34,10 +34,13 @@ import { cx, PronunciationControls, RoundIndicator, WordSenseList } from '../sha
 import { buildClozePrompt } from '../../lib/cloze';
 import { Round2ClozePrompt } from './Round2ClozePrompt';
 import { attemptBuffer } from '../../lib/attemptBuffer';
+import { readLocal, writeLocal } from '../../lib/durableStorage';
+import type { ReviewRecovery } from '../../lib/learningRecovery';
 import { markReviewWordMastered, markReviewWordUnknown } from '../../lib/reviewApi';
 import { reportVocabularyIssue, type VocabularyIssueType } from '../../lib/vocabReportApi';
 import {
   ActionFeedback,
+  getWrongAnswerRequeueIndex,
   hasRound1ContextContent,
   hasRound1MorphologyContent,
   hasRound1RelationsContent,
@@ -166,11 +169,14 @@ interface Round2ChoiceSelection {
 }
 
 export const LearningEngine = ({
+  userId,
   type,
   words,
   initialSession,
   onComplete,
   onSessionChange,
+  initialReviewRecovery,
+  onReviewChange,
   onWordMastered,
   onWordMasteredRollback,
   sessionLeadingAction,
@@ -180,8 +186,11 @@ export const LearningEngine = ({
   type: RoundType;
   words: Word[];
   initialSession?: PersistedLearningSession | null;
+  userId?: string;
   onComplete: (session?: LearningSessionSnapshot) => void | Promise<void>;
   onSessionChange?: (session: LearningSessionSnapshot) => void;
+  initialReviewRecovery?: ReviewRecovery | null;
+  onReviewChange?: (session: ReviewRecovery) => void;
   onWordMastered?: (wordId: string) => void;
   onWordMasteredRollback?: (word: Word) => void;
   sessionLeadingAction?: React.ReactNode;
@@ -192,6 +201,22 @@ export const LearningEngine = ({
   const { saveWord } = useSavedWords();
   const { openPopover } = useWordPopover();
   const initialEngineState = useMemo(() => {
+    if (type === 'review' && initialReviewRecovery?.words.length) {
+      const recovery = initialReviewRecovery;
+      const currentIndex = Math.min(Math.max(0, recovery.currentIndex), recovery.words.length - 1);
+      return {
+        queue: recovery.words,
+        currentIndex,
+        initialCompletedIds: new Set(
+          recovery.words
+            .slice(0, currentIndex)
+            .filter((word) => !recovery.words.slice(currentIndex).some((pending) => pending.id === word.id))
+            .map((word) => word.id),
+        ),
+        initialPassedQueueIndices: recovery.passedQueueIndices,
+        initialRound1ConfirmedIds: new Set<string>(),
+      };
+    }
     const hasMatchingSession = initialSession && initialSession.round === type;
     const wordMap = new Map(words.map((word) => [word.id, word]));
     const hydratedQueue = hasMatchingSession
@@ -236,7 +261,7 @@ export const LearningEngine = ({
       initialPassedQueueIndices,
       initialRound1ConfirmedIds,
     };
-  }, [initialSession, type, words]);
+  }, [initialReviewRecovery, initialSession, type, words]);
 
   const [queue, setQueue] = useState<Word[]>(initialEngineState.queue);
   const [currentIndex, setCurrentIndex] = useState(initialEngineState.currentIndex);
@@ -278,6 +303,17 @@ export const LearningEngine = ({
     () => [...passedQueueIndices].sort((left, right) => left - right),
     [passedQueueIndices],
   );
+  const reviewRunId = useRef(initialReviewRecovery?.runId ?? crypto.randomUUID());
+  const reviewCompletedRef = useRef(false);
+  useEffect(() => {
+    if (type === 'review' && onReviewChange && !reviewCompletedRef.current)
+      onReviewChange({
+        runId: reviewRunId.current,
+        words: queue,
+        currentIndex,
+        passedQueueIndices: passedQueueIndicesArray,
+      });
+  }, [currentIndex, onReviewChange, passedQueueIndicesArray, queue, type]);
   const round1ConfirmedWordIdsArray = useMemo(
     () => resolveRound1ConfirmedWordIdsForQueue(queue, round1ConfirmedWordIds),
     [queue, round1ConfirmedWordIds],
@@ -341,6 +377,19 @@ export const LearningEngine = ({
   }, [preferences]);
 
   const currentWord = queue[currentIndex];
+  const inputDraftKey =
+    userId && currentWord
+      ? `lumina.input.v1.${userId}.${initialSession?.groupId ?? reviewRunId.current}.${type}.${currentIndex}.${currentWord.id}`
+      : null;
+  const [hydratedDraftKey, setHydratedDraftKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (!inputDraftKey || inputDraftKey !== hydratedDraftKey) return;
+    try {
+      writeLocal(inputDraftKey, { input: inputValue, showAnswer, choice: round2ChoiceSelection });
+    } catch (error) {
+      setSubmitError((error as Error).message);
+    }
+  }, [hydratedDraftKey, inputDraftKey, inputValue, round2ChoiceSelection, showAnswer]);
   const viewedWord = queue[viewIndex] ?? currentWord;
   const isViewingHistory = viewIndex !== currentIndex;
   const isDictationRound = type === 'round3' || type === 'review';
@@ -435,6 +484,11 @@ export const LearningEngine = ({
   }, []);
 
   useEffect(() => {
+    window.addEventListener('lumina:pause', stopPlayback);
+    return () => window.removeEventListener('lumina:pause', stopPlayback);
+  }, [stopPlayback]);
+
+  useEffect(() => {
     const currentPassedQueueIndices = [...passedQueueIndicesRef.current].sort((left, right) => left - right);
     const hasSamePersistedProgress =
       currentIndexRef.current === initialEngineState.currentIndex &&
@@ -504,6 +558,17 @@ export const LearningEngine = ({
   useEffect(() => {
     setRound2ChoiceSelection(null);
   }, [currentWord?.id, type]);
+
+  useEffect(() => {
+    if (!inputDraftKey) return;
+    const draft = readLocal<{ input: string; showAnswer: boolean; choice: Round2ChoiceSelection | null }>(
+      inputDraftKey,
+    );
+    setInputValue(typeof draft?.input === 'string' ? draft.input : '');
+    setShowAnswer(draft?.showAnswer === true);
+    setRound2ChoiceSelection(draft?.choice ?? null);
+    setHydratedDraftKey(inputDraftKey);
+  }, [inputDraftKey]);
 
   useEffect(() => {
     if (viewIndex === currentIndex) {
@@ -921,6 +986,16 @@ export const LearningEngine = ({
     });
   }, []);
 
+  const requeueCurrentWord = useCallback(() => {
+    if (!currentWord) return;
+    const currentQueue = queueRef.current;
+    const insertAt = getWrongAnswerRequeueIndex(currentIndexRef.current, currentQueue.length);
+    const nextQueue = [...currentQueue];
+    nextQueue.splice(insertAt, 0, currentWord);
+    queueRef.current = nextQueue;
+    setQueue(nextQueue);
+  }, [currentWord]);
+
   const nextWord = useCallback(() => {
     clearAnswerRevealTimeout();
     stopPlayback();
@@ -947,6 +1022,7 @@ export const LearningEngine = ({
 
       // 学习一轮结束，强制触发一次同步
       void attemptBuffer.flush();
+      if (type === 'review') reviewCompletedRef.current = true;
       void onComplete(
         type === 'review'
           ? undefined
@@ -1082,6 +1158,7 @@ export const LearningEngine = ({
         passedQueueIndicesRef.current = nextPassedQueueIndices;
         setPassedQueueIndices(nextPassedQueueIndices);
         void attemptBuffer.flush();
+        if (type === 'review') reviewCompletedRef.current = true;
         void onComplete(
           type === 'review'
             ? undefined
@@ -1333,8 +1410,7 @@ export const LearningEngine = ({
     [canNavigateLeft, canNavigateRight, navigateCard],
   );
 
-  // 页面隐藏 / 关闭时走 keepalive 通道确保送达；
-  // 组件正常卸载（SPA 内路由切换）时走普通 async flush。
+  // 离开时尝试同步；未收到确认的数据保留在本机。
   useEffect(() => {
     const handleHidden = () => {
       if (document.visibilityState === 'hidden') {
@@ -1363,7 +1439,7 @@ export const LearningEngine = ({
         const elapsedMs = Math.max(0, Math.round(now - promptStartedAtRef.current));
 
         // 使用缓冲模块，不再直接调用后端 API
-        void attemptBuffer.pushAttempt({
+        await attemptBuffer.pushAttempt({
           vocabularyItemId: currentWord.id,
           learningGroupId: initialSession?.groupId,
           source: roundSource as ReviewAttemptSource,
@@ -1385,7 +1461,11 @@ export const LearningEngine = ({
 
     if (type === 'round2' && getRound2ChoiceDistractors(currentWord).length === 3) {
       if (!activeRound2ChoiceSelection) return;
-      markCurrentQueueIndexPassed();
+      if (activeRound2ChoiceSelection.wasCorrect) {
+        markCurrentQueueIndexPassed();
+      } else {
+        requeueCurrentWord();
+      }
       nextWord();
       return;
     }
@@ -1404,6 +1484,7 @@ export const LearningEngine = ({
     isViewingHistory,
     markCurrentQueueIndexPassed,
     nextWord,
+    requeueCurrentWord,
     showAnswer,
     type,
   ]);
@@ -1420,7 +1501,7 @@ export const LearningEngine = ({
         learningGroupId: initialSession?.groupId,
         timestamp: Date.now(),
       });
-      markCurrentQueueIndexPassed();
+      requeueCurrentWord();
       nextWord();
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : String(error));
@@ -1432,8 +1513,8 @@ export const LearningEngine = ({
     initialSession?.groupId,
     isSubmittingAttempt,
     isViewingHistory,
-    markCurrentQueueIndexPassed,
     nextWord,
+    requeueCurrentWord,
     showAnswer,
   ]);
 
@@ -1447,7 +1528,12 @@ export const LearningEngine = ({
         optionId: option.id,
         wasCorrect: option.isCorrect,
       });
-      void persistAttempt(option.isCorrect);
+      void persistAttempt(option.isCorrect).then((saved) => {
+        if (!saved) {
+          setSubmitError('答案未能保存，请检查存储空间后重试。');
+          setRound2ChoiceSelection(null);
+        }
+      });
     },
     [activeRound2ChoiceSelection, currentWord, isSubmittingAttempt, isViewingHistory, persistAttempt],
   );
@@ -1466,8 +1552,11 @@ export const LearningEngine = ({
         round1SubmittedInputKeyRef.current = round1SubmissionKey;
       }
 
-      // 后台静默保存，不再阻塞 UI 切换
-      void persistAttempt(wasCorrect);
+      if (roundSource && !(await persistAttempt(wasCorrect))) {
+        round1SubmittedInputKeyRef.current = null;
+        setSubmitError('答案未能保存，请检查存储空间后重试。');
+        return;
+      }
 
       if (wasCorrect) {
         setCompletedWordIds((prev) => {
@@ -1581,10 +1670,7 @@ export const LearningEngine = ({
       setLastWrongInput(rawInput);
 
       if (isDictationRound) {
-        const newQueue = [...queue];
-        const insertAt = Math.min(currentIndex + Math.floor(Math.random() * 3) + 2, newQueue.length);
-        newQueue.splice(insertAt, 0, currentWord);
-        setQueue(newQueue);
+        requeueCurrentWord();
 
         setInputValue('');
         setShowAnswer(true);
@@ -1600,6 +1686,7 @@ export const LearningEngine = ({
     },
     [
       showAnswer,
+      roundSource,
       isSubmittingAttempt,
       isDictationRound,
       isViewingHistory,
@@ -1612,8 +1699,6 @@ export const LearningEngine = ({
       clearAnswerRevealTimeout,
       completeRound1WithConfirmedWords,
       stopPlayback,
-      queue,
-      currentIndex,
       preferences.clozeSentenceAutoPlayEnabled,
       preferences.correctAnswerRevealMs,
       preferences.speechPlaybackRate,
@@ -1622,6 +1707,7 @@ export const LearningEngine = ({
       clozePrompt,
       playExampleSentence,
       markCurrentQueueIndexPassed,
+      requeueCurrentWord,
     ],
   );
 

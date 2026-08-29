@@ -12,6 +12,9 @@ import type {
 import { toConfusingPairs, toWordMorphology, toWordRelations } from '../types';
 import { normalizeRound2ChoiceDistractors } from '../../shared/round2ChoiceDistractors';
 import { supabase } from './supabase';
+import { cacheLearningProgress, cacheLearningRecovery, readLearningRecovery } from './learningRecovery';
+import { enqueueSync, flushSyncQueue, pendingJobs, registerSyncHandler } from './syncQueue';
+import { readLocal, writeLocal } from './durableStorage';
 import {
   OFFICIAL_LIBRARY_DEFINITIONS,
   resolveOfficialLibraryId,
@@ -283,6 +286,37 @@ function uniqueVocabularyItemIds(wordIds: string[]) {
 type CoreLearningRound = Extract<LearningRoundType, 'round1' | 'round2' | 'round3'>;
 
 async function markLearningGroupWordProgress(
+  groupId: string,
+  wordIds: string[],
+  round: CoreLearningRound,
+  options: { round2Required?: boolean; round3Required?: boolean } = {},
+) {
+  const { data } = await supabase.auth.getSession();
+  const userId = data.session?.user.id;
+  if (!userId) throw new Error('请先登录，再保存学习进度。');
+  const words = uniqueVocabularyItemIds(wordIds);
+  if (!words.length) return 0;
+  enqueueSync(userId, `word-progress:${groupId}:${round}:${words.slice().sort().join(',')}`, 'word-progress', {
+    groupId,
+    words,
+    round,
+    options,
+  });
+  void flushSyncQueue(userId);
+  return words.length;
+}
+
+registerSyncHandler('word-progress', async (payload) => {
+  const value = payload as {
+    groupId: string;
+    words: string[];
+    round: CoreLearningRound;
+    options: { round2Required?: boolean; round3Required?: boolean };
+  };
+  await markRemoteLearningGroupWordProgress(value.groupId, value.words, value.round, value.options);
+});
+
+async function markRemoteLearningGroupWordProgress(
   groupId: string,
   wordIds: string[],
   round: CoreLearningRound,
@@ -791,6 +825,29 @@ export async function fetchLearningGroupSession(
   userId: string,
   groupId: string,
 ): Promise<{ groupTitle: string; words: Word[]; session: PersistedLearningSession | null } | null> {
+  const local = readLearningRecovery(userId, groupId);
+  const pending = pendingJobs(userId).find((job) => job.id === `session:${groupId}`);
+  if (pending?.kind === 'session-clear') return null;
+  try {
+    if (navigator.onLine === false && local) return local;
+    const remote = await fetchRemoteLearningGroupSession(userId, groupId);
+    if (!remote) return null;
+    const value =
+      pending && local
+        ? { ...remote, words: local.words, session: pending.payload as PersistedLearningSession }
+        : remote;
+    cacheLearningRecovery(userId, groupId, value);
+    return value;
+  } catch (error) {
+    if (local) return local;
+    throw error;
+  }
+}
+
+async function fetchRemoteLearningGroupSession(
+  userId: string,
+  groupId: string,
+): Promise<{ groupTitle: string; words: Word[]; session: PersistedLearningSession | null } | null> {
   const progressWordColumns = `
         sequence_no,
         vocabulary_item_id,
@@ -1124,6 +1181,16 @@ function staleSafeSessionRoundFilter(session: PersistedLearningSession) {
 }
 
 export async function persistLearningGroupSession(userId: string, session: PersistedLearningSession) {
+  cacheLearningProgress(userId, session);
+  enqueueSync(userId, `session:${session.groupId}`, 'learning-session', session);
+  void flushSyncQueue(userId);
+}
+
+registerSyncHandler('learning-session', (payload, userId) =>
+  persistRemoteLearningGroupSession(userId, payload as PersistedLearningSession),
+);
+
+async function persistRemoteLearningGroupSession(userId: string, session: PersistedLearningSession) {
   if (await shouldSkipStaleSessionPersist(userId, session)) {
     console.warn(`Skipped stale learning session snapshot for group ${session.groupId} at ${session.round}`);
     return;
@@ -1249,6 +1316,24 @@ export async function clearLearningGroupSession(
   groupId: string,
   options: { markCompleted?: boolean } = {},
 ) {
+  const completedAt = new Date().toISOString();
+  const cached = readLearningRecovery(userId, groupId);
+  if (cached) cacheLearningRecovery(userId, groupId, { ...cached, session: null });
+  if (readLocal(`lumina.last-learning.v1.${userId}`) === groupId) writeLocal(`lumina.last-learning.v1.${userId}`, null);
+  enqueueSync(userId, `session:${groupId}`, 'session-clear', { groupId, options: { ...options, completedAt } });
+  void flushSyncQueue(userId);
+}
+
+registerSyncHandler('session-clear', async (payload, userId) => {
+  const value = payload as { groupId: string; options: { markCompleted?: boolean; completedAt: string } };
+  await clearRemoteLearningGroupSession(userId, value.groupId, value.options);
+});
+
+async function clearRemoteLearningGroupSession(
+  userId: string,
+  groupId: string,
+  options: { markCompleted?: boolean; completedAt: string },
+) {
   const updatePayload: Record<string, unknown> = {
     session_round: null,
     session_current_index: null,
@@ -1260,7 +1345,7 @@ export async function clearLearningGroupSession(
 
   if (options.markCompleted) {
     updatePayload.status = 'completed';
-    updatePayload.completed_at = new Date().toISOString();
+    updatePayload.completed_at = options.completedAt;
   }
 
   const { error } = await supabase
@@ -1304,7 +1389,7 @@ export async function clearLearningGroupSession(
       .from('learning_groups')
       .update({
         status: 'completed',
-        completed_at: new Date().toISOString(),
+        completed_at: options.completedAt,
       })
       .eq('id', groupId)
       .eq('user_id', userId);
