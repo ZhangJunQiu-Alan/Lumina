@@ -169,9 +169,9 @@ const ROUTINE_STEPS: RoutineStepKey[] = ['review', 'round1', 'round2', 'round3']
 const ROUTINE_DAY_RESET_HOUR = 5;
 const ROUTINE_STEP_LABELS: Record<RoutineStepKey, string> = {
   review: 'Round 0 · 到期复习',
-  round1: 'Round 1 · 明示关联',
+  round1: 'Round 1 · 词汇记忆',
   round2: 'Round 2 · 主动回忆',
-  round3: 'Round 3 · 听写复现',
+  round3: 'Round 3 · 听写',
 };
 const formatterCache = new Map<string, Intl.DateTimeFormat>();
 
@@ -628,11 +628,11 @@ function buildVisibleRoutineSteps(stepOrder: RoutineStepKey[], completedSteps: R
 
 function buildCompletedSubtitle(todaySummary: DailySummary | undefined) {
   if (!todaySummary) {
-    return '今天的主线流程已经完成';
+    return '今日学习计划已完成';
   }
 
   if (todaySummary.reviewWordCount === 0 && todaySummary.learnedWordCount === 0) {
-    return '今天的主线流程已经完成';
+    return '今日学习计划已完成';
   }
 
   return `今天已完成复习 ${todaySummary.reviewWordCount} 词 · 新学 ${todaySummary.learnedWordCount} 词`;
@@ -875,8 +875,8 @@ function buildRoutineCard(input: {
     if (lastUsedOfficialLibrary) {
       return {
         state,
-        title: '继续主线学习',
-        subtitle: `${lastUsedOfficialTitle} · 抽下一组 40 词`,
+        title: '继续学习新词',
+        subtitle: `${lastUsedOfficialTitle} · 开始下一组词汇学习`,
         ctaLabel: '继续学习',
         ctaMode: 'continue_learning',
         boundLearningGroupId: null,
@@ -893,7 +893,7 @@ function buildRoutineCard(input: {
       state,
       title: '今日已完成',
       subtitle: buildCompletedSubtitle(todaySummary),
-      ctaLabel: '去词库看看',
+      ctaLabel: '查看词库',
       ctaMode: 'open_library',
       boundLearningGroupId,
       visibleSteps,
@@ -908,7 +908,7 @@ function buildRoutineCard(input: {
   if (currentStep === 'review') {
     return {
       state,
-      title: '清理今日到期内容',
+      title: '复习到期单词',
       subtitle: todayReviewCount > 0 ? `待复习：${todayReviewCount} 个单词` : '先完成今天的复习轮',
       ctaLabel: state === 'not_started' ? '开始复习' : '继续复习',
       ctaMode: state === 'not_started' ? 'start_review' : 'continue_review',
@@ -925,7 +925,7 @@ function buildRoutineCard(input: {
   if (boundGroupTitle) {
     return {
       state,
-      title: '接续上一次的专注',
+      title: '继续上次学习',
       subtitle: `${boundGroupTitle} · ${ROUTINE_STEP_LABELS[currentStep ?? 'round1']}`,
       ctaLabel: '继续学习',
       ctaMode: 'continue_learning',
@@ -944,8 +944,8 @@ function buildRoutineCard(input: {
   if (lastUsedOfficialLibrary) {
     return {
       state,
-      title: '继续主线学习',
-      subtitle: `${lastUsedOfficialTitle} · 抽下一组 40 词`,
+      title: '继续学习新词',
+      subtitle: `${lastUsedOfficialTitle} · 开始下一组词汇学习`,
       ctaLabel: '继续学习',
       ctaMode: 'continue_learning',
       boundLearningGroupId: null,
@@ -960,8 +960,8 @@ function buildRoutineCard(input: {
 
   return {
     state,
-    title: '开始新的学习旅程',
-    subtitle: reviewAlreadyDone ? '复习已完成，继续今天的新组学习' : '从 Round 1 开始今天的主线任务',
+    title: '开始学习新词',
+    subtitle: reviewAlreadyDone ? '复习已完成，继续今天的新组学习' : '从词汇记忆开始今日学习',
     ctaLabel: selectedOfficialOption ? '开始学习' : '先选择学习词库',
     ctaMode: 'start_learning',
     boundLearningGroupId,

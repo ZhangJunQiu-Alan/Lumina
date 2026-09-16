@@ -55,8 +55,10 @@ export class GlobalErrorBoundary extends Component<Props, State> {
               <AlertCircle className="w-8 h-8 text-apple-red" />
             </div>
 
-            <h1 className="text-3xl font-black text-text-primary tracking-tight">这页刚才出错了</h1>
-            <p className="mt-4 text-text-secondary leading-7">页面遇到错误。学习进度通常会自动保存，可以刷新后再试。</p>
+            <h1 className="text-3xl font-black text-text-primary tracking-tight">页面加载失败</h1>
+            <p className="mt-4 text-text-secondary leading-7">
+              页面出现异常，请刷新重试。未完成同步的进度可查看同步状态提示。
+            </p>
 
             {process.env.NODE_ENV === 'development' && this.state.error && (
               <div className="mt-6 p-4 bg-black/5 rounded-2xl text-left font-mono text-xs overflow-auto max-h-40 text-apple-red">

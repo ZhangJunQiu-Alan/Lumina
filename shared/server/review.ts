@@ -501,10 +501,13 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
 
   // If the user got it wrong during a review, keep it "due" for today (don't push to future).
   // This allows the word to stay in the queue if the user exits the session midway.
+  const scheduledReviewAt =
+    input.source === 'review' && result === 'wrong' ? now.toISOString() : toNextReviewAt(nextState, now);
+  const preserveEarlierDueDate = result === 'wrong' || isDictationAttemptSource(input.source);
   const nextReviewAt =
-    input.source === 'review' && result === 'wrong'
-      ? (existing?.next_review_at ?? now.toISOString())
-      : toNextReviewAt(nextState, now);
+    preserveEarlierDueDate && scheduledReviewAt && existing?.next_review_at
+      ? new Date(Math.min(Date.parse(existing.next_review_at), Date.parse(scheduledReviewAt))).toISOString()
+      : scheduledReviewAt;
 
   const graduated = currentState !== 'mastered' && nextState === 'mastered';
 
@@ -608,7 +611,9 @@ export async function markVocabularyUnknown(input: MarkVocabularyUnknownInput): 
 
   const currentState = existing?.memory_state ?? null;
   const nextState = FIRST_MEMORY_STATE;
-  const nextReviewAt = toNextReviewAt(nextState, now);
+  const nextReviewAt = new Date(
+    Math.min(existing?.next_review_at ? Date.parse(existing.next_review_at) : now.getTime(), now.getTime()),
+  ).toISOString();
 
   const { error: upsertError } = await supabaseAdmin.from('review_states').upsert(
     {
@@ -727,16 +732,6 @@ export async function markVocabularyMastered(input: MarkVocabularyMasteredInput)
 
   if (eventError) {
     throw new Error(`review_events mastered mark failed: ${eventError.message}`);
-  }
-
-  const { error: savedWordDeleteError } = await supabaseAdmin
-    .from('user_saved_words')
-    .delete()
-    .eq('user_id', input.userId)
-    .eq('vocabulary_item_id', input.vocabularyItemId);
-
-  if (savedWordDeleteError) {
-    throw new Error(`user_saved_words mastered cleanup failed: ${savedWordDeleteError.message}`);
   }
 
   return {

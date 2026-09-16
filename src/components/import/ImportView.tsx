@@ -26,19 +26,19 @@ const MANUAL_DRAFT_KEY = 'manual_vocab_import_draft';
 
 const LOADING_STEP_COPY: Record<LoadingStep, { title: string; detail: string }> = {
   lemmatizing: {
-    title: '正在做词形还原',
-    detail: '先把复数、时态等形式归到基础词形。',
+    title: '正在还原词形',
+    detail: '将复数和不同时态归并为基础词形。',
   },
   fetching: {
     title: '正在检索已有词库',
-    detail: '先找已经整理过的词，避免重复处理。',
+    detail: '正在匹配已有词条。',
   },
   enriching: {
-    title: '正在补齐剩下的词',
-    detail: '释义、例句、构词和关系会一起补齐，通常需要 10 到 30 秒。',
+    title: '正在补充词条',
+    detail: '正在生成缺失的释义、例句和构词信息。',
   },
   merging: {
-    title: '整理成可学顺序',
+    title: '正在整理预览',
     detail: '即将进入预览。',
   },
 };
@@ -243,7 +243,12 @@ export const ImportView = () => {
   };
 
   const handleGenerate = async () => {
-    const batch = analyzeWordBatch(parsedWords, { limit: MANUAL_BATCH_SIZE });
+    if (wordCount > MANUAL_BATCH_SIZE) {
+      setErrorMsg('单次最多导入 30 词，请分批导入。');
+      setStage('error');
+      return;
+    }
+    const batch = analyzeWordBatch(parsedWords);
 
     if (batch.words.length === 0) return;
 
@@ -263,7 +268,7 @@ export const ImportView = () => {
 
   const handleSaveToLibrary = async () => {
     if (!user) {
-      setErrorMsg('先登录，再把这组词保存到你的词库。');
+      setErrorMsg('请登录后保存单词。');
       setStage('error');
       return;
     }
@@ -298,9 +303,9 @@ export const ImportView = () => {
             <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-full border-2 border-dashed border-gray-300">
               <PlusCircle className="h-7 w-7 text-gray-400" />
             </div>
-            <h2 className="mb-2 text-2xl font-black">把一组外部词汇保存到词库</h2>
+            <h2 className="mb-2 text-2xl font-black">导入单词</h2>
             <p className="mb-6 text-sm text-text-secondary">
-              逗号或换行都可以。先整理成完整词条，再按 30 个一组开始学习。
+              使用英文逗号或换行分隔单词，每次最多导入 30 词。保存后可在个人词库中自选任意数量学习。
             </p>
 
             <textarea
@@ -310,13 +315,14 @@ export const ImportView = () => {
                 setStage('input');
               }}
               className="mb-2 h-40 w-full resize-none rounded-2xl bg-apple-gray p-5 text-sm outline-none ring-apple-blue/30 focus:ring-2"
+              aria-label="待导入的单词"
               placeholder="allocate, biodiversity, infrastructure, sustainable…"
             />
 
             <div className="mb-6 flex items-center justify-between px-1">
               <span className="text-xs text-text-secondary">当前识别到 {wordCount} 个词</span>
               {wordCount > MANUAL_BATCH_SIZE && (
-                <span className="text-xs font-bold text-apple-red">这次会先取前 30 个</span>
+                <span className="text-xs font-bold text-apple-red">单次最多导入 30 词，请分批导入</span>
               )}
             </div>
 
@@ -332,7 +338,7 @@ export const ImportView = () => {
               onClick={() => {
                 void handleGenerate();
               }}
-              disabled={wordCount === 0}
+              disabled={wordCount === 0 || wordCount > MANUAL_BATCH_SIZE}
               className="w-full rounded-2xl bg-apple-blue py-4 font-bold text-white transition-all hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
             >
               整理并预览
@@ -362,7 +368,7 @@ export const ImportView = () => {
                 <div className="text-center">
                   <p className="text-xl font-black">{activeTitle}</p>
                   <p className="mt-1 text-sm text-text-secondary">{activeCopy.detail}</p>
-                  <p className="mt-2 text-xs text-text-secondary/70">已等待 {loadingElapsedSec} 秒 · 正常 10~30 秒</p>
+                  <p className="mt-2 text-xs text-text-secondary/70">已等待 {loadingElapsedSec} 秒</p>
                 </div>
 
                 <ol className="w-full max-w-sm space-y-2 text-left">
@@ -420,7 +426,7 @@ export const ImportView = () => {
             className="space-y-4"
           >
             <div className="mb-2 flex items-center justify-between px-1">
-              <h2 className="text-2xl font-black">这组词可以保存了</h2>
+              <h2 className="text-2xl font-black">词条预览</h2>
               <button
                 type="button"
                 onClick={handleBackToInput}
@@ -492,7 +498,7 @@ export const ImportView = () => {
               className="flex w-full items-center justify-center gap-3 rounded-2xl bg-apple-blue py-5 text-lg font-black text-white transition-all hover:scale-[1.01] active:scale-[0.99] jelly-shadow"
             >
               <BookOpen className="h-5 w-5" />
-              保存到我的词库
+              保存到个人词库
               <ArrowRight className="h-5 w-5" />
             </button>
           </motion.div>
@@ -506,7 +512,7 @@ export const ImportView = () => {
             className="glass flex flex-col items-center gap-6 rounded-apple-lg p-16 jelly-shadow"
           >
             <Loader2 className="h-10 w-10 animate-spin text-apple-green" />
-            <p className="text-xl font-black">正在保存到我的词库…</p>
+            <p className="text-xl font-black">正在保存到个人词库…</p>
           </motion.div>
         )}
       </AnimatePresence>

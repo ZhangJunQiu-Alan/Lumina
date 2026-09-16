@@ -103,7 +103,7 @@ describe('Round1ConfusingCard', () => {
 describe('Round1MemoryTipCard', () => {
   it('renders the memory tip', () => {
     render(<Round1MemoryTipCard memoryTip="联想 a-lot-of 分配很多" />);
-    expect(screen.getByText('记忆锦囊')).toBeInTheDocument();
+    expect(screen.getByText('记忆提示')).toBeInTheDocument();
     expect(screen.getByText('联想 a-lot-of 分配很多')).toBeInTheDocument();
   });
 });
@@ -111,7 +111,7 @@ describe('Round1MemoryTipCard', () => {
 describe('AnswerFeedbackCard', () => {
   it('shows the success state with the target word', () => {
     render(<AnswerFeedbackCard word={makeWord()} clozePrompt={null} />);
-    expect(screen.getByText('这次对上了')).toBeInTheDocument();
+    expect(screen.getByText('回答正确')).toBeInTheDocument();
     expect(screen.getByText('allocate')).toBeInTheDocument();
   });
 
@@ -125,9 +125,9 @@ describe('AnswerFeedbackCard', () => {
       senseIndex: 0,
     };
     render(<AnswerFeedbackCard word={makeWord()} clozePrompt={clozePrompt} isWrong wrongInput="alocated" />);
-    expect(screen.getByText('这次没对上 · 正确答案如下')).toBeInTheDocument();
+    expect(screen.getByText('答案有误 · 正确答案如下')).toBeInTheDocument();
     expect(screen.getByText('allocated')).toBeInTheDocument();
-    expect(screen.getByText('原型 · allocate')).toBeInTheDocument();
+    expect(screen.getByText('原形 · allocate')).toBeInTheDocument();
     expect(screen.getByText(/alocated/)).toBeInTheDocument();
   });
 });

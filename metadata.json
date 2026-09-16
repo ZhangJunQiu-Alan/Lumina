@@ -1,6 +1,6 @@
 {
   "name": "Lumina",
-  "description": "An AI-powered English vocabulary learning app with official libraries, custom imports, spaced repetition review, and immersive reading practice.",
+  "description": "英语词汇学习与雅思练习工具，支持官方词库、个人词库、间隔复习与答题回看。",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }

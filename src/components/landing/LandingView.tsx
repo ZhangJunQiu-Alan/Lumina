@@ -40,18 +40,18 @@ const navItems = [
 const heroBullets: IconCopy[] = [
   {
     icon: BrainCircuit,
-    title: '基于艾宾浩斯记忆曲线',
-    text: '自动安排复习，记忆更牢固',
+    title: '按记忆状态安排复习',
+    text: '查看到期单词，按计划复习',
   },
   {
     icon: BookOpenCheck,
     title: '在线 IELTS 练习',
-    text: '学术阅读真题训练与复盘',
+    text: '限时答题、评分与答案回看',
   },
   {
     icon: Layers,
-    title: '未来可扩展的题库系统',
-    text: '持续更新，覆盖更多场景与题型',
+    title: '个人词库',
+    text: '收藏生词，自选数量开始学习',
   },
 ];
 
@@ -59,8 +59,8 @@ const mapNodes = [
   {
     step: '01',
     title: '词汇',
-    subtitle: '记忆引擎',
-    text: '基于艾宾浩斯记忆曲线',
+    subtitle: '学习与复习',
+    text: '按记忆状态安排复习',
     className: 'landing-map-card--vocab',
   },
   {
@@ -74,7 +74,7 @@ const mapNodes = [
     step: '03',
     title: '题库',
     subtitle: '题库中心',
-    text: '海量题库，持续扩展中',
+    text: '已开放阅读；更多题型规划中',
     className: 'landing-map-card--bank',
   },
 ];
@@ -96,53 +96,60 @@ const ieltsStats = [
   { value: '—', label: '目标分' },
 ];
 
-const questionTags = ['语法词汇', '阅读理解', '完形填空', '写作训练', '口语话题', '自定义材料'];
+const questionTags = [
+  '语法词汇 · 规划中',
+  '阅读理解 · 已开放',
+  '完形填空 · 规划中',
+  '写作训练 · 规划中',
+  '口语话题 · 规划中',
+  '材料导入 · 规划中',
+];
 
 const proofItems: IconCopy[] = [
-  { icon: Compass, title: '科学学习', text: '基于认知科学与记忆理论' },
-  { icon: BarChart3, title: '数据驱动', text: '学习效果可视化' },
-  { icon: Route, title: '灵活自由', text: '随时随地，自主掌控' },
-  { icon: ShieldCheck, title: '安全可靠', text: '数据隐私保护' },
+  { icon: Compass, title: '间隔复习', text: '按记忆状态生成复习清单' },
+  { icon: BarChart3, title: '学习记录', text: '查看新学、复习和练习结果' },
+  { icon: Route, title: '自选单词', text: '个人词库支持任意数量学习' },
+  { icon: ShieldCheck, title: '账号同步', text: '登录后读取已保存的进度' },
 ];
 
 const workflowSteps: IconCopy[] = [
   {
     icon: Layers,
     title: '导入学习内容',
-    text: '从官方词库、自定义材料或题目中收集新词，先放进同一个学习档案。',
+    text: '选择官方词库，或将导入和阅读中收藏的单词保存到个人词库。',
   },
   {
     icon: BrainCircuit,
     title: '完成首次记忆',
-    text: '用词义、例句和语境完成第一轮学习，记录哪些词真正记住了。',
+    text: '查看释义和例句，通过拼写确认完成第一轮学习。',
   },
   {
     icon: CalendarClock,
     title: '自动安排复习',
-    text: '基于艾宾浩斯遗忘曲线生成每日复习清单，到期的词会优先出现。',
+    text: '根据单词的记忆状态设置复习间隔，首页显示到期单词。',
   },
   {
     icon: Target,
-    title: '练习结果回流',
-    text: '阅读和题库中的错误会回到复习节奏里，下一轮更有针对性。',
+    title: '收藏阅读生词',
+    text: '在阅读练习中查词并收藏，随后到个人词库勾选学习。',
   },
 ];
 
 const memoryEngineItems: IconCopy[] = [
   {
     icon: CalendarClock,
-    title: '每天先排好复习顺序',
-    text: '新学、待复习、已掌握分开记录，打开后先看到今天最该看的词。',
+    title: '查看到期复习',
+    text: '首页显示待复习词数；复习清单按到期时间和记忆状态排序。',
   },
   {
     icon: BookOpenCheck,
-    title: '把单词放回语境',
-    text: '词义、例句、来源材料和复习状态放在一起，不只停留在单词表。',
+    title: '结合例句学习',
+    text: '词条提供释义、发音、例句和构词信息，供学习时查阅。',
   },
   {
     icon: Target,
-    title: '长期掌握再减少打扰',
-    text: '稳定回忆的词逐步拉长间隔，把精力留给更容易忘的内容。',
+    title: '查看记忆状态',
+    text: '词条显示当前记忆状态与下次复习时间；已掌握的词不再安排到期复习。',
   },
 ];
 
@@ -150,17 +157,17 @@ const ieltsDetailItems: IconCopy[] = [
   {
     icon: Target,
     title: '限时训练',
-    text: '按真实考试节奏完成阅读，记录用时、得分与错因。',
+    text: '阅读限时 60 分钟，提交后查看用时、得分和错题。',
   },
   {
     icon: FileText,
     title: '阅读训练',
-    text: '保留文章、题目、答案和生词，复盘时能回到原文语境。',
+    text: '支持原文高亮、笔记和练习模式查词；交卷后可对照答案回看。',
   },
   {
     icon: BarChart3,
     title: '模考记录',
-    text: '用静态示例展示目标分、练习次数和阶段表现，后续可接入真实记录。',
+    text: '记录已完成练习的得分、正确率和用时，并按题型汇总表现。',
   },
 ];
 
@@ -194,74 +201,60 @@ const questionBankGroups = [
 const continuityItems: IconCopy[] = [
   {
     icon: Compass,
-    title: '统一学习入口',
-    text: '词库、雅思和题库不分散到不同工具里，学习路径更连续。',
+    title: '学习入口',
+    text: '从导航进入词汇学习、雅思练习和生词复习。',
   },
   {
     icon: BarChart3,
-    title: '统一记录口径',
-    text: '新词、复习、练习和目标分用同一个账号保存，方便回看变化。',
+    title: '查看学习记录',
+    text: '账号页显示每日学习记录；雅思页显示练习记录和目标分。',
   },
   {
     icon: Route,
-    title: '统一下一步',
-    text: '下一次打开 Lumina，先接上今天该学、该复习、该练的部分。',
+    title: '继续上次学习',
+    text: '首页提供未完成学习和到期复习的入口。',
   },
   {
     icon: ShieldCheck,
-    title: '可控的数据边界',
-    text: '展示内容以产品能力和静态示例为主，不虚构真实用户成绩承诺。',
+    title: '学习设置',
+    text: '可调整发音、朗读速度、回忆和听写等学习选项。',
   },
 ];
 
 const faqItems = [
   {
     question: 'Lumina 是什么？',
-    answer: [
-      'Lumina 是一款面向中文英语学习者的单词记忆与雅思训练工具。',
-      '“Lumina” 源自拉丁语，有“光芒”“光辉”的意思。这个名字也代表了我做这个项目的初衷：希望它能成为一个真正对别人有帮助的产品。往小了说，是我自己在学习和做事中践行“知行合一”；往大了说，也希望它能通过技术帮助更多人更高效地学习英语。',
-    ],
+    answer: ['Lumina 是面向中文用户的英语词汇学习与雅思练习工具，提供词汇记忆、主动回忆、听写、间隔复习和答题回看。'],
   },
   {
     question: 'Lumina 免费吗？',
-    answer: [
-      '目前 Lumina 是免费的，而且我会尽量长期保持免费。',
-      '因为我现在还在新加坡留学，个人经济压力不算大，所以这个项目一开始并不是为了赚钱。我更希望它先成为一个真正好用、能帮助学习者的工具。',
-      '不过也想提前说明一下：Lumina 后续会陆续加入一些 AI 功能，例如 AI 口语练习、个性化学习辅助等。这类功能可能会产生较高的服务成本。因此，如果未来某些功能的成本非常高，不排除会对部分高级 AI 功能进行收费，用来覆盖服务器和 AI 调用成本。',
-    ],
+    answer: ['目前开放的功能免费使用。未来如增加收费功能，将在使用前说明价格与使用范围。'],
   },
   {
     question: 'Lumina 支持哪些平台？',
+    answer: ['可通过电脑或手机浏览器访问。登录同一账号后，可读取已同步的学习进度。'],
+  },
+  {
+    question: '可以学习自己的单词吗？',
     answer: [
-      '目前 Lumina 主要支持网页端，后续会逐步考虑支持更多平台，包括 App、Windows 和 MacOS。Lumina 的学习进度会跟随账号自动同步。',
+      '可以导入单词，也可以在阅读练习中查词并收藏。进入个人词库后，手动勾选要学习的词，选 1 个或多个均可开始；点击词名可播放发音。',
     ],
   },
   {
-    question: '可以背自己的单词吗？',
+    question: '词汇学习有哪些步骤？',
     answer: [
-      '当然可以。',
-      '这也是我最初开发 Lumina 的重要原因之一：我希望能有一个工具，不只是背固定词库，也能把自己平时在生活中、视频里、文章里、考试材料中遇到的单词保存下来，变成自己的长期词库。',
-      '你可以在个人词库中导入自己的单词。导入后，系统会自动整理词条信息，例如释义、音标、例句、构词、近义词、反义词和记忆提示等。之后，这些单词也可以进入 Lumina 的学习流程和复习系统。',
-    ],
-  },
-  {
-    question: 'Lumina 和其他背单词 App 有什么区别？',
-    answer: [
-      '很多背单词软件会更强调“词库很大”“单词很多”，但真正到考试、阅读或听力中需要回忆时，效果不一定理想。',
-      'Lumina 更关注的是：你是否真的能记住、能回忆、能在真实语境中使用。',
-      '所以 Lumina 把“听写”和“主动回忆”放在默认学习路径中。相比只是看一遍单词，听写和回忆会迫使你真正调动记忆，从而提高单词掌握程度。',
-      '同时，Lumina 也把词汇学习和考试训练连接起来。目前开放雅思学术阅读训练。你在做题时遇到的生词，可以快速加入个人词库，并进入后续学习和复习流程。',
+      '先查看词义、例句并完成拼写，再进行主动回忆与听写。回忆和听写可在学习设置中开关；完成学习后，未掌握的词会进入复习安排。',
     ],
   },
 ];
 
 const reviewTimeline = [
-  { label: '新学', value: '首次记忆' },
-  { label: '1 天后', value: '快速回看' },
-  { label: '2 天后', value: '语境复习' },
-  { label: '4 天后', value: '错词优先' },
-  { label: '7 天后', value: '稳定检查' },
-  { label: '15 天后', value: '长期巩固' },
+  { label: '首次学习', value: '学习词义与用法' },
+  { label: '确认拼写', value: '记录学习进度' },
+  { label: '回忆与听写', value: '按设置完成练习' },
+  { label: '安排复习', value: '按记忆状态排期' },
+  { label: '到期复习', value: '查看当日复习清单' },
+  { label: '查看记录', value: '状态与下次复习时间' },
 ];
 
 function HeroMapCard({ node }: { node: (typeof mapNodes)[number] }) {
@@ -304,7 +297,7 @@ function MemoryCurveChart() {
       {[72, 152, 240, 340, 440, 520].map((x, index) => (
         <circle key={x} cx={x} cy={[70, 92, 98, 106, 112, 132][index]} r="7" className="landing-chart-dot" />
       ))}
-      {['新学', '1天后', '2天后', '4天后', '7天后', '15天后'].map((label, index) => (
+      {['首次学习', '到期复习', '检查回忆', '更新状态', '再次复习', '持续记录'].map((label, index) => (
         <text
           key={label}
           x={[72, 152, 240, 340, 440, 520][index]}
@@ -323,7 +316,7 @@ function MemoryCurveChart() {
       <g className="landing-chart-badge">
         <rect x="420" y="66" width="88" height="28" rx="14" />
         <text x="464" y="85" textAnchor="middle">
-          智能复习点
+          复习示意
         </text>
       </g>
     </svg>
@@ -337,7 +330,7 @@ export const LandingView = () => {
 
   const primaryTarget = isAuthenticated ? '/app/home' : '/auth?mode=register';
   const ieltsTarget = isAuthenticated ? '/app/ielts' : `/auth?mode=login&next=${encodeURIComponent('/app/ielts')}`;
-  const primaryLabel = isAuthenticated ? '进入学习系统' : '开始学习之旅';
+  const primaryLabel = isAuthenticated ? '进入学习系统' : '注册并开始学习';
 
   return (
     <main className="landing-page">
@@ -370,7 +363,7 @@ export const LandingView = () => {
                 size="middle"
                 className="landing-register-button"
               >
-                {isAuthenticated ? '回到学习' : '注册体验'}
+                {isAuthenticated ? '回到学习' : '注册'}
               </IslandButton>
             </div>
           </header>
@@ -384,11 +377,11 @@ export const LandingView = () => {
             >
               <h1>
                 <span>在 Lumina,</span>
-                <span>英语学习像探索一样</span>
-                <span>自然</span>
+                <span>词汇学习与雅思练习</span>
+                <span>集中管理</span>
               </h1>
               <p className="landing-hero-lede">
-                记得牢、练得多、用得上。从词汇记忆到应试训练，Lumina 帮你把学习变成一条清晰可见的成长路线。
+                选择词汇进行记忆、回忆和听写，按计划复习；完成雅思练习后，查看答案与练习记录。
               </p>
 
               <div className="landing-hero-bullets">
@@ -441,8 +434,8 @@ export const LandingView = () => {
                   <BrainCircuit className="h-8 w-8" />
                 </span>
                 <div>
-                  <h2>词汇记忆引擎</h2>
-                  <p>智能安排复习，长期记忆更高效</p>
+                  <h2>词汇学习与复习</h2>
+                  <p>学习、回忆、听写与间隔复习</p>
                 </div>
               </div>
               <MemoryCurveChart />
@@ -463,7 +456,7 @@ export const LandingView = () => {
                 </span>
                 <div>
                   <h2>IELTS 在线练习</h2>
-                  <p>学术阅读专项训练，真题模考</p>
+                  <p>学术阅读练习与限时作答</p>
                 </div>
               </div>
               <div className="landing-ielts-list">
@@ -500,7 +493,7 @@ export const LandingView = () => {
                 </span>
                 <div>
                   <h2>题库中心</h2>
-                  <p>持续扩展的题库系统，覆盖更多学习场景</p>
+                  <p>阅读练习已开放，其他题型仍在规划中</p>
                 </div>
               </div>
               <div className="landing-bank-tags">
@@ -508,9 +501,9 @@ export const LandingView = () => {
                   <span key={tag}>{tag}</span>
                 ))}
               </div>
-              <p className="landing-bank-note">更多题型与场景持续上线中...</p>
+              <p className="landing-bank-note">其他题型暂无开放时间。</p>
               <button type="button" className="landing-bank-button" onClick={() => navigate(primaryTarget)}>
-                查看题库预览
+                查看题型规划
                 <ChevronRight className="h-4 w-4" />
               </button>
             </article>
@@ -535,26 +528,20 @@ export const LandingView = () => {
 
       <section className="landing-longform" aria-label="Lumina system details">
         <div className="landing-detail-kicker">
-          <span>学习路线说明书</span>
+          <span>功能说明</span>
           <h2>
-            把词汇、备考和题库
+            词汇学习、复习
             <br />
-            串成一条进度线。
+            与雅思练习。
           </h2>
-          <p>
-            Lumina
-            不只提供一个背单词入口。它会围绕“今天该学什么、该复习什么、该练什么”组织内容，让英语学习从零散任务变成连续系统。
-          </p>
+          <p>Lumina 提供词汇记忆、到期复习和雅思练习，并保存每次学习进度。</p>
         </div>
 
         <section className="landing-route-section" aria-labelledby="landing-route-title">
           <div className="landing-section-copy">
             <p>系统如何工作</p>
-            <h2 id="landing-route-title">从新词到长期掌握，每一步都有记录。</h2>
-            <span>
-              学习内容进入 Lumina
-              后，会先形成个人词库和练习轨迹。之后每一次复习、错题和模考结果，都会继续影响下一轮安排。
-            </span>
+            <h2 id="landing-route-title">从选词开始，完成学习并安排复习。</h2>
+            <span>词汇学习记录与雅思练习结果分别保存。阅读中收藏的生词，可在个人词库中选择学习。</span>
           </div>
 
           <div className="landing-route-steps">
@@ -576,11 +563,9 @@ export const LandingView = () => {
 
         <section className="landing-memory-detail" aria-labelledby="landing-memory-title">
           <div className="landing-section-copy">
-            <p>词汇记忆引擎</p>
-            <h2 id="landing-memory-title">基于艾宾浩斯遗忘曲线，自动安排复习。</h2>
-            <span>
-              系统用复习间隔管理单词，而不是让你每天重新翻列表。新学、快忘、稳定掌握的词会进入不同节奏，复习清单更清楚。
-            </span>
+            <p>词汇学习与复习</p>
+            <h2 id="landing-memory-title">按记忆状态设置复习间隔。</h2>
+            <span>未掌握的词按当前状态安排 1、3 或 7 天后的复习。以下为流程示意，具体时间以词条记录为准。</span>
           </div>
 
           <div className="landing-memory-detail__board">
@@ -613,10 +598,8 @@ export const LandingView = () => {
         <section className="landing-practice-section" aria-labelledby="landing-practice-title">
           <div className="landing-section-copy">
             <p>IELTS 备考专区</p>
-            <h2 id="landing-practice-title">阅读训练和模考记录，放在同一个备考面板里。</h2>
-            <span>
-              IELTS 不只是刷题入口。练习材料、完成情况、错题和目标分会一起保存，复盘时能看见自己在哪类题上反复失分。
-            </span>
+            <h2 id="landing-practice-title">查看阅读练习、得分与答题记录。</h2>
+            <span>选择套题开始练习，提交后查看答案、正确率和用时。雅思首页汇总已完成练习与题型表现。</span>
           </div>
 
           <div className="landing-practice-grid">
@@ -643,10 +626,8 @@ export const LandingView = () => {
         <section className="landing-bank-detail" aria-labelledby="landing-bank-title">
           <div className="landing-section-copy">
             <p>题库中心</p>
-            <h2 id="landing-bank-title">未来扩展更多题型，也沿用同一套学习底座。</h2>
-            <span>
-              题库中心会逐步覆盖词汇语法、阅读理解、考试复盘、写作口语、校内练习和自定义材料。新模块增加练习场景，不打断已有复习节奏。
-            </span>
+            <h2 id="landing-bank-title">题型开放情况与规划。</h2>
+            <span>阅读练习和答题回看已开放。词汇语法、写作口语、校内练习及材料上传仍在规划中，暂无开放时间。</span>
           </div>
 
           <div className="landing-bank-detail__grid">
@@ -666,12 +647,9 @@ export const LandingView = () => {
 
         <section className="landing-continuity-section" aria-labelledby="landing-continuity-title">
           <div className="landing-section-copy">
-            <p>为什么是一个系统</p>
-            <h2 id="landing-continuity-title">账号里保存的不只是分数，还有学习连续性。</h2>
-            <span>
-              单词、复习、练习结果和偏好放在一起，才知道下一步该继续哪里。Lumina
-              的目标是让学习路径越来越清楚，而不是让入口越来越多。
-            </span>
+            <p>记录与设置</p>
+            <h2 id="landing-continuity-title">用账号保存学习进度。</h2>
+            <span>登录后可查看已保存的词库、学习进度、练习结果和学习设置。</span>
           </div>
 
           <div className="landing-continuity-list">
@@ -693,10 +671,8 @@ export const LandingView = () => {
         <section id="faq" className="landing-faq-section" aria-labelledby="landing-faq-title">
           <div className="landing-section-copy landing-faq-copy">
             <p>常见问题</p>
-            <h2 id="landing-faq-title">开始使用前，先把关键问题说清楚。</h2>
-            <span>
-              这里回答 Lumina 的定位、费用、平台和个人词库能力。每次只展开一个答案，阅读时不会被其他内容打断。
-            </span>
+            <h2 id="landing-faq-title">使用前须知</h2>
+            <span>了解产品功能、费用与使用方式。</span>
           </div>
 
           <div className="landing-faq-list">
@@ -746,7 +722,7 @@ export const LandingView = () => {
           <div className="landing-contact-copy">
             <p>关于 Lumina</p>
             <h2>关于我们</h2>
-            <span>Lumina 还在持续打磨。这里会放真实联系方式，方便反馈词库、题库、雅思训练和账号问题。</span>
+            <span>词条、题目或账号遇到问题，可通过以下方式反馈。</span>
             <div className="landing-contact-links">
               <Link to="/privacy">隐私政策</Link>
               <Link to="/terms">服务条款</Link>
@@ -772,9 +748,9 @@ export const LandingView = () => {
               </div>
               <em>微信号</em>
             </div>
-            <div className="landing-qr-placeholder" aria-label="微信二维码待替换">
+            <div className="landing-qr-placeholder" aria-label="微信联系方式">
               <QrCode className="h-12 w-12" />
-              <span>二维码待替换</span>
+              <span>请通过微信号添加</span>
             </div>
           </div>
         </section>
@@ -782,8 +758,8 @@ export const LandingView = () => {
         <section className="landing-final-band">
           <div>
             <p>从今天开始</p>
-            <h2>先从今天该学什么开始。</h2>
-            <span>注册后保存词库、复习安排、IELTS 训练记录和学习偏好。下次打开 Lumina，就从当前进度继续。</span>
+            <h2>开始词汇学习或雅思练习。</h2>
+            <span>注册后可保存个人词库、学习进度、复习记录和雅思练习结果。</span>
           </div>
           <IslandButton
             onClick={() => navigate(primaryTarget)}

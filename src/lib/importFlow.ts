@@ -1,6 +1,5 @@
 import { supabase } from './supabase';
 import { apiFetch } from './api';
-import { prepareVocabularyItemsForSavedWords } from './savedWordsReviewState';
 import { EnrichedWord, toWord, type OfficialLibraryId, Word } from '../types';
 import {
   analyzeWordBatch,
@@ -279,6 +278,13 @@ async function loadVocabularyEntriesByNormalizedWords(words: string[]) {
 export async function fetchPersistedVocabularyEntriesByIds(ids: string[]): Promise<PersistedVocabularyEntry[]> {
   const uniqueIds = Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean)));
   if (uniqueIds.length === 0) return [];
+  if (uniqueIds.length > 200) {
+    const entries: PersistedVocabularyEntry[] = [];
+    for (let offset = 0; offset < uniqueIds.length; offset += 200) {
+      entries.push(...(await fetchPersistedVocabularyEntriesByIds(uniqueIds.slice(offset, offset + 200))));
+    }
+    return entries;
+  }
 
   const { data, error } = await supabase.from('vocabulary_items').select(vocabularyEntrySelect).in('id', uniqueIds);
 
@@ -437,24 +443,7 @@ export async function saveToUserSavedWords(
     return { saved: 0, skipped: 0, total: 0 };
   }
 
-  const preparation = await prepareVocabularyItemsForSavedWords(userId, vocabularyItemIds);
-  if (preparation.skippedNonNewVocabularyItemIds.length > 0) {
-    const { error } = await supabase
-      .from('user_saved_words')
-      .delete()
-      .eq('user_id', userId)
-      .in('vocabulary_item_id', preparation.skippedNonNewVocabularyItemIds);
-
-    if (error) {
-      throw new Error(`user_saved_words cleanup: ${error.message}`);
-    }
-  }
-
-  if (preparation.eligibleVocabularyItemIds.length === 0) {
-    return { saved: 0, skipped: vocabularyItemIds.length, total: vocabularyItemIds.length };
-  }
-
-  const rows = preparation.eligibleVocabularyItemIds.map((vocabularyItemId) => ({
+  const rows = vocabularyItemIds.map((vocabularyItemId) => ({
     user_id: userId,
     vocabulary_item_id: vocabularyItemId,
     source,

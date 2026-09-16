@@ -61,7 +61,7 @@ import {
   Round1MorphologyCard,
   Round1RelationsCard,
 } from './Round1Cards';
-import { limitRound1ReinforcementWordIds, ROUND1_REINFORCEMENT_WORD_LIMIT } from '../../../shared/learningProgress';
+import { ROUND1_REINFORCEMENT_WORD_LIMIT } from '../../../shared/learningProgress';
 
 function areSetsEqual<T>(left: Set<T>, right: Set<T>) {
   if (left.size !== right.size) return false;
@@ -121,7 +121,7 @@ function isWordQueuePrefix(prefix: Word[], full: Word[]) {
 
 function resolveRound1ConfirmedWordIdsForQueue(queue: Word[], confirmedWordIds: Iterable<string>) {
   const confirmedSet = new Set(confirmedWordIds);
-  return limitRound1ReinforcementWordIds(queue.map((word) => word.id).filter((wordId) => confirmedSet.has(wordId)));
+  return [...new Set(queue.map((word) => word.id).filter((wordId) => confirmedSet.has(wordId)))];
 }
 
 const CORRECT_READBACK_WORD_MS = 550;
@@ -244,14 +244,12 @@ export const LearningEngine = ({
       if (!pendingIds.has(word.id)) initialCompletedIds.add(word.id);
     }
     const initialRound1ConfirmedIds = new Set(
-      limitRound1ReinforcementWordIds(
-        (initialSession?.round1ConfirmedWordIds?.length
-          ? initialSession.round1ConfirmedWordIds
-          : type === 'round1'
-            ? [...initialCompletedIds]
-            : []
-        ).filter((wordId) => wordMap.has(wordId)),
-      ),
+      (initialSession?.round1ConfirmedWordIds?.length
+        ? initialSession.round1ConfirmedWordIds
+        : type === 'round1'
+          ? [...initialCompletedIds]
+          : []
+      ).filter((wordId) => wordMap.has(wordId)),
     );
 
     return {
@@ -288,7 +286,7 @@ export const LearningEngine = ({
     type === 'round1'
       ? round1CanWaitForMoreWords
         ? ROUND1_REINFORCEMENT_WORD_LIMIT
-        : Math.min(Math.max(words.length, 1), ROUND1_REINFORCEMENT_WORD_LIMIT)
+        : Math.max(words.length, 1)
       : initialUniqueCount;
   const progressQueueLength = type === 'round1' ? round1ProgressTarget : initialUniqueCount;
   const completedCount = completedWordIds.size;
@@ -1311,14 +1309,14 @@ export const LearningEngine = ({
       if (result.saved === false || result.skippedReason === 'non_new_state') {
         showSessionActionFeedback({
           tone: 'error',
-          text: '这个词已有学习进度，不重复加入个人词库。',
+          text: '加入个人词库失败，请稍后重试。',
         });
         return;
       }
 
       showSessionActionFeedback({
         tone: 'success',
-        text: result.inserted === false ? '已经在个人词库里' : `已加入个人词库 ${viewedWord.word}`,
+        text: result.inserted === false ? '已在个人词库中' : `已加入个人词库 ${viewedWord.word}`,
       });
     } catch (error) {
       showSessionActionFeedback({
@@ -1586,7 +1584,7 @@ export const LearningEngine = ({
           clearAnswerRevealTimeout();
           setPassedQueueIndices(new Set(nextPassedQueueIndices));
 
-          if (nextConfirmedWordIds.length >= ROUND1_REINFORCEMENT_WORD_LIMIT) {
+          if (round1CanWaitForMoreWords && nextConfirmedWordIds.length >= ROUND1_REINFORCEMENT_WORD_LIMIT) {
             completeRound1WithConfirmedWords({
               currentIndex: currentIndexRef.current,
               queueWordIds: currentQueueWordIds,
@@ -2303,7 +2301,7 @@ export const LearningEngine = ({
                             onPlayExample={({ sentence, key }) => {
                               void playExampleSentence(sentence, key);
                             }}
-                            emptyMessage="这个词目前还没有例句。"
+                            emptyMessage="暂无例句。"
                             variant="inline"
                           />
                         </div>
@@ -2383,7 +2381,7 @@ export const LearningEngine = ({
                 {isViewingHistory
                   ? '回看中'
                   : isSubmittingAttempt
-                    ? '正在写回…'
+                    ? '正在保存…'
                     : showAnswer
                       ? '继续下一个词'
                       : '展开释义'}
@@ -2586,7 +2584,7 @@ export const LearningEngine = ({
                       ) : (
                         <div className="mx-auto max-w-3xl">
                           <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary">
-                            {type === 'review' ? '先写出这个到期词' : '先把这个词从记忆里提出来'}
+                            {type === 'review' ? '根据发音写出单词' : '根据提示写出单词'}
                           </p>
                           <p className="mt-5 text-4xl font-black leading-tight text-text-primary md:text-5xl">
                             {viewedWord.chinese_definition}

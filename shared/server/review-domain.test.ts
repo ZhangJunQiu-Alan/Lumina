@@ -10,6 +10,7 @@ import {
   toNextReviewAt,
   toReviewDateKey,
   toResultType,
+  type MemoryState,
 } from './review-domain';
 
 const BASE_TIME = new Date('2026-04-15T00:00:00.000Z');
@@ -21,6 +22,37 @@ function addDays(days: number) {
 }
 
 describe('review scheduling domain', () => {
+  it.each<[MemoryState, MemoryState]>([
+    ['new', 'stable_recall'],
+    ['fuzzy', 'slow_recall'],
+    ['slow_recall', 'stable_recall'],
+    ['stable_recall', 'mastered'],
+    ['mastered', 'mastered'],
+  ])('maps fast correct recall from %s to %s', (previous, expected) => {
+    expect(resolveReviewState(previous, 'fast_correct', 3)).toBe(expected);
+  });
+
+  it.each<MemoryState>(['new', 'fuzzy', 'slow_recall', 'stable_recall', 'mastered'])(
+    'never graduates a wrong or slow answer from %s, regardless of historical successes',
+    (state) => {
+      for (const successes of [0, 2, 3, 100]) {
+        expect(resolveReviewState(state, 'wrong', successes)).toBe('fuzzy');
+        expect(resolveReviewState(state, 'slow_correct', successes)).toBe('slow_recall');
+      }
+      expect(resolveRound2State(state, 'wrong')).toBe('fuzzy');
+    },
+  );
+
+  it('requires rebuilding recall after a lapse and never graduates on slow answers', () => {
+    let state = resolveReviewState('stable_recall', 'wrong', 100);
+    state = resolveReviewState(state, 'fast_correct', 101);
+    expect(state).toBe('slow_recall');
+    state = resolveReviewState(state, 'fast_correct', 102);
+    expect(state).toBe('stable_recall');
+    state = resolveReviewState(state, 'slow_correct', 103);
+    expect(state).toBe('slow_recall');
+    expect(resolveReviewState('stable_recall', 'fast_correct', 2)).toBe('stable_recall');
+  });
   it('classifies recall speed and schedules the next review from dictation outcomes', () => {
     expect(toResultType(false, 0)).toBe('wrong');
     expect(toResultType(true, FAST_RECALL_MS)).toBe('fast_correct');
@@ -39,10 +71,10 @@ describe('review scheduling domain', () => {
   });
 
   it('graduates stable recall only after enough successful reviews', () => {
-    expect(resolveReviewState('fuzzy', 'wrong', 0)).toBe('slow_recall');
-    expect(resolveReviewState('stable_recall', 'wrong', 0)).toBe('stable_recall');
+    expect(resolveReviewState('fuzzy', 'wrong', 0)).toBe('fuzzy');
+    expect(resolveReviewState('stable_recall', 'wrong', 0)).toBe('fuzzy');
     expect(resolveReviewState('fuzzy', 'slow_correct', 1)).toBe('slow_recall');
-    expect(resolveReviewState('stable_recall', 'slow_correct', 2)).toBe('stable_recall');
+    expect(resolveReviewState('stable_recall', 'slow_correct', 2)).toBe('slow_recall');
     expect(resolveReviewState('fuzzy', 'fast_correct', 1)).toBe('slow_recall');
     expect(resolveReviewState('slow_recall', 'fast_correct', 2)).toBe('stable_recall');
     expect(resolveReviewState('stable_recall', 'fast_correct', 3)).toBe('mastered');

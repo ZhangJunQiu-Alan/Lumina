@@ -27,9 +27,9 @@ const LARGE_SCROLL_CLOSE_PX = 180;
 
 const SRS_BADGE_CONFIG: Record<MemoryState, { text: string; className: string }> = {
   new: { text: '未学习', className: 'bg-sky-50 text-sky-700' },
-  fuzzy: { text: '模糊', className: 'bg-amber-50 text-amber-700' },
-  slow_recall: { text: '记忆中', className: 'bg-blue-50 text-blue-700' },
-  stable_recall: { text: '已记忆', className: 'bg-emerald-50 text-emerald-700' },
+  fuzzy: { text: '待巩固', className: 'bg-amber-50 text-amber-700' },
+  slow_recall: { text: '回忆较慢', className: 'bg-blue-50 text-blue-700' },
+  stable_recall: { text: '回忆稳定', className: 'bg-emerald-50 text-emerald-700' },
   mastered: { text: '已掌握', className: 'bg-violet-50 text-violet-700' },
 };
 
@@ -106,7 +106,7 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
   const { data, loading, missing, error } = useWordLookup(word);
   const senses = groupSenses(data);
   const srsBadge = data?.srs_state ? SRS_BADGE_CONFIG[data.srs_state] : null;
-  const canMutateLibrary = Boolean(data && !data.srs_state);
+  const canMutateLibrary = Boolean(data);
   const lookupAudioUrl =
     accent === 'uk' ? (data?.vocabulary_item.audio_uk_url ?? null) : (data?.vocabulary_item.audio_us_url ?? null);
   const playableWord = data?.vocabulary_item.word ?? '';

@@ -35,7 +35,6 @@ import {
   getCachedOfficialLibraryDetail,
   getCachedOfficialCompletionCounts,
   getCachedOfficialResumeCandidates,
-  invalidateLibraryCache,
   isLibraryCacheFresh,
   removeLibraryGroupFromCache,
   refreshLibraryGroupDetail,
@@ -49,10 +48,11 @@ import {
   buildEmptyOfficialCompletionCounts,
   deleteLibraryGroup,
   fetchOfficialCompletionCounts,
-  migrateCustomGroupWordsIntoSavedWords,
 } from '../../lib/libraryApi';
 import { OfficialLibraryPanel } from './OfficialLibraryPanel';
 import { SavedWordsPanel } from './SavedWordsPanel';
+import { PersonalLearningGroups } from './PersonalLearningGroups';
+import { getLibraryGroupProgress } from '../../lib/libraryGroupProgress';
 import {
   OFFICIAL_LIBRARY_DEFINITIONS,
   buildOfficialLibrarySummary,
@@ -79,7 +79,11 @@ interface LearningGroupRow {
   created_at: string;
   completed_at: string | null;
   session_round: 'round1' | 'round2' | 'round3' | 'article' | null;
-  learning_group_words: { id: string }[] | null;
+  learning_group_words: { id?: string; count?: number }[] | null;
+  session_queue_word_ids?: unknown;
+  session_passed_queue_indices?: unknown;
+  session_round1_confirmed_word_ids?: unknown;
+  session_last_active_at?: string | null;
 }
 
 interface DetailReviewStateRow {
@@ -143,10 +147,10 @@ interface OfficialLibraryDetailData {
 
 const memoryStateLabel: Record<MemoryState, string> = {
   new: '新词',
-  fuzzy: '模糊',
-  slow_recall: '慢回忆',
-  stable_recall: '稳回忆',
-  mastered: '掌握',
+  fuzzy: '待巩固',
+  slow_recall: '回忆较慢',
+  stable_recall: '回忆稳定',
+  mastered: '已掌握',
 };
 
 const memoryStateStyle: Record<MemoryState, string> = {
@@ -159,8 +163,8 @@ const memoryStateStyle: Record<MemoryState, string> = {
 
 const lastResultLabel: Record<ReviewResultType, string> = {
   wrong: '最近一次答错',
-  slow_correct: '最近一次慢正确',
-  fast_correct: '最近一次快正确',
+  slow_correct: '最近一次答对，用时较长',
+  fast_correct: '最近一次快速答对',
 };
 
 const groupStatusLabel: Record<'active' | 'completed', string> = {
@@ -182,14 +186,14 @@ function resolveGroupActionLabel(group: LibraryGroupSummary) {
       sessionRound: group.sessionRound,
     })
   ) {
-    return '继续加固';
+    return '继续文章巩固';
   }
 
   if (isCoreLearningRound(group.sessionRound)) {
-    return '继续这一组';
+    return '继续学习';
   }
 
-  return '回看这组';
+  return '查看学习记录';
 }
 
 function asArray<T>(value: T | T[] | null | undefined): T[] {
@@ -238,6 +242,7 @@ function formatMonthDay(createdAt: string): string {
 }
 
 function mapGroupSummary(row: LearningGroupRow): LibraryGroupSummary {
+  const wordCount = row.learning_group_words?.[0]?.count ?? row.learning_group_words?.length ?? 0;
   const libraryId = resolveOfficialLibraryId(row.library_id, row.group_name, row.source_type);
   const sourceType = resolveLibraryGroupSourceType(row.source_type, row.library_id, row.group_name);
   const completed = isCoreLearningComplete({
@@ -248,19 +253,22 @@ function mapGroupSummary(row: LearningGroupRow): LibraryGroupSummary {
 
   return {
     id: row.id,
-    title:
-      sourceType === 'system'
-        ? (row.group_name ?? formatGroupTitle(row.created_at))
-        : row.group_name?.startsWith('我的词库')
-          ? row.group_name
-          : formatGroupTitle(row.created_at),
+    title: row.group_name?.trim() || formatGroupTitle(row.created_at),
     createdAt: row.created_at,
-    wordCount: row.learning_group_words?.length ?? 0,
+    wordCount,
     sourceType,
     libraryId,
     status: completed ? 'completed' : 'active',
     sessionRound: row.session_round,
     completedAt: row.completed_at,
+    lastActiveAt: row.session_last_active_at,
+    progress: getLibraryGroupProgress({
+      round: row.session_round,
+      wordCount,
+      queue: row.session_queue_word_ids,
+      passedIndices: row.session_passed_queue_indices,
+      confirmedIds: row.session_round1_confirmed_word_ids,
+    }),
   };
 }
 
@@ -330,26 +338,37 @@ function mapGroupWord(row: GroupWordRow): LibraryGroupWord | null {
 }
 
 async function fetchLibraryGroupSummaries(userId: string): Promise<LibraryGroupSummary[]> {
-  const { data, error } = await supabase
-    .from('learning_groups')
-    .select(
-      `
-      id,
-      group_name,
-      source_type,
-      library_id,
-      status,
-      created_at,
-      completed_at,
-      session_round,
-      learning_group_words ( id )
-    `,
-    )
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false });
+  const rows: LearningGroupRow[] = [];
+  const pageSize = 200;
+  let includeConfirmedIds = true;
+  while (true) {
+    const { data, error } = await supabase
+      .from('learning_groups')
+      .select(
+        `
+        id, group_name, source_type, library_id, status, created_at, completed_at, session_round,
+        session_queue_word_ids, session_passed_queue_indices, session_last_active_at,
+        ${includeConfirmedIds ? 'session_round1_confirmed_word_ids,' : ''}
+        learning_group_words ( count )
+      `,
+      )
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(rows.length, rows.length + pageSize - 1);
 
-  if (error) throw error;
-  return ((data ?? []) as LearningGroupRow[]).map(mapGroupSummary);
+    if (error) {
+      if (includeConfirmedIds && error.message.includes('session_round1_confirmed_word_ids')) {
+        includeConfirmedIds = false;
+        continue;
+      }
+      throw error;
+    }
+    const page = (data ?? []) as unknown as LearningGroupRow[];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows.map(mapGroupSummary);
 }
 
 async function fetchOfficialLibraryDetail(
@@ -677,7 +696,7 @@ function WordDetailDrawer({ word, onClose }: { word: LibraryGroupWord; onClose: 
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">这个词现在</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">记忆状态</p>
             <h3 className="mt-2 text-3xl font-black text-text-primary">{word.word}</h3>
             <p className="mt-2 text-sm font-mono text-apple-blue">{word.phonetic || '暂无音标'}</p>
           </div>
@@ -708,14 +727,14 @@ function WordDetailDrawer({ word, onClose }: { word: LibraryGroupWord; onClose: 
 
         <div className="mt-8 space-y-6">
           <section className="glass rounded-2xl p-5">
-            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">当前意思</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">释义</p>
             <p className="mt-3 text-lg font-bold text-text-primary">{word.meaning || '暂无释义'}</p>
           </section>
 
           <section className="glass rounded-2xl p-5">
             <div className="flex items-center gap-2 text-text-secondary">
               <Clock3 className="h-4 w-4" />
-              <p className="text-xs font-bold uppercase tracking-widest">下次可能再见</p>
+              <p className="text-xs font-bold uppercase tracking-widest">下次复习</p>
             </div>
             <p className="mt-3 text-sm text-text-primary">{formatDateTime(word.nextReviewAt)}</p>
             {word.lastResult && <p className="mt-2 text-sm text-text-secondary">{lastResultLabel[word.lastResult]}</p>}
@@ -735,16 +754,14 @@ function WordDetailDrawer({ word, onClose }: { word: LibraryGroupWord; onClose: 
               onPlayExample={({ sentence, key }) => {
                 void playExampleSentence(sentence, key);
               }}
-              emptyMessage="这个词目前还没有例句。"
+              emptyMessage="暂无例句。"
               variant="drawer"
             />
           </section>
 
           <section className="glass rounded-2xl p-5">
             <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">构词拆解</p>
-            <p className="mt-3 text-sm leading-6 text-text-primary">
-              {word.morphology.summaryZh || '这个词目前还没有构词拆解。'}
-            </p>
+            <p className="mt-3 text-sm leading-6 text-text-primary">{word.morphology.summaryZh || '暂无构词信息。'}</p>
 
             <div className="mt-4 space-y-3">
               {word.morphology.parts.length > 0 ? (
@@ -764,7 +781,7 @@ function WordDetailDrawer({ word, onClose }: { word: LibraryGroupWord; onClose: 
                   </div>
                 ))
               ) : (
-                <p className="text-sm leading-6 text-text-secondary">这个词目前还没有可展示的构词拆解。</p>
+                <p className="text-sm leading-6 text-text-secondary">暂无构词信息。</p>
               )}
             </div>
 
@@ -784,7 +801,7 @@ function WordDetailDrawer({ word, onClose }: { word: LibraryGroupWord; onClose: 
                   ))}
                 </div>
               ) : (
-                <p className="mt-3 text-sm leading-6 text-text-secondary">这个词目前还没有派生词线索。</p>
+                <p className="mt-3 text-sm leading-6 text-text-secondary">暂无派生词。</p>
               )}
             </div>
           </section>
@@ -808,7 +825,7 @@ function WordDetailDrawer({ word, onClose }: { word: LibraryGroupWord; onClose: 
                     ))}
                   </div>
                 ) : (
-                  <p className="mt-3 text-sm leading-6 text-text-secondary">这个词目前还没有近义词线索。</p>
+                  <p className="mt-3 text-sm leading-6 text-text-secondary">暂无近义词。</p>
                 )}
               </div>
 
@@ -828,7 +845,7 @@ function WordDetailDrawer({ word, onClose }: { word: LibraryGroupWord; onClose: 
                     ))}
                   </div>
                 ) : (
-                  <p className="mt-3 text-sm leading-6 text-text-secondary">这个词目前还没有反义词线索。</p>
+                  <p className="mt-3 text-sm leading-6 text-text-secondary">暂无反义词。</p>
                 )}
               </div>
             </div>
@@ -846,7 +863,7 @@ function WordDetailDrawer({ word, onClose }: { word: LibraryGroupWord; onClose: 
                 ))}
               </div>
             ) : (
-              <p className="mt-3 text-sm leading-6 text-text-secondary">这个词目前没有需要特别提醒的易混点。</p>
+              <p className="mt-3 text-sm leading-6 text-text-secondary">暂无易混词信息。</p>
             )}
           </section>
 
@@ -879,7 +896,7 @@ function LibraryError({ message }: { message: string }) {
     <div className="glass rounded-apple-lg p-12 flex items-start gap-3 text-apple-red">
       <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
       <div>
-        <p className="font-bold">记忆地图暂时没展开</p>
+        <p className="font-bold">词库加载失败</p>
         <p className="mt-1 text-sm">{message}</p>
       </div>
     </div>
@@ -920,10 +937,10 @@ function DeleteGroupDialog({
             <AlertTriangle className="h-6 w-6" />
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">移出个人材料</p>
-            <h3 className="mt-3 text-2xl font-black text-text-primary">确认移出这组材料？</h3>
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">移除学习组</p>
+            <h3 className="mt-3 text-2xl font-black text-text-primary">移除这组单词？</h3>
             <p className="mt-3 text-sm leading-7 text-text-secondary">
-              删除后，这组词会从你的个人材料里移除；如果这些词没有出现在其他词组里，对应的复习状态也会一起清掉。
+              移除后将删除本组及组内进度。个人收藏、复习状态和答题记录会保留。
             </p>
             <p className="mt-4 rounded-2xl bg-black/5 px-4 py-3 text-sm font-bold text-text-primary">{groupTitle}</p>
           </div>
@@ -942,7 +959,7 @@ function DeleteGroupDialog({
             disabled={isDeleting}
             className="rounded-[22px] bg-black/5 px-5 py-3 text-sm font-bold text-text-secondary transition-colors hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
           >
-            先不删
+            取消
           </button>
           <button
             type="button"
@@ -985,31 +1002,6 @@ export const LibraryView = ({
     if (tab === activeTab) return;
     setSearchParams(tab === 'system' ? { tab: 'system' } : {}, { replace: false });
   };
-
-  useEffect(() => {
-    if (!userId) return;
-
-    const flagKey = `lumina:custom-groups-merged:${userId}`;
-    if (typeof window === 'undefined' || window.localStorage.getItem(flagKey) === '1') return;
-
-    let cancelled = false;
-    void (async () => {
-      try {
-        const result = await migrateCustomGroupWordsIntoSavedWords(userId);
-        if (cancelled) return;
-        window.localStorage.setItem(flagKey, '1');
-        if (result.inserted > 0) {
-          invalidateLibraryCache(userId);
-        }
-      } catch (error) {
-        console.error('migrate custom groups into saved words failed:', error);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [userId]);
 
   useEffect(() => {
     let active = true;
@@ -1132,7 +1124,7 @@ export const LibraryView = ({
   }, [userId]);
 
   if (isLoading || officialResumeCandidates === undefined || officialCompletionCounts === undefined) {
-    return <LibraryLoading message="正在把你的记忆地图展开" />;
+    return <LibraryLoading message="正在加载词库" />;
   }
 
   if (errorMsg) {
@@ -1160,9 +1152,9 @@ export const LibraryView = ({
             <BookOpen className="h-7 w-7" />
           </div>
           <div className="min-w-0 pt-1">
-            <h2 className="text-3xl font-black tracking-tight text-text-primary sm:text-4xl">我的词库</h2>
+            <h2 className="text-3xl font-black tracking-tight text-text-primary sm:text-4xl">词库</h2>
             <p className="mt-2 text-sm leading-7 text-text-secondary">
-              官方词库和自己保存的词会放在这里。凑够 40 个可用词，就能开始一组。
+              选择官方词库，或在个人词库中勾选任意数量的单词开始学习。
             </p>
           </div>
         </div>
@@ -1206,7 +1198,7 @@ export const LibraryView = ({
                 className="mb-3 inline-flex h-10 w-fit items-center justify-center gap-2 rounded-[16px] bg-apple-blue px-4 text-sm font-black text-white shadow-[0_14px_28px_rgba(25,200,185,0.18)] transition-transform active:scale-[0.98]"
               >
                 <PlusCircle className="h-4 w-4" />
-                导入
+                导入单词
               </button>
             )}
           </div>
@@ -1222,6 +1214,7 @@ export const LibraryView = ({
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.18 }}
           >
+            {userId && <PersonalLearningGroups groups={groups} onContinue={onStartLearningGroup} />}
             {userId && (
               <SavedWordsPanel
                 userId={userId}
@@ -1514,7 +1507,7 @@ export const LibraryGroupDetailView = ({
   const selectedWord = useMemo(() => words.find((word) => word.id === selectedId) ?? null, [selectedId, words]);
 
   if (isLoading) {
-    return <LibraryLoading message="正在打开这组材料" />;
+    return <LibraryLoading message="正在加载学习组" />;
   }
 
   if (errorMsg) {
@@ -1525,8 +1518,8 @@ export const LibraryGroupDetailView = ({
     return (
       <div className="glass mx-auto max-w-3xl rounded-apple-lg p-14 text-center jelly-shadow">
         <BookOpen className="mx-auto h-10 w-10 text-text-secondary/50" />
-        <p className="mt-4 text-2xl font-black text-text-primary">这组材料暂时打不开</p>
-        <p className="mt-3 text-sm leading-7 text-text-secondary">可能是这组材料已经不在了，也可能它不属于你。</p>
+        <p className="mt-4 text-2xl font-black text-text-primary">无法加载学习组</p>
+        <p className="mt-3 text-sm leading-7 text-text-secondary">学习组不存在，或当前账号无权访问。</p>
         <button
           type="button"
           onClick={() => navigate('/app/library')}
@@ -1543,8 +1536,8 @@ export const LibraryGroupDetailView = ({
     return <Navigate to={`/app/library/official/${group.libraryId || 'ielts-vocab'}`} replace />;
   }
 
-  const groupSectionLabel = isSystemGroup ? '官方词库' : '我的词库';
-  const groupHelperLabel = isSystemGroup ? '官方词库' : '我的词库';
+  const groupSectionLabel = isSystemGroup ? '官方词库' : '个人词库';
+  const groupHelperLabel = isSystemGroup ? '官方词库' : '个人词库';
 
   const handleDeleteGroup = async () => {
     if (!userId || !group || isSystemGroup) return;
@@ -1616,7 +1609,7 @@ export const LibraryGroupDetailView = ({
               {isStartingLearningGroup ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  正在准备这组
+                  正在加载学习组
                 </>
               ) : (
                 <>
@@ -1636,7 +1629,7 @@ export const LibraryGroupDetailView = ({
                 className="inline-flex items-center gap-2 rounded-full bg-white/82 px-4 py-3 text-sm font-bold text-text-secondary shadow-[0_10px_24px_rgba(0,0,0,0.05)] transition-colors hover:text-apple-red"
               >
                 <Trash2 className="h-4 w-4" />
-                移出这组材料
+                移除学习组
               </button>
             )}
           </div>
@@ -1644,11 +1637,9 @@ export const LibraryGroupDetailView = ({
 
         {words.length === 0 ? (
           <div className="glass rounded-[32px] p-12 text-center jelly-shadow">
-            <p className="text-2xl font-black text-text-primary">这组材料还没有词</p>
+            <p className="text-2xl font-black text-text-primary">学习组中暂无单词</p>
             <p className="mt-3 text-sm leading-7 text-text-secondary">
-              {isSystemGroup
-                ? '稍后再回来看看。正常情况下，这里会出现官方词库里的词。'
-                : '稍后再回来看看。正常情况下，这里会出现你保存的词。'}
+              {isSystemGroup ? '请返回官方词库重新开始学习。' : '请返回个人词库重新选择单词。'}
             </p>
           </div>
         ) : (

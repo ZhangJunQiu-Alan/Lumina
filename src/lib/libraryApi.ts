@@ -1,14 +1,9 @@
 import { supabase } from './supabase';
 import { apiFetch } from './api';
-import { prepareVocabularyItemsForSavedWords } from './savedWordsReviewState';
 import { OFFICIAL_LIBRARY_DEFINITIONS, resolveLibraryGroupSourceType } from './officialLibrary';
 import type { MemoryState, OfficialLibraryId, OfficialLibraryCompletionCounts, ReviewResultType } from '../types';
 
 interface GroupWordRow {
-  vocabulary_item_id: string;
-}
-
-interface SharedWordRow {
   vocabulary_item_id: string;
 }
 
@@ -65,12 +60,6 @@ export interface SavedWordEntry {
   nextReviewAt: string | null;
   lastResult: ReviewResultType | null;
   isInActiveLearningGroup: boolean;
-}
-
-export interface SavedWordsCleanupResult {
-  removedSavedWords: number;
-  createdReviewStates: number;
-  deletedCustomGroups: number;
 }
 
 export interface DeleteLibraryGroupResponse {
@@ -131,61 +120,13 @@ export async function deleteLibraryGroup(userId: string, groupId: string): Promi
     throw new Error('系统词库暂时不支持删除。');
   }
 
-  const { data: groupWords, error: groupWordsError } = await supabase
+  const { count: groupWordCount, error: groupWordsError } = await supabase
     .from('learning_group_words')
-    .select('vocabulary_item_id')
+    .select('id', { count: 'exact', head: true })
     .eq('learning_group_id', groupId);
 
   if (groupWordsError) {
     throw new Error(groupWordsError.message);
-  }
-
-  const targetWordIds = Array.from(
-    new Set(((groupWords ?? []) as GroupWordRow[]).map((row) => row.vocabulary_item_id).filter(Boolean)),
-  );
-
-  let removedReviewStateCount = 0;
-
-  if (targetWordIds.length > 0) {
-    const { data: sharedWords, error: sharedWordsError } = await supabase
-      .from('learning_group_words')
-      .select('vocabulary_item_id, learning_groups!inner(user_id)')
-      .in('vocabulary_item_id', targetWordIds)
-      .neq('learning_group_id', groupId)
-      .eq('learning_groups.user_id', userId);
-
-    if (sharedWordsError) {
-      throw new Error(sharedWordsError.message);
-    }
-
-    const sharedWordIds = new Set(
-      ((sharedWords ?? []) as SharedWordRow[]).map((row) => row.vocabulary_item_id).filter(Boolean),
-    );
-    const orphanWordIds = targetWordIds.filter((wordId) => !sharedWordIds.has(wordId));
-
-    if (orphanWordIds.length > 0) {
-      const { error: reviewEventsError } = await supabase
-        .from('review_events')
-        .delete()
-        .eq('user_id', userId)
-        .in('vocabulary_item_id', orphanWordIds);
-
-      if (reviewEventsError) {
-        throw new Error(reviewEventsError.message);
-      }
-
-      const { error: reviewStatesError, count } = await supabase
-        .from('review_states')
-        .delete({ count: 'exact' })
-        .eq('user_id', userId)
-        .in('vocabulary_item_id', orphanWordIds);
-
-      if (reviewStatesError) {
-        throw new Error(reviewStatesError.message);
-      }
-
-      removedReviewStateCount = count ?? 0;
-    }
   }
 
   const { error: deleteGroupError } = await supabase
@@ -200,8 +141,8 @@ export async function deleteLibraryGroup(userId: string, groupId: string): Promi
 
   return {
     deletedGroupId: groupId,
-    deletedWordCount: targetWordIds.length,
-    removedReviewStateCount,
+    deletedWordCount: groupWordCount ?? 0,
+    removedReviewStateCount: 0,
   };
 }
 
@@ -324,75 +265,6 @@ export async function fetchSavedWords(userId: string): Promise<SavedWordEntry[]>
       } satisfies SavedWordEntry;
     })
     .filter((entry): entry is SavedWordEntry => Boolean(entry));
-}
-
-export async function migrateCustomGroupWordsIntoSavedWords(userId: string): Promise<{ inserted: number }> {
-  const { data: customGroups, error: groupsError } = await supabase
-    .from('learning_groups')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('source_type', 'custom');
-
-  if (groupsError) throw new Error(groupsError.message);
-
-  const groupIds = ((customGroups ?? []) as Array<{ id: string }>).map((g) => g.id).filter(Boolean);
-  if (groupIds.length === 0) return { inserted: 0 };
-
-  const { data: groupWords, error: wordsError } = await supabase
-    .from('learning_group_words')
-    .select('vocabulary_item_id')
-    .in('learning_group_id', groupIds);
-
-  if (wordsError) throw new Error(wordsError.message);
-
-  const vocabularyItemIds = Array.from(
-    new Set(((groupWords ?? []) as GroupWordRow[]).map((row) => row.vocabulary_item_id).filter(Boolean)),
-  );
-  if (vocabularyItemIds.length === 0) return { inserted: 0 };
-
-  const preparation = await prepareVocabularyItemsForSavedWords(userId, vocabularyItemIds);
-  if (preparation.skippedNonNewVocabularyItemIds.length > 0) {
-    const { error } = await supabase
-      .from('user_saved_words')
-      .delete()
-      .eq('user_id', userId)
-      .in('vocabulary_item_id', preparation.skippedNonNewVocabularyItemIds);
-
-    if (error) throw new Error(`user_saved_words migration cleanup: ${error.message}`);
-  }
-
-  if (preparation.eligibleVocabularyItemIds.length === 0) return { inserted: 0 };
-
-  const rows = preparation.eligibleVocabularyItemIds.map((vocabularyItemId) => ({
-    user_id: userId,
-    vocabulary_item_id: vocabularyItemId,
-    source: 'migration' as SavedWordSource,
-  }));
-
-  const { data, error } = await supabase
-    .from('user_saved_words')
-    .upsert(rows, {
-      onConflict: 'user_id,vocabulary_item_id',
-      ignoreDuplicates: true,
-    })
-    .select('id');
-
-  if (error) throw new Error(`user_saved_words migration: ${error.message}`);
-
-  return { inserted: data?.length ?? 0 };
-}
-
-export async function cleanupSavedWords(): Promise<SavedWordsCleanupResult> {
-  const response = await apiFetch('/api/library/saved-words/cleanup', {
-    method: 'POST',
-  });
-
-  const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-  if (!response.ok) {
-    throw new Error((payload as { error?: string }).error ?? `HTTP ${response.status}`);
-  }
-
-  return (payload as { data: SavedWordsCleanupResult }).data;
 }
 
 export async function deleteSavedWord(vocabularyItemId: string): Promise<void> {

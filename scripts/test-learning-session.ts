@@ -169,7 +169,7 @@ assert.deepEqual(fallback.round1ConfirmedWordIds, ['w3']);
 
 const manyWords = makeNumberedWords(45);
 const manyWordIds = manyWords.map((word) => word.id);
-const expectedRound1ConfirmedWordIds = manyWordIds.slice(0, ROUND1_REINFORCEMENT_WORD_LIMIT);
+const expectedRound1ConfirmedWordIds = manyWordIds;
 assert.deepEqual(
   filterWordsToRound1Confirmed(manyWords, manyWordIds).map((word) => word.id),
   expectedRound1ConfirmedWordIds,

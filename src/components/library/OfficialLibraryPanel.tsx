@@ -105,7 +105,7 @@ export function OfficialLibraryPanel({
   const actionDisabled = startMode === 'completed';
   const resumeActive = startMode === 'resume';
 
-  const ctaButtonLabel = actionDisabled ? '已完结' : resumeActive ? '继续学习' : '开始记忆';
+  const ctaButtonLabel = actionDisabled ? '已完成' : resumeActive ? '继续学习' : '开始学习';
 
   const handleStartOfficial = async () => {
     if (startMode === 'resume' && summary.activeResumeCandidate) {
@@ -201,8 +201,8 @@ export function OfficialLibraryPanel({
           <div className="flex flex-col items-center gap-6 text-center">
             <Loader2 className="h-10 w-10 animate-spin text-apple-blue" />
             <div>
-              <p className="text-xl font-black text-text-primary">正在打开上次那一组…</p>
-              <p className="mt-1 text-sm text-text-secondary">会直接回到上次那一轮、那个词位。</p>
+              <p className="text-xl font-black text-text-primary">正在恢复学习进度…</p>
+              <p className="mt-1 text-sm text-text-secondary">将从上次保存的位置继续。</p>
             </div>
           </div>
         </motion.div>

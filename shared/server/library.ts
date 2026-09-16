@@ -591,7 +591,6 @@ export interface SaveWordToLibraryResult {
   inserted: boolean;
   saved: boolean;
   fullEnrichmentQueued: boolean;
-  skippedReason?: 'non_new_state';
 }
 
 export interface RemoveWordFromLibraryResult {
@@ -819,27 +818,6 @@ export async function saveWordToLibrary(
   vocabularyItemId: string,
   source: SavedWordSource = 'reading_popup',
 ): Promise<SaveWordToLibraryResult> {
-  const savedWordState = await ensureWordIsNewForSavedLibrary(userId, vocabularyItemId);
-  if (!savedWordState.allowed) {
-    const { error: cleanupError } = await supabaseAdmin
-      .from('user_saved_words')
-      .delete()
-      .eq('user_id', userId)
-      .eq('vocabulary_item_id', vocabularyItemId);
-
-    if (cleanupError) {
-      throw new Error(`user_saved_words non-new cleanup failed: ${cleanupError.message}`);
-    }
-
-    return {
-      vocabularyItemId,
-      inserted: false,
-      saved: false,
-      fullEnrichmentQueued: false,
-      skippedReason: 'non_new_state',
-    };
-  }
-
   const queueResult = await queueFullEnrichmentForVocabularyItemId(vocabularyItemId, source);
   if (queueResult.reason === 'not_found') {
     throw new Error('这个词条不存在，无法加入词库。');
@@ -978,21 +956,24 @@ export async function createLearningGroupFromSavedWords(
   vocabularyItemIds: string[],
 ): Promise<CreateSavedWordsLearningGroupResult> {
   const uniqueIds = Array.from(new Set(vocabularyItemIds.map((id) => id.trim()).filter(Boolean)));
-  if (uniqueIds.length !== 30) {
-    throw new Error('需要刚好 30 个生词才能开始一组。');
+  if (uniqueIds.length === 0) {
+    throw new Error('请选择至少 1 个单词。');
   }
 
-  const { data: savedRows, error: savedError } = await supabaseAdmin
-    .from('user_saved_words')
-    .select('vocabulary_item_id')
-    .eq('user_id', userId)
-    .in('vocabulary_item_id', uniqueIds);
+  for (let offset = 0; offset < uniqueIds.length; offset += 200) {
+    const chunk = uniqueIds.slice(offset, offset + 200);
+    const { data: savedRows, error: savedError } = await supabaseAdmin
+      .from('user_saved_words')
+      .select('vocabulary_item_id')
+      .eq('user_id', userId)
+      .in('vocabulary_item_id', chunk);
 
-  if (savedError) {
-    throw new Error(`saved words group validation failed: ${savedError.message}`);
-  }
-  if ((savedRows ?? []).length !== uniqueIds.length) {
-    throw new Error('有些词已经不在生词库中，请刷新后再试。');
+    if (savedError) {
+      throw new Error(`saved words group validation failed: ${savedError.message}`);
+    }
+    if ((savedRows ?? []).length !== chunk.length) {
+      throw new Error('部分单词已不在个人词库中，请刷新后重新选择。');
+    }
   }
 
   const { count, error: countError } = await supabaseAdmin
@@ -1007,7 +988,7 @@ export async function createLearningGroupFromSavedWords(
 
   const { data: groupId, error } = await supabaseAdmin.rpc('create_learning_group_exclusive', {
     p_user_id: userId,
-    p_group_name: `我的词库 · 第 ${(count ?? 0) + 1} 组 · 30 词`,
+    p_group_name: `个人词库 · 第 ${(count ?? 0) + 1} 组 · ${uniqueIds.length} 词`,
     p_source_type: 'custom',
     p_library_id: null,
     p_vocabulary_item_ids: uniqueIds,
@@ -1187,62 +1168,6 @@ async function fetchTodayRoutineBoundGroupIds(userId: string, groupIds: string[]
   }
 
   return groupIds.filter((groupId) => preservedGroupIds.has(groupId));
-}
-
-async function ensureWordIsNewForSavedLibrary(userId: string, vocabularyItemId: string) {
-  const { data: existing, error: existingError } = await supabaseAdmin
-    .from('review_states')
-    .select('memory_state')
-    .eq('user_id', userId)
-    .eq('vocabulary_item_id', vocabularyItemId)
-    .maybeSingle<{ memory_state: MemoryState }>();
-
-  if (existingError) {
-    throw new Error(`review_states lookup failed: ${existingError.message}`);
-  }
-
-  if (existing?.memory_state && existing.memory_state !== 'new') {
-    return { allowed: false, created: false };
-  }
-
-  if (existing?.memory_state === 'new') {
-    return { allowed: true, created: false };
-  }
-
-  const { error: upsertError } = await supabaseAdmin.from('review_states').upsert(
-    {
-      user_id: userId,
-      vocabulary_item_id: vocabularyItemId,
-      memory_state: 'new',
-      interval_days: null,
-      next_review_at: null,
-      graduated_at: null,
-    },
-    {
-      onConflict: 'user_id,vocabulary_item_id',
-      ignoreDuplicates: true,
-    },
-  );
-
-  if (upsertError) {
-    throw new Error(`review_states saved-word upsert failed: ${upsertError.message}`);
-  }
-
-  const { data: current, error: currentError } = await supabaseAdmin
-    .from('review_states')
-    .select('memory_state')
-    .eq('user_id', userId)
-    .eq('vocabulary_item_id', vocabularyItemId)
-    .maybeSingle<{ memory_state: MemoryState }>();
-
-  if (currentError) {
-    throw new Error(`review_states lookup failed: ${currentError.message}`);
-  }
-
-  return {
-    allowed: (current?.memory_state ?? 'new') === 'new',
-    created: true,
-  };
 }
 
 async function fetchRound2AttemptWordIds(userId: string, groupId: string) {

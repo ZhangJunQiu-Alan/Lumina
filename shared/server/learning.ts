@@ -357,10 +357,12 @@ async function fetchLearningGroup(userId: string, groupId: string) {
 }
 
 async function fetchLearningWords(groupId: string) {
-  const { data, error } = await supabaseAdmin
-    .from('learning_group_words')
-    .select(
-      `
+  const rows: LearningGroupWordRow[] = [];
+  for (let offset = 0; ; offset += 200) {
+    const { data, error } = await supabaseAdmin
+      .from('learning_group_words')
+      .select(
+        `
       vocabulary_item_id,
       sequence_no,
       vocabulary_items!inner (
@@ -399,14 +401,17 @@ async function fetchLearningWords(groupId: string) {
         )
       )
     `,
-    )
-    .eq('learning_group_id', groupId)
-    .order('sequence_no', { ascending: true });
+      )
+      .eq('learning_group_id', groupId)
+      .order('sequence_no', { ascending: true })
+      .range(offset, offset + 199);
 
-  if (error) throw new Error(`learning group words lookup failed: ${error.message}`);
-  return ((data ?? []) as unknown as LearningGroupWordRow[])
-    .map(mapLearningWord)
-    .filter(Boolean) as LearningWordPayload[];
+    if (error) throw new Error(`learning group words lookup failed: ${error.message}`);
+    const batch = (data ?? []) as unknown as LearningGroupWordRow[];
+    rows.push(...batch);
+    if (batch.length < 200) break;
+  }
+  return rows.map(mapLearningWord).filter(Boolean) as LearningWordPayload[];
 }
 
 async function fetchLearningPreferences(userId: string) {

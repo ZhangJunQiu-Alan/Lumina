@@ -11,11 +11,11 @@ import {
   Search,
   Sparkles,
   Trash2,
+  Volume2,
 } from 'lucide-react';
 import type { MemoryState, Word } from '../../types';
 import { createLearningGroupFromVocabularyEntries, fetchPersistedVocabularyEntriesByIds } from '../../lib/importFlow';
 import {
-  cleanupSavedWords,
   deleteSavedWord,
   fetchActiveLearningGroupWordIds,
   fetchSavedWords,
@@ -29,8 +29,9 @@ import {
   removeSavedWordFromCache,
 } from '../../lib/libraryCache';
 import { AI_CONTENT_FEATURES_ENABLED } from '../../lib/aiFeatures';
-
-type StudyMode = 'sequential' | 'manual';
+import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
+import { cancelBrowserSpeech, speakTextViaBrowser } from '../../lib/browserSpeech';
+import { fetchWordAudioUrl } from '../../lib/wordAudio';
 
 interface SavedWordsPanelProps {
   userId: string;
@@ -40,14 +41,13 @@ interface SavedWordsPanelProps {
   showHeader?: boolean;
 }
 
-const GROUP_SIZE = 30;
 const PAGE_SIZE = 12;
 
 const memoryStateLabel: Record<MemoryState, string> = {
   new: '新词',
-  fuzzy: '模糊',
-  slow_recall: '记忆中',
-  stable_recall: '已记忆',
+  fuzzy: '待巩固',
+  slow_recall: '回忆较慢',
+  stable_recall: '回忆稳定',
   mastered: '已掌握',
 };
 
@@ -93,7 +93,6 @@ export function SavedWordsPanel({
 }: SavedWordsPanelProps) {
   const [savedWords, setSavedWords] = useState<SavedWordEntry[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const [studyMode, setStudyMode] = useState<StudyMode>('sequential');
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
@@ -102,11 +101,78 @@ export function SavedWordsPanel({
   const [deletingWordId, setDeletingWordId] = useState<string | null>(null);
   const [isClearingMastered, setIsClearingMastered] = useState(false);
   const [confirmingClearMastered, setConfirmingClearMastered] = useState(false);
-  const onLibraryMutatedRef = useRef(onLibraryMutated);
+  const { preferences } = useLearningPreferences();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playbackRunRef = useRef(0);
+  const [playingWordId, setPlayingWordId] = useState<string | null>(null);
+  const [audioError, setAudioError] = useState('');
+
+  const stopAudio = useCallback(() => {
+    playbackRunRef.current += 1;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+      audioRef.current = null;
+    }
+    cancelBrowserSpeech();
+  }, []);
 
   useEffect(() => {
-    onLibraryMutatedRef.current = onLibraryMutated;
-  }, [onLibraryMutated]);
+    setPlayingWordId(null);
+    setAudioError('');
+    return stopAudio;
+  }, [stopAudio, userId, preferences.defaultPronunciationLocale]);
+
+  const handlePlayWord = async (entry: SavedWordEntry) => {
+    stopAudio();
+    setAudioError('');
+    if (playingWordId === entry.vocabularyItemId) {
+      setPlayingWordId(null);
+      return;
+    }
+
+    const runId = playbackRunRef.current;
+    const isCurrent = () => playbackRunRef.current === runId;
+    setPlayingWordId(entry.vocabularyItemId);
+    const fallback = async () => {
+      if (!isCurrent()) return;
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      const played = await speakTextViaBrowser(entry.word, preferences.defaultPronunciationLocale).catch(() => false);
+      if (!isCurrent()) return;
+      setPlayingWordId(null);
+      if (!played) setAudioError(`无法播放 ${entry.word} 的发音，请稍后重试。`);
+    };
+
+    try {
+      const url = await fetchWordAudioUrl(entry.word, preferences.defaultPronunciationLocale);
+      if (!isCurrent()) return;
+      if (!url) {
+        await fallback();
+        return;
+      }
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      let settled = false;
+      const fail = () => {
+        if (settled || !isCurrent()) return;
+        settled = true;
+        void fallback();
+      };
+      audio.onended = () => {
+        if (settled || !isCurrent()) return;
+        settled = true;
+        audioRef.current = null;
+        setPlayingWordId(null);
+      };
+      audio.onerror = fail;
+      await audio.play().catch(fail);
+    } catch {
+      await fallback();
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -122,38 +188,7 @@ export function SavedWordsPanel({
     }
 
     const loadSavedWords = async () => {
-      let cleanupChanged = false;
-      let cleanupErrorMsg = '';
-
-      try {
-        const cleanupResult = await cleanupSavedWords();
-        if (!active) return;
-
-        cleanupChanged =
-          cleanupResult.removedSavedWords > 0 ||
-          cleanupResult.createdReviewStates > 0 ||
-          cleanupResult.deletedCustomGroups > 0;
-
-        if (cleanupChanged) {
-          invalidateLibraryCache(userId);
-          try {
-            await onLibraryMutatedRef.current?.();
-          } catch {
-            // Stats refresh should not block saved-word cleanup.
-          }
-        }
-      } catch (error) {
-        cleanupErrorMsg = error instanceof Error ? error.message : String(error);
-        if (cached) {
-          console.error('saved words cleanup failed:', cleanupErrorMsg);
-        }
-      }
-
-      if (cached && isLibraryCacheFresh(cached) && !cleanupChanged) {
-        if (!active) return;
-        if (!cleanupErrorMsg) setErrorMsg('');
-        return;
-      }
+      if (cached && isLibraryCacheFresh(cached)) return;
 
       try {
         const data = await refreshSavedWords(userId, () => fetchSavedWords(userId));
@@ -164,7 +199,7 @@ export function SavedWordsPanel({
         if (!active) return;
         const msg = error instanceof Error ? error.message : String(error);
         if (!cached) {
-          setErrorMsg(cleanupErrorMsg || msg);
+          setErrorMsg(msg);
         } else {
           console.error('saved words refresh failed:', msg);
         }
@@ -227,35 +262,31 @@ export function SavedWordsPanel({
   }, [page, totalPages]);
 
   const selectedCount = selectedIds.size;
-  const sequentialCanStart = availableWords.length >= GROUP_SIZE;
-  const manualCanStart = selectedCount === GROUP_SIZE;
+  const manualCanStart = selectedCount > 0;
   const allSelectablePageWordsSelected =
     selectablePageIds.length > 0 && selectablePageIds.every((id) => selectedIds.has(id));
-  const canTogglePageSelection =
-    studyMode === 'manual' &&
-    selectablePageIds.length > 0 &&
-    (allSelectablePageWordsSelected || selectedCount < GROUP_SIZE);
+  const canTogglePageSelection = selectablePageIds.length > 0 && !isCreatingGroup;
   const pageSelectionLabel = allSelectablePageWordsSelected ? '取消本页' : '全选本页';
 
   const createGroupFromIds = useCallback(
     async (vocabularyItemIds: string[]) => {
-      if (vocabularyItemIds.length !== GROUP_SIZE) {
-        throw new Error(`需要刚好 ${GROUP_SIZE} 个可用词才能开始一组。`);
+      if (vocabularyItemIds.length === 0) {
+        throw new Error('请选择至少 1 个单词。');
       }
 
       const activeWordIds = await fetchActiveLearningGroupWordIds(userId, { sourceType: 'custom' });
       const availableIds = vocabularyItemIds.filter((id) => !activeWordIds.has(id));
-      if (availableIds.length !== GROUP_SIZE) {
-        throw new Error('有些词刚刚已经进入学习组，请刷新后再试。');
+      if (availableIds.length !== vocabularyItemIds.length) {
+        throw new Error('所选单词中有词已在学习，请刷新词库后重新选择。');
       }
 
       const entries = await fetchPersistedVocabularyEntriesByIds(availableIds);
-      if (entries.length !== GROUP_SIZE) {
-        throw new Error('这组词暂时没有完整取回，请再试一次。');
+      if (entries.length !== availableIds.length) {
+        throw new Error('部分词条加载失败，请重试。');
       }
 
       const result = await createLearningGroupFromVocabularyEntries(userId, entries, {
-        groupName: `我的词库 · 第 ${nextGroupNumber} 组 · ${GROUP_SIZE} 词`,
+        groupName: `个人词库 · 第 ${nextGroupNumber} 组 · ${entries.length} 词`,
         groupSourceType: 'custom',
       });
 
@@ -272,30 +303,16 @@ export function SavedWordsPanel({
     [nextGroupNumber, onLibraryMutated, onStartLearningGroup, userId],
   );
 
-  const handleStartSequential = async () => {
-    if (!sequentialCanStart) {
-      setErrorMsg(`还差 ${GROUP_SIZE - availableWords.length} 个可用词才能开始一组。`);
-      return;
-    }
-
-    setIsCreatingGroup(true);
-    setErrorMsg('');
-    try {
-      await createGroupFromIds(availableWords.slice(0, GROUP_SIZE).map((entry) => entry.vocabularyItemId));
-    } catch (error) {
-      setErrorMsg(error instanceof Error ? error.message : String(error));
-    } finally {
-      setIsCreatingGroup(false);
-    }
-  };
-
   const handleStartManual = async () => {
+    if (isCreatingGroup) return;
     if (!manualCanStart) {
-      setErrorMsg(`手动模式需要选满 ${GROUP_SIZE} 个词。`);
+      setErrorMsg('请选择至少 1 个单词。');
       return;
     }
 
     setIsCreatingGroup(true);
+    stopAudio();
+    setPlayingWordId(null);
     setErrorMsg('');
     try {
       await createGroupFromIds([...selectedIds]);
@@ -307,13 +324,13 @@ export function SavedWordsPanel({
   };
 
   const handleToggleWord = (entry: SavedWordEntry) => {
-    if (entry.isInActiveLearningGroup || studyMode !== 'manual') return;
+    if (entry.isInActiveLearningGroup || isCreatingGroup) return;
 
     setSelectedIds((current) => {
       const next = new Set(current);
       if (next.has(entry.vocabularyItemId)) {
         next.delete(entry.vocabularyItemId);
-      } else if (next.size < GROUP_SIZE) {
+      } else {
         next.add(entry.vocabularyItemId);
       }
       return next;
@@ -321,7 +338,7 @@ export function SavedWordsPanel({
   };
 
   const handleToggleCurrentPage = () => {
-    if (studyMode !== 'manual' || selectablePageIds.length === 0) return;
+    if (isCreatingGroup || selectablePageIds.length === 0) return;
 
     setSelectedIds((current) => {
       const next = new Set(current);
@@ -333,7 +350,6 @@ export function SavedWordsPanel({
       }
 
       for (const id of selectablePageIds) {
-        if (next.size >= GROUP_SIZE) break;
         next.add(id);
       }
 
@@ -375,7 +391,7 @@ export function SavedWordsPanel({
     }
 
     if (failures.length > 0) {
-      setErrorMsg(`有 ${failures.length} 个词没能删掉：${failures[0]}`);
+      setErrorMsg(`${failures.length} 个单词移除失败：${failures[0]}`);
     }
 
     setConfirmingClearMastered(false);
@@ -403,24 +419,11 @@ export function SavedWordsPanel({
     }
   };
 
-  const primaryAction =
-    studyMode === 'sequential'
-      ? {
-          label: sequentialCanStart ? '按顺序开始一组' : `还差 ${GROUP_SIZE - availableWords.length} 个词`,
-          disabled: !sequentialCanStart,
-          onClick: handleStartSequential,
-        }
-      : {
-          label: manualCanStart ? '用选中词开始一组' : `已选 ${selectedCount} / ${GROUP_SIZE}`,
-          disabled: !manualCanStart,
-          onClick: handleStartManual,
-        };
-
   if (isLoading) {
     return (
       <section className="glass rounded-[32px] p-10 text-center jelly-shadow">
         <Loader2 className="mx-auto h-9 w-9 animate-spin text-apple-blue" />
-        <p className="mt-4 text-lg font-black text-text-primary">正在整理我的词库</p>
+        <p className="mt-4 text-lg font-black text-text-primary">正在加载个人词库</p>
       </section>
     );
   }
@@ -434,9 +437,9 @@ export function SavedWordsPanel({
               <BookOpen className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-2xl font-black text-text-primary">我的词库</h3>
+              <h3 className="text-2xl font-black text-text-primary">个人词库</h3>
               <p className="mt-2 text-sm leading-7 text-text-secondary">
-                自己保存的词会放在这里。凑够 30 个可用词，就能开始一组。
+                勾选要学习的单词，数量不限。点击词名播放发音。
               </p>
             </div>
           </div>
@@ -451,7 +454,10 @@ export function SavedWordsPanel({
       )}
 
       {errorMsg && (
-        <div className="flex items-start gap-2 rounded-2xl bg-apple-red/10 px-4 py-3 text-sm font-medium text-apple-red">
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-2xl bg-apple-red/10 px-4 py-3 text-sm font-medium text-apple-red"
+        >
           <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <span>{errorMsg}</span>
         </div>
@@ -460,8 +466,10 @@ export function SavedWordsPanel({
       {savedWords.length === 0 ? (
         <div className="glass rounded-[32px] p-12 text-center jelly-shadow">
           <BookOpen className="mx-auto h-10 w-10 text-text-secondary/50" />
-          <p className="mt-4 text-2xl font-black text-text-primary">我的词库还是空的</p>
-          <p className="mt-3 text-sm leading-7 text-text-secondary">可以先从官方词库开始，也可以导入自己的单词。</p>
+          <p className="mt-4 text-2xl font-black text-text-primary">暂无收藏单词</p>
+          <p className="mt-3 text-sm leading-7 text-text-secondary">
+            阅读时可将生词加入个人词库，也可通过“导入单词”添加。
+          </p>
         </div>
       ) : (
         <div className="space-y-5">
@@ -472,31 +480,6 @@ export function SavedWordsPanel({
             </div>
 
             <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="inline-flex h-12 w-full rounded-[18px] bg-white p-1 shadow-[0_12px_28px_rgba(0,0,0,0.05)] sm:w-auto">
-                <button
-                  type="button"
-                  onClick={() => setStudyMode('sequential')}
-                  className={`flex-1 rounded-[14px] px-5 text-sm font-black transition-colors sm:flex-none ${
-                    studyMode === 'sequential'
-                      ? 'bg-[#1d1d1f] text-white shadow-sm'
-                      : 'text-text-secondary hover:text-text-primary'
-                  }`}
-                >
-                  顺序
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStudyMode('manual')}
-                  className={`flex-1 rounded-[14px] px-5 text-sm font-black transition-colors sm:flex-none ${
-                    studyMode === 'manual'
-                      ? 'bg-[#1d1d1f] text-white shadow-sm'
-                      : 'text-text-secondary hover:text-text-primary'
-                  }`}
-                >
-                  手动
-                </button>
-              </div>
-
               <label className="flex h-12 min-w-0 flex-1 items-center gap-2 rounded-[18px] bg-white px-4 text-sm text-text-secondary shadow-[0_12px_28px_rgba(0,0,0,0.05)]">
                 <Search className="h-4 w-4 flex-shrink-0" />
                 <input
@@ -504,35 +487,57 @@ export function SavedWordsPanel({
                   onChange={(event) => setSearchTerm(event.target.value)}
                   className="min-w-0 flex-1 bg-transparent font-medium text-text-primary outline-none placeholder:text-text-secondary/70"
                   placeholder="搜索单词或释义"
+                  aria-label="搜索个人词库"
                 />
               </label>
 
-              {studyMode === 'manual' && (
-                <button
-                  type="button"
-                  onClick={handleToggleCurrentPage}
-                  disabled={!canTogglePageSelection}
-                  className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-[18px] bg-white px-4 text-sm font-black text-text-primary shadow-[0_12px_28px_rgba(0,0,0,0.05)] transition-colors hover:text-apple-blue disabled:cursor-not-allowed disabled:opacity-55 sm:min-w-[112px]"
-                  aria-label={allSelectablePageWordsSelected ? '取消选择本页单词' : '全选本页单词'}
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  {pageSelectionLabel}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={handleToggleCurrentPage}
+                disabled={!canTogglePageSelection}
+                className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-[18px] bg-white px-4 text-sm font-black text-text-primary shadow-[0_12px_28px_rgba(0,0,0,0.05)] transition-colors hover:text-apple-blue disabled:cursor-not-allowed disabled:opacity-55 sm:min-w-[112px]"
+                aria-label={allSelectablePageWordsSelected ? '取消选择本页单词' : '全选本页单词'}
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                {pageSelectionLabel}
+              </button>
 
               <button
                 type="button"
                 onClick={() => {
-                  void primaryAction.onClick();
+                  void handleStartManual();
                 }}
-                disabled={primaryAction.disabled || isCreatingGroup}
+                disabled={!manualCanStart || isCreatingGroup}
                 className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-[18px] bg-apple-blue px-5 text-sm font-black text-white shadow-[0_18px_34px_rgba(25,200,185,0.22)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:scale-100 sm:min-w-[176px]"
               >
                 {isCreatingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                {primaryAction.label}
+                {isCreatingGroup
+                  ? '正在创建学习组…'
+                  : manualCanStart
+                    ? `开始学习（${selectedCount} 词）`
+                    : '请选择单词'}
               </button>
             </div>
           </div>
+
+          <div className="flex flex-wrap items-center gap-3 text-sm text-text-secondary">
+            <p aria-live="polite">已选 {selectedCount} 词，可跨页选择。点击词名播放发音。</p>
+            {selectedCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedIds(new Set())}
+                disabled={isCreatingGroup}
+                className="min-h-11 px-2 font-bold text-apple-blue disabled:opacity-55"
+              >
+                清空选择
+              </button>
+            )}
+          </div>
+          {audioError && (
+            <p role="alert" className="text-sm text-apple-red">
+              {audioError}
+            </p>
+          )}
 
           {masteredCount > 0 && (
             <div className="mt-4 flex flex-col gap-3 rounded-[24px] bg-apple-green/8 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -599,24 +604,34 @@ export function SavedWordsPanel({
                   }`}
                 >
                   <div className="flex min-h-[126px] items-start gap-3">
-                    {studyMode === 'manual' && (
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        disabled={disabledForSelection || (!selected && selectedCount >= GROUP_SIZE)}
-                        onChange={() => handleToggleWord(entry)}
-                        className="mt-2 h-4 w-4 accent-apple-blue disabled:cursor-not-allowed"
-                        aria-label={`选择 ${entry.word}`}
-                      />
-                    )}
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      disabled={disabledForSelection || isCreatingGroup}
+                      onChange={() => handleToggleWord(entry)}
+                      className="mt-1 h-6 w-6 shrink-0 accent-apple-blue disabled:cursor-not-allowed"
+                      aria-label={`选择 ${entry.word}`}
+                    />
 
                     <div className="min-w-0 flex-1 self-stretch">
                       <div className="flex min-h-full flex-col">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                              <h4 className="truncate text-[1.35rem] font-black leading-tight tracking-tight text-text-primary">
-                                {entry.word}
+                              <h4 className="min-w-0 text-[1.35rem] font-black leading-tight tracking-tight text-text-primary">
+                                <button
+                                  type="button"
+                                  onClick={() => void handlePlayWord(entry)}
+                                  aria-label={`${playingWordId === entry.vocabularyItemId ? '停止' : '播放'} ${entry.word} 的${preferences.defaultPronunciationLocale === 'uk' ? '英式' : '美式'}发音`}
+                                  aria-pressed={playingWordId === entry.vocabularyItemId}
+                                  className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-lg text-left hover:text-apple-blue focus-visible:outline-2 focus-visible:outline-apple-blue"
+                                >
+                                  <span className="break-all">{entry.word}</span>
+                                  <Volume2
+                                    aria-hidden="true"
+                                    className={`h-4 w-4 shrink-0 ${playingWordId === entry.vocabularyItemId ? 'text-apple-blue' : 'text-text-secondary'}`}
+                                  />
+                                </button>
                               </h4>
                               <span className="text-xs font-mono font-bold text-apple-blue">
                                 {entry.phonetic || '暂无音标'}
@@ -636,7 +651,7 @@ export function SavedWordsPanel({
                             onClick={() => {
                               void handleDeleteWord(entry);
                             }}
-                            disabled={deletingWordId === entry.vocabularyItemId}
+                            disabled={Boolean(deletingWordId) || isCreatingGroup || isClearingMastered}
                             className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[12px] border border-black/5 bg-white text-text-secondary shadow-[0_8px_18px_rgba(0,0,0,0.04)] transition-colors hover:text-apple-red disabled:cursor-not-allowed disabled:opacity-60"
                             aria-label={`从词库移除 ${entry.word}`}
                           >
@@ -651,7 +666,7 @@ export function SavedWordsPanel({
                         <div className="mt-4 flex flex-1 gap-3">
                           <div className="w-0.5 shrink-0 rounded-full bg-text-secondary/45" />
                           <p className="line-clamp-2 text-sm leading-6 text-text-secondary">
-                            {entry.exampleSentence || '这个词暂时还没有可展示的例句。'}
+                            {entry.exampleSentence || '暂无例句。'}
                           </p>
                         </div>
 
@@ -668,7 +683,7 @@ export function SavedWordsPanel({
                           )}
                           {entry.isInActiveLearningGroup && (
                             <span className="rounded-full bg-black/5 px-2.5 py-0.5 text-[11px] font-bold text-text-secondary">
-                              已在学习组
+                              学习中，暂不可选
                             </span>
                           )}
                         </div>
@@ -681,7 +696,7 @@ export function SavedWordsPanel({
 
             {pageWords.length === 0 && (
               <div className="rounded-[24px] bg-white px-6 py-10 text-center text-sm font-bold text-text-secondary shadow-[0_14px_34px_rgba(0,0,0,0.04)] xl:col-span-2">
-                没有匹配的词。
+                未找到匹配的单词，请尝试其他单词或释义。
               </div>
             )}
           </div>

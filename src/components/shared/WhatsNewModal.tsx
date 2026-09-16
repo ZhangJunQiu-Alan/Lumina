@@ -60,8 +60,8 @@ export function WhatsNewModal() {
                 <Sparkles className="h-6 w-6" />
               </div>
 
-              <h2 className="mb-2 text-2xl font-black text-text-primary">上次以来的更新</h2>
-              <p className="mb-6 text-sm font-medium text-text-secondary">本次更新：</p>
+              <h2 className="mb-2 text-2xl font-black text-text-primary">更新记录</h2>
+              <p className="mb-6 text-sm font-medium text-text-secondary">2026 年 6 月 2 日</p>
 
               <div className="space-y-4 mb-8">
                 <div className="flex gap-3">
@@ -69,7 +69,7 @@ export function WhatsNewModal() {
                     <Bug className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold leading-relaxed text-text-primary">修复了一些已知BUG</h3>
+                    <h3 className="text-sm font-bold leading-relaxed text-text-primary">修复已知问题</h3>
                   </div>
                 </div>
                 <div className="flex gap-3">
@@ -85,7 +85,7 @@ export function WhatsNewModal() {
                     <ArrowLeftRight className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold leading-relaxed text-text-primary">支持了词卡滑动切换</h3>
+                    <h3 className="text-sm font-bold leading-relaxed text-text-primary">支持滑动切换词卡</h3>
                   </div>
                 </div>
                 <div className="flex gap-3">
@@ -94,14 +94,14 @@ export function WhatsNewModal() {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold leading-relaxed text-text-primary">
-                      修正了剑桥雅思4-6册雅思阅读文字错误
+                      修正剑桥雅思 4–6 册阅读文本错误
                     </h3>
                   </div>
                 </div>
               </div>
 
               <IslandButton onClick={handleOpenHome} tone="mint" block size="large">
-                去首页看看
+                返回首页
               </IslandButton>
             </IslandModalShell>
           </motion.div>

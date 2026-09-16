@@ -69,7 +69,7 @@ const MODULE_CARD_CONFIGS: ModuleCardConfig[] = [
     icon: BookOpenCheck,
     title: 'Academic Reading',
     titleZh: '学术阅读',
-    description: '3 篇文章、40 道题、60 分钟。提升阅读理解与快速定位能力。',
+    description: '每套 3 篇文章、40 道题，限时 60 分钟。支持答案回看。',
     actionLabel: '进入阅读训练',
     accent: 'teal',
   },
@@ -80,7 +80,7 @@ const MODULE_CARD_CONFIGS: ModuleCardConfig[] = [
           icon: Headphones,
           title: 'Listening',
           titleZh: '听力',
-          description: '4 个 Section、40 道题、30 分钟。提升听力理解与信息捕捉能力。',
+          description: '每套 4 个 Section、40 道题，限时 30 分钟。提供音频与答案回看。',
           actionLabel: '进入听力训练',
           accent: 'amber' as const,
         },
@@ -91,8 +91,8 @@ const MODULE_CARD_CONFIGS: ModuleCardConfig[] = [
     icon: PenLine,
     title: 'Writing',
     titleZh: '写作',
-    description: 'Task 1 + Task 2。AI 批改、结构反馈和表达提升即将开放。',
-    actionLabel: '即将开放',
+    description: '写作练习与反馈功能尚未开放。',
+    actionLabel: '尚未开放',
     accent: 'violet',
     disabled: true,
   },
@@ -101,8 +101,8 @@ const MODULE_CARD_CONFIGS: ModuleCardConfig[] = [
     icon: MessageCircle,
     title: 'Speaking',
     titleZh: '口语',
-    description: '3 个 Part 全真模拟。AI 口语练习与发音反馈即将开放。',
-    actionLabel: '即将开放',
+    description: '口语练习与发音反馈功能尚未开放。',
+    actionLabel: '尚未开放',
     accent: 'coral',
     disabled: true,
   },
@@ -508,12 +508,7 @@ function StatsPanel({
   onTargetScoreChange: (score: IeltsTargetScore) => Promise<void>;
 }) {
   const currentBandLabel = model.currentBand === null ? '--' : formatBand(model.currentBand);
-  const gapLabel =
-    model.currentBand === null
-      ? '完成一次练习后生成'
-      : model.targetScore > model.currentBand
-        ? `距目标分 ${formatBand(model.targetScore - model.currentBand)} 分`
-        : '已达到当前目标';
+  const gapLabel = model.currentBand === null ? '完成练习后生成' : '正确率 × 9，仅作练习参考';
   const ringStyle = {
     '--ielts-progress': `${model.overallProgressPercent * 3.6}deg`,
   } as CSSProperties;
@@ -530,7 +525,7 @@ function StatsPanel({
         <div className="flex min-h-[124px] min-w-0 flex-col px-3 sm:min-h-[134px] sm:px-4">
           <div className="flex h-8 items-start gap-1.5 text-text-secondary sm:gap-2">
             <BarChart3 className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
-            <p className="min-w-0 text-[10px] font-black leading-4 sm:text-xs">当前水平</p>
+            <p className="min-w-0 text-[10px] font-black leading-4 sm:text-xs">练习参考值</p>
           </div>
           <div className="flex min-h-[58px] flex-1 items-center">
             <p className="text-[28px] font-black leading-none tracking-tight text-[#2d2a2a] sm:text-[38px] xl:text-[42px]">
@@ -586,7 +581,7 @@ function PracticeModuleCard({
   const progressLabel = progress
     ? progress.totalTests > 0
       ? `进度 ${progress.progressPercent}% · ${progress.completedTests} / ${progress.totalTests} 套`
-      : '题库导入后可练习'
+      : '暂无可用套题'
     : '功能开放后可练习';
   const secondaryLabel = progress
     ? progress.attemptCount > 0
@@ -594,7 +589,7 @@ function PracticeModuleCard({
       : progress.totalTests > 0
         ? `${progress.questionCount} 道真题待练`
         : '暂无可用题库'
-    : '即将开放';
+    : '尚未开放';
 
   if (config.disabled) {
     return (
@@ -619,7 +614,7 @@ function PracticeModuleCard({
           {config.description}
         </p>
         <span className="mt-3 inline-flex rounded-full bg-black/5 px-3 py-1.5 text-[10px] font-black text-text-secondary sm:text-[11px]">
-          即将开放
+          尚未开放
         </span>
       </article>
     );
@@ -678,7 +673,7 @@ function PracticeModuleCard({
           (config.disabled || !isUnavailable) && classes.buttonShadow,
         )}
       >
-        {isUnavailable ? (config.disabled ? '即将开放' : '题库导入后开放') : config.actionLabel}
+        {isUnavailable ? (config.disabled ? '尚未开放' : '暂无套题') : config.actionLabel}
         {!isUnavailable && <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />}
       </button>
     </article>
@@ -819,15 +814,14 @@ function RecommendationPanel({
       <div className="mt-4 hidden flex-wrap gap-x-8 gap-y-3 text-sm font-bold text-text-secondary sm:flex">
         <span className="inline-flex items-center gap-2">
           <CheckCircle2 className="h-4 w-4" />
-          每天至少完成 1 套真题练习
+          为答题和复盘分别安排时间
         </span>
         <span className="inline-flex items-center gap-2">
           <Star className="h-4 w-4" />
-          错题本每周复盘，巩固薄弱点
+          从练习记录回看错题
         </span>
         <span className="inline-flex items-center gap-2">
-          <Clock3 className="h-4 w-4" />
-          每周安排一次 60 分钟限时阅读
+          <Clock3 className="h-4 w-4" />用 60 分钟限时阅读检查时间分配
         </span>
       </div>
     </section>
@@ -946,9 +940,9 @@ function LearningDataPanel({ model }: { model: IeltsDashboardModel }) {
 
 function StudyAdvicePanel() {
   const advice = [
-    '每天至少完成 1 套真题练习，保持手感与节奏。',
-    '错题本每周复盘，巩固薄弱点，提升正确率。',
-    '每周安排一次 60 分钟限时阅读，训练完整考试节奏。',
+    '根据可用时间选择套题，预留答题与复盘时间。',
+    '从练习记录回看错题，对照原文检查答题依据。',
+    '需要模拟考试时，可选择 60 分钟限时阅读。',
   ];
 
   return (
@@ -1069,12 +1063,12 @@ export function IeltsHomeView() {
             剑桥雅思真题训练
           </h2>
           <p className="mt-2 max-w-3xl text-xs font-bold leading-6 text-text-secondary sm:mt-3 sm:text-sm sm:leading-7">
-            先用剑桥学术阅读真题建立考试节奏，写作与口语模块将逐步开放。
+            选择套题开始练习，提交后查看答案、正确率和用时。
           </p>
           <div className="mt-6 hidden flex-wrap gap-3 sm:flex">
-            <CapabilityBadge icon={Target} title="贴近真实" subtitle="剑桥 4-18 官方真题" accent="teal" />
-            <CapabilityBadge icon={BarChart3} title="智能分析" subtitle="AI 批改与弱点诊断" accent="amber" />
-            <CapabilityBadge icon={Sparkles} title="高效提分" subtitle="个性化学习路径" accent="violet" />
+            <CapabilityBadge icon={Target} title="套题练习" subtitle="按剑桥分册选择" accent="teal" />
+            <CapabilityBadge icon={BarChart3} title="题型统计" subtitle="查看各题型正确率" accent="amber" />
+            <CapabilityBadge icon={Sparkles} title="练习记录" subtitle="查看得分与用时" accent="violet" />
           </div>
         </header>
 

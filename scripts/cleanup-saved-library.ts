@@ -79,6 +79,7 @@ async function main() {
     JSON.stringify(
       {
         mode: result.mode,
+        retired: result.retired,
         targetUsers: result.usersInspected,
         affectedUsers: result.affectedUsers,
         savedWordsInspected: result.savedWordsInspected,

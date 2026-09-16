@@ -98,7 +98,7 @@ export const RoundIndicator = ({
     round1: '记忆',
     round2: '回忆',
     round3: '听写',
-    article: '最后用短文收口',
+    article: '文章巩固',
   };
   const colors: Record<RoundType, string> = {
     review: 'bg-apple-red',

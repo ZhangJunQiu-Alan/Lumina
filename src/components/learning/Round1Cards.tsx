@@ -47,17 +47,17 @@ export const AnswerFeedbackCard = ({
       <div className="space-y-3">
         <div>
           <p className="text-[10px] uppercase tracking-widest opacity-70">
-            {isWrong ? '这次没对上 · 正确答案如下' : '这次对上了'}
+            {isWrong ? '答案有误 · 正确答案如下' : '回答正确'}
           </p>
           <div className="mt-1 flex flex-wrap items-baseline gap-3">
             <p className="text-lg font-black leading-none md:text-xl">
               {clozePrompt ? clozePrompt.expectedForm : word.word}
             </p>
             {clozePrompt && clozePrompt.expectedForm !== clozePrompt.baseForm && (
-              <p className="text-xs font-medium opacity-70">原型 · {clozePrompt.baseForm}</p>
+              <p className="text-xs font-medium opacity-70">原形 · {clozePrompt.baseForm}</p>
             )}
             {isWrong && wrongInput && (
-              <p className="text-sm font-medium line-through opacity-60">你刚才写的是：{wrongInput}</p>
+              <p className="text-sm font-medium line-through opacity-60">你的答案：{wrongInput}</p>
             )}
           </div>
         </div>
@@ -306,7 +306,7 @@ export const Round1MemoryTipCard = ({
 }: { memoryTip: string } & Round1LookupProps) => (
   <aside className="flex min-h-[92px] rounded-[18px] border border-apple-blue/15 bg-apple-blue/8 px-4 py-3 sm:px-5 sm:py-4 lg:min-h-[88px] lg:max-h-[132px] lg:w-full lg:max-w-[430px] lg:self-start lg:overflow-y-auto">
     <div className="my-auto min-w-0">
-      <p className="text-[11px] sm:text-[12px] font-bold uppercase tracking-[0.22em] text-apple-blue">记忆锦囊</p>
+      <p className="text-[11px] sm:text-[12px] font-bold uppercase tracking-[0.22em] text-apple-blue">记忆提示</p>
       <p className="mt-1.5 text-[13px] sm:text-sm leading-6 text-text-primary">
         <Round1LookupText text={memoryTip} targetWords={targetWords} onWordClick={onWordClick} />
       </p>

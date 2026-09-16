@@ -39,7 +39,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   if (isAuthLoading) {
-    return <FullscreenLoader message="正在同步学习进度" />;
+    return <FullscreenLoader message="正在确认登录状态" />;
   }
 
   if (!isAuthenticated) {
@@ -85,7 +85,7 @@ export default function RootApp() {
           path="/app/*"
           element={
             <ProtectedRoute>
-              <Suspense fallback={<FullscreenLoader message="正在准备学习空间" />}>
+              <Suspense fallback={<FullscreenLoader message="正在加载页面" />}>
                 <App />
               </Suspense>
             </ProtectedRoute>

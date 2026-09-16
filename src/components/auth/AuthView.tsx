@@ -47,53 +47,53 @@ const defaultFormState: FormState = {
 const authModeCopy: Record<AuthMode, AuthModeCopy> = {
   login: {
     kicker: '继续学习',
-    heading: '让今天的学习接上昨天。',
-    body: '登录后，Lumina 会同步你的词库、到期复习、未完成学习和设备偏好。',
+    heading: '登录并继续学习',
+    body: '登录后可读取已保存的词库、学习进度、复习记录和学习设置。',
     cta: '用邮箱登录',
   },
   register: {
     kicker: '保存进度',
-    heading: '创建账号，把第一组词变成长期进度。',
-    body: '从第一次学习开始记录复习间隔、错词来源和播放偏好，换设备也能继续。',
+    heading: '创建 Lumina 账号',
+    body: '注册后可保存词库、学习进度和练习结果。',
     cta: '创建账号',
   },
   forgot: {
     kicker: '找回账号',
-    heading: '先找回密码，不用重新开始。',
+    heading: '重置登录密码',
     body: '输入注册邮箱。若账号存在，我们会发送一封安全重置邮件。',
     cta: '发送重置邮件',
   },
   reset: {
     kicker: '重设密码',
-    heading: '换一个新密码，进度保持不变。',
-    body: '保存后重置链接会失效，你可以继续回到原来的词库和复习安排。',
+    heading: '设置新密码',
+    body: '请设置新密码。更新密码不会删除学习数据。',
     cta: '更新密码并继续',
   },
 };
 
 const storyCopy: Record<AuthMode, { title: string; body: string; items: string[]; focus: string }> = {
   login: {
-    title: '让今天的学习接上昨天。',
-    body: 'Lumina 会把你上次停下的词、今日到期复习和学习偏好放回同一个入口。',
+    title: '登录并继续学习',
+    body: '首页提供未完成学习与到期复习的入口。',
     items: ['读取未完成学习', '同步今日复习队列', '保留发音与播放偏好'],
     focus: '继续上次停下的词',
   },
   register: {
-    title: '先保存进度，再开始第一组词。',
-    body: '账号会记录见过的词、复习间隔、错题来源和设备偏好，让学习不再从零开始。',
-    items: ['保存第一组学习记录', '建立个人复习节奏', '跨设备继续学习'],
+    title: '保存学习进度',
+    body: '词库、学习记录与播放偏好会保存到账号。',
+    items: ['保存第一组学习记录', '查看到期复习', '跨设备继续学习'],
     focus: '从第一组词开始记录',
   },
   forgot: {
-    title: '不用重新开始。',
+    title: '保留原有学习数据',
     body: '重置密码只会更新登录方式，你的词库、状态和复习安排仍然保留。',
     items: ['发送安全重置链接', '保留原有学习数据', '完成后回到登录入口'],
     focus: '找回账号入口',
   },
   reset: {
-    title: '换个新密码，进度不变。',
+    title: '更新密码',
     body: '新密码保存后，你可以继续使用原来的学习进度。',
-    items: ['确认两次新密码', '保存后链接失效', '继续原有学习进度'],
+    items: ['确认两次新密码', '保存新密码', '继续原有学习进度'],
     focus: '更新登录方式',
   },
 };
@@ -107,14 +107,14 @@ const authProgressStats = [
 const authBenefitTiles: Array<{ icon: LucideIcon; title: string; text: string; tone: 'mint' | 'yellow' | 'blue' }> = [
   {
     icon: BookOpen,
-    title: '词库不丢',
-    text: '官方词库、自定义词和保存词统一跟随账号。',
+    title: '词库同步',
+    text: '保存所选官方词库、个人词库与学习记录。',
     tone: 'mint',
   },
   {
     icon: History,
-    title: '复习不断',
-    text: '每天先看到最该复习的内容，减少临时翻找。',
+    title: '到期复习',
+    text: '首页显示当日待复习词数与复习入口。',
     tone: 'yellow',
   },
   {
@@ -148,7 +148,7 @@ function getPasswordStrength(password: string) {
     return {
       score,
       label: '偏弱',
-      detail: '再加长一点，最好混合大小写、数字或符号。',
+      detail: '建议增加长度，并混合大小写字母、数字或符号。',
       colorClass: 'bg-apple-red',
       textClass: 'text-apple-red',
     };
@@ -157,7 +157,7 @@ function getPasswordStrength(password: string) {
     return {
       score,
       label: '可用',
-      detail: '已经达到基本要求，继续加长会更稳。',
+      detail: '已达到基本长度要求，建议使用更长的密码。',
       colorClass: 'bg-apple-orange',
       textClass: 'text-apple-orange',
     };
@@ -166,7 +166,7 @@ function getPasswordStrength(password: string) {
   return {
     score,
     label: '强',
-    detail: '这个密码强度不错，适合长期使用。',
+    detail: '密码长度与字符组合较强，请避免在其他网站重复使用。',
     colorClass: 'bg-apple-green',
     textClass: 'text-apple-green',
   };
@@ -183,13 +183,13 @@ function normalizeOAuthError(message: string) {
 
   if (!normalized) return null;
   if (normalized.includes('redirect_uri_mismatch')) {
-    return 'Google 登录这次没有成功。你可以先用邮箱登录；如果这个问题一直出现，再联系支持处理。';
+    return 'Google 登录失败，请重试或使用邮箱登录。';
   }
   if (normalized.includes('provider is not enabled')) {
-    return 'Google 入口暂时还没恢复，你可以先用邮箱进入。';
+    return 'Google 登录暂不可用，请使用邮箱登录。';
   }
   if (normalized.includes('access_denied')) {
-    return '这次没有完成 Google 授权。你可以重试一次，或先改用邮箱进入。';
+    return 'Google 授权未完成，请重试或使用邮箱登录。';
   }
 
   return normalized;
@@ -351,7 +351,7 @@ export const AuthView = () => {
     } catch (error) {
       setFeedback({
         type: 'error',
-        text: error instanceof Error ? error.message : 'Google 登录这次没有成功。你可以再试一次，或者先用邮箱登录。',
+        text: error instanceof Error ? error.message : 'Google 登录失败，请重试或使用邮箱登录。',
       });
       setIsGoogleSubmitting(false);
     }
@@ -367,7 +367,7 @@ export const AuthView = () => {
       await resendSignupConfirmation(email, nextPath);
       setFeedback({
         type: 'success',
-        text: '确认邮件已经重新发送。如果收件箱没有看到，可以看一下垃圾邮件或稍等一分钟。',
+        text: '确认邮件已重新发送。若未收到，请检查垃圾邮件或稍后重试。',
       });
     } catch (error) {
       setFeedback({
@@ -387,7 +387,7 @@ export const AuthView = () => {
 
     if (mode === 'forgot') {
       if (!email) {
-        setFeedback({ type: 'error', text: '先填一下注册邮箱。' });
+        setFeedback({ type: 'error', text: '请输入注册邮箱。' });
         return;
       }
 
@@ -411,7 +411,7 @@ export const AuthView = () => {
 
     if (mode === 'reset') {
       if (!form.password.trim() || !form.confirmPassword.trim()) {
-        setFeedback({ type: 'error', text: '新密码和确认密码都还没填。' });
+        setFeedback({ type: 'error', text: '请输入新密码并再次确认。' });
         return;
       }
       if (form.password.length < 8) {
@@ -419,7 +419,7 @@ export const AuthView = () => {
         return;
       }
       if (form.password !== form.confirmPassword) {
-        setFeedback({ type: 'error', text: '两次输入的新密码没对上。' });
+        setFeedback({ type: 'error', text: '两次输入的新密码不一致。' });
         return;
       }
 
@@ -439,13 +439,13 @@ export const AuthView = () => {
     }
 
     if (!email || !form.password.trim()) {
-      setFeedback({ type: 'error', text: '邮箱和密码都还没填。' });
+      setFeedback({ type: 'error', text: '请输入邮箱和密码。' });
       return;
     }
 
     if (mode === 'register') {
       if (!form.fullName.trim()) {
-        setFeedback({ type: 'error', text: '先留一个你想显示的名字。' });
+        setFeedback({ type: 'error', text: '请输入昵称。' });
         return;
       }
       if (form.password.length < 8) {
@@ -453,7 +453,7 @@ export const AuthView = () => {
         return;
       }
       if (form.password !== form.confirmPassword) {
-        setFeedback({ type: 'error', text: '两次输入的密码没对上。' });
+        setFeedback({ type: 'error', text: '两次输入的密码不一致。' });
         return;
       }
     }
@@ -473,7 +473,7 @@ export const AuthView = () => {
           setPendingConfirmationEmail(email);
           setFeedback({
             type: 'success',
-            text: '账号已创建。请到邮箱确认后再回来继续。',
+            text: '账号已创建，请通过确认邮件验证邮箱后登录。',
           });
         }
       }
@@ -509,10 +509,10 @@ export const AuthView = () => {
           <section className="auth-status-card" aria-label="学习状态预览">
             <div className="auth-status-card__header">
               <div>
-                <span>今日学习状态</span>
+                <span>学习状态示例</span>
                 <strong>{story.focus}</strong>
               </div>
-              <span className="auth-status-pill">已保存</span>
+              <span className="auth-status-pill">示例数据</span>
             </div>
 
             <div className="auth-stat-grid">
@@ -616,19 +616,19 @@ export const AuthView = () => {
                         className="auth-google-button"
                       >
                         <Chrome className="h-[18px] w-[18px] opacity-90" />
-                        {isGoogleSubmitting ? '正在跳到 Google...' : '用 Google 登录'}
+                        {isGoogleSubmitting ? '正在打开 Google…' : '用 Google 登录'}
                       </button>
                       <div className="auth-divider">或用邮箱</div>
                     </>
                   ) : (
-                    <div className="auth-google-disabled">当前只能使用邮箱登录。Google 入口恢复后会显示在这里。</div>
+                    <div className="auth-google-disabled">使用邮箱和密码登录。</div>
                   ))}
 
                 <form onSubmit={handleSubmit} className="auth-form-fields">
                   {mode === 'register' && (
                     <AuthField
                       icon={UserRound}
-                      label="显示名字"
+                      label="昵称"
                       type="text"
                       value={form.fullName}
                       onChange={(value) => updateField('fullName', value)}
@@ -750,7 +750,7 @@ export const AuthView = () => {
                     size="large"
                     icon={<ArrowRight className="h-5 w-5" />}
                   >
-                    {isFormSubmitting ? '正在接入...' : title.cta}
+                    {isFormSubmitting ? '正在提交…' : title.cta}
                   </IslandButton>
                 </form>
 

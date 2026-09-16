@@ -1,6 +1,6 @@
+import { ROUND1_REINFORCEMENT_WORD_LIMIT } from '../../shared/learningProgress';
 import { describe, expect, it } from 'vitest';
 import { resolveActuallyLearnedWordIds } from '../../shared/officialDiscard';
-import { ROUND1_REINFORCEMENT_WORD_LIMIT } from '../../shared/learningProgress';
 import type { Word } from '../types';
 import {
   clampSessionIndex,
@@ -133,7 +133,7 @@ describe('learning session domain', () => {
     expect(getNewRound1ConfirmedWordIds([], [' w1 ', 'w2'])).toEqual(['w1', 'w2']);
 
     const manyWordIds = Array.from({ length: 45 }, (_, index) => `w${index + 1}`);
-    expect(getNewRound1ConfirmedWordIds(manyWordIds.slice(0, 29), manyWordIds)).toEqual(['w30']);
+    expect(getNewRound1ConfirmedWordIds(manyWordIds.slice(0, 29), manyWordIds)).toEqual(manyWordIds.slice(29));
   });
 
   it('repairs stale reinforcement queues from round 1 confirmed words', () => {
@@ -203,10 +203,10 @@ describe('learning session domain', () => {
     expect(fallback.round1ConfirmedWordIds).toEqual(['w3']);
   });
 
-  it('caps round 1 confirmed words to the reinforcement limit across restore paths', () => {
+  it('preserves all confirmed words across restore paths, including groups over 30 words', () => {
     const manyWords = makeNumberedWords(45);
     const confirmedWordIds = manyWords.map((word) => word.id);
-    const expectedWordIds = confirmedWordIds.slice(0, ROUND1_REINFORCEMENT_WORD_LIMIT);
+    const expectedWordIds = confirmedWordIds;
 
     expect(filterWordsToRound1Confirmed(manyWords, confirmedWordIds).map((word) => word.id)).toEqual(expectedWordIds);
 

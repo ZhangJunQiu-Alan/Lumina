@@ -941,13 +941,24 @@ async function fetchRemoteLearningGroupSession(
         ${baseWordColumns},
         ${legacyVocabularySelect}
       `;
+  const fetchWordRows = async (columns: string) => {
+    const rows: LearningGroupWordRow[] = [];
+    for (let offset = 0; ; offset += 200) {
+      const result = await supabase
+        .from('learning_group_words')
+        .select(columns)
+        .eq('learning_group_id', groupId)
+        .order('sequence_no', { ascending: true })
+        .range(offset, offset + 199);
+      if (result.error) return { data: [], error: result.error };
+      const batch = (result.data ?? []) as unknown as LearningGroupWordRow[];
+      rows.push(...batch);
+      if (batch.length < 200) return { data: rows, error: null };
+    }
+  };
   const [groupData, wordResult, articleResult, round2AttemptResult] = await Promise.all([
     fetchLearningGroupRow(userId, groupId),
-    supabase
-      .from('learning_group_words')
-      .select(richWordSelect)
-      .eq('learning_group_id', groupId)
-      .order('sequence_no', { ascending: true }),
+    fetchWordRows(richWordSelect),
     supabase
       .from('generated_articles')
       .select('content')
@@ -971,18 +982,10 @@ async function fetchRemoteLearningGroupSession(
   let wordRows = (wordResult.data ?? []) as LearningGroupWordRow[];
 
   if (wordResult.error && isMissingLearningGroupWordProgressSchemaError(wordResult.error)) {
-    const fallbackResult = await supabase
-      .from('learning_group_words')
-      .select(richWordSelectWithoutProgress)
-      .eq('learning_group_id', groupId)
-      .order('sequence_no', { ascending: true });
+    const fallbackResult = await fetchWordRows(richWordSelectWithoutProgress);
 
     if (fallbackResult.error && isMissingRichVocabularySchemaError(fallbackResult.error)) {
-      const legacyFallbackResult = await supabase
-        .from('learning_group_words')
-        .select(legacyWordSelectWithoutProgress)
-        .eq('learning_group_id', groupId)
-        .order('sequence_no', { ascending: true });
+      const legacyFallbackResult = await fetchWordRows(legacyWordSelectWithoutProgress);
 
       if (legacyFallbackResult.error) {
         throw new Error(`learning_group_words lookup failed: ${legacyFallbackResult.error.message}`);
@@ -995,18 +998,10 @@ async function fetchRemoteLearningGroupSession(
       wordRows = (fallbackResult.data ?? []) as LearningGroupWordRow[];
     }
   } else if (wordResult.error && isMissingRichVocabularySchemaError(wordResult.error)) {
-    const fallbackResult = await supabase
-      .from('learning_group_words')
-      .select(legacyWordSelect)
-      .eq('learning_group_id', groupId)
-      .order('sequence_no', { ascending: true });
+    const fallbackResult = await fetchWordRows(legacyWordSelect);
 
     if (fallbackResult.error && isMissingLearningGroupWordProgressSchemaError(fallbackResult.error)) {
-      const legacyFallbackResult = await supabase
-        .from('learning_group_words')
-        .select(legacyWordSelectWithoutProgress)
-        .eq('learning_group_id', groupId)
-        .order('sequence_no', { ascending: true });
+      const legacyFallbackResult = await fetchWordRows(legacyWordSelectWithoutProgress);
 
       if (legacyFallbackResult.error) {
         throw new Error(`learning_group_words lookup failed: ${legacyFallbackResult.error.message}`);
@@ -1042,20 +1037,18 @@ async function fetchRemoteLearningGroupSession(
 
   const words = wordRows.map(mapGroupWord).filter((word): word is Word => Boolean(word));
   const wordIds = words.map((word) => word.id);
-  const reviewStatesResult =
-    wordIds.length > 0
-      ? await supabase
-          .from('review_states')
-          .select('vocabulary_item_id, memory_state')
-          .eq('user_id', userId)
-          .in('vocabulary_item_id', wordIds)
-      : { data: [], error: null };
-
-  if (reviewStatesResult.error) {
-    throw new Error(`review_states lookup failed: ${reviewStatesResult.error.message}`);
+  const reviewStateRows: GroupReviewStateRow[] = [];
+  for (let offset = 0; offset < wordIds.length; offset += 200) {
+    const result = await supabase
+      .from('review_states')
+      .select('vocabulary_item_id, memory_state')
+      .eq('user_id', userId)
+      .in('vocabulary_item_id', wordIds.slice(offset, offset + 200));
+    if (result.error) throw new Error(`review_states lookup failed: ${result.error.message}`);
+    reviewStateRows.push(...((result.data ?? []) as GroupReviewStateRow[]));
   }
 
-  const masteredWordIds = ((reviewStatesResult.data ?? []) as GroupReviewStateRow[])
+  const masteredWordIds = reviewStateRows
     .filter((row) => row.memory_state === 'mastered')
     .map((row) => row.vocabulary_item_id);
   let activeWords = filterMasteredSessionWords(words, masteredWordIds);

@@ -41,12 +41,12 @@ function run() {
 
   assert.equal(resolveRound2State('fuzzy', 'fast_correct'), 'fuzzy');
 
-  // Progression advances on every attempt, regardless of wrong/correct.
-  // stable_recall graduates to mastered only when total successes reach 3.
-  assert.equal(resolveReviewState('fuzzy', 'wrong', 0), 'slow_recall');
-  assert.equal(resolveReviewState('stable_recall', 'wrong', 0), 'stable_recall');
+  // Only fast correct reviews can graduate stable recall after three total successes.
+  assert.equal(resolveReviewState('new', 'fast_correct', 1), 'stable_recall');
+  assert.equal(resolveReviewState('fuzzy', 'wrong', 0), 'fuzzy');
+  assert.equal(resolveReviewState('stable_recall', 'wrong', 0), 'fuzzy');
   assert.equal(resolveReviewState('fuzzy', 'slow_correct', 1), 'slow_recall');
-  assert.equal(resolveReviewState('stable_recall', 'slow_correct', 2), 'stable_recall');
+  assert.equal(resolveReviewState('stable_recall', 'slow_correct', 2), 'slow_recall');
   assert.equal(resolveReviewState('fuzzy', 'fast_correct', 1), 'slow_recall');
   assert.equal(resolveReviewState('slow_recall', 'fast_correct', 2), 'stable_recall');
   assert.equal(resolveReviewState('stable_recall', 'fast_correct', 3), 'mastered');

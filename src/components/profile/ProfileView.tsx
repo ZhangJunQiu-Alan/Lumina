@@ -318,7 +318,7 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
     <div className="mx-auto w-full max-w-6xl space-y-6">
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricPill icon={Flame} label="连续学习" value={`${stats.streak} 天`} />
-        <MetricPill icon={CalendarDays} label="一年活跃" value={`${yearlySummary.activeDays} 天`} />
+        <MetricPill icon={CalendarDays} label="年度学习" value={`${yearlySummary.activeDays} 天`} />
         <MetricPill icon={Activity} label="新学单词" value={`${yearlySummary.learned}`} />
         <MetricPill
           icon={CheckCircle2}
@@ -330,11 +330,9 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
       {!hasLearningActivity ? (
         <section className="glass px-6 py-14 text-center md:px-10 md:py-20">
           <p className="text-[11px] font-black uppercase tracking-[0.24em] text-apple-blue">Learning record</p>
-          <h3 className="mt-3 text-2xl font-black tracking-tight text-text-primary">
-            完成第一组学习后，趋势会从这里开始。
-          </h3>
+          <h3 className="mt-3 text-2xl font-black tracking-tight text-text-primary">暂无学习记录</h3>
           <p className="mx-auto mt-3 max-w-lg text-sm leading-7 text-text-secondary">
-            目前还没有可绘制的数据。开始学习后，这里会显示每日新学、复习、正确率和年度活跃记录。
+            完成学习后，可查看每日新学词数、复习词数、正确率与年度学习记录。
           </p>
         </section>
       ) : (
@@ -428,7 +426,7 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
             <h2 className="mt-6 text-4xl font-black text-text-primary prose-serif">
               {(user?.user_metadata.full_name as string | undefined) ?? '当前账号'}
             </h2>
-            <p className="mt-3 text-base text-text-secondary">{user?.email ?? '还没拿到邮箱'}</p>
+            <p className="mt-3 text-base text-text-secondary">{user?.email ?? '邮箱暂不可用'}</p>
           </div>
 
           <button

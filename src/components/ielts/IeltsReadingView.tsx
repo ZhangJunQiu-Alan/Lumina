@@ -520,7 +520,7 @@ function SubmitConfirmDialog({
             </h3>
             <p className="mt-2 text-sm font-bold leading-6 text-text-secondary">
               已答 {answeredCount} / {totalQuestions}，用时 {formatElapsedTime(elapsedSeconds)}。
-              {hasUnanswered ? '提交后会立即评分，未作答题目按错误处理。' : '提交后会立即进入完整回看。'}
+              {hasUnanswered ? '提交后会立即评分，未作答题目按错误处理。' : '提交后可查看评分与答案。'}
             </p>
           </div>
         </div>
@@ -713,8 +713,7 @@ export function IeltsReadingHomeView() {
           <FileText className="mx-auto h-10 w-10 text-text-secondary" />
           <h3 className="mt-4 text-2xl font-black text-text-primary">还没有导入真题 PDF</h3>
           <p className="mx-auto mt-3 max-w-2xl text-sm font-bold leading-7 text-text-secondary">
-            把 PDF 放到 `content/ielts-reading/raw/` 后运行 dry-run 导入脚本。校对通过后再 apply 到
-            Supabase，这里就会出现套题入口。
+            阅读套题暂不可用，请稍后查看。
           </p>
         </section>
       ) : (

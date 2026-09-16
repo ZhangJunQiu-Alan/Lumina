@@ -666,7 +666,7 @@ export const HomeView = ({
       setSelectedLibraryId('');
       setDeleteCandidate(null);
     } catch (error) {
-      setDeleteLibraryError(error instanceof Error ? error.message : '删除词典时出了点问题，请再试一次。');
+      setDeleteLibraryError(error instanceof Error ? error.message : '移除词库失败，请重试。');
     } finally {
       setIsDeletingLibrary(false);
     }
@@ -692,8 +692,8 @@ export const HomeView = ({
 
       <header className="home-header relative z-10 mb-4 sm:mb-6 xl:mb-10">
         <p className="home-header-kicker">Today · 今日学习</p>
-        <h1 className="home-header-title">你的学习台</h1>
-        <p className="home-header-copy">先完成今天最重要的一组，再回来看长期变化。</p>
+        <h1 className="home-header-title">今日学习</h1>
+        <p className="home-header-copy">查看待复习单词，或继续上次未完成的学习。</p>
       </header>
 
       <main className="home-dashboard-grid relative z-10 grid items-start gap-8 xl:gap-12 lg:grid-cols-2">
@@ -818,7 +818,7 @@ export const HomeView = ({
                         options={libraryDropdownOptions}
                         onChange={handleLibraryChange}
                         footerAction={{
-                          label: '去官方词库挑选并加入',
+                          label: '选择官方词库',
                           onSelect: onOpenOfficialLibrary,
                         }}
                         disabled={isDeletingLibrary || isDataPending}
@@ -828,7 +828,7 @@ export const HomeView = ({
                         type="button"
                         onClick={openDeleteLibraryDialog}
                         disabled={!canDeleteSelectedLibrary || isDeletingLibrary || isDataPending}
-                        aria-label={selectedOfficialOption ? `删除${selectedOfficialOption.title}` : '删除学习词典'}
+                        aria-label={selectedOfficialOption ? `删除${selectedOfficialOption.title}` : '移除学习词库'}
                         className="group flex h-11 w-11 shrink-0 items-center justify-center rounded-[17px] border border-[#f0d8c8]/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,246,240,0.9))] text-[#b87960] shadow-[0_10px_24px_rgba(112,78,46,0.10),inset_0_-2px_0_rgba(166,96,70,0.07)] outline-none transition-all hover:-translate-y-0.5 hover:border-[#e5b6a4] hover:bg-white hover:text-[#c45744] focus-visible:ring-4 focus-visible:ring-[#c45744]/14 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 sm:h-12 sm:w-12"
                       >
                         <Trash2 className="h-4.5 w-4.5 transition-transform group-hover:scale-105" strokeWidth={2.2} />
@@ -841,14 +841,14 @@ export const HomeView = ({
                       className="relative flex h-11 min-w-0 flex-1 items-center rounded-[17px] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,250,238,0.88))] px-4 pr-10 text-left text-sm font-black text-[#5b4932] shadow-[0_10px_24px_rgba(90,70,42,0.10),inset_0_-2px_0_rgba(149,117,68,0.08)] outline-none transition-all hover:-translate-y-0.5 hover:bg-white focus-visible:ring-4 focus-visible:ring-[#19c8b9]/18 sm:h-12 sm:min-w-[15rem]"
                       aria-haspopup="listbox"
                     >
-                      <span className="min-w-0 truncate">去官方词库挑选并加入</span>
+                      <span className="min-w-0 truncate">选择官方词库</span>
                       <span className="absolute right-3 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-[#f6edda] text-[#9b7a45]">
                         <ChevronDown className="h-4 w-4" />
                       </span>
                     </button>
                   )}
                   <RoutineDropdown
-                    label="选择发放顺序"
+                    label="选择学习顺序"
                     value={displayedMode}
                     options={modeDropdownOptions}
                     onChange={handleModeChange}
@@ -885,7 +885,7 @@ export const HomeView = ({
           <>
             <motion.button
               type="button"
-              aria-label="关闭删除学习词典确认"
+              aria-label="关闭移除学习词库确认"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -918,7 +918,7 @@ export const HomeView = ({
                 </span>
                 <div className="min-w-0">
                   <h3 id="delete-official-library-title" className="text-[20px] font-black text-[#2f261d]">
-                    删除学习词典
+                    移除学习词库
                   </h3>
                   <p className="mt-1 text-sm font-bold leading-6 text-[#8a7256]">{deleteCandidate.title}</p>
                 </div>
@@ -960,7 +960,7 @@ export const HomeView = ({
                   className="flex h-11 items-center justify-center gap-2 rounded-[16px] bg-[#c95744] px-5 text-sm font-black text-white shadow-[0_8px_18px_rgba(201,87,68,0.24),inset_0_-2px_0_rgba(115,45,35,0.24)] transition-all hover:-translate-y-0.5 hover:bg-[#b94d3d] disabled:translate-y-0 disabled:opacity-60"
                 >
                   {isDeletingLibrary && <Loader2 className="h-4 w-4 animate-spin" />}
-                  删除词典
+                  移除词库
                 </button>
               </div>
             </motion.div>

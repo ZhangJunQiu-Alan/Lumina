@@ -10,10 +10,10 @@ interface ReviewResultsViewProps {
 
 const memoryStateLabel: Record<MemoryState, string> = {
   new: '新词',
-  fuzzy: '模糊',
-  slow_recall: '慢回忆',
-  stable_recall: '稳回忆',
-  mastered: '掌握',
+  fuzzy: '待巩固',
+  slow_recall: '回忆较慢',
+  stable_recall: '回忆稳定',
+  mastered: '已掌握',
 };
 
 export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps) => {
@@ -85,9 +85,9 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
         <div className="flex items-start justify-between gap-4 sm:items-center sm:gap-6">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">状态更新</p>
-            <h2 className="mt-2 text-3xl font-black">这一轮完成了</h2>
+            <h2 className="mt-2 text-3xl font-black">本轮已完成</h2>
             <p className="mt-3 text-sm text-text-secondary">
-              一共过了 {items.length} 个词 · 升级 {upgradedCount} 个 · 稳定确认 {confirmedCount} 个 · 需要再复习{' '}
+              共 {items.length} 词 · 状态提升 {upgradedCount} 个 · 状态保持 {confirmedCount} 个 · 状态下降{' '}
               {downgradedCount} 个 · 掌握 {graduatedCount} 个
             </p>
           </div>
@@ -146,7 +146,7 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
         size="large"
         icon={<CheckCircle2 className="w-5 h-5" />}
       >
-        回首页看今天下一步
+        返回今日学习
       </IslandButton>
     </motion.div>
   );

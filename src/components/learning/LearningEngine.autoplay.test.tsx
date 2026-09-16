@@ -840,40 +840,42 @@ describe('LearningEngine autoplay', () => {
     expect(screen.queryByText(words[1].word)).not.toBeInTheDocument();
   });
 
-  it('auto-completes round 1 after 30 confirmed words', async () => {
+  it('auto-completes round 1 after all selected words, including more than 30', async () => {
     const words = makeWords(31);
     const onComplete = vi.fn();
 
     render(<LearningEngine type="round1" words={words} onComplete={onComplete} />);
 
-    for (const word of words.slice(0, 30)) {
+    for (const word of words) {
       submitRound1Word(word.word);
+      if (word !== words.at(-1)) expect(onComplete).not.toHaveBeenCalled();
     }
 
     await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
     const snapshot = onComplete.mock.calls[0]?.[0] as LearningSessionSnapshot;
     expect(snapshot.round).toBe('round1');
-    expect(snapshot.round1ConfirmedWordIds).toEqual(words.slice(0, 30).map((word) => word.id));
+    expect(snapshot.round1ConfirmedWordIds).toEqual(words.map((word) => word.id));
   }, 10000);
 
-  it('keeps the 30th round 1 word after an earlier wrong answer is corrected', async () => {
+  it('keeps all selected round 1 words after an earlier wrong answer is corrected', async () => {
     const words = makeWords(31);
     const onComplete = vi.fn();
 
     render(<LearningEngine type="round1" words={words} onComplete={onComplete} />);
 
-    for (const [index, word] of words.slice(0, 30).entries()) {
+    for (const [index, word] of words.entries()) {
       if (index === 5) {
         submitRound1Word('carbon');
       }
       submitRound1Word(word.word);
+      if (word !== words.at(-1)) expect(onComplete).not.toHaveBeenCalled();
     }
 
     await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
     const snapshot = onComplete.mock.calls[0]?.[0] as LearningSessionSnapshot;
-    expect(snapshot.round1ConfirmedWordIds).toHaveLength(30);
+    expect(snapshot.round1ConfirmedWordIds).toHaveLength(31);
     expect(snapshot.round1ConfirmedWordIds).toContain(words[29].id);
-    expect(snapshot.round1ConfirmedWordIds).toEqual(words.slice(0, 30).map((word) => word.id));
+    expect(snapshot.round1ConfirmedWordIds).toEqual(words.map((word) => word.id));
   }, 10000);
 
   it('only completes round 1 once and stops emitting round 1 snapshots while completing', async () => {
@@ -883,14 +885,15 @@ describe('LearningEngine autoplay', () => {
 
     render(<LearningEngine type="round1" words={words} onComplete={onComplete} onSessionChange={onSessionChange} />);
 
-    for (const word of words.slice(0, 30)) {
+    for (const word of words) {
       submitRound1Word(word.word);
+      if (word !== words.at(-1)) expect(onComplete).not.toHaveBeenCalled();
     }
 
     await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
     expect(
       onSessionChange.mock.calls.some(
-        (call) => (call[0] as LearningSessionSnapshot).round1ConfirmedWordIds.length >= 30,
+        (call) => (call[0] as LearningSessionSnapshot).round1ConfirmedWordIds.length >= 31,
       ),
     ).toBe(false);
   }, 10000);

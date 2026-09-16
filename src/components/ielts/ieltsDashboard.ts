@@ -225,8 +225,8 @@ function buildRecommendation(
       title: `继续练习 ${moduleLabel} Cambridge ${nextModule.nextTest.bookNumber} · Test ${nextModule.nextTest.testNumber}`,
       description:
         nextModule.attemptCount === 0
-          ? `先完成一套${moduleLabel}，系统会用真实练习记录建立你的 IELTS 基线。`
-          : `根据最近练习情况，建议先补齐${moduleLabel}套题，保持四项训练节奏。`,
+          ? `完成一套${moduleLabel}后，可查看得分、正确率和用时。`
+          : `根据已有正确率与完成情况，建议继续${moduleLabel}练习。`,
       ctaLabel: '开始练习',
       route: routeForTest(nextModule.key, nextModule.nextTest.id),
       estimatedMinutes: nextModule.key === 'reading' ? 60 : 30,
@@ -253,8 +253,8 @@ function buildRecommendation(
   return {
     kind: 'none',
     moduleKey: null,
-    title: '题库导入后会生成推荐',
-    description: '当前还没有可练习的阅读或听力套题。导入题库后，这里会自动显示下一步。',
+    title: '暂无可练习套题',
+    description: '当前暂无可用的阅读或听力套题，请稍后查看。',
     ctaLabel: '暂无可练习内容',
     route: null,
     estimatedMinutes: null,

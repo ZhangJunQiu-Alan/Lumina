@@ -46,8 +46,10 @@ export const ArticleView = ({ sentences, words, onFinish }: ArticleViewProps) =>
                 <BookOpen className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h2 className="text-2xl font-black tracking-tight">最后用短文收口</h2>
-                <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">把这一组放回语境里</p>
+                <h2 className="text-2xl font-black tracking-tight">文章巩固</h2>
+                <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">
+                  阅读包含本组单词的短文
+                </p>
               </div>
             </div>
             <IslandButton
@@ -57,7 +59,7 @@ export const ArticleView = ({ sentences, words, onFinish }: ArticleViewProps) =>
               size="large"
               icon={<CheckCircle2 className="h-5 w-5" />}
             >
-              这段读完了，回到今日学习
+              完成阅读，返回今日学习
             </IslandButton>
           </div>
 

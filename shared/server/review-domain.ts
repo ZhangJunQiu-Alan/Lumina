@@ -55,8 +55,9 @@ export function toResultType(wasCorrect: boolean, elapsedMs: number): ReviewResu
 }
 
 export function resolveRound2State(previousState: MemoryState, result: ReviewResultType): MemoryState {
-  if (previousState !== 'new') return previousState;
   if (result === 'wrong') return 'fuzzy';
+  if (result === 'slow_correct' && previousState !== 'fuzzy') return 'slow_recall';
+  if (previousState !== 'new') return previousState;
   return result === 'slow_correct' ? 'slow_recall' : 'stable_recall';
 }
 
@@ -65,12 +66,13 @@ export function resolveReviewState(
   result: ReviewResultType,
   totalSuccesses: number,
 ): MemoryState {
+  if (result === 'wrong') return 'fuzzy';
+  if (result === 'slow_correct') return 'slow_recall';
   if (previousState === 'mastered') return 'mastered';
 
-  // Progression: new -> fuzzy -> slow_recall -> stable_recall -> mastered
   switch (previousState) {
     case 'new':
-      return 'fuzzy';
+      return 'stable_recall';
     case 'fuzzy':
       return 'slow_recall';
     case 'slow_recall':

@@ -100,7 +100,7 @@ describe('AuthView URL mode', () => {
     renderAuthView('/auth?mode=register');
 
     expect(screen.getByRole('tab', { name: '注册' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByLabelText('显示名字')).toBeInTheDocument();
+    expect(screen.getByLabelText('昵称')).toBeInTheDocument();
     expect(screen.getByLabelText('确认密码')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /创建账号/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '用邮箱登录' })).not.toBeInTheDocument();
@@ -112,6 +112,6 @@ describe('AuthView URL mode', () => {
     expect(screen.getByLabelText('新密码')).toBeInTheDocument();
     expect(screen.getByLabelText('确认新密码')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /更新密码并继续/ })).toBeInTheDocument();
-    expect(screen.queryByLabelText('显示名字')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('昵称')).not.toBeInTheDocument();
   });
 });

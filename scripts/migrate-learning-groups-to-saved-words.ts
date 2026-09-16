@@ -22,12 +22,6 @@ interface SavedWordCandidate {
   saved_at: string;
 }
 
-interface ReviewStateRow {
-  user_id: string;
-  vocabulary_item_id: string;
-  memory_state: string;
-}
-
 function asSingleGroup(value: LearningGroupWordJoinRow['learning_groups']) {
   if (Array.isArray(value)) return value[0] ?? null;
   return value;
@@ -179,91 +173,6 @@ async function upsertSavedWords(candidates: SavedWordCandidate[]) {
   return insertedRows;
 }
 
-async function prepareSavedWordCandidates(candidates: SavedWordCandidate[]) {
-  const stateByKey = new Map<string, ReviewStateRow>();
-  const candidatesByUser = new Map<string, SavedWordCandidate[]>();
-
-  for (const candidate of candidates) {
-    const rows = candidatesByUser.get(candidate.user_id) ?? [];
-    rows.push(candidate);
-    candidatesByUser.set(candidate.user_id, rows);
-  }
-
-  for (const [userId, rows] of candidatesByUser) {
-    const vocabularyItemIds = Array.from(new Set(rows.map((row) => row.vocabulary_item_id)));
-    for (const chunk of chunkRows(vocabularyItemIds, 100)) {
-      const { data, error } = await supabaseAdmin
-        .from('review_states')
-        .select('user_id, vocabulary_item_id, memory_state')
-        .eq('user_id', userId)
-        .in('vocabulary_item_id', chunk);
-
-      if (error) {
-        throw new Error(`review_states lookup failed: ${error.message}`);
-      }
-
-      for (const row of (data ?? []) as ReviewStateRow[]) {
-        stateByKey.set(`${row.user_id}\u0000${row.vocabulary_item_id}`, row);
-      }
-    }
-  }
-
-  const missingCandidates: SavedWordCandidate[] = [];
-  const eligibleCandidates: SavedWordCandidate[] = [];
-  let skippedNonNewState = 0;
-
-  for (const candidate of candidates) {
-    const state = stateByKey.get(`${candidate.user_id}\u0000${candidate.vocabulary_item_id}`);
-    if (!state) {
-      missingCandidates.push(candidate);
-      eligibleCandidates.push(candidate);
-      continue;
-    }
-
-    if (state.memory_state === 'new') {
-      eligibleCandidates.push(candidate);
-      continue;
-    }
-
-    skippedNonNewState += 1;
-  }
-
-  let createdReviewStates = 0;
-  for (const [index, batch] of chunkRows(missingCandidates, UPSERT_BATCH_SIZE).entries()) {
-    const { data, error } = await supabaseAdmin
-      .from('review_states')
-      .upsert(
-        batch.map((candidate) => ({
-          user_id: candidate.user_id,
-          vocabulary_item_id: candidate.vocabulary_item_id,
-          memory_state: 'new',
-          interval_days: null,
-          next_review_at: null,
-          graduated_at: null,
-        })),
-        {
-          onConflict: 'user_id,vocabulary_item_id',
-          ignoreDuplicates: true,
-        },
-      )
-      .select('id');
-
-    if (error) {
-      throw new Error(`review_states upsert failed [batch ${index + 1}]: ${error.message}`);
-    }
-
-    createdReviewStates += data?.length ?? 0;
-  }
-
-  return {
-    candidates: eligibleCandidates,
-    stats: {
-      createdReviewStates,
-      skippedNonNewState,
-    },
-  };
-}
-
 async function main() {
   console.log('Collecting historical learning group words...');
   const { candidates, stats } = await collectSavedWordCandidates();
@@ -285,19 +194,16 @@ async function main() {
     return;
   }
 
-  const prepared = await prepareSavedWordCandidates(candidates);
-  const insertedRows = await upsertSavedWords(prepared.candidates);
-  const alreadyExistingRows = prepared.candidates.length - insertedRows;
+  const insertedRows = await upsertSavedWords(candidates);
+  const alreadyExistingRows = candidates.length - insertedRows;
 
   console.log(
     [
       'Migration complete.',
       `inserted=${insertedRows}`,
       `alreadyExisting=${alreadyExistingRows}`,
-      `createdReviewStates=${prepared.stats.createdReviewStates}`,
-      `skippedNonNewState=${prepared.stats.skippedNonNewState}`,
       `uniqueCandidates=${candidates.length}`,
-      `eligibleCandidates=${prepared.candidates.length}`,
+      `eligibleCandidates=${candidates.length}`,
     ].join(' '),
   );
 }

@@ -50,14 +50,14 @@ function LegalDocument({ eyebrow, title, intro, sections }: LegalDocumentProps) 
 
 const privacySections: LegalSection[] = [
   {
-    title: '我们收集什么',
+    title: '收集的信息',
     paragraphs: [
       '当你注册或使用 Google 登录时，本应用会接收并保存完成登录所需的基础账户信息，例如邮箱地址、公开昵称以及与账户关联的唯一身份标识。',
       '当你使用产品时，我们还会保存你主动提交的学习内容，例如导入的单词、学习进度、复习记录、学习偏好，以及为你生成的学习材料。',
     ],
   },
   {
-    title: '这些信息怎么被使用',
+    title: '信息用途',
     paragraphs: [
       '这些数据只用于提供核心产品能力，包括登录鉴权、跨设备同步学习进度、生成学习内容、安排复习、展示词库状态，以及保障服务稳定和安全。',
       '我们不会把你的学习数据出售给第三方，也不会把你的 Google 账户数据用于与你当前产品功能无关的广告用途。',
@@ -129,7 +129,7 @@ export function PrivacyView() {
     <LegalDocument
       eyebrow="Privacy"
       title="隐私政策"
-      intro="这份页面说明 Lumina 在你使用登录、学习和同步功能时会处理哪些信息，以及这些信息会如何被使用。"
+      intro="本政策说明 Lumina 在登录、学习和同步过程中处理的信息及其用途。"
       sections={privacySections}
     />
   );
@@ -140,7 +140,7 @@ export function TermsView() {
     <LegalDocument
       eyebrow="Terms"
       title="服务条款"
-      intro="这份页面说明你在使用 Lumina 时应遵守的基本规则，以及服务能力和责任边界。"
+      intro="本条款说明使用 Lumina 的基本规则、服务范围与责任。"
       sections={termsSections}
     />
   );

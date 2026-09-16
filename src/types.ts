@@ -496,6 +496,8 @@ export interface LibraryGroupSummary {
   status: 'active' | 'completed';
   sessionRound: LearningRoundType | null;
   completedAt: string | null;
+  lastActiveAt?: string | null;
+  progress?: { completed: number; total: number } | null;
 }
 
 export interface LibraryGroupWord {

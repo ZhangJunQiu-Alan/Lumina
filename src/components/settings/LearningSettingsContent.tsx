@@ -246,7 +246,7 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
       <SettingGroup>
         <SettingRow
           icon={Globe2}
-          title="默认口音"
+          title="默认发音"
           feedback={feedbackByKey.defaultPronunciationLocale}
           control={
             <SegmentedOptionGroup<PronunciationLocale>
@@ -292,7 +292,7 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
         />
         <SettingRow
           icon={Volume2}
-          title="句子默认朗读"
+          title="答对后朗读例句"
           feedback={feedbackByKey.clozeSentenceAutoPlayEnabled}
           control={
             <ToggleControl
@@ -339,7 +339,7 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
         />
         <SettingRow
           icon={Clock3}
-          title="间隔时间"
+          title="重复朗读间隔"
           feedback={feedbackByKey.autoPlayRepeatGapMs}
           disabled={preferences.autoPlayRepeatCount === 1}
           control={
@@ -361,7 +361,7 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
       <SettingGroup>
         <SettingRow
           icon={MessageSquareText}
-          title="答对反馈时间"
+          title="答对后反馈时长"
           feedback={feedbackByKey.correctAnswerRevealMs}
           control={
             <SegmentedOptionGroup<number>
@@ -378,7 +378,7 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
         />
         <SettingRow
           icon={Clock3}
-          title="答错答案停留"
+          title="答错后答案显示时长"
           feedback={feedbackByKey.wrongAnswerRevealMs}
           control={
             <SegmentedOptionGroup<number>
@@ -398,7 +398,7 @@ export const LearningSettingsContent = ({ className = '' }: { className?: string
       <SettingGroup>
         <SettingRow
           icon={Sparkles}
-          title="记忆锦囊"
+          title="记忆提示"
           feedback={feedbackByKey.memoryTipEnabled}
           control={
             <ToggleControl

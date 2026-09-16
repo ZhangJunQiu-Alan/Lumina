@@ -12,10 +12,10 @@ import { LibrarySkeleton } from '../shared/Skeleton';
 
 const memoryStateLabel: Record<MemoryState, string> = {
   new: '新词',
-  fuzzy: '模糊',
-  slow_recall: '慢回忆',
-  stable_recall: '稳回忆',
-  mastered: '掌握',
+  fuzzy: '待巩固',
+  slow_recall: '回忆较慢',
+  stable_recall: '回忆稳定',
+  mastered: '已掌握',
 };
 
 const memoryStateStyle: Record<MemoryState, string> = {
@@ -208,7 +208,7 @@ export function NotebookView() {
           }}
           className="mt-2 rounded-2xl bg-apple-blue px-6 py-3 text-sm font-bold text-white shadow-lg shadow-apple-blue/20 transition-transform active:scale-95"
         >
-          重试一下
+          重试
         </button>
       </div>
     );
@@ -224,7 +224,7 @@ export function NotebookView() {
           <div>
             <h1 className="text-3xl font-black text-text-primary">生词本</h1>
             <p className="mt-2 text-sm leading-7 text-text-secondary max-w-2xl">
-              这里记录学过但还没稳定的词，并按下次复习时间排序。
+              按下次复习时间列出已学习、尚未掌握的单词。
             </p>
           </div>
         </div>
@@ -240,7 +240,7 @@ export function NotebookView() {
           <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-apple-green/10 text-apple-green">
             <BookMarked className="h-10 w-10" />
           </div>
-          <h2 className="mt-8 text-2xl font-black text-text-primary">生词本是空的</h2>
+          <h2 className="mt-8 text-2xl font-black text-text-primary">暂无待巩固单词</h2>
           <p className="mt-4 text-sm leading-7 text-text-secondary max-w-md mx-auto">
             目前没有待巩固的词。开始学习新词后，需要复习的词会出现在这里。
           </p>
@@ -310,16 +310,14 @@ export function NotebookView() {
                       <div className="border-t border-black/5 p-6 sm:p-8 space-y-8">
                         {preferences.memoryTipEnabled && word.memoryTip && (
                           <div className="rounded-2xl bg-apple-blue/5 p-4">
-                            <p className="text-xs font-bold uppercase tracking-widest text-apple-blue mb-2">记忆锦囊</p>
+                            <p className="text-xs font-bold uppercase tracking-widest text-apple-blue mb-2">记忆提示</p>
                             <p className="text-sm leading-relaxed text-text-primary font-medium">{word.memoryTip}</p>
                           </div>
                         )}
 
                         {word.examples.length > 0 && (
                           <div>
-                            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-4">
-                              精选语境
-                            </p>
+                            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-4">例句</p>
                             <ExampleSentenceList
                               items={word.examples.map((example, index) => ({
                                 key: `${word.id}-example-${index}`,
@@ -332,7 +330,7 @@ export function NotebookView() {
                               onPlayExample={({ sentence, key }) => {
                                 void playExampleSentence(sentence, key);
                               }}
-                              emptyMessage="目前还没有例句。"
+                              emptyMessage="暂无例句。"
                             />
                           </div>
                         )}
@@ -342,7 +340,7 @@ export function NotebookView() {
                             {word.synonyms.length > 0 && (
                               <div>
                                 <p className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-3">
-                                  近义关联
+                                  近义词
                                 </p>
                                 <div className="flex flex-wrap gap-2">
                                   {word.synonyms.map((s, idx) => (
@@ -359,7 +357,7 @@ export function NotebookView() {
                             {word.antonyms.length > 0 && (
                               <div>
                                 <p className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-3">
-                                  反义对照
+                                  反义词
                                 </p>
                                 <div className="flex flex-wrap gap-2">
                                   {word.antonyms.map((a, idx) => (

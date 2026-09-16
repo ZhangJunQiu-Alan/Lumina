@@ -354,9 +354,9 @@ function buildEmptyStats(): UserStats {
       selectedOfficialLibraryId: null,
       officialLibraryOptions: [],
       visibleSteps: [
-        { key: 'round1', label: 'Round 1 · 明示关联', status: 'current' },
+        { key: 'round1', label: 'Round 1 · 词汇记忆', status: 'current' },
         { key: 'round2', label: 'Round 2 · 主动回忆', status: 'upcoming' },
-        { key: 'round3', label: 'Round 3 · 听写复现', status: 'upcoming' },
+        { key: 'round3', label: 'Round 3 · 听写', status: 'upcoming' },
       ],
     },
   };
@@ -1099,7 +1099,7 @@ export default function App() {
         }
       } catch (error) {
         console.error('Failed to open learning group:', error);
-        setSessionStartError(error instanceof Error ? error.message : '打开这组词时出了点问题，请再试一次。');
+        setSessionStartError(error instanceof Error ? error.message : '学习组加载失败，请重试。');
       } finally {
         setIsStartingSession(false);
       }
@@ -1145,7 +1145,7 @@ export default function App() {
         return true;
       } catch (error) {
         console.error('Failed to confirm active official learning group:', error);
-        setSessionStartError(error instanceof Error ? error.message : '同步当前官方词库进度时出了点问题，请再试一次。');
+        setSessionStartError(error instanceof Error ? error.message : '官方词库进度同步失败，请重试。');
         return true;
       } finally {
         setIsStartingSession(false);
@@ -1197,7 +1197,7 @@ export default function App() {
         navigate('/app/session');
       } catch (error) {
         console.error('Failed to start review session:', error);
-        setSessionStartError(error instanceof Error ? error.message : '开始复习时出了点问题，请再试一次。');
+        setSessionStartError(error instanceof Error ? error.message : '复习加载失败，请重试。');
       } finally {
         setIsStartingSession(false);
       }
@@ -1205,7 +1205,7 @@ export default function App() {
     }
 
     if (!hasTrustedHomeStatsRef.current) {
-      setSessionStartError('首页学习数据还在同步，请稍等一下再继续。');
+      setSessionStartError('学习数据正在同步，请稍后继续。');
       void fetchStats({ forceRefresh: true });
       return;
     }
@@ -1243,7 +1243,7 @@ export default function App() {
           });
         } catch (error) {
           console.error('Failed to auto-start selected official batch:', error);
-          setSessionStartError(error instanceof Error ? error.message : '开始下一组官方词时出了点问题，请再试一次。');
+          setSessionStartError(error instanceof Error ? error.message : '下一组单词加载失败，请重试。');
         } finally {
           setIsStartingSession(false);
         }
@@ -1286,7 +1286,7 @@ export default function App() {
           });
         } catch (error) {
           console.error('Failed to auto-start next official batch:', error);
-          setSessionStartError(error instanceof Error ? error.message : '开始下一组官方词时出了点问题，请再试一次。');
+          setSessionStartError(error instanceof Error ? error.message : '下一组单词加载失败，请重试。');
         } finally {
           setIsStartingSession(false);
         }
@@ -1319,7 +1319,7 @@ export default function App() {
           }
         } catch (error) {
           console.error('Failed to start selected official batch:', error);
-          setSessionStartError(error instanceof Error ? error.message : '开始官方词库时出了点问题，请再试一次。');
+          setSessionStartError(error instanceof Error ? error.message : '官方词库加载失败，请重试。');
         } finally {
           setIsStartingSession(false);
         }
@@ -2055,7 +2055,7 @@ export default function App() {
                   <div className="mx-auto mb-4 flex w-full max-w-6xl items-start gap-3 rounded-[28px] border border-apple-red/15 bg-apple-red/8 px-5 py-4 text-apple-red shadow-xl">
                     <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-black">这组学习没有开始</p>
+                      <p className="text-sm font-black">无法开始学习</p>
                       <p className="mt-1 text-sm leading-6">{sessionStartError}</p>
                     </div>
                     <button
@@ -2184,7 +2184,7 @@ export default function App() {
                                   className="glass p-16 rounded-apple-lg shadow-2xl flex flex-col items-center gap-6"
                                 >
                                   <Loader2 className="w-10 h-10 text-apple-green animate-spin" />
-                                  <p className="font-black text-xl">正在准备收尾文章，失败后会自动重试 3 次</p>
+                                  <p className="font-black text-xl">正在生成巩固文章，失败后最多自动重试 3 次</p>
                                 </motion.div>
                               )
                             ) : (
