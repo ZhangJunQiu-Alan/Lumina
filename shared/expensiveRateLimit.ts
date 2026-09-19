@@ -23,7 +23,7 @@ export const RATE_WINDOWS: Record<RateWindowName, number> = {
 };
 
 export const DEFAULT_RATE_LIMITS: Record<ExpensiveApiGroup, Record<RateWindowName, number>> = {
-  ai_vocab: { minute: 20, hour: 200, day: 1000 },
+  ai_vocab: { minute: 100, hour: 100, day: 1000 },
   ai_article: { minute: 3, hour: 20, day: 80 },
   tts: { minute: 60, hour: 500, day: 2000 },
 };
@@ -117,20 +117,22 @@ export function consumeExpensiveRateLimit({
     { scope: 'user', key: userId, multiplier: 1 },
     { scope: 'ip', key: ip, multiplier: IP_RATE_LIMIT_MULTIPLIER },
   ].flatMap((subject) =>
-    (Object.keys(RATE_WINDOWS) as RateWindowName[]).map((windowName) => {
-      const windowMs = RATE_WINDOWS[windowName];
-      const limit = rateLimitFor(group, windowName) * subject.multiplier;
-      const bucketKey = `${subject.scope}:${group}:${windowName}:${subject.key}`;
-      const bucket = readRateLimitBucket(bucketKey, now, windowMs);
-      return {
-        ...subject,
-        windowName,
-        windowMs,
-        limit,
-        bucketKey,
-        bucket,
-      };
-    }),
+    (Object.keys(RATE_WINDOWS) as RateWindowName[])
+      .filter((windowName) => group !== 'ai_vocab' || windowName !== 'minute')
+      .map((windowName) => {
+        const windowMs = RATE_WINDOWS[windowName];
+        const limit = rateLimitFor(group, windowName) * subject.multiplier;
+        const bucketKey = `${subject.scope}:${group}:${windowName}:${subject.key}`;
+        const bucket = readRateLimitBucket(bucketKey, now, windowMs);
+        return {
+          ...subject,
+          windowName,
+          windowMs,
+          limit,
+          bucketKey,
+          bucket,
+        };
+      }),
   );
 
   const exceeded = checks.find((check) => check.bucket.count + normalizedWeight > check.limit);

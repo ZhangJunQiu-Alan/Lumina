@@ -302,6 +302,31 @@ for (const file of ['src/lib/wordAudio.ts', 'src/lib/exampleAudio.ts', 'src/comp
 }
 
 // Behavioral checks for the shared rate limiter (not just source-string presence).
+__resetExpensiveRateLimitForTests();
+const originalDateNow = Date.now;
+let quotaNow = originalDateNow();
+Date.now = () => quotaNow;
+try {
+  const vocabRequest = (weight: number) =>
+    consumeExpensiveRateLimit({ group: 'ai_vocab', userId: 'import-user', ip: '10.0.0.20', weight });
+  assert.equal(vocabRequest(30).allowed, true, '30-word lemmatization must fit');
+  assert.equal(vocabRequest(30).allowed, true, '30-word enrichment must fit in the same minute');
+  assert.equal(vocabRequest(40).allowed, true, 'exactly 100 weighted units must fit');
+  const blocked = vocabRequest(1);
+  assert.equal(blocked.allowed, false, 'unit 101 must be blocked');
+  if (!blocked.allowed) {
+    assert.equal(blocked.window, 'hour');
+    assert.equal(blocked.retryAfterSeconds, 3600);
+  }
+  quotaNow += 60_000;
+  assert.equal(vocabRequest(1).allowed, false, 'a new minute must not reset the hourly budget');
+  quotaNow += 3_540_000;
+  assert.equal(vocabRequest(100).allowed, true, 'hourly budget must reset after one hour');
+} finally {
+  Date.now = originalDateNow;
+  __resetExpensiveRateLimitForTests();
+}
+
 // Defaults: ai_article minute=3; IP fallback = 3x => 9 per minute.
 __resetExpensiveRateLimitForTests();
 for (let i = 0; i < 3; i += 1) {
