@@ -975,7 +975,7 @@ function buildLearningGroupWordCounts(learningGroups: LearningGroupRow[]) {
     const queueLength = normalizeSessionQueueWordIds(group.session_queue_word_ids).length;
     counts.set(
       group.id,
-      typeof group.word_count === 'number' && group.word_count > 0 ? group.word_count : (queueLength || 30),
+      typeof group.word_count === 'number' && group.word_count > 0 ? group.word_count : queueLength || 30,
     );
   }
   return counts;
@@ -1022,8 +1022,7 @@ async function calculateUserStreak(
       learned_word_count: number;
       is_routine_finished: boolean;
     }>) {
-      const isActive =
-        row.is_routine_finished || row.review_word_count > 0 || row.learned_word_count > 0;
+      const isActive = row.is_routine_finished || row.review_word_count > 0 || row.learned_word_count > 0;
       statsMap.set(row.date_key, { isActive });
     }
   }
@@ -1425,8 +1424,7 @@ export async function getUserActivityHeatmap(
       status = 'shielded';
     }
 
-    const accuracy =
-      attemptCount > 0 ? Math.round((correctAttemptCount / attemptCount) * 100) : null;
+    const accuracy = attemptCount > 0 ? Math.round((correctAttemptCount / attemptCount) * 100) : null;
 
     return {
       date: dateKey,
