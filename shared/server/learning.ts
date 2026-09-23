@@ -1,3 +1,5 @@
+import { getUserReviewTimeZone } from './review-timezone.ts';
+import { toNextReviewAt } from './review-domain.ts';
 import {
   formatOfficialCounterGroupName,
   isOfficialLibraryId,
@@ -629,7 +631,7 @@ async function activateReviewStates(userId: string, wordIds: string[], timestamp
     for (const row of (data ?? []) as ReviewStateActivationRow[]) existingById.set(row.vocabulary_item_id, row);
   }
 
-  const nextReviewAt = new Date(Date.parse(timestamp) + 24 * 60 * 60 * 1000).toISOString();
+  const nextReviewAt = toNextReviewAt('fuzzy', new Date(timestamp), await getUserReviewTimeZone(userId))!;
   const missingIds = wordIds.filter((id) => !existingById.has(id));
   const newIds = wordIds.filter((id) => {
     const row = existingById.get(id);

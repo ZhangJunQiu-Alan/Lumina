@@ -17,7 +17,8 @@ const BASE_TIME = new Date('2026-04-15T00:00:00.000Z');
 
 function addDays(days: number) {
   const next = new Date(BASE_TIME);
-  next.setDate(next.getDate() + days);
+  next.setUTCDate(next.getUTCDate() + days);
+  next.setUTCHours(9, 0, 0, 0);
   return next.toISOString();
 }
 
@@ -147,5 +148,30 @@ describe('review scheduling domain', () => {
 
     expect(rescheduledCounts.get('2026-04-16')).toBe(MAX_DAILY_REVIEW_WORDS);
     expect(rescheduledCounts.get('2026-04-17')).toBe(50);
+  });
+});
+
+describe('9 AM calendar scheduling', () => {
+  it.each(['2026-09-23T00:15:00Z', '2026-09-23T09:00:27Z', '2026-09-23T15:59:00Z'])(
+    'uses the next local morning regardless of study time %s',
+    (instant) => {
+      expect(toNextReviewAt('fuzzy', new Date(instant), 'Asia/Singapore')).toBe('2026-09-24T01:00:00.000Z');
+    },
+  );
+  it('uses the local date across the UTC date boundary', () => {
+    expect(toNextReviewAt('fuzzy', new Date('2026-09-23T18:00:00Z'), 'Asia/Singapore')).toBe(
+      '2026-09-25T01:00:00.000Z',
+    );
+  });
+  it('keeps 9 AM across daylight saving changes and month boundaries', () => {
+    expect(toNextReviewAt('fuzzy', new Date('2027-03-13T20:00:00Z'), 'America/New_York')).toBe(
+      '2027-03-14T13:00:00.000Z',
+    );
+    expect(toNextReviewAt('fuzzy', new Date('2026-10-31T20:00:00Z'), 'America/New_York')).toBe(
+      '2026-11-01T14:00:00.000Z',
+    );
+    expect(toNextReviewAt('slow_recall', new Date('2026-12-30T09:00:00Z'), 'Asia/Singapore')).toBe(
+      '2027-01-02T01:00:00.000Z',
+    );
   });
 });

@@ -32,7 +32,6 @@ export interface ReviewBacklogRedistributionPlan<T extends ReviewScheduleRow> {
 export const FAST_RECALL_MS = 6000;
 export const MAX_DAILY_REVIEW_WORDS = 100;
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const formatterCache = new Map<string, Intl.DateTimeFormat>();
 
 export const STATE_INTERVAL_DAYS: Record<MemoryState, number | null> = {
@@ -88,13 +87,43 @@ export function resolveReviewState(
   }
 }
 
-export function toNextReviewAt(state: MemoryState, now: Date): string | null {
-  const intervalDays = STATE_INTERVAL_DAYS[state];
-  if (intervalDays === null) return null;
+export function reviewMorningAfterDays(now: Date, days: number, timeZone = 'UTC'): Date {
+  const zone = resolveReviewTimeZone(timeZone);
+  const [year, month, day] = toReviewDateKey(now, zone).split('-').map(Number);
+  const target = Date.UTC(year, month - 1, day + days, 9);
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: zone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  });
+  let candidate = target;
+  for (let i = 0; i < 3; i += 1) {
+    const parts = Object.fromEntries(
+      formatter.formatToParts(new Date(candidate)).map((part) => [part.type, part.value]),
+    );
+    const local = Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      Number(parts.hour),
+      Number(parts.minute),
+      Number(parts.second),
+    );
+    const correction = target - local;
+    candidate += correction;
+    if (correction === 0) break;
+  }
+  return new Date(candidate);
+}
 
-  const next = new Date(now);
-  next.setDate(next.getDate() + intervalDays);
-  return next.toISOString();
+export function toNextReviewAt(state: MemoryState, now: Date, timeZone = 'UTC'): string | null {
+  const intervalDays = STATE_INTERVAL_DAYS[state];
+  return intervalDays === null ? null : reviewMorningAfterDays(now, intervalDays, timeZone).toISOString();
 }
 
 export function intervalForState(state: MemoryState): number | null {
@@ -209,7 +238,7 @@ export function planReviewBacklogRedistribution<T extends ReviewScheduleRow>(
 
   for (const row of rescheduledRows) {
     while (true) {
-      const scheduledAt = new Date(nowTime + dayOffset * DAY_MS);
+      const scheduledAt = reviewMorningAfterDays(now, dayOffset, timeZone);
       const dateKey = toReviewDateKey(scheduledAt, timeZone);
       const scheduledCount = futureCounts.get(dateKey) ?? 0;
 

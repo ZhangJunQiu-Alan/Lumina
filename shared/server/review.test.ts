@@ -35,6 +35,25 @@ beforeEach(() => {
     graduated_at: null,
   };
   db.from.mockImplementation((table: string) => {
+    if (table === 'daily_routine_progress') {
+      return {
+        select() {
+          return this;
+        },
+        eq() {
+          return this;
+        },
+        order() {
+          return this;
+        },
+        limit() {
+          return this;
+        },
+        async maybeSingle() {
+          return { data: { timezone: 'Asia/Singapore' }, error: null };
+        },
+      };
+    }
     if (!['review_states', 'review_events'].includes(table)) throw new Error(`Unexpected access: ${table}`);
     const filters: Record<string, unknown> = {};
     return {
@@ -76,7 +95,7 @@ describe('review persistence', () => {
     expect(result).toMatchObject({
       memoryState: 'stable_recall',
       graduated: false,
-      nextReviewAt: '2026-09-23T08:00:00.000Z',
+      nextReviewAt: '2026-09-23T01:00:00.000Z',
     });
     expect(db.state).toMatchObject({ review_count: 1, lapse_count: 0 });
   });
@@ -104,7 +123,7 @@ describe('review persistence', () => {
     expect(result).toMatchObject({
       memoryState: 'slow_recall',
       graduated: false,
-      nextReviewAt: '2026-09-19T08:00:00.000Z',
+      nextReviewAt: '2026-09-19T01:00:00.000Z',
     });
     expect(db.state).toMatchObject({ review_count: 13, lapse_count: 2, interval_days: 3 });
   });

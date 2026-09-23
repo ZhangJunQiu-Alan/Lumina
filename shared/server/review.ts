@@ -1,4 +1,5 @@
 import { supabaseAdmin } from './supabase.ts';
+import { getUserReviewTimeZone } from './review-timezone.ts';
 import {
   FIRST_MEMORY_STATE,
   intervalForState,
@@ -502,7 +503,9 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
   // If the user got it wrong during a review, keep it "due" for today (don't push to future).
   // This allows the word to stay in the queue if the user exits the session midway.
   const scheduledReviewAt =
-    input.source === 'review' && result === 'wrong' ? now.toISOString() : toNextReviewAt(nextState, now);
+    input.source === 'review' && result === 'wrong'
+      ? now.toISOString()
+      : toNextReviewAt(nextState, now, await getUserReviewTimeZone(input.userId));
   const preserveEarlierDueDate = result === 'wrong' || isDictationAttemptSource(input.source);
   const nextReviewAt =
     preserveEarlierDueDate && scheduledReviewAt && existing?.next_review_at

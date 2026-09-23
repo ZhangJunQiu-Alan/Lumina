@@ -20,7 +20,8 @@ function expectIsoDay(actualIso: string | null, expectedIso: string | null) {
 
 function addDays(days: number) {
   const next = new Date(BASE_TIME);
-  next.setDate(next.getDate() + days);
+  next.setUTCDate(next.getUTCDate() + days);
+  next.setUTCHours(9, 0, 0, 0);
   return next.toISOString();
 }
 
