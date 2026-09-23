@@ -281,12 +281,15 @@ export const LearningEngine = ({
   );
   const [round1WaitingForMoreWords, setRound1WaitingForMoreWords] = useState(false);
 
-  const initialUniqueCount = words.length;
+  const initialUniqueCount = useMemo(() => {
+    const queueWordIds = new Set(initialEngineState.queue.map((word) => word.id));
+    return Math.max(queueWordIds.size, 1);
+  }, [initialEngineState.queue]);
   const round1ProgressTarget =
     type === 'round1'
       ? round1CanWaitForMoreWords
         ? ROUND1_REINFORCEMENT_WORD_LIMIT
-        : Math.max(words.length, 1)
+        : initialUniqueCount
       : initialUniqueCount;
   const progressQueueLength = type === 'round1' ? round1ProgressTarget : initialUniqueCount;
   const completedCount = completedWordIds.size;

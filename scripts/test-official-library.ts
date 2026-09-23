@@ -8,7 +8,6 @@ import {
   formatOfficialGroupName,
   getOfficialWordPosition,
   isOfficialGroupName,
-  OFFICIAL_APPEND_PRELOAD_REMAINING_THRESHOLD,
   OFFICIAL_BATCH_SIZE,
   resolveOfficialStudyModeFromGroupName,
   resolveOfficialLibraryStartMode,
@@ -35,7 +34,6 @@ function makeGroupSummary(overrides: Partial<LibraryGroupSummary> = {}): Library
 assert.equal(new Set(IELTS_WORDS_FLAT.map((word) => word.trim().toLowerCase())).size, IELTS_WORDS_FLAT.length);
 assert.equal(new Set(GRE_ZHENKAO_V7_WORDS.map((word) => word.trim().toLowerCase())).size, GRE_ZHENKAO_V7_WORDS.length);
 assert.equal(OFFICIAL_BATCH_SIZE, 30);
-assert.equal(OFFICIAL_APPEND_PRELOAD_REMAINING_THRESHOLD, 15);
 
 const officialGroups: LibraryGroupSummary[] = [
   makeGroupSummary({

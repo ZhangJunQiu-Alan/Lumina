@@ -71,18 +71,9 @@ import {
   writeCachedHomeOverview,
 } from './lib/homeOverviewCache';
 import { shouldForceHomeRefreshForNavigation } from './lib/homeNavigation';
-import {
-  clearOfficialAppendPreparationCache,
-  preloadNextOfficialBatchForAppend,
-  reorderActiveOfficialGroup,
-  startNextOfficialBatch,
-} from './lib/officialLibraryStart';
+import { reorderActiveOfficialGroup, startNextOfficialBatch } from './lib/officialLibraryStart';
 import { deleteOfficialLearningLibrary } from './lib/libraryApi';
-import {
-  getOfficialLibraryDefinition,
-  isOfficialLibraryId,
-  OFFICIAL_APPEND_PRELOAD_REMAINING_THRESHOLD,
-} from './lib/officialLibrary';
+import { getOfficialLibraryDefinition, isOfficialLibraryId } from './lib/officialLibrary';
 import { toRoutineDateKey } from './lib/routineDate';
 import {
   ARTICLE_REINFORCEMENT_ENABLED,
@@ -386,7 +377,6 @@ export default function App() {
   const mainScrollRef = useRef<HTMLElement | null>(null);
   const activeLearningGroupIdRef = useRef<string | null>(null);
   const sessionAutoRestoreRef = useRef<string | null>(null);
-  const officialAppendPreloadKeyRef = useRef<string | null>(null);
   const articleGenerationRef = useRef<ArticleGenerationJob | null>(null);
   const articleGenerationRunIdRef = useRef(0);
   const activeWordsRef = useRef<Word[]>([]);
@@ -759,8 +749,6 @@ export default function App() {
     if (!user) {
       cancelArticleGeneration();
       activeLearningGroupIdRef.current = null;
-      officialAppendPreloadKeyRef.current = null;
-      clearOfficialAppendPreparationCache();
       lastSessionChangeSignatureRef.current = null;
       setActiveWords([]);
       setActiveLearningGroupId(null);
@@ -776,8 +764,6 @@ export default function App() {
     cancelArticleGeneration();
     sessionAutoRestoreRef.current = activeLearningGroupIdRef.current;
     activeLearningGroupIdRef.current = null;
-    officialAppendPreloadKeyRef.current = null;
-    clearOfficialAppendPreparationCache();
     lastSessionChangeSignatureRef.current = null;
     setActiveWords([]);
     setActiveLearningGroupId(null);
@@ -1083,7 +1069,6 @@ export default function App() {
 
         setReviewSummary([]);
         setArticleGenerationError('');
-        officialAppendPreloadKeyRef.current = null;
         setActiveWords(sessionWords);
         activeLearningGroupIdRef.current = groupId;
         setActiveLearningGroupId(groupId);
@@ -1484,42 +1469,11 @@ export default function App() {
       trackLearningHomeSync(
         Promise.all([persistSessionPromise, markRound1ProgressPromise, bindRoutinePromise]).then(() => undefined),
       );
-
-      const libraryId = sessionSeed.libraryId;
-      const mode = sessionSeed.officialMode;
-      const confirmedCount = session.round1ConfirmedWordIds.length;
-      const remainingLoadedCount = session.queueWordIds.length - confirmedCount;
-      const officialAppendInput =
-        libraryId && mode
-          ? {
-              userId: user.id,
-              groupId: activeLearningGroupId,
-              libraryId,
-              mode,
-              existingGroupCount:
-                stats.routineCard.officialLibraryOptions.find((item) => item.libraryId === libraryId)
-                  ?.existingGroupCount ?? stats.routineCard.lastUsedOfficialGroupCount,
-            }
-          : null;
-      const appendPreloadKey = `${activeLearningGroupId}:${session.queueWordIds.length}:preload`;
-      if (
-        session.round === 'round1' &&
-        officialAppendInput &&
-        remainingLoadedCount <= OFFICIAL_APPEND_PRELOAD_REMAINING_THRESHOLD &&
-        officialAppendPreloadKeyRef.current !== appendPreloadKey
-      ) {
-        officialAppendPreloadKeyRef.current = appendPreloadKey;
-        void preloadNextOfficialBatchForAppend(officialAppendInput).catch((error) => {
-          officialAppendPreloadKeyRef.current = null;
-          console.error('Failed to preload next official batch:', error);
-        });
-      }
     },
     [
       activeLearningGroupId,
       dictationRoundEnabled,
       recallRoundEnabled,
-      stats.routineCard,
       setActiveSessionSeed,
       trackLearningHomeSync,
       user,

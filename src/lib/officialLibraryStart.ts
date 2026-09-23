@@ -26,14 +26,6 @@ export interface StartNextOfficialBatchResult {
   mode: OfficialStudyMode;
 }
 
-export interface AppendNextOfficialBatchInput {
-  userId: string;
-  groupId: string;
-  libraryId: OfficialLibraryId;
-  mode: OfficialStudyMode;
-  existingGroupCount: number;
-}
-
 export interface ReorderActiveOfficialGroupInput {
   libraryId: OfficialLibraryId;
   groupId: string;
@@ -53,30 +45,15 @@ interface PreparedOfficialBatchEntries {
   entries: PersistedVocabularyEntry[];
 }
 
-const APPEND_BATCH_PRELOAD_TTL_MS = 2 * 60 * 1000;
-const appendPreparationCache = new Map<
-  string,
-  {
-    expiresAt: number;
-    promise: Promise<PreparedOfficialBatchEntries | null>;
-  }
->();
-
-function buildAppendPreparationCacheKey({
-  userId,
-  groupId,
-  libraryId,
-  mode,
-}: Pick<AppendNextOfficialBatchInput, 'userId' | 'groupId' | 'libraryId' | 'mode'>) {
-  return `${userId}:${groupId}:${libraryId}:${mode}`;
-}
-
 async function prepareNextOfficialBatchEntries({
   userId,
   libraryId,
   mode,
   existingGroupCount,
-}: Pick<StartNextOfficialBatchInput, 'userId' | 'libraryId' | 'mode' | 'existingGroupCount'>) {
+}: Pick<
+  StartNextOfficialBatchInput,
+  'userId' | 'libraryId' | 'mode' | 'existingGroupCount'
+>): Promise<PreparedOfficialBatchEntries | null> {
   const { data, error } = await supabase.rpc('official_next_batch', {
     p_user_id: userId,
     p_library_id: libraryId,
@@ -139,43 +116,6 @@ async function prepareNextOfficialBatchEntries({
     groupName: nextBatch.groupName,
     entries: persistedEntries,
   };
-}
-
-async function prepareNextOfficialBatchEntriesForAppend(input: AppendNextOfficialBatchInput) {
-  const cacheKey = buildAppendPreparationCacheKey(input);
-  const now = Date.now();
-  const cached = appendPreparationCache.get(cacheKey);
-
-  if (cached && cached.expiresAt > now) {
-    return cached.promise;
-  }
-
-  const promise = prepareNextOfficialBatchEntries(input);
-  appendPreparationCache.set(cacheKey, {
-    expiresAt: now + APPEND_BATCH_PRELOAD_TTL_MS,
-    promise,
-  });
-
-  promise.catch(() => {
-    if (appendPreparationCache.get(cacheKey)?.promise === promise) {
-      appendPreparationCache.delete(cacheKey);
-    }
-  });
-
-  return promise;
-}
-
-export function preloadNextOfficialBatchForAppend(input: AppendNextOfficialBatchInput): Promise<void> {
-  return prepareNextOfficialBatchEntriesForAppend(input).then(() => undefined);
-}
-
-export function clearOfficialAppendPreparationCache(input?: AppendNextOfficialBatchInput) {
-  if (!input) {
-    appendPreparationCache.clear();
-    return;
-  }
-
-  appendPreparationCache.delete(buildAppendPreparationCacheKey(input));
 }
 
 export async function startNextOfficialBatch({

@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PersistedVocabularyEntry } from './importFlow';
-import {
-  clearOfficialAppendPreparationCache,
-  preloadNextOfficialBatchForAppend,
-  type AppendNextOfficialBatchInput,
-} from './officialLibraryStart';
+import { startNextOfficialBatch, type StartNextOfficialBatchInput } from './officialLibraryStart';
 
 const testState = vi.hoisted(() => ({
   rpc: vi.fn(),
@@ -13,6 +9,7 @@ const testState = vi.hoisted(() => ({
   persistEnrichedVocabularyEntries: vi.fn(),
   apiFetch: vi.fn(),
   invalidateLibraryCache: vi.fn(),
+  createLearningGroupFromVocabularyEntries: vi.fn(),
 }));
 
 vi.mock('./supabase', () => ({
@@ -23,7 +20,7 @@ vi.mock('./supabase', () => ({
 }));
 
 vi.mock('./importFlow', () => ({
-  createLearningGroupFromVocabularyEntries: vi.fn(),
+  createLearningGroupFromVocabularyEntries: testState.createLearningGroupFromVocabularyEntries,
   fetchVocabularyEntriesByWords: testState.fetchVocabularyEntriesByWords,
   persistEnrichedVocabularyEntries: testState.persistEnrichedVocabularyEntries,
 }));
@@ -64,65 +61,74 @@ function makeEntry(id: string, word: string): PersistedVocabularyEntry {
   };
 }
 
-function buildInput(overrides: Partial<AppendNextOfficialBatchInput> = {}): AppendNextOfficialBatchInput {
+function buildStartInput(overrides: Partial<StartNextOfficialBatchInput> = {}): StartNextOfficialBatchInput {
   return {
     userId: 'user-1',
-    groupId: 'group-1',
     libraryId: 'ielts-vocab',
     mode: 'sequential',
-    existingGroupCount: 1,
+    existingGroupCount: 0,
     ...overrides,
   };
 }
 
-describe('official library append preparation cache', () => {
+describe('official library batch creation (immutable 30-word batches)', () => {
   afterEach(() => {
-    clearOfficialAppendPreparationCache();
     vi.clearAllMocks();
   });
 
-  it('reuses an in-flight next-batch preload without writing durable group rows', async () => {
+  it('creates an immutable group of official batch words when words are available', async () => {
     const entry = makeEntry('v1', 'abandon');
-    let resolveRpc: (value: { data: Array<{ word: string; word_position: number }>; error: null }) => void = () => {};
-    testState.rpc.mockReturnValue(
-      new Promise((resolve) => {
-        resolveRpc = resolve;
-      }),
-    );
-    testState.fetchVocabularyEntriesByWords.mockResolvedValue({ existing: [entry], missing: [] });
+    testState.rpc.mockResolvedValue({
+      data: [{ word: 'abandon', word_position: 0 }],
+      error: null,
+    });
+    testState.fetchVocabularyEntriesByWords.mockResolvedValue({
+      existing: [entry],
+      missing: [],
+    });
+    testState.createLearningGroupFromVocabularyEntries.mockResolvedValue({
+      groupId: 'group-101',
+      words: [
+        {
+          id: 'v1',
+          word: 'abandon',
+          phonetic: '/abandon/',
+          meaningZh: 'abandon 的释义',
+          pos: 'n',
+          exampleEn: 'This is abandon.',
+          exampleZh: '',
+          memoryTip: '',
+        },
+      ],
+    });
 
-    const input = buildInput();
-    const preloadPromise = preloadNextOfficialBatchForAppend(input);
-    const secondPreloadPromise = preloadNextOfficialBatchForAppend(input);
+    const result = await startNextOfficialBatch(buildStartInput());
 
-    expect(testState.rpc).toHaveBeenCalledTimes(1);
-
-    resolveRpc({ data: [{ word: 'abandon', word_position: 0 }], error: null });
-
-    await preloadPromise;
-    await secondPreloadPromise;
-
-    expect(testState.fetchVocabularyEntriesByWords).toHaveBeenCalledTimes(1);
-    expect(testState.from).not.toHaveBeenCalled();
-    expect(testState.invalidateLibraryCache).not.toHaveBeenCalled();
+    expect(testState.rpc).toHaveBeenCalledWith('official_next_batch', {
+      p_user_id: 'user-1',
+      p_library_id: 'ielts-vocab',
+      p_mode: 'sequential',
+      p_limit: 30,
+    });
+    expect(testState.createLearningGroupFromVocabularyEntries).toHaveBeenCalledTimes(1);
+    expect(testState.invalidateLibraryCache).toHaveBeenCalledWith('user-1');
+    expect(result).not.toBeNull();
+    expect(result?.groupId).toBe('group-101');
+    expect(result?.words).toHaveLength(1);
+    expect(result?.libraryId).toBe('ielts-vocab');
+    expect(result?.mode).toBe('sequential');
   });
 
-  it('allows a scoped next-batch preload cache entry to be cleared', async () => {
-    const firstEntry = makeEntry('v1', 'abandon');
-    const secondEntry = makeEntry('v2', 'ability');
-    testState.rpc
-      .mockResolvedValueOnce({ data: [{ word: 'abandon', word_position: 0 }], error: null })
-      .mockResolvedValueOnce({ data: [{ word: 'ability', word_position: 1 }], error: null });
-    testState.fetchVocabularyEntriesByWords
-      .mockResolvedValueOnce({ existing: [firstEntry], missing: [] })
-      .mockResolvedValueOnce({ existing: [secondEntry], missing: [] });
+  it('returns null when official library has no remaining words', async () => {
+    testState.rpc.mockResolvedValue({
+      data: [],
+      error: null,
+    });
 
-    const input = buildInput();
-    await preloadNextOfficialBatchForAppend(input);
-    clearOfficialAppendPreparationCache(input);
-    await preloadNextOfficialBatchForAppend(input);
+    const result = await startNextOfficialBatch(buildStartInput());
 
-    expect(testState.rpc).toHaveBeenCalledTimes(2);
-    expect(testState.fetchVocabularyEntriesByWords).toHaveBeenCalledTimes(2);
+    expect(result).toBeNull();
+    expect(testState.createLearningGroupFromVocabularyEntries).not.toHaveBeenCalled();
+    expect(testState.invalidateLibraryCache).not.toHaveBeenCalled();
   });
 });

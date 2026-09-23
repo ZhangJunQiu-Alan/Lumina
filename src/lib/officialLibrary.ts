@@ -37,7 +37,6 @@ export interface OfficialBatchPlan {
 }
 
 export const OFFICIAL_BATCH_SIZE = 30;
-export const OFFICIAL_APPEND_PRELOAD_REMAINING_THRESHOLD = 15;
 const DEFAULT_BATCH_SIZE = OFFICIAL_BATCH_SIZE;
 
 function escapeRegExp(value: string) {
