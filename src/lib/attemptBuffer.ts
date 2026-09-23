@@ -2,6 +2,7 @@ import { ReviewAttemptResponse, ReviewAttemptSource } from '../types';
 import { submitBatchReviewAttempts } from './reviewApi';
 import { supabase } from './supabase';
 import { writeLocal } from './durableStorage';
+import { extractErrorStatus, isTransientError, moveToDeadLetter } from './sync/OfflineSyncManager';
 
 export interface QueuedAttempt {
   clientAttemptId: string;
@@ -11,6 +12,7 @@ export interface QueuedAttempt {
   wasCorrect: boolean;
   elapsedMs: number;
   timestamp: number;
+  retryCount?: number;
 }
 
 export type AttemptSyncListener = (params: { attempt: QueuedAttempt; result: ReviewAttemptResponse }) => void;
@@ -153,9 +155,72 @@ class AttemptBuffer {
       this.queue = this.queue.filter((i) => !syncedIds.has(i.clientAttemptId));
       this.saveToStorage();
       return true;
-    } catch (e) {
-      console.error('Batch sync failed, will retry later', e);
-      return false;
+    } catch (e: unknown) {
+      if (owner !== this.userId) return false;
+      const status = extractErrorStatus(e);
+      const transient = isTransientError(e);
+      const isFatal = !transient;
+
+      if (isFatal) {
+        const errorMsg = e instanceof Error ? e.message : String(e);
+        const fatalReason = `Batch attempt non-transient error (HTTP ${status ?? 'unknown'}): ${errorMsg}`;
+        moveToDeadLetter(
+          owner,
+          {
+            id: `batch-attempt-${Date.now()}`,
+            kind: 'batch_review_attempts',
+            revision: crypto.randomUUID(),
+            userId: owner,
+            payload: batchToSync,
+            createdAt: Date.now(),
+            retryCount: 1,
+            maxRetries: 3,
+            nextRetryAt: 0,
+          },
+          fatalReason,
+        );
+
+        // Remove poison pill items from queue to UNBLOCK subsequent items
+        const failedIds = new Set(batchToSync.map((i) => i.clientAttemptId));
+        this.queue = this.queue.filter((i) => !failedIds.has(i.clientAttemptId));
+        this.saveToStorage();
+        return true;
+      } else {
+        const updatedBatch = batchToSync.map((item) => ({
+          ...item,
+          retryCount: (item.retryCount ?? 0) + 1,
+        }));
+
+        const exhaustedItems = updatedBatch.filter((item) => (item.retryCount ?? 0) >= 3);
+        if (exhaustedItems.length > 0) {
+          moveToDeadLetter(
+            owner,
+            {
+              id: `exhausted-attempts-${Date.now()}`,
+              kind: 'batch_review_attempts',
+              revision: crypto.randomUUID(),
+              userId: owner,
+              payload: exhaustedItems,
+              createdAt: Date.now(),
+              retryCount: 3,
+              maxRetries: 3,
+              nextRetryAt: 0,
+            },
+            `Exceeded max retries: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+
+        const exhaustedIds = new Set(exhaustedItems.map((i) => i.clientAttemptId));
+        const updatedMap = new Map(updatedBatch.map((i) => [i.clientAttemptId, i]));
+
+        this.queue = this.queue
+          .filter((i) => !exhaustedIds.has(i.clientAttemptId))
+          .map((i) => updatedMap.get(i.clientAttemptId) ?? i);
+        this.saveToStorage();
+
+        console.error('Batch sync failed, will retry later', e);
+        return false;
+      }
     }
   }
 

@@ -86,3 +86,36 @@ it('rejects an answer when it cannot be saved rather than acknowledging it', asy
   await expect(attemptBuffer.pushAttempt(answer)).rejects.toThrow('无法保存到本机');
   expect(attemptBuffer.getPendingCount()).toBe(0);
 });
+
+it('isolates 400 Bad Request attempts to DLQ without permanently blocking subsequent answers', async () => {
+  const { attemptBuffer } = await import('./attemptBuffer');
+  const { deadLetterJobs } = await import('./sync/OfflineSyncManager');
+  signIn('alice');
+  Object.defineProperty(navigator, 'onLine', { value: true });
+
+  // Submit throws 400 on first call, then succeeds on second call
+  state.submit
+    .mockRejectedValueOnce(Object.assign(new Error('HTTP 400 Bad Request'), { status: 400 }))
+    .mockResolvedValueOnce([{ ignored: false }]);
+
+  // Push poisoned answer
+  await attemptBuffer.pushAttempt({ ...answer, vocabularyItemId: 'poison-word' });
+  expect(attemptBuffer.getPendingCount()).toBe(1);
+
+  // Flush poisoned answer -> should isolate to DLQ and return without throwing
+  await attemptBuffer.flush();
+
+  // Pending count should be 0 (unblocked!)
+  expect(attemptBuffer.getPendingCount()).toBe(0);
+
+  // Dead letters should have the bad item
+  const dlq = deadLetterJobs('alice');
+  expect(dlq.length).toBeGreaterThan(0);
+  expect(dlq[0].fatalReason).toContain('HTTP 400');
+
+  // Push subsequent normal answer -> should flush and succeed immediately
+  await attemptBuffer.pushAttempt({ ...answer, vocabularyItemId: 'healthy-word' });
+  await attemptBuffer.flush();
+  expect(attemptBuffer.getPendingCount()).toBe(0);
+  expect(state.submit).toHaveBeenCalledTimes(2);
+});
