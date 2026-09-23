@@ -4,7 +4,7 @@
 
 ## 安装与升级
 
-发布包：`mobile/releases/Lumina-1.0.0-release.apk`，旁边的 `.sha256` 文件用于校验传输完整性。
+发布包：`mobile/releases/Lumina-1.0.2-release.apk`（versionCode 2），旁边的 `.sha256` 文件用于校验传输完整性。
 
 将 APK 发给朋友，在手机上允许该文件来源安装应用。后续直接打开新版 APK 覆盖安装，**不要先卸载**。卸载、清除应用数据或丢失手机会删除尚未同步的数据；APK 升级不能恢复这些数据。
 
@@ -63,9 +63,17 @@ npm run lint
 
 - 当前 API 已增加 `https://localhost` 精确 CORS 来源，网站来源仍保留，未授权来源继续拒绝。
 - 已应用 `supabase/migrations/20260828000000_mobile_ielts_retry_safety.sql`，使阅读/听力提交在重试时返回同一 attempt ID。数据库验证使用回滚事务，未保留考试测试记录。
-- Web 前端改动尚未部署到网站；该 APK 内包含新前端。
+- 网站与 API 已发布最新词库及复习修复（前端提交 `bf04e01`，API v47）；1.0.2 APK 包含同一版前端代码。
 
-## 验证记录（2026-08-28）
+## 验证记录（2026-09-16，1.0.2）
+
+- 包含网站文案优化、个人词库任意数量手动选词、单词发音、未完成学习组入口，以及词库清理和复习状态修复。
+- 对应网站版本的 CI 已通过 214 项单元测试；本次 Android 构建通过 TypeScript、release 编译和 Android lint。
+- APK 保持原包名与签名，versionCode 从 1 升至 2；v2 签名校验通过，无调试标志，禁止明文 HTTP 和系统备份。包内未发现服务端密钥、测试凭证或 source map；原生来源 API 健康与 CORS 检查通过。
+- Android 16 模拟器：从旧包 `Lumina-1.0.1.apk`（包内实际版本 1.0.0 / code 1）直接覆盖至 1.0.2 / code 2，新版页面正常渲染，升级前的测试存储标记和存储草稿均保留。升级前已单独验证旧版重启后数据保留。
+- 初次测试立即结束写入进程，未保留测试标记；测试准备步骤增加后台落盘等待后，重启与覆盖升级检查通过。本轮未重跑登录后的完整业务流程或实体手机测试。
+
+## 历史验证记录（2026-08-28）
 
 - TypeScript、ESLint、157 项单元测试、核心业务脚本和 IELTS 评分脚本通过。
 - Android 16 / 2 GB 内存模拟器：原生本地资源加载、活动重建后的存储保留、登录后的主要路由、复习队列与输入草稿恢复通过。
@@ -76,7 +84,7 @@ npm run lint
 
 本版本适合个人和朋友小范围试用。尚未验证实体低端手机、最低系统版本、所有厂商后台回收行为和每一项完整业务流程，不能据此宣称所有机型都流畅。下一步优先在一台真实低端手机做学习、来电/后台中断、断网重连和 APK 升级测试。
 
-依赖审计无 high/critical；仍有开发工具链的 low/moderate 提示（esbuild、Capacitor CLI 的 iOS 相关依赖），不是 APK 中运行的 JS 开发服务器。不要使用 `npm audit fix --force` 自动降级 Capacitor。
+2026-09-16 发布检查：依赖审计未发现漏洞。不要使用 `npm audit fix --force` 自动降级 Capacitor。
 
 Android 自动化源码：`mobile/android/app/src/androidTest/java/college/lumina/mobile/MobileSmokeTest.java`。登录恢复测试需要本地临时 `androidTest/assets/private-session.json`，该文件被忽略且不会进入 release；交付时测试账号和凭证已清理。凭证必须是未过期的临时会话，未配置凭证时只运行无登录测试。断网恢复检查传 `expectOffline=true`，执行前关闭模拟器 Wi-Fi 和移动数据，结束后恢复。
 
@@ -89,3 +97,14 @@ adb shell am instrument -w college.lumina.mobile.test/college.lumina.mobile.Rele
 ```
 
 成功输出必须包含 `PASS: minified signed release rendered`，不能仅凭 adb 命令退出码判断测试通过。
+
+无登录会话时，可用独立的测试标记和存储草稿检查覆盖升级。安装测试 APK 后，在旧应用上准备数据，再覆盖安装新版并验证；两次传入相同标记：
+
+```sh
+adb shell am instrument -w -e prepareUpgrade lumina-1.0.2-bf04e01 college.lumina.mobile.test/college.lumina.mobile.ReleaseSmokeInstrumentation
+adb shell am instrument -w -e verifyUpgrade lumina-1.0.2-bf04e01 college.lumina.mobile.test/college.lumina.mobile.ReleaseSmokeInstrumentation
+adb install -r mobile/releases/Lumina-1.0.2-release.apk
+adb shell am instrument -w -e verifyUpgrade lumina-1.0.2-bf04e01 college.lumina.mobile.test/college.lumina.mobile.ReleaseSmokeInstrumentation
+```
+
+该模式验证原生页面渲染和存储保留，不验证登录后的复习输入恢复。

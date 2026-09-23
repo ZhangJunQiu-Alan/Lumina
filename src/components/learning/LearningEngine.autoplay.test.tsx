@@ -819,12 +819,19 @@ describe('LearningEngine autoplay', () => {
     expect(screen.queryByRole('button', { name: /\d+词(回忆|听写|完成本组)/ })).not.toBeInTheDocument();
   });
 
-  it('auto-submits round 1 when the input exactly matches the current word', async () => {
+  it('waits for Enter before submitting an exact round 1 input', async () => {
     const words = makeWords(2);
 
     render(<LearningEngine type="round1" words={words} onComplete={vi.fn()} />);
 
-    fireEvent.change(screen.getByPlaceholderText('拼写'), { target: { value: words[0].word } });
+    const input = screen.getByPlaceholderText('拼写');
+    fireEvent.change(input, { target: { value: words[0].word } });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(screen.queryByText(words[1].word)).not.toBeInTheDocument();
+    expect(input).toHaveValue(words[0].word);
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
 
     await waitFor(() => expect(screen.getAllByText(words[1].word).length).toBeGreaterThan(0));
   });

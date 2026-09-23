@@ -27,7 +27,7 @@ import { SessionSettingsDrawer } from './components/settings/SessionSettingsDraw
 import { fetchDueReviewWords } from './lib/reviewApi';
 import { attemptBuffer } from './lib/attemptBuffer';
 import { readLocal, writeLocal } from './lib/durableStorage';
-import { cacheLearningRecovery, type ReviewRecovery } from './lib/learningRecovery';
+import { cacheLearningRecovery, readLearningRecovery, type ReviewRecovery } from './lib/learningRecovery';
 import { useAuth } from './contexts/AuthContext';
 import { useLearningPreferences } from './contexts/LearningPreferencesContext';
 import { SavedWordsProvider } from './contexts/SavedWordsContext';
@@ -386,7 +386,6 @@ export default function App() {
   const mainScrollRef = useRef<HTMLElement | null>(null);
   const activeLearningGroupIdRef = useRef<string | null>(null);
   const sessionAutoRestoreRef = useRef<string | null>(null);
-  const lastNonSessionAppPathRef = useRef('/app/home');
   const officialAppendPreloadKeyRef = useRef<string | null>(null);
   const articleGenerationRef = useRef<ArticleGenerationJob | null>(null);
   const articleGenerationRunIdRef = useRef(0);
@@ -506,12 +505,6 @@ export default function App() {
   useEffect(() => {
     activeSessionSeedRef.current = activeSessionSeed;
   }, [activeSessionSeed]);
-
-  useEffect(() => {
-    if (!isSessionRoute && location.pathname.startsWith('/app')) {
-      lastNonSessionAppPathRef.current = `${location.pathname}${location.search}${location.hash}`;
-    }
-  }, [isSessionRoute, location.hash, location.pathname, location.search]);
 
   useEffect(() => {
     userIdRef.current = user?.id ?? null;
@@ -724,6 +717,33 @@ export default function App() {
     void fetchStats({ preferCache: true });
   }, [fetchStats]);
   useEffect(() => {
+    if (!user || !isHomeRoute) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      const now = new Date();
+      const next = new Date(now);
+      next.setHours(9, 0, 0, 0);
+      if (next <= now) next.setDate(next.getDate() + 1);
+      timer = setTimeout(() => {
+        void fetchStats({ forceRefresh: true });
+        schedule();
+      }, next.getTime() - now.getTime());
+    };
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      clearTimeout(timer);
+      void fetchStats({ forceRefresh: true });
+      schedule();
+    };
+    schedule();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [fetchStats, isHomeRoute, user]);
+
+  useEffect(() => {
     if (location.pathname.startsWith('/app/home')) {
       const shouldForceRefresh =
         forceNextHomeRefreshRef.current || homeOverviewDirtyRef.current || pendingLearningHomeSyncsRef.current.size > 0;
@@ -754,6 +774,7 @@ export default function App() {
 
   const resetActiveLearningState = useCallback(() => {
     cancelArticleGeneration();
+    sessionAutoRestoreRef.current = activeLearningGroupIdRef.current;
     activeLearningGroupIdRef.current = null;
     officialAppendPreloadKeyRef.current = null;
     clearOfficialAppendPreparationCache();
@@ -921,6 +942,12 @@ export default function App() {
           const groupSession = await fetchLearningGroupSession(user.id, groupId);
           if (!groupSession) {
             throw new Error('这组词不存在，或它不属于你。');
+          }
+
+          if (groupSession.completed) {
+            resetActiveLearningState();
+            navigateWithFreshHomeStats('/app/home');
+            return;
           }
 
           words = groupSession.words;
@@ -1363,6 +1390,8 @@ export default function App() {
   const handleLearningSessionChange = useCallback(
     (session: LearningSessionSnapshot) => {
       if (!activeLearningGroupId || !user) return;
+
+      if (readLearningRecovery(user.id, activeLearningGroupId)?.completed) return;
 
       const currentSeed = activeSessionSeedRef.current;
       if (isStaleLearningProgressSnapshot(currentSeed, session, activeLearningGroupId)) {
@@ -1936,10 +1965,10 @@ export default function App() {
     <button
       type="button"
       data-session-back-button
-      aria-label="返回"
-      title="返回"
+      aria-label="返回主页"
+      title="返回主页"
       onClick={() => {
-        navigateWithFreshHomeStats(lastNonSessionAppPathRef.current || '/app/home');
+        navigateWithFreshHomeStats('/app/home');
       }}
       className="inline-flex h-7 w-7 items-center justify-center rounded-xl border border-white/80 bg-white/80 text-[#4f46e5] shadow-[0_6px_14px_rgba(79,70,229,0.14)] backdrop-blur-xl transition-all active:scale-95"
     >
@@ -2016,7 +2045,7 @@ export default function App() {
       <WordPopoverProvider>
         <div className="lumina-app-shell min-h-screen flex selection:bg-apple-blue/20">
           <AmbientBackground />
-          {!isIeltsTestRoute && (
+          {!isIeltsTestRoute && !isSessionRoute && (
             <Sidebar activePath={activeNavPath} onNavigate={handleSidebarNavigate} hideOnMobile={isSessionRoute} />
           )}
           <WhatsNewModal />
@@ -2035,7 +2064,7 @@ export default function App() {
               className={cx(
                 'lumina-app-main h-full overflow-y-auto relative z-10',
                 isSessionRoute
-                  ? 'session-main px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:px-6 md:pt-7 md:pb-7 lg:pl-[10.25rem] lg:pr-8 xl:pl-[10.75rem] xl:pr-10'
+                  ? 'session-main px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:px-6 md:pt-7 md:pb-7 lg:px-8 xl:px-10'
                   : isIeltsTestRoute
                     ? 'px-0 py-0'
                     : isHomeRoute
@@ -2047,7 +2076,7 @@ export default function App() {
                 className={cx(
                   'min-h-full',
                   isSessionRoute
-                    ? 'session-route-shell mx-auto flex h-full min-h-0 w-full max-w-[1460px] flex-col'
+                    ? 'session-route-shell mx-auto flex h-full min-h-0 w-full flex-col'
                     : 'flex w-full flex-col',
                 )}
               >

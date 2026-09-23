@@ -33,10 +33,10 @@ export function enqueueSync(userId: string, id: string, kind: string, payload: u
 export function flushSyncQueue(userId: string): Promise<void> {
   if (active.has(userId)) return active.get(userId)!;
   const run = (async () => {
-    if (navigator.onLine === false) return;
-    for (const job of pendingJobs(userId)) {
-      const handler = handlers.get(job.kind);
-      if (!handler) continue;
+    while (navigator.onLine !== false) {
+      const job = pendingJobs(userId).find((item) => handlers.has(item.kind));
+      if (!job) return;
+      const handler = handlers.get(job.kind)!;
       const { data } = await supabase.auth.getSession();
       if (data.session?.user.id !== userId) return;
       try {

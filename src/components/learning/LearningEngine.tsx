@@ -344,7 +344,6 @@ export const LearningEngine = ({
   const lastRound2PreloadKeyRef = useRef<string | null>(null);
   const lastSessionSnapshotSignatureRef = useRef<string | null>(null);
   const round1CompletionInFlightRef = useRef(false);
-  const round1AutoSubmitKeyRef = useRef<string | null>(null);
   const round3AutoSubmitKeyRef = useRef<string | null>(null);
   const round1SubmittedInputKeyRef = useRef<string | null>(null);
   const preferencesRef = useRef(preferences);
@@ -523,7 +522,6 @@ export const LearningEngine = ({
     setReportNote('');
     setRound2ChoiceSelection(null);
     round1CompletionInFlightRef.current = false;
-    round1AutoSubmitKeyRef.current = null;
     round3AutoSubmitKeyRef.current = null;
     round1SubmittedInputKeyRef.current = null;
     setCompletedWordIds(new Set(initialEngineState.initialCompletedIds));
@@ -1764,14 +1762,14 @@ export const LearningEngine = ({
       return;
     }
 
-    const canAutoSubmit = type === 'round1' || type === 'round3';
+    const canAutoSubmit = type === 'round3';
     if (!canAutoSubmit) return;
 
     const isExactMatch = stripDiacritics(nextValue.trim().toLowerCase()) === stripDiacritics(expectedInput);
     if (!isExactMatch) return;
 
     const autoSubmitKey = `${type}:${currentWord.id}:${expectedInput}`;
-    const autoSubmitKeyRef = type === 'round3' ? round3AutoSubmitKeyRef : round1AutoSubmitKeyRef;
+    const autoSubmitKeyRef = round3AutoSubmitKeyRef;
     if (autoSubmitKeyRef.current === autoSubmitKey) return;
 
     autoSubmitKeyRef.current = autoSubmitKey;
@@ -2178,7 +2176,7 @@ export const LearningEngine = ({
         {actionFeedbackToast}
         {reportIssueSheet}
         <div className="flex w-full max-w-3xl items-center gap-2">
-          {sessionLeadingAction && <div className="shrink-0 lg:hidden">{sessionLeadingAction}</div>}
+          {sessionLeadingAction && <div className="shrink-0">{sessionLeadingAction}</div>}
           <RoundIndicator type={type} className="min-w-0 flex-1" />
           {sessionActions}
         </div>

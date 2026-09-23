@@ -5,6 +5,7 @@ export interface LearningRecovery {
   groupTitle: string;
   words: Word[];
   session: PersistedLearningSession | null;
+  completed?: boolean;
 }
 export interface ReviewRecovery {
   runId?: string;

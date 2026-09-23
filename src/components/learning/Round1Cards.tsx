@@ -329,11 +329,11 @@ export const InputSessionShell = ({
   sessionActions?: React.ReactNode;
   main: React.ReactNode;
 }) => (
-  <div className="input-session-shell mx-auto flex h-full min-h-0 w-full max-w-[1400px] flex-col gap-3 sm:gap-4">
+  <div className="input-session-shell mx-auto flex h-full min-h-0 w-full flex-col gap-3 sm:gap-4">
     <header className="grid shrink-0 grid-cols-[minmax(0,1fr)] items-center sm:grid-cols-[3.5rem_minmax(0,1fr)_3.5rem] sm:gap-3">
       <div className="hidden sm:block" />
       <div className="flex min-w-0 items-center gap-3">
-        {sessionLeadingAction && <div className="shrink-0 lg:hidden">{sessionLeadingAction}</div>}
+        {sessionLeadingAction && <div className="shrink-0">{sessionLeadingAction}</div>}
         <RoundIndicator type={type} className="min-w-0 shrink-0" showConnector={false} />
         <SessionProgress currentIndex={currentIndex} queueLength={queueLength} type={type} className="min-w-0 flex-1" />
         {sessionActions && <div className="flex h-6 shrink-0 items-center justify-end">{sessionActions}</div>}

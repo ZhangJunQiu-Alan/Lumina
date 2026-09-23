@@ -42,7 +42,7 @@ describe('durable account-scoped synchronization', () => {
     expect(pendingJobs('bob')).toEqual([]);
   });
 
-  it('keeps newer progress written while an older request is in flight', async () => {
+  it('drains newer progress written while an older request is in flight', async () => {
     let release!: () => void;
     const request = new Promise<void>((resolve) => {
       release = resolve;
@@ -56,8 +56,9 @@ describe('durable account-scoped synchronization', () => {
     enqueueSync('alice', 'session', 'race', { index: 2 });
     release();
     await Promise.all([first, duplicate]);
-    expect(handler).toHaveBeenCalledTimes(1);
-    expect(pendingJobs('alice')[0].payload).toEqual({ index: 2 });
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(handler).toHaveBeenLastCalledWith({ index: 2 }, 'alice');
+    expect(pendingJobs('alice')).toEqual([]);
   });
 
   it('does not discard jobs while offline or before their handler loads', async () => {

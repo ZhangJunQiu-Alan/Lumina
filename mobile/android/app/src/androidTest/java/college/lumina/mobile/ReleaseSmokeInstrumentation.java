@@ -11,9 +11,15 @@ import android.webkit.WebView;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import org.json.JSONObject;
 
 public class ReleaseSmokeInstrumentation extends Instrumentation {
-    @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
+    private Bundle options;
+    @Override public void onCreate(Bundle arguments) {
+        super.onCreate(arguments);
+        options = arguments == null ? new Bundle() : arguments;
+        start();
+    }
 
     private WebView findWebView(View view) {
         if (view instanceof WebView) return (WebView) view;
@@ -45,10 +51,26 @@ public class ReleaseSmokeInstrumentation extends Instrumentation {
             Intent intent = new Intent().setClassName("college.lumina.mobile", "college.lumina.mobile.MainActivity")
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             Activity activity = startActivitySync(intent);
+            String prepareToken = options.getString("prepareUpgrade", "");
+            String verifyToken = options.getString("verifyUpgrade", "");
+            String rendered = "document.getElementById('root')?.innerText.length > 20 && location.origin === 'https://localhost' && window.Capacitor.isNativePlatform()";
+            String draftKey = "lumina.input.v1.qa-upgrade.test.review.0.word";
             long deadline = SystemClock.elapsedRealtime() + 45000;
             boolean passed = false;
             while (SystemClock.elapsedRealtime() < deadline) {
-                String state = evaluate(activity, "Boolean(document.getElementById('root')?.innerText.length > 20 && JSON.parse(localStorage.getItem('lumina.qa.upgrade-marker') || 'null')?.answer === 'preserved' && [...document.querySelectorAll('input')].some(input => input.value === 'dai'))");
+                String condition;
+                if (!prepareToken.isEmpty()) {
+                    condition = "(() => { if (!(" + rendered + ")) return false; "
+                        + "localStorage.setItem('lumina.qa.upgrade-marker',JSON.stringify({answer:'preserved',token:" + JSONObject.quote(prepareToken) + "}));"
+                        + "localStorage.setItem('" + draftKey + "',JSON.stringify({input:'dai',showAnswer:false,choice:null})); return true; })()";
+                } else if (!verifyToken.isEmpty()) {
+                    condition = "Boolean(" + rendered
+                        + " && JSON.parse(localStorage.getItem('lumina.qa.upgrade-marker') || 'null')?.token === " + JSONObject.quote(verifyToken)
+                        + " && JSON.parse(localStorage.getItem('" + draftKey + "') || 'null')?.input === 'dai')";
+                } else {
+                    condition = "Boolean(" + rendered + " && JSON.parse(localStorage.getItem('lumina.qa.upgrade-marker') || 'null')?.answer === 'preserved' && [...document.querySelectorAll('input')].some(input => input.value === 'dai'))";
+                }
+                String state = evaluate(activity, condition);
                 if ("true".equals(state)) { passed = true; break; }
                 SystemClock.sleep(250);
             }
@@ -56,7 +78,15 @@ public class ReleaseSmokeInstrumentation extends Instrumentation {
                 String state = evaluate(activity, "JSON.stringify({path:location.pathname,rendered:document.getElementById('root')?.innerText.length,marker:JSON.parse(localStorage.getItem('lumina.qa.upgrade-marker') || 'null')?.answer,inputs:[...document.querySelectorAll('input')].map(input=>input.type==='password'?'[redacted]':input.value)})");
                 throw new IllegalStateException("Release recovery failed: " + state);
             }
-            report.putString("stream", "PASS: minified signed release rendered; pre-upgrade storage marker and review draft preserved\n");
+            if (!prepareToken.isEmpty()) {
+                runOnMainSync(() -> activity.moveTaskToBack(true));
+                SystemClock.sleep(5000);
+            }
+            report.putString("stream", !prepareToken.isEmpty()
+                ? "PASS: pre-upgrade storage marker and draft prepared\n"
+                : !verifyToken.isEmpty()
+                    ? "PASS: minified signed release rendered; pre-upgrade storage marker and stored draft preserved\n"
+                    : "PASS: minified signed release rendered; pre-upgrade storage marker and review draft preserved\n");
             finish(Activity.RESULT_OK, report);
         } catch (Exception error) {
             report.putString("stream", "FAIL: " + error.getMessage() + "\n");
