@@ -637,7 +637,7 @@ export interface UserStats {
   perfectCheckinDays: number;
   stableRecallCount: number;
   orbitDays: OrbitDay[];
-  activityDays: ActivityDay[];
+  activityDays?: ActivityDay[];
   selectedDate: string;
   selectedDayReviewWordCount: number;
   selectedDayLearnedWordCount: number;

@@ -19,6 +19,7 @@
     "cleanup:saved-library": "node --import tsx --env-file=.env scripts/cleanup-saved-library.ts",
     "backfill:forms": "node --import tsx --env-file=.env scripts/backfill-vocabulary-item-forms.ts",
     "backfill:round2-distractors": "node --import tsx --env-file=.env scripts/backfill-round2-choice-distractors.ts",
+    "backfill:daily-user-stats": "node --import tsx --env-file=.env scripts/backfill-daily-user-statistics.ts",
     "import:ielts-reading": "node --import tsx --env-file=.env scripts/import-ielts-reading.ts",
     "import:ielts-reading-figures": "node --import tsx --env-file=.env scripts/import-ielts-reading-figures.ts",
     "import:ielts-listening": "node --import tsx --env-file=.env scripts/import-ielts-listening.ts",

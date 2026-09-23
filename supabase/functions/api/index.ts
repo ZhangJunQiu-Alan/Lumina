@@ -29,7 +29,7 @@ import {
   saveWordToLibrary,
 } from '../../../shared/server/library.ts';
 import { cleanupSavedLibrary } from '../../../shared/server/savedLibraryCleanup.ts';
-import { getHomeOverview } from '../../../shared/server/home.ts';
+import { getHomeOverview, getUserActivityHeatmap } from '../../../shared/server/home.ts';
 import {
   getUserLearningPreferences,
   resolveLearningPreferencesPatch,
@@ -1121,6 +1121,28 @@ Deno.serve(async (request) => {
         status = 500;
         logger.error('API Error: /api/home/overview', error, {
           endpoint: '/api/home/overview',
+          user_id: auth.userId,
+          timezone,
+        });
+        return errorResponse(request, error instanceof Error ? error.message : String(error), status);
+      }
+    }
+
+    if (method === 'GET' && path === '/api/user/activity-heatmap') {
+      const auth = await requireUser(request);
+      if (auth.response) {
+        status = auth.status ?? 401;
+        return auth.response;
+      }
+      const timezone = url.searchParams.get('timezone');
+      try {
+        const data = await getUserActivityHeatmap(auth.userId, timezone);
+        status = 200;
+        return jsonResponse(request, { data }, status);
+      } catch (error) {
+        status = 500;
+        logger.error('API Error: /api/user/activity-heatmap', error, {
+          endpoint: '/api/user/activity-heatmap',
           user_id: auth.userId,
           timezone,
         });

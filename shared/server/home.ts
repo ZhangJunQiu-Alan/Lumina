@@ -79,6 +79,8 @@ interface RoutineCardPayload {
   officialLibraryOptions: HomeOfficialLibraryOptionPayload[];
 }
 
+export type { ActivityDayPayload, OrbitDayPayload };
+
 export interface HomeOverviewPayload {
   todayReviewCount: number;
   streak: number;
@@ -117,15 +119,16 @@ interface LearningGroupRow {
   session_queue_word_ids: unknown;
   session_round1_confirmed_word_ids?: unknown;
   session_last_active_at: string | null;
+  word_count?: number | null;
 }
 
-interface LearningGroupWordRow {
-  learning_group_id: string;
-}
-
-interface LearningGroupLearnedWordRow {
-  vocabulary_item_id: string;
-  learned_at: string | null;
+interface DailyUserStatisticRow {
+  date_key: string;
+  review_word_count: number;
+  learned_word_count: number;
+  attempt_count: number;
+  correct_count: number;
+  is_routine_finished: boolean;
 }
 
 interface StreakProtectionEventRow {
@@ -142,11 +145,6 @@ interface DailyRoutineProgressRow {
   step_order_json: unknown;
   completed_steps_json: unknown;
   status: RoutineCardState | null;
-}
-
-interface ReconstructedWordState {
-  memoryState: string;
-  nextReviewAt: string | null;
 }
 
 interface Round2GroupProgress {
@@ -212,13 +210,6 @@ function toDateKey(date: Date, timeZone: string) {
 function toRoutineDateKey(date: Date, timeZone: string) {
   const shifted = new Date(date.getTime() - ROUTINE_DAY_RESET_HOUR * 60 * 60 * 1000);
   return toDateKey(shifted, timeZone);
-}
-
-function dateKeyFromIso(iso: string | null | undefined, timeZone: string) {
-  if (!iso) return null;
-  const parsed = new Date(iso);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return toRoutineDateKey(parsed, timeZone);
 }
 
 function parseDateKey(dateKey: string) {
@@ -416,25 +407,6 @@ function reconcileLearningGroupWithRound2History(
   };
 }
 
-function isDueForDay(state: ReconstructedWordState, dayKey: string, timeZone: string) {
-  if (state.memoryState === 'mastered' || !state.nextReviewAt) {
-    return false;
-  }
-
-  const dueDateKey = dateKeyFromIso(state.nextReviewAt, timeZone);
-  return dueDateKey !== null && dueDateKey <= dayKey;
-}
-
-function countDueWords(states: Map<string, ReconstructedWordState>, dayKey: string, timeZone: string) {
-  let count = 0;
-  for (const state of states.values()) {
-    if (isDueForDay(state, dayKey, timeZone)) {
-      count += 1;
-    }
-  }
-  return count;
-}
-
 async function fetchRecentDailyRoutineProgress(userId: string, dateKeys: string[]) {
   const { data, error } = await supabaseAdmin
     .from('daily_routine_progress')
@@ -460,46 +432,6 @@ async function fetchRecentDailyRoutineProgress(userId: string, dateKeys: string[
     statusMap.set(row.local_date, row.status);
   });
   return statusMap;
-}
-
-function resolveDayStatus(input: {
-  dueAtStartCount: number;
-  dueAtEndCount: number;
-  reviewWordCount: number;
-  learnedWordCount: number;
-  protectedByCard: boolean;
-  routineStatus: string | null;
-}): OrbitDayStatus {
-  const { dueAtEndCount, reviewWordCount, learnedWordCount, protectedByCard, routineStatus } = input;
-
-  // 核心原则：如果有 Routine 记录，必须 Completed 才是完美
-  if (routineStatus) {
-    if (routineStatus === 'completed') {
-      return 'perfect';
-    }
-    // 只要有任何学习行为，就是普通打卡
-    if (reviewWordCount > 0 || learnedWordCount > 0) {
-      return 'ordinary';
-    }
-  } else {
-    // 兜底逻辑（针对没有 Routine 记录的情况，比如旧数据或同步延迟）
-    const reviewCleared = dueAtEndCount === 0;
-    // 显著学习：学了 5 个以上或者清空了复习
-    const significantLearning = learnedWordCount >= 5 || (reviewWordCount > 0 && reviewCleared);
-
-    if (significantLearning) {
-      return 'perfect';
-    }
-    if (reviewWordCount > 0 || learnedWordCount > 0) {
-      return 'ordinary';
-    }
-  }
-
-  if (protectedByCard) {
-    return 'shielded';
-  }
-
-  return 'gap';
 }
 
 function isRoutineStepKey(value: unknown): value is RoutineStepKey {
@@ -834,13 +766,18 @@ function buildRoutineCard(input: {
   } = input;
 
   const provisionalStepOrder = buildRoutineStepOrder(routineProgress?.starting_due_count ?? todayReviewCount);
-  const stepOrder = routineProgress
+  let stepOrder = routineProgress
     ? normalizeRoutineSteps(routineProgress.step_order_json).length > 0
       ? normalizeRoutineSteps(routineProgress.step_order_json)
       : provisionalStepOrder
     : provisionalStepOrder;
 
-  const routineCompletedSteps = normalizeRoutineSteps(routineProgress?.completed_steps_json);
+  if (todayReviewCount > 0 && !stepOrder.includes('review')) {
+    stepOrder = ['review', ...stepOrder];
+  }
+  const routineCompletedSteps = normalizeRoutineSteps(routineProgress?.completed_steps_json).filter(
+    (step) => step !== 'review' || todayReviewCount === 0,
+  );
   const boundLearningGroupId = routineProgress?.main_learning_group_id ?? resumeCandidate?.groupId ?? null;
   const boundGroup = boundLearningGroupId ? (learningGroupsById.get(boundLearningGroupId) ?? null) : null;
   const inferredLearningSteps = boundGroup
@@ -974,31 +911,20 @@ function buildRoutineCard(input: {
   } satisfies RoutineCardPayload;
 }
 
-async function fetchReviewEvents(userId: string) {
-  const rows: ReviewEventRow[] = [];
+async function fetchActiveGroupsReviewEvents(activeGroupIds: string[]) {
+  if (activeGroupIds.length === 0) return [];
 
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabaseAdmin
-      .from('review_events')
-      .select('id, vocabulary_item_id, learning_group_id, source, was_correct, next_state, next_review_at, created_at')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: true })
-      .order('id', { ascending: true })
-      .range(from, from + PAGE_SIZE - 1);
+  const { data, error } = await supabaseAdmin
+    .from('review_events')
+    .select('id, vocabulary_item_id, learning_group_id, source, was_correct, next_state, next_review_at, created_at')
+    .in('learning_group_id', activeGroupIds)
+    .order('created_at', { ascending: true });
 
-    if (error) {
-      throw new Error(`review_events lookup failed: ${error.message}`);
-    }
-
-    const page = (data ?? []) as ReviewEventRow[];
-    rows.push(...page);
-
-    if (page.length < PAGE_SIZE) {
-      break;
-    }
+  if (error) {
+    return [];
   }
 
-  return rows;
+  return (data ?? []) as ReviewEventRow[];
 }
 
 async function fetchLearningGroups(userId: string) {
@@ -1020,7 +946,8 @@ async function fetchLearningGroups(userId: string) {
         session_current_index,
         session_queue_word_ids,
         session_round1_confirmed_word_ids,
-        session_last_active_at
+        session_last_active_at,
+        word_count
       `,
       )
       .eq('user_id', userId)
@@ -1042,73 +969,102 @@ async function fetchLearningGroups(userId: string) {
   return rows;
 }
 
-async function fetchLearningGroupWordCounts(groupIds: string[]) {
+function buildLearningGroupWordCounts(learningGroups: LearningGroupRow[]) {
   const counts = new Map<string, number>();
-
-  for (const groupId of groupIds) {
-    counts.set(groupId, 0);
+  for (const group of learningGroups) {
+    const queueLength = normalizeSessionQueueWordIds(group.session_queue_word_ids).length;
+    counts.set(
+      group.id,
+      typeof group.word_count === 'number' && group.word_count > 0 ? group.word_count : (queueLength || 30),
+    );
   }
-
-  for (let offset = 0; offset < groupIds.length; offset += GROUP_ID_CHUNK_SIZE) {
-    const chunk = groupIds.slice(offset, offset + GROUP_ID_CHUNK_SIZE);
-
-    for (let from = 0; ; from += PAGE_SIZE) {
-      const { data, error } = await supabaseAdmin
-        .from('learning_group_words')
-        .select('learning_group_id')
-        .in('learning_group_id', chunk)
-        .range(from, from + PAGE_SIZE - 1);
-
-      if (error) {
-        throw new Error(`learning_group_words lookup failed: ${error.message}`);
-      }
-
-      const page = (data ?? []) as LearningGroupWordRow[];
-      for (const row of page) {
-        counts.set(row.learning_group_id, (counts.get(row.learning_group_id) ?? 0) + 1);
-      }
-
-      if (page.length < PAGE_SIZE) {
-        break;
-      }
-    }
-  }
-
   return counts;
 }
 
-async function fetchLearningGroupLearnedWordRows(groupIds: string[]) {
-  const rows: LearningGroupLearnedWordRow[] = [];
+async function fetchDailyUserStatistics(userId: string, startDateKey: string, endDateKey: string) {
+  const { data, error } = await supabaseAdmin
+    .from('daily_user_statistics')
+    .select('date_key, review_word_count, learned_word_count, attempt_count, correct_count, is_routine_finished')
+    .eq('user_id', userId)
+    .gte('date_key', startDateKey)
+    .lte('date_key', endDateKey);
 
-  if (groupIds.length === 0) {
-    return rows;
+  const statsMap = new Map<string, DailyUserStatisticRow>();
+  if (error || !data) {
+    return statsMap;
   }
 
-  for (let offset = 0; offset < groupIds.length; offset += GROUP_ID_CHUNK_SIZE) {
-    const chunk = groupIds.slice(offset, offset + GROUP_ID_CHUNK_SIZE);
+  for (const row of data as DailyUserStatisticRow[]) {
+    statsMap.set(row.date_key, row);
+  }
+  return statsMap;
+}
 
-    for (let from = 0; ; from += PAGE_SIZE) {
-      const { data, error } = await supabaseAdmin
-        .from('learning_group_words')
-        .select('vocabulary_item_id, learned_at')
-        .in('learning_group_id', chunk)
-        .not('learned_at', 'is', null)
-        .range(from, from + PAGE_SIZE - 1);
+async function calculateUserStreak(
+  userId: string,
+  todayKey: string,
+  protectedDates: Set<string>,
+  todayIsActive: boolean,
+): Promise<number> {
+  const past90Days = addDays(todayKey, -90);
+  const { data, error } = await supabaseAdmin
+    .from('daily_user_statistics')
+    .select('date_key, review_word_count, learned_word_count, is_routine_finished')
+    .eq('user_id', userId)
+    .gte('date_key', past90Days)
+    .order('date_key', { ascending: false });
 
-      if (error) {
-        throw new Error(`learning_group_words learned lookup failed: ${error.message}`);
-      }
-
-      const page = (data ?? []) as LearningGroupLearnedWordRow[];
-      rows.push(...page);
-
-      if (page.length < PAGE_SIZE) {
-        break;
-      }
+  const statsMap = new Map<string, { isActive: boolean }>();
+  if (!error && data) {
+    for (const row of data as Array<{
+      date_key: string;
+      review_word_count: number;
+      learned_word_count: number;
+      is_routine_finished: boolean;
+    }>) {
+      const isActive =
+        row.is_routine_finished || row.review_word_count > 0 || row.learned_word_count > 0;
+      statsMap.set(row.date_key, { isActive });
     }
   }
 
-  return rows;
+  let streak = 0;
+  const todayStat = statsMap.get(todayKey);
+  const todayActive = todayIsActive || todayStat?.isActive || protectedDates.has(todayKey);
+
+  let checkDate: string;
+  if (todayActive) {
+    streak += 1;
+    checkDate = addDays(todayKey, -1);
+  } else {
+    checkDate = addDays(todayKey, -1);
+  }
+
+  while (true) {
+    const stat = statsMap.get(checkDate);
+    const isDayActive = stat?.isActive || protectedDates.has(checkDate);
+    if (isDayActive) {
+      streak += 1;
+      checkDate = addDays(checkDate, -1);
+    } else {
+      break;
+    }
+  }
+
+  return streak;
+}
+
+async function fetchPerfectCheckinDays(userId: string): Promise<number> {
+  const { count, error } = await supabaseAdmin
+    .from('daily_user_statistics')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('is_routine_finished', true);
+
+  if (error || typeof count !== 'number') {
+    return 0;
+  }
+  return count;
 }
 
 async function fetchOfficialCompletedMemoryCounts(userId: string, learningGroups: LearningGroupRow[]) {
@@ -1250,9 +1206,8 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
   const nowIso = now.toISOString();
   const todayKey = toRoutineDateKey(now, timeZone);
 
-  const [reviewEvents, learningGroups, protectionEvents, routineProgress, masteredWordCountResult, dueCountResult] =
+  const [learningGroups, protectionEvents, routineProgress, masteredWordCountResult, dueCountResult] =
     await Promise.all([
-      fetchReviewEvents(userId),
       fetchLearningGroups(userId),
       fetchStreakProtectionEvents(userId),
       fetchDailyRoutineProgress(userId, todayKey),
@@ -1277,106 +1232,48 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     throw new Error(`review_states due count failed: ${dueCountResult.error.message}`);
   }
 
-  const learningGroupIds = learningGroups.map((group) => group.id);
-  const [learningGroupWordCounts, learnedGroupWordRows] = await Promise.all([
-    fetchLearningGroupWordCounts(learningGroupIds),
-    fetchLearningGroupLearnedWordRows(learningGroupIds),
-  ]);
-  const round2ProgressByGroupId = buildRound2ProgressByGroupId(reviewEvents);
+  const activeGroupIds = learningGroups
+    .filter((group) => group.status !== 'completed' && !group.completed_at)
+    .map((group) => group.id);
+  const activeEvents = await fetchActiveGroupsReviewEvents(activeGroupIds);
+  const round2ProgressByGroupId = buildRound2ProgressByGroupId(activeEvents);
   const reconciledLearningGroups = learningGroups.map((group) =>
     reconcileLearningGroupWithRound2History(group, round2ProgressByGroupId.get(group.id)),
   );
+  const learningGroupWordCounts = buildLearningGroupWordCounts(reconciledLearningGroups);
   const officialCompletedMemoryCounts = await fetchOfficialCompletedMemoryCounts(userId, reconciledLearningGroups);
   const learningGroupsById = new Map(reconciledLearningGroups.map((group) => [group.id, group]));
-  const reviewWordIdsByDate = new Map<string, Set<string>>();
-  const learnedWordIdsByDate = new Map<string, Set<string>>();
-  const attemptCountsByDate = new Map<string, number>();
-  const correctAttemptCountsByDate = new Map<string, number>();
+
+  const pastSevenDaysStart = addDays(todayKey, -6);
+  const orbitDateKeys = buildDateRange(pastSevenDaysStart, todayKey);
   const protectedDates = new Set(
     protectionEvents
       .map((event) => event.protected_date)
       .filter((dateKey): dateKey is string => typeof dateKey === 'string' && dateKey.length > 0),
   );
 
-  const relevantDateKeys = [todayKey];
+  const [recentStatsMap, recentRoutineStatusMap] = await Promise.all([
+    fetchDailyUserStatistics(userId, pastSevenDaysStart, todayKey),
+    fetchRecentDailyRoutineProgress(userId, orbitDateKeys),
+  ]);
 
-  // 核心逻辑改进：从 review_events 中精准统计
-  const eventsWithDateKey = reviewEvents.map((event) => {
-    const dayKey = dateKeyFromIso(event.created_at, timeZone) ?? todayKey;
-    relevantDateKeys.push(dayKey);
-    attemptCountsByDate.set(dayKey, (attemptCountsByDate.get(dayKey) ?? 0) + 1);
-    if (event.was_correct === true) {
-      correctAttemptCountsByDate.set(dayKey, (correctAttemptCountsByDate.get(dayKey) ?? 0) + 1);
-    }
-
-    if (event.source === 'review') {
-      const seen = reviewWordIdsByDate.get(dayKey) ?? new Set<string>();
-      seen.add(event.vocabulary_item_id);
-      reviewWordIdsByDate.set(dayKey, seen);
-    } else if (event.source === 'round2' || event.source === 'round3') {
-      // 兼容旧数据：有学习轮成功事件时也计入当天的“新学”成果
-      const seen = learnedWordIdsByDate.get(dayKey) ?? new Set<string>();
-      seen.add(event.vocabulary_item_id);
-      learnedWordIdsByDate.set(dayKey, seen);
-    }
-
-    return { ...event, dayKey };
-  });
-
-  for (const row of learnedGroupWordRows) {
-    const dayKey = dateKeyFromIso(row.learned_at, timeZone) ?? todayKey;
-    relevantDateKeys.push(dayKey);
-    const seen = learnedWordIdsByDate.get(dayKey) ?? new Set<string>();
-    seen.add(row.vocabulary_item_id);
-    learnedWordIdsByDate.set(dayKey, seen);
-  }
-
-  for (const protectedDate of protectedDates) {
-    relevantDateKeys.push(protectedDate);
-  }
-
-  // 扩展日期范围：确保包含过去一年，以便账号页年度热力图稳定显示
-  const activityStartDateKey = addDays(todayKey, -364);
-  relevantDateKeys.push(activityStartDateKey);
-  // 扩展日期范围：确保至少包含过去 7 天，以便星轨显示和连续学习计算
-  const pastSevenDaysStart = addDays(todayKey, -6);
-  relevantDateKeys.push(pastSevenDaysStart);
-
-  const startDateKey = [...relevantDateKeys].sort()[0] ?? todayKey;
-  const dateKeys = buildDateRange(startDateKey, todayKey);
-
-  // 批量获取这些日期的 Routine 进度状态
-  const recentRoutineStatusMap = await fetchRecentDailyRoutineProgress(userId, dateKeys);
-
-  const reconstructedStates = new Map<string, ReconstructedWordState>();
   const dailySummaries = new Map<string, DailySummary>();
+  for (const dateKey of orbitDateKeys) {
+    const stat = recentStatsMap.get(dateKey);
+    const routineStatus = recentRoutineStatusMap.get(dateKey) ?? null;
+    const reviewWordCount = stat?.review_word_count ?? 0;
+    const learnedWordCount = stat?.learned_word_count ?? 0;
+    const attemptCount = stat?.attempt_count ?? 0;
+    const correctAttemptCount = stat?.correct_count ?? 0;
 
-  let eventIndex = 0;
-  for (const dateKey of dateKeys) {
-    const dueAtStartCount = countDueWords(reconstructedStates, dateKey, timeZone);
-
-    while (eventIndex < eventsWithDateKey.length && eventsWithDateKey[eventIndex].dayKey === dateKey) {
-      const event = eventsWithDateKey[eventIndex];
-      reconstructedStates.set(event.vocabulary_item_id, {
-        memoryState: event.next_state ?? 'new',
-        nextReviewAt: event.next_review_at,
-      });
-      eventIndex += 1;
+    let status: OrbitDayStatus = 'gap';
+    if (stat?.is_routine_finished || routineStatus === 'completed') {
+      status = 'perfect';
+    } else if (reviewWordCount > 0 || learnedWordCount > 0) {
+      status = 'ordinary';
+    } else if (protectedDates.has(dateKey)) {
+      status = 'shielded';
     }
-
-    const dueAtEndCount = countDueWords(reconstructedStates, dateKey, timeZone);
-    const reviewWordCount = reviewWordIdsByDate.get(dateKey)?.size ?? 0;
-    const learnedWordCount = learnedWordIdsByDate.get(dateKey)?.size ?? 0;
-    const attemptCount = attemptCountsByDate.get(dateKey) ?? 0;
-    const correctAttemptCount = correctAttemptCountsByDate.get(dateKey) ?? 0;
-    const status = resolveDayStatus({
-      dueAtStartCount,
-      dueAtEndCount,
-      reviewWordCount,
-      learnedWordCount,
-      protectedByCard: protectedDates.has(dateKey),
-      routineStatus: recentRoutineStatusMap.get(dateKey) ?? null,
-    });
 
     dailySummaries.set(dateKey, {
       reviewWordCount,
@@ -1420,34 +1317,22 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     officialLibraryOptions,
   });
 
-  // 如果今天的 Routine 状态因为实时操作变成了 Completed，同步更新 summary
   const todaySummary = dailySummaries.get(todayKey);
   if (todaySummary && routineCard.state === 'completed' && todaySummary.status !== 'perfect') {
     todaySummary.status = 'perfect';
   }
 
-  let perfectCheckinDays = 0;
-  let streak = 0;
+  const todayIsActive =
+    Boolean(todaySummary && todaySummary.status !== 'gap') ||
+    (todaySummary?.reviewWordCount ?? 0) > 0 ||
+    (todaySummary?.learnedWordCount ?? 0) > 0;
 
-  // 计算完美打卡总数 (perfect 状态)
-  for (const dateKey of dateKeys) {
-    const summary = dailySummaries.get(dateKey);
-    if (summary?.status === 'perfect') {
-      perfectCheckinDays += 1;
-    }
-  }
+  const [streak, perfectCheckinDays] = await Promise.all([
+    calculateUserStreak(userId, todayKey, protectedDates, todayIsActive),
+    fetchPerfectCheckinDays(userId),
+  ]);
 
-  // 计算连续学习天数 (perfect, ordinary, shielded 均计入)
-  for (let index = dateKeys.length - 1; index >= 0; index -= 1) {
-    const summary = dailySummaries.get(dateKeys[index]);
-    if (!summary || summary.status === 'gap') {
-      // 只有 gap 会中断 streak
-      break;
-    }
-    streak += 1;
-  }
-
-  const orbitDays = buildDateRange(addDays(todayKey, -6), todayKey).map((dateKey) => {
+  const orbitDays: OrbitDayPayload[] = orbitDateKeys.map((dateKey) => {
     const summary = dailySummaries.get(dateKey) ?? {
       reviewWordCount: 0,
       learnedWordCount: 0,
@@ -1466,26 +1351,16 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     };
   });
 
-  const activityDays = buildDateRange(activityStartDateKey, todayKey).map((dateKey) => {
-    const summary = dailySummaries.get(dateKey) ?? {
-      reviewWordCount: 0,
-      learnedWordCount: 0,
-      attemptCount: 0,
-      correctAttemptCount: 0,
-      status: (protectedDates.has(dateKey) ? 'shielded' : 'gap') as OrbitDayStatus,
-    };
-
+  // Decoupled: activityDays in HomeOverview only contains the 7 orbit days, lightweight and fast!
+  const activityDays: ActivityDayPayload[] = orbitDays.map((orbit) => {
+    const summary = dailySummaries.get(orbit.date);
+    const attemptCount = summary?.attemptCount ?? 0;
+    const correctAttemptCount = summary?.correctAttemptCount ?? 0;
     return {
-      date: dateKey,
-      weekdayLabel: formatWeekdayLabel(dateKey, timeZone),
-      shortDateLabel: formatShortDateLabel(dateKey, timeZone),
-      status: summary.status,
-      reviewWordCount: summary.reviewWordCount,
-      learnedWordCount: summary.learnedWordCount,
-      attemptCount: summary.attemptCount,
-      correctAttemptCount: summary.correctAttemptCount,
-      accuracy:
-        summary.attemptCount > 0 ? Math.round((summary.correctAttemptCount / summary.attemptCount) * 100) : null,
+      ...orbit,
+      attemptCount,
+      correctAttemptCount,
+      accuracy: attemptCount > 0 ? Math.round((correctAttemptCount / attemptCount) * 100) : null,
     };
   });
 
@@ -1508,4 +1383,61 @@ export async function getHomeOverview(userId: string, requestedTimeZone: string 
     resumeCandidate,
     routineCard,
   } satisfies HomeOverviewPayload;
+}
+
+export async function getUserActivityHeatmap(
+  userId: string,
+  requestedTimeZone: string | null | undefined,
+): Promise<ActivityDayPayload[]> {
+  const timeZone = normalizeTimeZone(requestedTimeZone);
+  const now = new Date();
+  const todayKey = toRoutineDateKey(now, timeZone);
+  const activityStartDateKey = addDays(todayKey, -364);
+
+  const [statsMap, protectionEvents, routineProgressMap] = await Promise.all([
+    fetchDailyUserStatistics(userId, activityStartDateKey, todayKey),
+    fetchStreakProtectionEvents(userId),
+    fetchRecentDailyRoutineProgress(userId, buildDateRange(addDays(todayKey, -14), todayKey)),
+  ]);
+
+  const protectedDates = new Set(
+    protectionEvents
+      .map((event) => event.protected_date)
+      .filter((dateKey): dateKey is string => typeof dateKey === 'string' && dateKey.length > 0),
+  );
+
+  const dateKeys = buildDateRange(activityStartDateKey, todayKey);
+
+  return dateKeys.map((dateKey) => {
+    const stat = statsMap.get(dateKey);
+    const routineStatus = routineProgressMap.get(dateKey) ?? null;
+    const reviewWordCount = stat?.review_word_count ?? 0;
+    const learnedWordCount = stat?.learned_word_count ?? 0;
+    const attemptCount = stat?.attempt_count ?? 0;
+    const correctAttemptCount = stat?.correct_count ?? 0;
+
+    let status: OrbitDayStatus = 'gap';
+    if (stat?.is_routine_finished || routineStatus === 'completed') {
+      status = 'perfect';
+    } else if (reviewWordCount > 0 || learnedWordCount > 0) {
+      status = 'ordinary';
+    } else if (protectedDates.has(dateKey)) {
+      status = 'shielded';
+    }
+
+    const accuracy =
+      attemptCount > 0 ? Math.round((correctAttemptCount / attemptCount) * 100) : null;
+
+    return {
+      date: dateKey,
+      weekdayLabel: formatWeekdayLabel(dateKey, timeZone),
+      shortDateLabel: formatShortDateLabel(dateKey, timeZone),
+      status,
+      reviewWordCount,
+      learnedWordCount,
+      attemptCount,
+      correctAttemptCount,
+      accuracy,
+    };
+  });
 }

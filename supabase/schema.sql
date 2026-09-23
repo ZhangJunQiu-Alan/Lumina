@@ -178,6 +178,7 @@ CREATE TABLE IF NOT EXISTS learning_groups (
   session_passed_queue_indices JSONB,
   session_round1_confirmed_word_ids JSONB,
   session_last_active_at TIMESTAMPTZ,
+  word_count    INTEGER DEFAULT 0,
   created_at    TIMESTAMPTZ DEFAULT NOW(),
   completed_at  TIMESTAMPTZ,
   CHECK (session_round IS NULL OR session_round IN ('round1', 'round2', 'round3', 'article'))
@@ -961,13 +962,15 @@ BEGIN
     user_id,
     group_name,
     source_type,
-    library_id
+    library_id,
+    word_count
   )
   VALUES (
     v_user_id,
     NULLIF(BTRIM(COALESCE(p_group_name, '')), ''),
     v_source_type,
-    v_library_id
+    v_library_id,
+    COALESCE(cardinality(p_vocabulary_item_ids), 0)
   )
   RETURNING id INTO v_group_id;
 
@@ -1195,6 +1198,23 @@ CREATE TABLE IF NOT EXISTS daily_routine_progress (
   UNIQUE(user_id, local_date)
 );
 
+-- Per-user daily aggregated statistics for fast home overview and activity heatmap
+CREATE TABLE IF NOT EXISTS daily_user_statistics (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id               TEXT NOT NULL,
+  date_key              DATE NOT NULL,
+  review_word_count     INTEGER NOT NULL DEFAULT 0,
+  learned_word_count    INTEGER NOT NULL DEFAULT 0,
+  attempt_count         INTEGER NOT NULL DEFAULT 0,
+  correct_count         INTEGER NOT NULL DEFAULT 0,
+  is_routine_finished   BOOLEAN NOT NULL DEFAULT false,
+  updated_at            TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, date_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_user_stats_lookup
+  ON daily_user_statistics (user_id, date_key DESC);
+
 -- Per-user learning preferences
 CREATE TABLE IF NOT EXISTS user_settings (
   user_id                        TEXT PRIMARY KEY,
@@ -1256,6 +1276,7 @@ ALTER TABLE ielts_listening_responses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_saved_words       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE streak_protection_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_routine_progress ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daily_user_statistics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_settings          ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "vocabulary_items_authenticated_select" ON vocabulary_items
@@ -1464,6 +1485,15 @@ CREATE POLICY "daily_routine_progress_owner_insert" ON daily_routine_progress
 CREATE POLICY "daily_routine_progress_owner_update" ON daily_routine_progress
   FOR UPDATE USING (auth.uid()::text = user_id) WITH CHECK (auth.uid()::text = user_id);
 CREATE POLICY "daily_routine_progress_owner_delete" ON daily_routine_progress
+  FOR DELETE USING (auth.uid()::text = user_id);
+
+CREATE POLICY "daily_user_statistics_owner_select" ON daily_user_statistics
+  FOR SELECT USING (auth.uid()::text = user_id);
+CREATE POLICY "daily_user_statistics_owner_insert" ON daily_user_statistics
+  FOR INSERT WITH CHECK (auth.uid()::text = user_id);
+CREATE POLICY "daily_user_statistics_owner_update" ON daily_user_statistics
+  FOR UPDATE USING (auth.uid()::text = user_id) WITH CHECK (auth.uid()::text = user_id);
+CREATE POLICY "daily_user_statistics_owner_delete" ON daily_user_statistics
   FOR DELETE USING (auth.uid()::text = user_id);
 
 CREATE POLICY "user_settings_owner_select" ON user_settings

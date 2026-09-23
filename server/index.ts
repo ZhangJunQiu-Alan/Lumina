@@ -43,7 +43,7 @@ import {
   updateLocalPassword,
   verifyLocalAccessToken,
 } from '../shared/server/localAuth.ts';
-import { getHomeOverview } from '../shared/server/home.ts';
+import { getHomeOverview, getUserActivityHeatmap } from '../shared/server/home.ts';
 import {
   getUserLearningPreferences,
   resolveLearningPreferencesPatch,
@@ -900,6 +900,24 @@ app.get('/api/home/overview', requireAuth, async (req: AuthenticatedRequest, res
   } catch (e) {
     logger.error('API Error: /api/home/overview', e, {
       endpoint: '/api/home/overview',
+      user_id: userId,
+      timezone: timeZone,
+    });
+    return sendInternalError(res);
+  }
+});
+
+// GET /api/user/activity-heatmap
+app.get('/api/user/activity-heatmap', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.authUserId!;
+  const timeZone = typeof req.query.timezone === 'string' ? req.query.timezone : null;
+
+  try {
+    const activityDays = await getUserActivityHeatmap(userId, timeZone);
+    res.json({ data: activityDays });
+  } catch (e) {
+    logger.error('API Error: /api/user/activity-heatmap', e, {
+      endpoint: '/api/user/activity-heatmap',
       user_id: userId,
       timezone: timeZone,
     });

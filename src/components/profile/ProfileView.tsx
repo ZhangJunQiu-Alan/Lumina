@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { Activity, CalendarDays, CheckCircle2, Flame, LogOut, TrendingUp } from 'lucide-react';
 import type { ActivityDay, UserStats } from '../../types';
+import { fetchUserActivityHeatmap } from '../../lib/homeApi';
 import { cx } from '../shared/LearningUI';
 
 type TrendRange = 7 | 14 | 30;
@@ -59,12 +60,12 @@ function getActivityTone(total: number) {
   return 'bg-[#216e39] border-[#1d5f32]';
 }
 
-function getFallbackActivityDays(days: ActivityDay[]) {
-  if (days.length > 0) return days;
+function getFallbackActivityDays(days?: ActivityDay[]) {
+  if (days && days.length >= 365) return days;
 
   const today = new Date();
   const todayUtc = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0));
-  return Array.from({ length: 365 }, (_, index) => {
+  const fallback: ActivityDay[] = Array.from({ length: 365 }, (_, index) => {
     const date = addUtcDays(todayUtc, index - 364);
     const dateKey = toDateKey(date);
     return {
@@ -79,6 +80,14 @@ function getFallbackActivityDays(days: ActivityDay[]) {
       accuracy: null,
     };
   });
+
+  if (!days || days.length === 0) return fallback;
+
+  const map = new Map<string, ActivityDay>(fallback.map((d) => [d.date, d]));
+  for (const d of days) {
+    map.set(d.date, d);
+  }
+  return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function buildHeatmapWeeks(days: ActivityDay[]): (ActivityDay | null)[][] {
@@ -300,7 +309,36 @@ function MetricPill({ icon: Icon, label, value }: { icon: typeof Flame; label: s
 
 export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
   const [trendRange, setTrendRange] = useState<TrendRange>(14);
-  const activityDays = useMemo(() => getFallbackActivityDays(stats.activityDays), [stats.activityDays]);
+  const [heatmapDays, setHeatmapDays] = useState<ActivityDay[] | null>(null);
+  const [isLoadingHeatmap, setIsLoadingHeatmap] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    setIsLoadingHeatmap(true);
+    fetchUserActivityHeatmap()
+      .then((days) => {
+        if (isMounted) {
+          setHeatmapDays(days);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load activity heatmap:', err);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoadingHeatmap(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const activityDays = useMemo(
+    () => getFallbackActivityDays(heatmapDays ?? stats.activityDays),
+    [heatmapDays, stats.activityDays],
+  );
   const trendDays = useMemo(() => activityDays.slice(-trendRange), [activityDays, trendRange]);
   const yearlySummary = useMemo(() => summarizeActivity(activityDays), [activityDays]);
   const trendSummary = useMemo(() => summarizeActivity(trendDays), [trendDays]);
@@ -410,7 +448,12 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
                 <span>多</span>
               </div>
             </div>
-            <div className="mt-6 rounded-[28px] border border-black/[0.04] bg-white/58 p-4">
+            <div
+              className={cx(
+                'mt-6 rounded-[28px] border border-black/[0.04] bg-white/58 p-4 transition-opacity duration-300',
+                isLoadingHeatmap && 'opacity-60',
+              )}
+            >
               <ActivityHeatmap days={activityDays} />
             </div>
           </section>
