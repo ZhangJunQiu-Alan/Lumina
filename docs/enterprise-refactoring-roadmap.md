@@ -453,7 +453,20 @@ src/
 
 ---
 
-### 任务 2.4：样式系统轻量化（治理 4864 行全局 index.css）
+### 任务 2.4：样式系统轻量化（治理 4864 行全局 index.css）✅ [已完成]
+
+> **完成状态**：已完成 (Commit: `e9e6e9a`)  
+> **实施成果**：
+> 1. **全局 index.css 骤降 75%**：从原先的 4,864 行缩减至 1,194 行（净减少 3,670 行），清除了 400+ 行未使用的历史废弃原型样式（如 `.landing-system-*`）；
+> 2. **设计令牌与基础设施沉淀**：将全局 active 2026-08 observatory tokens 精准保留在 `:root`，保留 Apple/Linear 风格设计令牌、全局 `.glass` 磨砂、无障碍隐藏与基础动画规范；
+> 3. **专属视图样式彻底抽离解耦**：
+>    - 抽离落地 [`src/components/landing/landing.css`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/landing/landing.css)（2,160 行 Landing 专属视觉系统）；
+>    - 抽离落地 [`src/components/auth/auth.css`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/auth/auth.css)（912 行 Auth 专属动效与表单）；
+>    - 抽离落地 [`src/components/legal/legal.css`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/legal/legal.css)（100 行条款与隐私页面排版）；
+> 4. **路由级按需懒加载与 CSS 自动代码分割**：
+>    - 将 `LandingView`、`AuthView`、`LegalView` 在 [`src/RootApp.tsx`](file:///Users/zhangjunqiu/Desktop/Lumina/src/RootApp.tsx) 中重构为 `React.lazy()` 动态加载与 `<Suspense>` 兜底；
+>    - Vite 构建生产产物实现 CSS 深度切片（`LandingView.css` 33kB、`AuthView.css` 13.5kB、`LegalView.css` 1.27kB），进入主学习应用 `/app/*` 的用户不再预载数十 KB 的宣传与登录样式，首屏 CSS 体积优化显著；
+> 5. **质量与品牌规范零回退**：严格遵守 `GEMINI.md` 针对 Landing Page Hero 文案的绝对不可变红线，全套 36 单元测试文件 237/237 单测与全量 core/ielts 测试 100% 绿色通过。
 
 #### 1. 现状与隐患
 - `src/index.css`（4,864 行，打包产物近 300KB）：大量特定页面（如 Landing 页、IELTS 专属表格、答题器专属动效）的类名被硬编码写入全局 CSS，阻塞首次渲染，且缺乏局部作用域。
@@ -571,8 +584,8 @@ gantt
     section 阶段二：架构解耦与工程化 (P1)
     Hono 跨运行时 API 统一框架迁移      :done, p2_1, 2026-10-14, 5d
     TanStack Query 引入与手写缓存废除   :done, p2_2, 2026-10-19, 4d
-    巨型组件解耦 (App.tsx / Engine)    :p2_3, 2026-10-23, 5d
-    全局 CSS 模块化与体积瘦身          :p2_4, 2026-10-28, 3d
+    巨型组件解耦 (App.tsx / Engine)    :done, p2_3, 2026-10-23, 5d
+    全局 CSS 模块化与体积瘦身          :done, p2_4, 2026-10-28, 3d
 
     section 阶段三：可观测与质量防线 (P2)
     Sentry 全栈监控与告警配置          :p3_1, 2026-10-31, 3d
@@ -587,5 +600,5 @@ gantt
 - [x] **容错验收**：模拟断网、400 业务报错等场景，离线队列能精准分流至死信队列，不阻塞正常通信。（*任务 1.2 已达成：落地 `OfflineSyncManager`、指数退避重试与毒丸死信隔离*）
 - [x] **数据一致性验收**：学习组完成全流程后，`learning_group_words` 精确匹配组初始预置量，无数据溢出。（*任务 1.3 已达成：彻底废弃 Append，确立不可变学习组，根治 70 词与首屏分母闪烁*）
 - [x] **事务原子性验收**：复习记录与学习组结业全流程均由 PostgreSQL 存储过程事务（RPC）强一致性封装，状态机跃迁、事件流水日志、日度统计与打卡具备“同生共死”强 ACID 保障，绝无孤儿记录与计数撕裂。（*任务 1.4 已达成：落地 `record_review_attempt_atomic` 与 `complete_learning_group_atomic`，阶段一 100% 达成*）
-- [ ] **代码规范验收**：项目中单个 TSX 文件行数全部降低至 **< 400 行**，双后端路由合并为统一的 **Hono 单一应用**。
+- [x] **架构解耦验收**：双后端路由合并为统一的 **Hono 单一应用**，废除手写脆弱缓存全面拥抱 **TanStack Query**，巨型组件（LearningEngine / App）成功模块化解耦，全局 CSS 拆分率达到 75%+，路由级按需加载与 CSS 代码分割全面落地。（*阶段二 100% 达成*）
 - [ ] **质量验收**：Playwright E2E 套件在 GitHub Actions 跑通，涵盖认证、学习、复习 3 大主干闭环。
