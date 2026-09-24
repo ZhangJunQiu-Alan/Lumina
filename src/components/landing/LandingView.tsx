@@ -1,3 +1,4 @@
+import './landing.css';
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
