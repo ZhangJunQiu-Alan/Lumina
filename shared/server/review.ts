@@ -17,6 +17,7 @@ import {
   sortDueReviewRows,
   toNextReviewAt,
   toResultType,
+  toReviewDateKey,
 } from './review-domain.ts';
 
 export interface ReviewAttemptInput {
@@ -502,10 +503,9 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
 
   // If the user got it wrong during a review, keep it "due" for today (don't push to future).
   // This allows the word to stay in the queue if the user exits the session midway.
+  const userTimeZone = await getUserReviewTimeZone(input.userId);
   const scheduledReviewAt =
-    input.source === 'review' && result === 'wrong'
-      ? now.toISOString()
-      : toNextReviewAt(nextState, now, await getUserReviewTimeZone(input.userId));
+    input.source === 'review' && result === 'wrong' ? now.toISOString() : toNextReviewAt(nextState, now, userTimeZone);
   const preserveEarlierDueDate = result === 'wrong' || isDictationAttemptSource(input.source);
   const nextReviewAt =
     preserveEarlierDueDate && scheduledReviewAt && existing?.next_review_at
@@ -513,7 +513,64 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
       : scheduledReviewAt;
 
   const graduated = currentState !== 'mastered' && nextState === 'mastered';
+  const routineDate = toReviewDateKey(now, userTimeZone);
 
+  if (typeof (supabaseAdmin as { rpc?: unknown }).rpc === 'function') {
+    const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc('record_review_attempt_atomic', {
+      p_user_id: input.userId,
+      p_vocabulary_item_id: input.vocabularyItemId,
+      p_learning_group_id: input.learningGroupId ?? null,
+      p_source: input.source,
+      p_was_correct: input.wasCorrect,
+      p_elapsed_ms: elapsedMs,
+      p_next_state: nextState,
+      p_next_review_at: nextReviewAt,
+      p_should_increment_review_counters: shouldIncrementReviewCounters,
+      p_result: result,
+      p_ease_factor: existing?.ease_factor ?? 2.5,
+      p_interval_days: intervalForState(nextState),
+      p_routine_date: routineDate,
+      p_assessed_at: now.toISOString(),
+    });
+
+    if (!rpcError && rpcData) {
+      const responseData = rpcData as {
+        success: boolean;
+        ignored?: boolean;
+        memory_state: MemoryState;
+        next_review_at: string | null;
+        graduated: boolean;
+        transition?: {
+          from: MemoryState | null;
+          to: MemoryState;
+          source: ReviewEventSource;
+          result: ReviewResultType;
+          graduated: boolean;
+          nextReviewAt: string | null;
+        };
+      };
+      return {
+        memoryState: responseData.memory_state ?? nextState,
+        nextReviewAt: responseData.next_review_at ?? nextReviewAt,
+        graduated: responseData.graduated ?? graduated,
+        ignored: responseData.ignored,
+        transition: responseData.transition ?? {
+          from: existing?.memory_state ?? null,
+          to: nextState,
+          source: input.source,
+          result,
+          graduated,
+          nextReviewAt,
+        },
+      };
+    }
+
+    if (rpcError && !isMissingRpcError(rpcError)) {
+      throw new Error(`record_review_attempt_atomic failed: ${rpcError.message}`);
+    }
+  }
+
+  // Graceful fallback for unmigrated environments
   const { error: upsertError } = await supabaseAdmin.from('review_states').upsert(
     {
       user_id: input.userId,
@@ -556,6 +613,17 @@ export async function recordReviewAttempt(input: ReviewAttemptInput): Promise<Re
   if (eventError) {
     throw new Error(`review_events insert failed: ${eventError.message}`);
   }
+
+  await recordDailyUserStatisticsFallback(supabaseAdmin, {
+    userId: input.userId,
+    routineDate,
+    source: input.source,
+    wasCorrect: input.wasCorrect,
+    assessedAt: now.toISOString(),
+    vocabularyItemId: input.vocabularyItemId,
+  }).catch((err: Error) => {
+    console.warn(`[Fallback] daily_user_statistics upsert error: ${err.message}`);
+  });
 
   return {
     memoryState: nextState,
@@ -618,6 +686,65 @@ export async function markVocabularyUnknown(input: MarkVocabularyUnknownInput): 
     Math.min(existing?.next_review_at ? Date.parse(existing.next_review_at) : now.getTime(), now.getTime()),
   ).toISOString();
 
+  const userTimeZone = await getUserReviewTimeZone(input.userId);
+  const routineDate = toReviewDateKey(now, userTimeZone);
+
+  if (typeof (supabaseAdmin as { rpc?: unknown }).rpc === 'function') {
+    const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc('record_review_attempt_atomic', {
+      p_user_id: input.userId,
+      p_vocabulary_item_id: input.vocabularyItemId,
+      p_learning_group_id: input.learningGroupId ?? null,
+      p_source: source,
+      p_was_correct: false,
+      p_elapsed_ms: 0,
+      p_next_state: nextState,
+      p_next_review_at: nextReviewAt,
+      p_should_increment_review_counters: true,
+      p_result: result,
+      p_ease_factor: existing?.ease_factor ?? 2.5,
+      p_interval_days: intervalForState(nextState),
+      p_routine_date: routineDate,
+      p_assessed_at: assessedAt,
+    });
+
+    if (!rpcError && rpcData) {
+      const responseData = rpcData as {
+        success: boolean;
+        ignored?: boolean;
+        memory_state: MemoryState;
+        next_review_at: string | null;
+        graduated: boolean;
+        transition?: {
+          from: MemoryState | null;
+          to: MemoryState;
+          source: ReviewEventSource;
+          result: ReviewResultType;
+          graduated: boolean;
+          nextReviewAt: string | null;
+        };
+      };
+      return {
+        memoryState: responseData.memory_state ?? nextState,
+        nextReviewAt: responseData.next_review_at ?? nextReviewAt,
+        graduated: false,
+        ignored: responseData.ignored,
+        transition: responseData.transition ?? {
+          from: currentState,
+          to: nextState,
+          source,
+          result,
+          graduated: false,
+          nextReviewAt,
+        },
+      };
+    }
+
+    if (rpcError && !isMissingRpcError(rpcError)) {
+      throw new Error(`record_review_attempt_atomic failed: ${rpcError.message}`);
+    }
+  }
+
+  // Graceful fallback for unmigrated environments
   const { error: upsertError } = await supabaseAdmin.from('review_states').upsert(
     {
       user_id: input.userId,
@@ -657,6 +784,17 @@ export async function markVocabularyUnknown(input: MarkVocabularyUnknownInput): 
   if (eventError) {
     throw new Error(`review_events unknown mark failed: ${eventError.message}`);
   }
+
+  await recordDailyUserStatisticsFallback(supabaseAdmin, {
+    userId: input.userId,
+    routineDate,
+    source,
+    wasCorrect: false,
+    assessedAt,
+    vocabularyItemId: input.vocabularyItemId,
+  }).catch((err: Error) => {
+    console.warn(`[Fallback] daily_user_statistics upsert error: ${err.message}`);
+  });
 
   return {
     memoryState: nextState,
@@ -977,4 +1115,70 @@ export async function completeReviewSession(userId: string, options: { timeZone?
 
   await markReviewRoutineCompleted(userId, options.timeZone);
   return { completed: true };
+}
+
+function isMissingRpcError(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  return (
+    error.code === 'PGRST202' ||
+    error.code === '42883' ||
+    Boolean(error.message?.includes('Could not find the function')) ||
+    Boolean(error.message?.includes('does not exist'))
+  );
+}
+
+async function recordDailyUserStatisticsFallback(
+  client: typeof supabaseAdmin,
+  input: {
+    userId: string;
+    routineDate: string;
+    source: ReviewAttemptSource;
+    wasCorrect: boolean;
+    assessedAt: string;
+    vocabularyItemId: string;
+  },
+) {
+  let isFirstReviewForWordToday = false;
+  if (input.source === 'review') {
+    const { count, error } = await client
+      .from('review_events')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', input.userId)
+      .eq('vocabulary_item_id', input.vocabularyItemId)
+      .eq('source', 'review')
+      .gte('created_at', `${input.routineDate}T00:00:00.000Z`)
+      .lte('created_at', `${input.routineDate}T23:59:59.999Z`);
+    if (!error && (count ?? 0) <= 1) {
+      isFirstReviewForWordToday = true;
+    }
+  }
+
+  const { data: existing } = await client
+    .from('daily_user_statistics')
+    .select('review_word_count, attempt_count, correct_count')
+    .eq('user_id', input.userId)
+    .eq('date_key', input.routineDate)
+    .maybeSingle<{ review_word_count: number; attempt_count: number; correct_count: number }>();
+
+  if (existing) {
+    await client
+      .from('daily_user_statistics')
+      .update({
+        review_word_count: existing.review_word_count + (isFirstReviewForWordToday ? 1 : 0),
+        attempt_count: existing.attempt_count + 1,
+        correct_count: existing.correct_count + (input.wasCorrect ? 1 : 0),
+        updated_at: input.assessedAt,
+      })
+      .eq('user_id', input.userId)
+      .eq('date_key', input.routineDate);
+  } else {
+    await client.from('daily_user_statistics').insert({
+      user_id: input.userId,
+      date_key: input.routineDate,
+      review_word_count: input.source === 'review' ? 1 : 0,
+      attempt_count: 1,
+      correct_count: input.wasCorrect ? 1 : 0,
+      updated_at: input.assessedAt,
+    });
+  }
 }

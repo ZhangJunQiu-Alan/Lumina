@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
   update: vi.fn(),
   flush: vi.fn(async () => {}),
   enqueue: vi.fn(),
+  rpc: vi.fn(),
 }));
 
 vi.mock('./supabase', () => ({
@@ -23,6 +24,7 @@ vi.mock('./supabase', () => ({
       };
       return query;
     },
+    rpc: (...args: unknown[]) => state.rpc(...args),
   },
 }));
 vi.mock('./syncQueue', () => ({
@@ -35,6 +37,7 @@ vi.mock('./syncQueue', () => ({
 
 import {
   clearLearningGroupSession,
+  completeLearningGroupAtomic,
   fetchLearningGroupSession,
   persistLearningGroupSession,
 } from './learningSessionApi';
@@ -95,5 +98,52 @@ describe('completed learning sessions', () => {
     await persistLearningGroupSession('alice', session);
     expect(state.enqueue).not.toHaveBeenCalled();
     expect(readLearningRecovery('alice', 'g1')?.completed).toBe(true);
+  });
+
+  it('enqueues atomic group completion and updates local recovery', async () => {
+    cacheLearningRecovery('alice', 'g1', { groupTitle: '12 words', words: [], session });
+    await completeLearningGroupAtomic('alice', 'g1', ['w1', 'w2'], { timeZone: 'Asia/Shanghai' });
+
+    expect(readLearningRecovery('alice', 'g1')?.completed).toBe(true);
+    expect(readLearningRecovery('alice', 'g1')?.session).toBeNull();
+    expect(state.enqueue).toHaveBeenCalledWith(
+      'alice',
+      'session:g1',
+      'group-complete-atomic',
+      expect.objectContaining({
+        groupId: 'g1',
+        wordIds: ['w1', 'w2'],
+        timeZone: 'Asia/Shanghai',
+      }),
+    );
+  });
+
+  it('invokes complete_learning_group_atomic RPC handler when synced', async () => {
+    state.rpc.mockResolvedValueOnce({
+      data: { success: true, group_id: 'g1', updated_count: 2, newly_learned_count: 2 },
+      error: null,
+    });
+
+    const handler = state.handlers.get('group-complete-atomic');
+    expect(handler).toBeDefined();
+
+    await handler!(
+      {
+        groupId: 'g1',
+        wordIds: ['w1', 'w2'],
+        timeZone: 'Asia/Shanghai',
+        localDate: '2026-09-24',
+        completedAt: '2026-09-24T01:00:00Z',
+      },
+      'alice',
+    );
+
+    expect(state.rpc).toHaveBeenCalledWith('complete_learning_group_atomic', {
+      p_user_id: 'alice',
+      p_learning_group_id: 'g1',
+      p_completed_word_ids: ['w1', 'w2'],
+      p_time_zone: 'Asia/Shanghai',
+      p_local_date: '2026-09-24',
+    });
   });
 });

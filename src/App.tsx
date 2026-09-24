@@ -44,6 +44,7 @@ import {
 } from './lib/learningSession';
 import {
   clearLearningGroupSession,
+  completeLearningGroupAtomic,
   fetchGeneratedArticle,
   fetchLearningGroupSession,
   fetchOfficialResumeTargets,
@@ -1024,22 +1025,12 @@ export default function App() {
 
         if (restoredOrInitialSession.round === 'round3' && !dictationRoundEnabled) {
           const scopedWords = filterWordsToRound1Confirmed(words, restoredOrInitialSession.round1ConfirmedWordIds);
-          await markLearningGroupWordsRoundCompleted(
+          await completeLearningGroupAtomic(
+            user.id,
             groupId,
             scopedWords.map((word) => word.id),
-            'round3',
+            { timeZone: resolveBrowserTimeZone() },
           ).catch((error) => {
-            console.error('Failed to mark restored dictation word progress as skipped:', error);
-            throw error;
-          });
-          await markRoutineStepCompleted(user.id, {
-            step: 'round3',
-            groupId,
-            timeZone: resolveBrowserTimeZone(),
-          }).catch((error) => {
-            console.error('Failed to mark restored dictation as skipped:', error);
-          });
-          await clearLearningGroupSession(user.id, groupId, { markCompleted: true }).catch((error) => {
             console.error('Failed to close restored dictation-skipped learning session:', error);
           });
           invalidateLibraryCache(user.id);
@@ -1537,7 +1528,9 @@ export default function App() {
       };
 
       if (currentActiveWords.length === 0) {
-        await clearLearningGroupSession(user.id, activeLearningGroupId, { markCompleted: true }).catch((error) => {
+        await completeLearningGroupAtomic(user.id, activeLearningGroupId, [], {
+          timeZone: resolveBrowserTimeZone(),
+        }).catch((error) => {
           console.error('Failed to close all-mastered learning session:', error);
         });
         invalidateLibraryCache(user.id);
@@ -1609,14 +1602,12 @@ export default function App() {
         }
 
         if (!dictationRoundEnabled && !recallRoundEnabled) {
-          await markRoutineStepCompleted(user.id, {
-            step: 'round3',
-            groupId: activeLearningGroupId,
-            timeZone: resolveBrowserTimeZone(),
-          }).catch((error) => {
-            console.error('Failed to mark skipped dictation as completed:', error);
-          });
-          await clearLearningGroupSession(user.id, activeLearningGroupId, { markCompleted: true }).catch((error) => {
+          await completeLearningGroupAtomic(
+            user.id,
+            activeLearningGroupId,
+            nextWords.map((word) => word.id),
+            { timeZone: resolveBrowserTimeZone() },
+          ).catch((error) => {
             console.error('Failed to close recall/dictation-skipped learning session:', error);
           });
           invalidateLibraryCache(user.id);
@@ -1645,8 +1636,11 @@ export default function App() {
       }
 
       const finishLearningSession = async () => {
-        await clearLearningGroupSession(user.id, activeLearningGroupId, { markCompleted: true }).catch((error) => {
-          console.error('Failed to close learning session:', error);
+        const completedWordIds = scopedActiveWords.map((word) => word.id);
+        await completeLearningGroupAtomic(user.id, activeLearningGroupId, completedWordIds, {
+          timeZone: resolveBrowserTimeZone(),
+        }).catch((error) => {
+          console.error('Failed to close learning session atomically:', error);
         });
         invalidateLibraryCache(user.id);
         resetActiveLearningState();
@@ -1720,19 +1714,11 @@ export default function App() {
           return;
         }
 
-        await markRoutineStepCompleted(user.id, {
-          step: 'round3',
-          groupId: activeLearningGroupId,
+        const completedWordIds = scopedActiveWords.map((word) => word.id);
+        await completeLearningGroupAtomic(user.id, activeLearningGroupId, completedWordIds, {
           timeZone: resolveBrowserTimeZone(),
         }).catch((error) => {
-          console.error('Failed to mark skipped dictation as completed:', error);
-        });
-        await markLearningGroupWordsRoundCompleted(
-          activeLearningGroupId,
-          scopedActiveWords.map((word) => word.id),
-          'round3',
-        ).catch((error) => {
-          console.error('Failed to mark skipped dictation word progress:', error);
+          console.error('Failed to complete dictation-skipped learning group atomically:', error);
           throw error;
         });
 
@@ -1741,28 +1727,21 @@ export default function App() {
           return;
         }
 
-        await finishLearningSession();
+        invalidateLibraryCache(user.id);
+        resetActiveLearningState();
+        navigateWithFreshHomeStats('/app/home');
         return;
       }
 
       if (round === 'round3') {
         const completedAt = new Date().toISOString();
         await attemptBuffer.flush();
-        await markLearningGroupWordsRoundCompleted(
-          activeLearningGroupId,
-          scopedActiveWords.map((word) => word.id),
-          'round3',
-        ).catch((error) => {
-          console.error('Failed to mark round3 word progress:', error);
-          throw error;
-        });
-
-        await markRoutineStepCompleted(user.id, {
-          step: 'round3',
-          groupId: activeLearningGroupId,
+        const completedWordIds = scopedActiveWords.map((word) => word.id);
+        await completeLearningGroupAtomic(user.id, activeLearningGroupId, completedWordIds, {
           timeZone: resolveBrowserTimeZone(),
         }).catch((error) => {
-          console.error('Failed to mark round3 as completed:', error);
+          console.error('Failed to complete round3 learning group atomically:', error);
+          throw error;
         });
 
         if (articleReinforcementEnabled) {
@@ -1770,7 +1749,9 @@ export default function App() {
           return;
         }
 
-        await finishLearningSession();
+        invalidateLibraryCache(user.id);
+        resetActiveLearningState();
+        navigateWithFreshHomeStats('/app/home');
         return;
       }
 

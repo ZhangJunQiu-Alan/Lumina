@@ -25,6 +25,8 @@ import {
   resolveOfficialLibraryId,
   resolveOfficialStudyModeFromGroupName,
 } from './officialLibrary';
+import { resolveTimeZone, toRoutineDateKey } from './routineDate';
+import { markRemoteRoutineStepCompleted } from './dailyRoutineApi';
 import {
   clampSessionIndex,
   createResumeCandidate,
@@ -1315,6 +1317,106 @@ async function persistRemoteLearningGroupSession(userId: string, session: Persis
   }
 }
 
+export async function completeLearningGroupAtomic(
+  userId: string,
+  groupId: string,
+  wordIds: string[] = [],
+  options: {
+    timeZone?: string;
+    localDate?: string;
+  } = {},
+) {
+  const completedAt = new Date().toISOString();
+  const cached = readLearningRecovery(userId, groupId);
+  cacheLearningRecovery(userId, groupId, {
+    groupTitle: cached?.groupTitle ?? '',
+    words: cached?.words ?? [],
+    session: null,
+    completed: true,
+  });
+  if (readLocal(`lumina.last-learning.v1.${userId}`) === groupId) writeLocal(`lumina.last-learning.v1.${userId}`, null);
+
+  const timeZone = resolveTimeZone(options.timeZone);
+  const localDate = options.localDate ?? toRoutineDateKey(new Date(), timeZone);
+  const vocabularyItemIds = uniqueVocabularyItemIds(wordIds);
+
+  enqueueSync(userId, `session:${groupId}`, 'group-complete-atomic', {
+    groupId,
+    wordIds: vocabularyItemIds,
+    timeZone,
+    localDate,
+    completedAt,
+  });
+  await flushSyncQueue(userId);
+}
+
+registerSyncHandler('group-complete-atomic', async (payload, userId) => {
+  const value = payload as {
+    groupId: string;
+    wordIds: string[];
+    timeZone: string;
+    localDate: string;
+    completedAt: string;
+  };
+  await executeCompleteLearningGroupAtomic(userId, value.groupId, value.wordIds, {
+    timeZone: value.timeZone,
+    localDate: value.localDate,
+    completedAt: value.completedAt,
+  });
+});
+
+async function executeCompleteLearningGroupAtomic(
+  userId: string,
+  groupId: string,
+  wordIds: string[],
+  options: { timeZone: string; localDate: string; completedAt: string },
+) {
+  if (typeof (supabase as { rpc?: unknown }).rpc === 'function') {
+    const { data, error } = await supabase.rpc('complete_learning_group_atomic', {
+      p_user_id: userId,
+      p_learning_group_id: groupId,
+      p_completed_word_ids: wordIds,
+      p_time_zone: options.timeZone,
+      p_local_date: options.localDate,
+    });
+
+    if (!error) {
+      return data;
+    }
+
+    if (!isMissingRpcError(error)) {
+      throw new Error(`complete_learning_group_atomic failed: ${error.message}`);
+    }
+  }
+
+  // Graceful fallback for unmigrated environments
+  await clearRemoteLearningGroupSession(userId, groupId, {
+    markCompleted: true,
+    completedAt: options.completedAt,
+  });
+
+  if (wordIds.length > 0) {
+    await markRemoteLearningGroupWordProgress(groupId, wordIds, 'round3');
+  }
+
+  await markRemoteRoutineStepCompleted(userId, {
+    step: 'round3',
+    groupId,
+    timeZone: options.timeZone,
+    localDate: options.localDate,
+  });
+}
+
+function isMissingRpcError(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  return (
+    error.code === 'PGRST202' ||
+    error.code === '42883' ||
+    Boolean(error.message?.includes('Could not find the function')) ||
+    Boolean(error.message?.includes('does not exist'))
+  );
+}
+
 export async function clearLearningGroupSession(
   userId: string,
   groupId: string,
@@ -1343,6 +1445,25 @@ async function clearRemoteLearningGroupSession(
   groupId: string,
   options: { markCompleted?: boolean; completedAt: string },
 ) {
+  if (options.markCompleted && typeof (supabase as { rpc?: unknown }).rpc === 'function') {
+    const timeZone = resolveTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const localDate = toRoutineDateKey(new Date(), timeZone);
+    const { error: rpcError } = await supabase.rpc('complete_learning_group_atomic', {
+      p_user_id: userId,
+      p_learning_group_id: groupId,
+      p_completed_word_ids: [],
+      p_time_zone: timeZone,
+      p_local_date: localDate,
+    });
+
+    if (!rpcError) {
+      return;
+    }
+
+    if (!isMissingRpcError(rpcError)) {
+      throw new Error(`complete_learning_group_atomic failed: ${rpcError.message}`);
+    }
+  }
   const updatePayload: Record<string, unknown> = {
     session_round: null,
     session_current_index: null,

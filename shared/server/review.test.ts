@@ -4,6 +4,7 @@ import { cleanupSavedLibrary } from './savedLibraryCleanup';
 
 const db = vi.hoisted(() => ({
   from: vi.fn(),
+  rpc: vi.fn(),
   state: {} as Record<string, unknown>,
   events: [] as Record<string, unknown>[],
   writes: vi.fn(),
@@ -34,6 +35,11 @@ beforeEach(() => {
     next_review_at: '2026-09-16T07:00:00Z',
     graduated_at: null,
   };
+  // Default RPC mock returns function not found error to trigger fallback tests
+  db.rpc.mockResolvedValue({
+    data: null,
+    error: { code: 'PGRST202', message: 'Could not find the function record_review_attempt_atomic' },
+  });
   db.from.mockImplementation((table: string) => {
     if (table === 'daily_routine_progress') {
       return {
@@ -54,6 +60,28 @@ beforeEach(() => {
         },
       };
     }
+    if (table === 'daily_user_statistics') {
+      return {
+        select() {
+          return this;
+        },
+        eq() {
+          return this;
+        },
+        async maybeSingle() {
+          return { data: null, error: null };
+        },
+        async insert() {
+          return { error: null };
+        },
+        async update() {
+          return { error: null };
+        },
+        async upsert() {
+          return { error: null };
+        },
+      };
+    }
     if (!['review_states', 'review_events'].includes(table)) throw new Error(`Unexpected access: ${table}`);
     const filters: Record<string, unknown> = {};
     return {
@@ -62,6 +90,12 @@ beforeEach(() => {
       },
       eq(key: string, value: unknown) {
         filters[key] = value;
+        return this;
+      },
+      gte() {
+        return this;
+      },
+      lte() {
         return this;
       },
       async maybeSingle() {
@@ -80,6 +114,7 @@ beforeEach(() => {
         return Promise.resolve(
           resolve({
             data: db.events.filter((event) => Object.entries(filters).every(([key, value]) => event[key] === value)),
+            count: db.events.length,
             error: null,
           }),
         );
@@ -169,6 +204,42 @@ describe('review persistence', () => {
     await markVocabularyMastered(attempt);
     expect(db.state.memory_state).toBe('mastered');
     expect(db.from.mock.calls.map(([table]) => table)).toEqual(['review_states', 'review_states', 'review_events']);
+  });
+
+  it('calls record_review_attempt_atomic RPC and returns its response when available', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: {
+        success: true,
+        memory_state: 'slow_recall',
+        next_review_at: '2026-09-19T01:00:00.000Z',
+        graduated: false,
+        transition: {
+          from: 'fuzzy',
+          to: 'slow_recall',
+          source: 'review',
+          result: 'slow_correct',
+          graduated: false,
+          nextReviewAt: '2026-09-19T01:00:00.000Z',
+        },
+      },
+      error: null,
+    });
+
+    const result = await recordReviewAttempt({ ...attempt, wasCorrect: true, elapsedMs: 3000 });
+    expect(db.rpc).toHaveBeenCalledWith(
+      'record_review_attempt_atomic',
+      expect.objectContaining({
+        p_user_id: 'user1',
+        p_vocabulary_item_id: 'word1',
+        p_source: 'review',
+        p_was_correct: true,
+      }),
+    );
+    expect(result).toMatchObject({
+      memoryState: 'slow_recall',
+      nextReviewAt: '2026-09-19T01:00:00.000Z',
+      graduated: false,
+    });
   });
 });
 
