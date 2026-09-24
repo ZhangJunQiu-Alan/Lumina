@@ -1,3 +1,5 @@
+import { queryClient } from './queryClient';
+import { queryKeys } from './queryKeys';
 import type {
   LibraryGroupSummary,
   LibraryGroupWord,
@@ -8,7 +10,7 @@ import type {
 } from '../types';
 import type { SavedWordEntry } from './libraryApi';
 
-interface CacheEntry<T> {
+export interface CacheEntry<T> {
   data: T;
   cachedAt: number;
 }
@@ -27,267 +29,151 @@ export interface OfficialLibraryDetailCacheData {
 
 export type OfficialResumeMap = Record<OfficialLibraryId, OfficialResumeTargets>;
 
-const LIBRARY_CACHE_TTL_MS = 5 * 60 * 1000;
+export const LIBRARY_CACHE_TTL_MS = 5 * 60 * 1000;
 
-const groupListCache = new Map<string, CacheEntry<LibraryGroupSummary[]>>();
-const groupListRequests = new Map<string, Promise<LibraryGroupSummary[]>>();
-
-const groupDetailCache = new Map<string, CacheEntry<LibraryGroupDetailCacheData>>();
-const groupDetailRequests = new Map<string, Promise<LibraryGroupDetailCacheData>>();
-
-const officialResumeCache = new Map<string, CacheEntry<OfficialResumeMap>>();
-const officialResumeRequests = new Map<string, Promise<OfficialResumeMap>>();
-
-const officialDetailCache = new Map<string, CacheEntry<OfficialLibraryDetailCacheData>>();
-const officialDetailRequests = new Map<string, Promise<OfficialLibraryDetailCacheData>>();
-
-const officialCompletionCache = new Map<string, CacheEntry<OfficialLibraryCompletionCounts>>();
-const officialCompletionRequests = new Map<string, Promise<OfficialLibraryCompletionCounts>>();
-
-const savedWordsCache = new Map<string, CacheEntry<SavedWordEntry[]>>();
-const savedWordsRequests = new Map<string, Promise<SavedWordEntry[]>>();
-
-function buildGroupDetailKey(userId: string, groupId: string) {
-  return `${userId}:${groupId}`;
-}
-
-function buildOfficialDetailKey(userId: string, libraryId: OfficialLibraryId) {
-  return `${userId}:${libraryId}`;
-}
-
-export function isLibraryCacheFresh(entry: CacheEntry<unknown> | null | undefined) {
+export function isLibraryCacheFresh(entry: CacheEntry<unknown> | null | undefined): boolean {
   if (!entry) return false;
   return Date.now() - entry.cachedAt < LIBRARY_CACHE_TTL_MS;
 }
 
-export function getCachedLibraryGroups(userId: string) {
-  return groupListCache.get(userId) ?? null;
+function getEntryFromQuery<T>(queryKey: readonly unknown[]): CacheEntry<T> | null {
+  const data = queryClient.getQueryData<T>(queryKey);
+  if (data === undefined) return null;
+  const state = queryClient.getQueryState<T>(queryKey);
+  return {
+    data,
+    cachedAt: state?.dataUpdatedAt || Date.now(),
+  };
 }
 
-export function getCachedSavedWords(userId: string) {
-  return savedWordsCache.get(userId) ?? null;
+export function getCachedLibraryGroups(userId: string): CacheEntry<LibraryGroupSummary[]> | null {
+  return getEntryFromQuery(queryKeys.library.groups(userId));
 }
 
-export async function refreshSavedWords(userId: string, loader: () => Promise<SavedWordEntry[]>) {
-  const existingRequest = savedWordsRequests.get(userId);
-  if (existingRequest) return existingRequest;
-
-  const request = loader()
-    .then((data) => {
-      savedWordsCache.set(userId, {
-        data,
-        cachedAt: Date.now(),
-      });
-      return data;
-    })
-    .finally(() => {
-      savedWordsRequests.delete(userId);
-    });
-
-  savedWordsRequests.set(userId, request);
-  return request;
+export async function refreshLibraryGroups(
+  userId: string,
+  loader: () => Promise<LibraryGroupSummary[]>,
+): Promise<LibraryGroupSummary[]> {
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.library.groups(userId),
+    queryFn: loader,
+    staleTime: 0,
+  });
 }
 
-export function getCachedLibraryGroupDetail(userId: string, groupId: string) {
-  return groupDetailCache.get(buildGroupDetailKey(userId, groupId)) ?? null;
+export function getCachedSavedWords(userId: string): CacheEntry<SavedWordEntry[]> | null {
+  return getEntryFromQuery(queryKeys.library.savedWords(userId));
 }
 
-export async function refreshLibraryGroups(userId: string, loader: () => Promise<LibraryGroupSummary[]>) {
-  const existingRequest = groupListRequests.get(userId);
-  if (existingRequest) return existingRequest;
+export async function refreshSavedWords(
+  userId: string,
+  loader: () => Promise<SavedWordEntry[]>,
+): Promise<SavedWordEntry[]> {
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.library.savedWords(userId),
+    queryFn: loader,
+    staleTime: 0,
+  });
+}
 
-  const request = loader()
-    .then((data) => {
-      groupListCache.set(userId, {
-        data,
-        cachedAt: Date.now(),
-      });
-      return data;
-    })
-    .finally(() => {
-      groupListRequests.delete(userId);
-    });
+export function removeSavedWordFromCache(userId: string, vocabularyItemId: string) {
+  queryClient.setQueryData<SavedWordEntry[]>(
+    queryKeys.library.savedWords(userId),
+    (old) => (old ? old.filter((entry) => entry.vocabularyItemId !== vocabularyItemId) : old),
+  );
+}
 
-  groupListRequests.set(userId, request);
-  return request;
+export function getCachedLibraryGroupDetail(
+  userId: string,
+  groupId: string,
+): CacheEntry<LibraryGroupDetailCacheData> | null {
+  return getEntryFromQuery(queryKeys.library.groupDetail(userId, groupId));
 }
 
 export async function refreshLibraryGroupDetail(
   userId: string,
   groupId: string,
   loader: () => Promise<LibraryGroupDetailCacheData>,
-) {
-  const key = buildGroupDetailKey(userId, groupId);
-  const existingRequest = groupDetailRequests.get(key);
-  if (existingRequest) return existingRequest;
-
-  const request = loader()
-    .then((data) => {
-      groupDetailCache.set(key, {
-        data,
-        cachedAt: Date.now(),
-      });
-      return data;
-    })
-    .finally(() => {
-      groupDetailRequests.delete(key);
-    });
-
-  groupDetailRequests.set(key, request);
-  return request;
+): Promise<LibraryGroupDetailCacheData> {
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.library.groupDetail(userId, groupId),
+    queryFn: loader,
+    staleTime: 0,
+  });
 }
 
-export function getCachedOfficialResumeCandidates(userId: string) {
-  return officialResumeCache.get(userId) ?? null;
+export function removeLibraryGroupFromCache(userId: string, groupId: string) {
+  queryClient.setQueryData<LibraryGroupSummary[]>(
+    queryKeys.library.groups(userId),
+    (old) => (old ? old.filter((group) => group.id !== groupId) : old),
+  );
+  queryClient.removeQueries({
+    queryKey: queryKeys.library.groupDetail(userId, groupId),
+  });
 }
 
-export async function refreshOfficialResumeCandidates(userId: string, loader: () => Promise<OfficialResumeMap>) {
-  const existingRequest = officialResumeRequests.get(userId);
-  if (existingRequest) return existingRequest;
-
-  const request = loader()
-    .then((data) => {
-      officialResumeCache.set(userId, {
-        data,
-        cachedAt: Date.now(),
-      });
-      return data;
-    })
-    .finally(() => {
-      officialResumeRequests.delete(userId);
-    });
-
-  officialResumeRequests.set(userId, request);
-  return request;
+export function getCachedOfficialResumeCandidates(userId: string): CacheEntry<OfficialResumeMap> | null {
+  return getEntryFromQuery(queryKeys.library.officialResume(userId));
 }
 
-export function getCachedOfficialLibraryDetail(userId: string, libraryId: OfficialLibraryId) {
-  return officialDetailCache.get(buildOfficialDetailKey(userId, libraryId)) ?? null;
-}
-
-export function getCachedOfficialCompletionCounts(userId: string) {
-  return officialCompletionCache.get(userId) ?? null;
-}
-
-export async function refreshOfficialCompletionCounts(
+export async function refreshOfficialResumeCandidates(
   userId: string,
-  loader: () => Promise<OfficialLibraryCompletionCounts>,
-) {
-  const existingRequest = officialCompletionRequests.get(userId);
-  if (existingRequest) return existingRequest;
+  loader: () => Promise<OfficialResumeMap>,
+): Promise<OfficialResumeMap> {
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.library.officialResume(userId),
+    queryFn: loader,
+    staleTime: 0,
+  });
+}
 
-  const request = loader()
-    .then((data) => {
-      officialCompletionCache.set(userId, {
-        data,
-        cachedAt: Date.now(),
-      });
-      return data;
-    })
-    .finally(() => {
-      officialCompletionRequests.delete(userId);
-    });
-
-  officialCompletionRequests.set(userId, request);
-  return request;
+export function getCachedOfficialLibraryDetail(
+  userId: string,
+  libraryId: OfficialLibraryId,
+): CacheEntry<OfficialLibraryDetailCacheData> | null {
+  return getEntryFromQuery(queryKeys.library.officialDetail(userId, libraryId));
 }
 
 export async function refreshOfficialLibraryDetail(
   userId: string,
   libraryId: OfficialLibraryId,
   loader: () => Promise<OfficialLibraryDetailCacheData>,
-) {
-  const key = buildOfficialDetailKey(userId, libraryId);
-  const existingRequest = officialDetailRequests.get(key);
-  if (existingRequest) return existingRequest;
+): Promise<OfficialLibraryDetailCacheData> {
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.library.officialDetail(userId, libraryId),
+    queryFn: loader,
+    staleTime: 0,
+  });
+}
 
-  const request = loader()
-    .then((data) => {
-      officialDetailCache.set(key, {
-        data,
-        cachedAt: Date.now(),
-      });
-      return data;
-    })
-    .finally(() => {
-      officialDetailRequests.delete(key);
-    });
+export function getCachedOfficialCompletionCounts(
+  userId: string,
+): CacheEntry<OfficialLibraryCompletionCounts> | null {
+  return getEntryFromQuery(queryKeys.library.officialCompletion(userId));
+}
 
-  officialDetailRequests.set(key, request);
-  return request;
+export async function refreshOfficialCompletionCounts(
+  userId: string,
+  loader: () => Promise<OfficialLibraryCompletionCounts>,
+): Promise<OfficialLibraryCompletionCounts> {
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.library.officialCompletion(userId),
+    queryFn: loader,
+    staleTime: 0,
+  });
 }
 
 export function invalidateLibraryCache(userId?: string) {
   if (!userId) {
-    groupListCache.clear();
-    groupListRequests.clear();
-    groupDetailCache.clear();
-    groupDetailRequests.clear();
-    officialResumeCache.clear();
-    officialResumeRequests.clear();
-    officialDetailCache.clear();
-    officialDetailRequests.clear();
-    officialCompletionCache.clear();
-    officialCompletionRequests.clear();
-    savedWordsCache.clear();
-    savedWordsRequests.clear();
+    queryClient.removeQueries({
+      predicate: (query) => query.queryKey[0] === 'library',
+    });
     return;
   }
-
-  groupListCache.delete(userId);
-  groupListRequests.delete(userId);
-  officialResumeCache.delete(userId);
-  officialResumeRequests.delete(userId);
-  officialCompletionCache.delete(userId);
-  officialCompletionRequests.delete(userId);
-  savedWordsCache.delete(userId);
-  savedWordsRequests.delete(userId);
-
-  for (const key of groupDetailCache.keys()) {
-    if (key.startsWith(`${userId}:`)) {
-      groupDetailCache.delete(key);
-    }
-  }
-
-  for (const key of groupDetailRequests.keys()) {
-    if (key.startsWith(`${userId}:`)) {
-      groupDetailRequests.delete(key);
-    }
-  }
-
-  for (const key of officialDetailCache.keys()) {
-    if (key.startsWith(`${userId}:`)) {
-      officialDetailCache.delete(key);
-    }
-  }
-
-  for (const key of officialDetailRequests.keys()) {
-    if (key.startsWith(`${userId}:`)) {
-      officialDetailRequests.delete(key);
-    }
-  }
-}
-
-export function removeSavedWordFromCache(userId: string, vocabularyItemId: string) {
-  const cache = savedWordsCache.get(userId);
-  if (!cache) return;
-
-  savedWordsCache.set(userId, {
-    data: cache.data.filter((entry) => entry.vocabularyItemId !== vocabularyItemId),
-    cachedAt: Date.now(),
+  queryClient.removeQueries({
+    queryKey: queryKeys.library.all(userId),
   });
-}
-
-export function removeLibraryGroupFromCache(userId: string, groupId: string) {
-  const listEntry = groupListCache.get(userId);
-  if (listEntry) {
-    groupListCache.set(userId, {
-      data: listEntry.data.filter((group) => group.id !== groupId),
-      cachedAt: Date.now(),
-    });
-  }
-
-  const detailKey = buildGroupDetailKey(userId, groupId);
-  groupDetailCache.delete(detailKey);
-  groupDetailRequests.delete(detailKey);
+  queryClient.invalidateQueries({
+    queryKey: queryKeys.library.all(userId),
+  });
 }

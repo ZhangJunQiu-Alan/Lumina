@@ -17,14 +17,19 @@ if (import.meta.env.VITE_NATIVE_APP === 'true') {
   void import('./lib/nativeApp').then(({ initializeNativeApp }) => initializeNativeApp());
 }
 
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './lib/queryClient';
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
-      <AuthProvider>
-        <LearningPreferencesProvider>
-          <RootApp />
-        </LearningPreferencesProvider>
-      </AuthProvider>
-    </BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <AuthProvider>
+          <LearningPreferencesProvider>
+            <RootApp />
+          </LearningPreferencesProvider>
+        </AuthProvider>
+      </BrowserRouter>
+    </QueryClientProvider>
   </StrictMode>,
 );

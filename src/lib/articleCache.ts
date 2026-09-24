@@ -1,4 +1,6 @@
 import type { ArticleSentence, Word } from '../types';
+import { queryClient } from './queryClient';
+import { queryKeys } from './queryKeys';
 
 const ARTICLE_CACHE_KEY = 'lumina.article-cache.v1';
 
@@ -24,11 +26,26 @@ function isArticleSentence(value: unknown): value is ArticleSentence {
   );
 }
 
-function readArticleCache(): ArticleCacheEntry | null {
+function resolveStorage() {
   if (typeof window === 'undefined') return null;
+  const storage = window.localStorage;
+  if (
+    !storage ||
+    typeof storage.getItem !== 'function' ||
+    typeof storage.setItem !== 'function' ||
+    typeof storage.removeItem !== 'function'
+  ) {
+    return null;
+  }
+  return storage;
+}
+
+function readArticleCache(): ArticleCacheEntry | null {
+  const storage = resolveStorage();
+  if (!storage) return null;
 
   try {
-    const raw = window.localStorage.getItem(ARTICLE_CACHE_KEY);
+    const raw = storage.getItem(ARTICLE_CACHE_KEY);
     if (!raw) return null;
 
     const parsed = JSON.parse(raw) as Partial<ArticleCacheEntry>;
@@ -61,34 +78,72 @@ function matchesWordIds(left: string[], right: string[]) {
 }
 
 export function getCachedArticle(groupId: string, words: Word[]) {
+  const wordIds = normalizeWordIds(words);
+  try {
+    const memory = queryClient.getQueryData<ArticleSentence[]>(queryKeys.article.group(groupId, wordIds));
+    if (memory) return memory;
+  } catch {
+    // Ignore in non-browser/test environments
+  }
+
   const cache = readArticleCache();
   if (!cache) return null;
 
-  const wordIds = normalizeWordIds(words);
   if (cache.groupId !== groupId || !matchesWordIds(cache.wordIds, wordIds)) {
     clearArticleCache();
     return null;
+  }
+
+  try {
+    queryClient.setQueryData(queryKeys.article.group(groupId, wordIds), cache.sentences);
+  } catch {
+    // Ignore
   }
 
   return cache.sentences;
 }
 
 export function setCachedArticle(groupId: string, words: Word[], sentences: ArticleSentence[]) {
-  if (typeof window === 'undefined') return;
+  const wordIds = normalizeWordIds(words);
+  try {
+    queryClient.setQueryData(queryKeys.article.group(groupId, wordIds), sentences);
+  } catch {
+    // Ignore
+  }
+
+  const storage = resolveStorage();
+  if (!storage) return;
 
   clearArticleCache();
 
   const entry: ArticleCacheEntry = {
     groupId,
-    wordIds: normalizeWordIds(words),
+    wordIds,
     sentences,
     createdAt: new Date().toISOString(),
   };
 
-  window.localStorage.setItem(ARTICLE_CACHE_KEY, JSON.stringify(entry));
+  try {
+    storage.setItem(ARTICLE_CACHE_KEY, JSON.stringify(entry));
+  } catch {
+    // Ignore
+  }
 }
 
 export function clearArticleCache() {
-  if (typeof window === 'undefined') return;
-  window.localStorage.removeItem(ARTICLE_CACHE_KEY);
+  try {
+    queryClient.removeQueries({
+      predicate: (query) => query.queryKey[0] === 'article',
+    });
+  } catch {
+    // Ignore
+  }
+
+  const storage = resolveStorage();
+  if (!storage) return;
+  try {
+    storage.removeItem(ARTICLE_CACHE_KEY);
+  } catch {
+    // Ignore
+  }
 }

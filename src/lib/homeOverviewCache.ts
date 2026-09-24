@@ -1,5 +1,7 @@
 import type { UserStats } from '../types';
 import { toRoutineDateKey } from './routineDate';
+import { queryClient, invalidateHomeQueries } from './queryClient';
+import { queryKeys } from './queryKeys';
 
 const HOME_OVERVIEW_CACHE_VERSION = 1;
 const HOME_OVERVIEW_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -119,18 +121,31 @@ export function writeCachedHomeOverview(
   } catch {
     // Cache writes are opportunistic; the live API remains the source of truth.
   }
+
+  try {
+    queryClient.setQueryData(queryKeys.home.overview(userId, timeZone), stats);
+  } catch {
+    // Ignore in non-browser/limited test environments
+  }
 }
 
 export function invalidateCachedHomeOverview(userId: string, timeZone: string, options: HomeOverviewCacheOptions = {}) {
   const now = options.now ?? new Date();
   const storage = resolveStorage(options.storage);
-  if (!storage) return;
+  if (storage) {
+    const { cacheKey } = resolveHomeOverviewCacheKey(userId, timeZone, now);
+    try {
+      storage.removeItem(cacheKey);
+    } catch {
+      // Cache invalidation is best-effort; the next live request still refreshes stats.
+    }
+  }
 
-  const { cacheKey } = resolveHomeOverviewCacheKey(userId, timeZone, now);
   try {
-    storage.removeItem(cacheKey);
+    queryClient.removeQueries({ queryKey: queryKeys.home.overview(userId, timeZone) });
+    void invalidateHomeQueries(userId);
   } catch {
-    // Cache invalidation is best-effort; the next live request still refreshes stats.
+    // Ignore in non-browser/limited test environments
   }
 }
 

@@ -71,6 +71,9 @@ import {
   readCachedHomeOverview,
   writeCachedHomeOverview,
 } from './lib/homeOverviewCache';
+import { queryClient } from './lib/queryClient';
+import { queryKeys } from './lib/queryKeys';
+
 import { shouldForceHomeRefreshForNavigation } from './lib/homeNavigation';
 import { reorderActiveOfficialGroup, startNextOfficialBatch } from './lib/officialLibraryStart';
 import { deleteOfficialLearningLibrary } from './lib/libraryApi';
@@ -588,7 +591,11 @@ export default function App() {
       const request = (async () => {
         setIsHomeStatsRefreshing(true);
         try {
-          const overview = await fetchHomeOverview(timeZone);
+          const overview = await queryClient.fetchQuery({
+            queryKey: queryKeys.home.overview(user.id, timeZone),
+            queryFn: () => fetchHomeOverview(timeZone),
+            staleTime: mustRefreshHomeOverview ? 0 : 60 * 1000,
+          });
           if (userIdRef.current !== user.id || homeStatsRequestIdRef.current !== requestId) {
             return;
           }

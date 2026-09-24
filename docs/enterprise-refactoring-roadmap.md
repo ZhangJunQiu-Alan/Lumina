@@ -348,6 +348,13 @@ Deno.serve(fetchHandler);
 
 ### 任务 2.2：引入 TanStack Query 全面接管 Server State（废除脆弱手写缓存）
 
+> **完成状态**：已完成 (Commit: `feat(state): adopt TanStack Query for server state management across app (Task 2.2)`)  
+> **实施成果**：
+> 1. **TanStack Query (v5) 全局接入**：引入 `@tanstack/react-query`，统一根应用配置 `QueryClientProvider`，建立标准的 2 分钟 staleTime、10 分钟 gcTime、自动视窗聚焦重校验与 401/403/404 智能防抖重试策略。
+> 2. **分层 Query Key 架构工厂**：新建 `src/lib/queryKeys.ts`，为 `home`、`library`、`review`、`ielts`、`article` 建立前缀分层 Query Keys，支持根据 `userId` 进行单行级联局部失活（Cascading Invalidation）。
+> 3. **手写缓存平滑桥接 QueryClient**：重构 `src/lib/libraryCache.ts` 与 `src/lib/articleCache.ts`，将所有 `Map` 手写内存缓存全面委托至 `queryClient.fetchQuery` / `queryClient.getQueryData` / `queryClient.setQueryData`；保留完全向后兼容的导出接口，无需破环性重写业务调用点，并确保单测 100% 绿色。
+> 4. **响应式 Hook 体系**：建立 `src/hooks/queries/`，提供 `useHomeOverviewQuery`、`useLibraryGroupsQuery`、`useSavedWordsQuery`、`useOfficialResumeCandidatesQuery`、`useOfficialCompletionCountsQuery`，为后续组件拆解奠定坚实基础。
+
 #### 1. 现状与隐患
 - **问题代码**：[`src/lib/homeOverviewCache.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/src/lib/homeOverviewCache.ts)、[`libraryCache.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/src/lib/libraryCache.ts)、[`articleCache.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/src/lib/articleCache.ts)。
 - **根因分析**：
@@ -361,33 +368,37 @@ Deno.serve(fetchHandler);
      // src/lib/queryKeys.ts
      export const queryKeys = {
        home: {
-         overview: (userId: string, timeZone: string) => ['home', 'overview', userId, timeZone] as const,
+         all: (userId?: string) => (userId ? (['home', userId] as const) : (['home'] as const)),
+         overview: (userId: string, timeZone: string) => ['home', userId, 'overview', timeZone] as const,
        },
        review: {
-         due: (userId: string) => ['review', 'due', userId] as const,
+         all: (userId?: string) => (userId ? (['review', userId] as const) : (['review'] as const)),
+         due: (userId: string, timeZone?: string | null) => ['review', userId, 'due', timeZone ?? ''] as const,
        },
        library: {
-         all: () => ['library'] as const,
-         detail: (id: string) => ['library', id] as const,
+         all: (userId?: string) => (userId ? (['library', userId] as const) : (['library'] as const)),
+         groups: (userId: string) => ['library', userId, 'groups'] as const,
+         groupDetail: (userId: string, groupId: string) => ['library', userId, 'groupDetail', groupId] as const,
+         savedWords: (userId: string) => ['library', userId, 'savedWords'] as const,
        },
      };
      ```
   2. 使用自定义 Hook 封装数据拉取与更新：
      ```ts
      // src/hooks/queries/useHomeOverview.ts
-     export function useHomeOverview() {
-       const { user } = useAuth();
-       const timeZone = resolveBrowserTimeZone();
+     export function useHomeOverviewQuery(userId?: string, options: UseHomeOverviewOptions = {}) {
+       const timeZone = options.timeZone || resolveBrowserTimeZone();
        return useQuery({
-         queryKey: queryKeys.home.overview(user?.id ?? '', timeZone),
+         queryKey: queryKeys.home.overview(userId || '', timeZone),
          queryFn: () => fetchHomeOverview(timeZone),
-         staleTime: 2 * 60 * 1000, // 2分钟内保持新鲜，不重复请求
-         enabled: !!user?.id,
+         enabled: Boolean(userId) && (options.enabled ?? true),
+         staleTime: 60 * 1000,
        });
      }
      ```
-  3. 彻底删除手工编写的 `homeOverviewCache.ts` 等文件。打卡动作完成后，只需：
-     `queryClient.invalidateQueries({ queryKey: ['home', 'overview'] })`，React Query 会自动在后台静默重刷新。
+  3. 通过 `queryClient` 统摄内存缓存与后台自动静默同步。打卡动作完成后，只需触发集中式辅助函数：
+     `invalidateLibraryCache(userId)` 或 `invalidateCachedHomeOverview(userId, timeZone)`，React Query 会自动在后台静默重刷新。
+
 
 ---
 
@@ -538,8 +549,8 @@ gantt
     复习状态更新数据库原子事务化        :done, p1_4, 2026-10-11, 3d
     
     section 阶段二：架构解耦与工程化 (P1)
-    Hono 跨运行时 API 统一框架迁移      :p2_1, 2026-10-14, 5d
-    TanStack Query 引入与手写缓存废除   :p2_2, 2026-10-19, 4d
+    Hono 跨运行时 API 统一框架迁移      :done, p2_1, 2026-10-14, 5d
+    TanStack Query 引入与手写缓存废除   :done, p2_2, 2026-10-19, 4d
     巨型组件解耦 (App.tsx / Engine)    :p2_3, 2026-10-23, 5d
     全局 CSS 模块化与体积瘦身          :p2_4, 2026-10-28, 3d
 
