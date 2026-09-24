@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
+import { Buffer } from 'node:buffer';
 import pg from 'pg';
 import { getEnv } from '../runtime.ts';
 

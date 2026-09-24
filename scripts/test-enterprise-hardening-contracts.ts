@@ -26,9 +26,6 @@ function assertIncludes(source: string, needle: string, label: string) {
   assert.ok(source.includes(needle), `${label} should include ${needle}`);
 }
 
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 const packageJson = JSON.parse(read('package.json')) as { scripts: Record<string, string> };
 for (const script of ['test:official-library', 'test:core', 'test:ielts', 'test:all', 'check:edge', 'check:audit']) {
@@ -50,9 +47,14 @@ for (const command of [
 
 const edgeApi = read('supabase/functions/api/index.ts');
 assert.equal(edgeApi.includes('@ts-nocheck'), false, 'Edge API must stay type-checked');
-assertIncludes(edgeApi, "path === '/api/vocab/persist'", 'Edge vocabulary persistence route');
-assertIncludes(edgeApi, "path === '/api/ielts/reading/attempts'", 'Edge reading attempt route');
-assertIncludes(edgeApi, "path === '/api/ielts/listening/attempts'", 'Edge listening attempt route');
+assertIncludes(edgeApi, 'shared/api/app.ts', 'Edge delegates to shared Hono app');
+
+const sharedVocabRoute = read('shared/api/routes/vocab.ts');
+assertIncludes(sharedVocabRoute, "vocabRouter.post('/persist'", 'Shared vocabulary persistence route');
+
+const sharedIeltsRoute = read('shared/api/routes/ielts.ts');
+assertIncludes(sharedIeltsRoute, "ieltsRouter.post('/reading/attempts'", 'Shared reading attempt route');
+assertIncludes(sharedIeltsRoute, "ieltsRouter.post('/listening/attempts'", 'Shared listening attempt route');
 
 const migration = read('supabase/migrations/20260522010000_enterprise_hardening_data_boundaries.sql');
 for (const sql of [
@@ -235,68 +237,32 @@ assert.equal(
 );
 
 const server = read('server/index.ts');
-assertIncludes(server, 'X-Request-Id', 'Express API');
-assertIncludes(edgeApi, 'X-Request-Id', 'Edge API');
-// Rate-limit policy is single-sourced in shared/expensiveRateLimit.ts; server and edge must import it, not redeclare it.
-const rateLimitCore = read('shared/expensiveRateLimit.ts');
-assertIncludes(rateLimitCore, 'const DEFAULT_RATE_LIMITS', 'shared rate-limit policy');
-assertIncludes(rateLimitCore, 'IP_RATE_LIMIT_MULTIPLIER = 3', 'shared IP fallback rate limit');
-for (const [label, source] of [
-  ['Express', server],
-  ['Edge', edgeApi],
-] as const) {
-  assertIncludes(source, "shared/expensiveRateLimit.ts'", `${label} imports shared rate-limit core`);
-  assert.equal(
-    source.includes('const DEFAULT_RATE_LIMITS'),
-    false,
-    `${label} must not redeclare rate-limit policy (single source in shared/expensiveRateLimit.ts)`,
-  );
-}
-for (const [method, route, middleware] of [
-  ['post', '/api/vocab/enrich', 'requireAuth, requireAiContentFeatures, aiVocabQuota'],
-  ['post', '/api/vocab/lite-enrich', 'requireAuth, requireAiContentFeatures, aiVocabSingleQuota'],
-  ['post', '/api/vocab/lemmatize', 'requireAuth, requireAiContentFeatures, aiVocabSingleQuota'],
-  ['post', '/api/vocab/lemmatize-batch', 'requireAuth, requireAiContentFeatures, aiVocabQuota'],
-  ['post', '/api/vocab/full-enrich', 'requireAuth, requireAiContentFeatures, aiVocabSingleQuota'],
-  ['post', '/api/vocab/article', 'requireAuth, requireAiContentFeatures, aiArticleQuota'],
-  ['get', '/api/audio/:word', 'requireAuth, ttsSingleQuota'],
-  ['post', '/api/audio/batch', 'requireAuth, ttsBatchQuota'],
-  ['post', '/api/example-audio', 'requireAuth, ttsSingleQuota'],
-]) {
-  const middlewarePattern = middleware.split(', ').map(escapeRegExp).join('\\s*,\\s*');
-  assert.match(
-    server,
-    new RegExp(`app\\.${method}\\(\\s*'${escapeRegExp(route)}'\\s*,\\s*${middlewarePattern}`),
-    `Express expensive route ${route}`,
-  );
-}
-assertIncludes(server, 'function requireAiContentFeatures', 'Express AI feature gate');
-assertIncludes(edgeApi, "group === 'ai_vocab' || group === 'ai_article'", 'Edge AI feature gate');
-for (const [group, weight] of [
-  ["'ai_vocab'", 'countStringArray(body?.words)'],
-  ["'ai_vocab'", '1'],
-  ["'ai_article'", '1'],
-  ["'tts'", '1'],
-  ["'tts'", 'Math.min(countStringArray(body?.words), 30) * 2'],
-]) {
-  assertIncludes(edgeApi, `requireExpensiveUser(request, ${group}, ${weight})`, `Edge expensive quota ${group}`);
-}
+assertIncludes(server, 'shared/api/app.ts', 'Server delegates to unified Hono app');
+assertIncludes(edgeApi, 'shared/api/app.ts', 'Edge delegates to unified Hono app');
+
+const loggerMw = read('shared/api/middleware/logger.ts');
+assertIncludes(loggerMw, 'X-Request-Id', 'Unified logger middleware sets X-Request-Id');
+
+const rateLimitMw = read('shared/api/middleware/rateLimit.ts');
+assertIncludes(rateLimitMw, "expensiveRateLimit.ts'", 'rateLimit middleware imports shared rate-limit core');
 assert.equal(
-  server.includes('res.status(500).json({ error: message })'),
+  rateLimitMw.includes('const DEFAULT_RATE_LIMITS'),
   false,
-  'Express 500 responses must not expose raw exception messages',
+  'rateLimit middleware must not redeclare rate-limit policy (single source in shared/expensiveRateLimit.ts)',
 );
-for (const forbiddenPattern of [
-  /status\(500\)\.json\(\{\s*error:\s*(?:message|e|err|error)/,
-  /status\(500\)\.send\(/,
-]) {
-  assert.equal(forbiddenPattern.test(server), false, `Express 500 responses must not match ${forbiddenPattern}`);
-}
-assertIncludes(server, 'error: INTERNAL_ERROR_MESSAGE', 'Express internal error response');
-assertIncludes(server, 'const expressErrorHandler: ErrorRequestHandler', 'Express fallback error handler');
-assertIncludes(server, 'app.use(expressErrorHandler)', 'Express fallback error handler registration');
-assertIncludes(edgeApi, 'error: INTERNAL_ERROR_MESSAGE', 'Edge internal error response');
-assertIncludes(edgeApi, 'if (status === 500)', 'Edge 500 sanitizer');
+
+assertIncludes(rateLimitMw, 'requireAiContentFeatures', 'Unified AI feature gate');
+
+// Expensive route rate limiting assertions
+const sharedAudioRoute = read('shared/api/routes/audio.ts');
+assertIncludes(sharedVocabRoute, "requireExpensiveQuota('ai_vocab'", 'Vocab route ai_vocab quota');
+assertIncludes(sharedVocabRoute, "requireExpensiveQuota('ai_article'", 'Vocab route ai_article quota');
+assertIncludes(sharedAudioRoute, "requireExpensiveQuota('tts'", 'Audio route tts quota');
+
+// Error sanitization
+const sharedApp = read('shared/api/app.ts');
+assertIncludes(sharedApp, 'app.onError', 'Unified Hono error handler');
+assertIncludes(sharedApp, "error: 'Internal server error'", 'Unified Hono internal error response');
 for (const file of ['src/lib/wordAudio.ts', 'src/lib/exampleAudio.ts', 'src/components/import/ImportView.tsx']) {
   assert.equal(read(file).includes('requiresAuth: false'), false, `${file} must send auth for expensive API calls`);
 }

@@ -1,5 +1,8 @@
 {
   "imports": {
-    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.103.0"
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.103.0",
+    "hono": "npm:hono@^4.7.2",
+    "hono/": "npm:/hono@^4.7.2/",
+    "pg": "npm:pg@^8.20.0"
   }
 }

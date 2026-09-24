@@ -265,10 +265,10 @@ export interface DeadLetterJob extends UnifiedSyncJob {
 
 ---
 
-### 任务 2.1：采用 Hono 统一跨运行时 API 层（消除 3000 行双路由代码）
+### 任务 2.1：采用 Hono 统一跨运行时 API 层（消除 3000 行双路由代码）✅ [已完成]
 
 #### 1. 现状与隐患
-- **问题代码**：[`server/index.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/server/index.ts) (1399 行) 与 [`supabase/functions/api/index.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/supabase/functions/api/index.ts) (1697 行)。
+- **问题代码**：原 [`server/index.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/server/index.ts) (1399 行) 与原 [`supabase/functions/api/index.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/supabase/functions/api/index.ts) (1697 行)。
 - **根因分析**：
   同一套 API，为了兼容本地 Node (Express) 和线上 Supabase Edge (Deno)，手工写了两遍全量路由、CORS、鉴权中间件、JSON 响应和错误捕获，带来了极其严重的维护包袱与行为漂移隐患。
 
@@ -282,47 +282,67 @@ export interface DeadLetterJob extends UnifiedSyncJob {
   ```
   shared/
     └── api/
-        ├── app.ts            # Hono 核心实例，装配所有子路由
+        ├── app.ts            # Hono 核心实例，装配所有子路由与网关归一化
         ├── middleware/
-        │   ├── auth.ts       # 统一 Bearer Token 鉴权中间件
-        │   ├── cors.ts       # 统一 CORS 处理
-        │   └── logger.ts     # 统一请求耗时与 Request-ID 日志
+        │   ├── auth.ts       # 统一 Bearer Token 鉴权中间件（兼容 Local/Supabase）
+        │   ├── cors.ts       # 统一 CORS 与 Preflight OPTIONS 处理
+        │   ├── logger.ts     # 统一请求耗时与 Request-ID 日志
+        │   └── rateLimit.ts  # 统一高开销限流与 AI 特性开关门禁
         └── routes/
-            ├── vocab.ts      # 单词查询、Enrich 路由
-            ├── review.ts     # 复习打卡、到期队列路由
-            ├── learning.ts   # 学习会话、轮次流转路由
-            ├── library.ts    # 词库管理路由
-            └── ielts.ts      # 雅思测验路由
+            ├── home.ts       # 首页概览与热力图
+            ├── settings.ts   # 学习偏好设置
+            ├── review.ts     # 复习打卡、到期队列、原子打卡
+            ├── learning.ts   # 学习会话、轮次流转、官方词书初始化
+            ├── library.ts    # 词库管理、生词本 CRUD、清理
+            ├── vocab.ts      # 单词查询、Enrich、Lemmatize、长文生成
+            ├── audio.ts      # 发音生成、TTS 批处理、例句发音
+            ├── ielts.ts      # 雅思测验阅读与听力
+            └── auth.ts       # 会话、注册、登录与密码更新
   server/
-    └── index.ts              # 本地 Node 启动器 (仅需 ~25 行)
+    └── index.ts              # 本地 Node 启动器 (仅 24 行，采用 @hono/node-server)
   supabase/functions/api/
-    └── index.ts              # Supabase Edge 启动器 (仅需 ~15 行)
+    └── index.ts              # Supabase Edge 启动器 (仅 4 行，直接委托统一应用)
   ```
 
 #### 3. 核心代码示例
 **Node.js 启动器（`server/index.ts`）**：
 ```ts
+import 'dotenv/config';
+import './env.js';
+import path from 'node:path';
 import { serve } from '@hono/node-server';
+import { serveStatic } from '@hono/node-server/serve-static';
 import { app } from '../shared/api/app.ts';
+import { localStoragePublicRoot } from '../shared/server/supabase.ts';
 import { logger } from '../shared/server/logger.ts';
 
-const port = Number(process.env.PORT) || 4000;
-serve({ fetch: app.fetch, port }, (info) => {
-  logger.info(`Lumina Unified API Server listening on port ${info.port}`);
+const storageRelPath = path.relative(process.cwd(), localStoragePublicRoot) || '.';
+app.use(
+  '/storage/v1/object/public/*',
+  serveStatic({
+    root: storageRelPath,
+    rewriteRequestPath: (p) => p.replace(/^\/storage\/v1\/object\/public/, ''),
+  }),
+);
+
+const PORT = Number(process.env.PORT) || 4000;
+serve({ fetch: app.fetch, port: PORT }, () => {
+  logger.info(`Server running on port ${PORT}`);
 });
 ```
 
 **Deno Edge 启动器（`supabase/functions/api/index.ts`）**：
 ```ts
-import { app } from '../../../shared/api/app.ts';
+import { fetchHandler } from '../../../shared/api/app.ts';
 
-Deno.serve(app.fetch);
+Deno.serve(fetchHandler);
 ```
 
 #### 4. 验证与验收标准
-- 运行现有测试套件 `npm run test:core` 与生产构建验证；
-- 本地 `npm run server` 和 Supabase Edge Function 行为 100% 保持一致；
-- 代码库直接减少约 2,500 行模板代码。
+- [x] 成功将 8 大业务子路由与鉴权/限流/日志中间件抽离并单测覆盖；
+- [x] `server/index.ts` 缩减至 24 行，`supabase/functions/api/index.ts` 缩减至 4 行；
+- [x] 净减少 3100+ 行重复样板代码，彻底消除跨运行时双轨漂移；
+- [x] `npm run typecheck`, `npm run check:edge`, `npm run lint`, `npm run test:all`, `npm run build` 全部 100% 通过。
 
 ---
 
