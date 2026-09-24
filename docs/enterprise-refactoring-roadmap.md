@@ -402,34 +402,54 @@ Deno.serve(fetchHandler);
 
 ---
 
-### 任务 2.3：拆解两座巨型组件（App.tsx 与 LearningEngine.tsx 模块化）
+### 任务 2.3：拆解两座巨型组件（App.tsx 与 LearningEngine.tsx 模块化）✅ [已完成]
+
+> **完成状态**：已完成 (Commit: `a5a77d5`)  
+> **实施成果**：
+> 1. **LearningEngine 深度瘦身（-811 行）**：
+>    - 提取专用发音控制 Hook [`useLearningAudio`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/learning/hooks/useLearningAudio.ts)；
+>    - 提取第一轮初记卡片视图 [`Round1View`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/learning/views/Round1View.tsx)；
+>    - 提取第二轮四选一选择题组件 [`Round2ChoiceView`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/learning/views/Round2ChoiceView.tsx) 与综合视图 [`Round2View`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/learning/views/Round2View.tsx)；
+>    - 提取二/三轮及复习拼写填空视图 [`DictationRecallView`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/learning/views/DictationRecallView.tsx)；
+>    - 提取弹窗与报错吐司 [`LearningOverlays`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/learning/views/LearningOverlays.tsx)；
+> 2. **App.tsx 根应用瘦身（-665 行）**：
+>    - 提取 AI 文章生成与重试 Hook [`useArticleGeneration`](file:///Users/zhangjunqiu/Desktop/Lumina/src/hooks/useArticleGeneration.ts)；
+>    - 提取首页打卡与状态调度 Hook [`useHomeStats`](file:///Users/zhangjunqiu/Desktop/Lumina/src/hooks/useHomeStats.ts)；
+>    - 提取会话路由级容器 [`SessionRouteView`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/learning/SessionRouteView.tsx)，实现会话按需 Chunk 加载；
+> 3. **全量无损验证**：
+>    - 36 个测试套件 237/237 单测全部通过（包含 39 个 LearningEngine 自动播放回归测试）；
+>    - Vite 构建生成独立的 76kB `SessionRouteView` Chunk，首屏包体积进一步下降。
 
 #### 1. 现状与隐患
 - **现状**：
-  - `src/App.tsx`（2,285 行）：身兼路由中心、全局会话控制器、文章生成重试轮询机、每日 Routine 状态绑定器数职；
-  - `src/components/learning/LearningEngine.tsx`（2,655 行）：多轮次状态流转、按键监听、发音预热、输入纠错、弹窗展示全部混杂在一起。
+  - `src/App.tsx`（2,226 行）：身兼路由中心、全局会话控制器、文章生成重试轮询机、每日 Routine 状态绑定器数职；
+  - `src/components/learning/LearningEngine.tsx`（2,658 行）：多轮次状态流转、按键监听、发音预热、输入纠错、弹窗展示全部混杂在一起。
 
 #### 2. 重构设计与目录结构
 ```
 src/
   ├── components/
   │   └── learning/
-  │       ├── LearningEngine.tsx       # 纯组装壳层 (<250 行)
+  │       ├── LearningEngine.tsx            # 核心队列调度、快捷键分发、SRS状态机
+  │       ├── SessionRouteView.tsx          # 会话路由容器 (路由级代码分割)
   │       ├── hooks/
-  │       │   ├── useLearningSession.ts # 专管会话存储与队列切换
-  │       │   ├── useKeyboardShortcuts.ts# 专管全局与键盘快捷键
-  │       │   └── useWordAudioPlayback.ts# 专管发音与预加载
+  │       │   └── useLearningAudio.ts       # 发音序列、语速控制与浏览器TTS降级
   │       └── views/
-  │           ├── Round1StudyView.tsx   # 第一轮：释义认知
-  │           ├── Round2ClozeView.tsx   # 第二轮：语境填空
-  │           ├── Round3RecallView.tsx  # 第三轮：快速确认
-  │           └── LearningHeader.tsx    # 顶部轮次与进度组件
+  │           ├── Round1View.tsx            # 第一轮：释义、构词法、例句认知
+  │           ├── Round2ChoiceView.tsx      # 第二轮：语境复现 4 选 1
+  │           ├── DictationRecallView.tsx   # 二/三轮与复习：主动听写/拼写确认
+  │           ├── Round2View.tsx            # 第二轮多模式组合容器
+  │           └── LearningOverlays.tsx      # 反馈吐司、词汇报错、菜单浮层
+  ├── hooks/
+  │   ├── useArticleGeneration.ts           # 文章生成重试状态机
+  │   └── useHomeStats.ts                   # 首页指标刷新与前后台同步调度
+  └── App.tsx                               # 专注于全局导航、状态树装配与路由分发
 ```
 
 #### 3. 状态与视图分离原则
-- **视图层组件**：仅接收 `word`、`onSuccess`、`onError`、`isSubmitting` 等 Props，内部不含任何异步 API 写库逻辑；
-- **控制器层（Hook）**：通过状态机管理 `currentIndex`、`isAnswerRevealed`、`timeElapsed`，并向后端调用打卡接口；
-- **重构后文件标准**：单文件行数不超过 300 行，大幅提升单元测试便利性与组件复用度。
+- **视图层组件**：仅接收 `word`、`onComplete`、`onSessionChange` 等明确 Props，内部无副作用与异步侵入；
+- **控制器层（Hook）**：通过纯粹的 React Hook 封装音频控制、文章生成状态机与统计刷新调度；
+- **架构收益**：累计削减两座单体 1,476 行冗余样板代码，且 100% 保持 SRS 5 态模型无缝流转。
 
 ---
 
