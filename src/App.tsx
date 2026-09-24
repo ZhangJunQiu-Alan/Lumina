@@ -3,22 +3,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
+import React, { useState, useRef, useEffect, useCallback, Suspense, lazy } from 'react';
 import { motion } from 'motion/react';
-import { AlertCircle, ArrowLeft, Loader2, RefreshCw, Settings } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Loader2, Settings } from 'lucide-react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
-  ActivityDay,
-  ArticleSentence,
   HomeOfficialLibraryOption,
-  LearningPreferences,
   LearningRoundType,
   OfficialLibraryId,
   OfficialStudyMode,
   PersistedLearningSession,
   ReviewSummaryItem,
   RoundType,
-  UserStats,
   Word,
 } from './types';
 import { Sidebar } from './components/layout/Sidebar';
@@ -32,7 +28,6 @@ import { useAuth } from './contexts/AuthContext';
 import { useLearningPreferences } from './contexts/LearningPreferencesContext';
 import { SavedWordsProvider } from './contexts/SavedWordsContext';
 import { WordPopoverProvider } from './contexts/WordPopoverContext';
-import { apiFetch } from './lib/api';
 import { invalidateLibraryCache } from './lib/libraryCache';
 import {
   createInitialLearningSession,
@@ -45,14 +40,12 @@ import {
 import {
   clearLearningGroupSession,
   completeLearningGroupAtomic,
-  fetchGeneratedArticle,
   fetchLearningGroupSession,
   fetchOfficialResumeTargets,
   markLearningGroupWordsRound1Confirmed,
   markLearningGroupWordsRoundCompleted,
   persistLearningGroupSession,
   trimLearningGroupToWordIds,
-  upsertGeneratedArticle,
 } from './lib/learningSessionApi';
 import { getCachedArticle, setCachedArticle } from './lib/articleCache';
 import {
@@ -61,24 +54,15 @@ import {
   markRoutineStepCompleted,
 } from './lib/dailyRoutineApi';
 import { cx } from './components/shared/LearningUI';
-import { IslandButton } from './components/shared/AnimalPrimitives';
 import { LibrarySkeleton } from './components/shared/Skeleton';
 import { useDeferredLoading } from './hooks/useDeferredLoading';
-import { fetchHomeOverview, resolveBrowserTimeZone } from './lib/homeApi';
-import {
-  invalidateCachedHomeOverview,
-  isCachedHomeOverviewCompatibleWithActiveLearningGroup,
-  readCachedHomeOverview,
-  writeCachedHomeOverview,
-} from './lib/homeOverviewCache';
-import { queryClient } from './lib/queryClient';
-import { queryKeys } from './lib/queryKeys';
+import { useArticleGeneration, parsePersistedArticleContent } from './hooks/useArticleGeneration';
+import { useHomeStats } from './hooks/useHomeStats';
+import { resolveBrowserTimeZone } from './lib/homeApi';
 
 import { shouldForceHomeRefreshForNavigation } from './lib/homeNavigation';
 import { reorderActiveOfficialGroup, startNextOfficialBatch } from './lib/officialLibraryStart';
 import { deleteOfficialLearningLibrary } from './lib/libraryApi';
-import { getOfficialLibraryDefinition, isOfficialLibraryId } from './lib/officialLibrary';
-import { toRoutineDateKey } from './lib/routineDate';
 import {
   ARTICLE_REINFORCEMENT_ENABLED,
   IELTS_LISTENING_ENABLED,
@@ -123,26 +107,10 @@ const SettingsView = lazy(() =>
 );
 
 // --- Core Learning Components (Extracted) ---
-const LearningEngine = lazy(() =>
-  import('./components/learning/LearningEngine').then((m) => ({ default: m.LearningEngine })),
+const SessionRouteView = lazy(() =>
+  import('./components/learning/SessionRouteView').then((m) => ({ default: m.SessionRouteView })),
 );
-const ArticleView = lazy(() => import('./components/learning/ArticleView').then((m) => ({ default: m.ArticleView })));
 
-const ARTICLE_RETRY_DELAY_MS = 3000;
-const ARTICLE_MAX_RETRY_ATTEMPTS = 3;
-const ARTICLE_REQUEST_TIMEOUT_MS = 60000;
-const ARTICLE_RETRY_EXHAUSTED_MESSAGE = '文章生成失败，已自动重试 3 次。';
-
-interface ArticleGenerationJob {
-  key: string;
-  groupId: string;
-  runId: number;
-  attempt: number;
-  inFlight: boolean;
-  timerId: ReturnType<typeof setTimeout> | null;
-  controller: AbortController | null;
-  exhausted: boolean;
-}
 
 interface OpenLearningGroupOptions {
   libraryId?: OfficialLibraryId | null;
@@ -152,11 +120,6 @@ interface OpenLearningGroupOptions {
 interface HomeStartSelection {
   libraryId?: OfficialLibraryId | null;
   mode?: OfficialStudyMode | null;
-}
-
-interface FetchStatsOptions {
-  forceRefresh?: boolean;
-  preferCache?: boolean;
 }
 
 type OfficialLearningStartTarget = Pick<HomeOfficialLibraryOption, 'existingGroupCount' | 'libraryId' | 'mode'>;
@@ -234,144 +197,6 @@ const LoadingShell = ({ isSkeleton = false }: { isSkeleton?: boolean }) => {
   );
 };
 
-function buildFallbackActivityDays(timeZone: string, length = 365): ActivityDay[] {
-  const weekdayFormatter = new Intl.DateTimeFormat('zh-CN', {
-    timeZone: 'UTC',
-    weekday: 'short',
-  });
-
-  return Array.from({ length }, (_, index) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (length - 1 - index));
-
-    const dateKey = toRoutineDateKey(date, timeZone);
-    const labelDate = new Date(`${dateKey}T12:00:00.000Z`);
-    const [year = '0000', month = '01', day = '01'] = dateKey.split('-');
-
-    return {
-      date: `${year}-${month}-${day}`,
-      weekdayLabel: weekdayFormatter.format(labelDate),
-      shortDateLabel: `${month}.${day}`,
-      status: 'gap' as const,
-      reviewWordCount: 0,
-      learnedWordCount: 0,
-      attemptCount: 0,
-      correctAttemptCount: 0,
-      accuracy: null,
-    };
-  });
-}
-
-function buildFallbackOrbitDays(timeZone: string) {
-  return buildFallbackActivityDays(timeZone, 7).map((day) => ({
-    date: day.date,
-    weekdayLabel: day.weekdayLabel,
-    shortDateLabel: day.shortDateLabel,
-    status: day.status,
-    reviewWordCount: day.reviewWordCount,
-    learnedWordCount: day.learnedWordCount,
-  }));
-}
-
-function isArticleSentence(value: unknown): value is ArticleSentence {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as ArticleSentence).en === 'string' &&
-    typeof (value as ArticleSentence).zh === 'string' &&
-    (value as ArticleSentence).en.trim().length > 0 &&
-    (value as ArticleSentence).zh.trim().length > 0
-  );
-}
-
-function normalizeArticleResponse(data: unknown): ArticleSentence[] {
-  const sentences = (data as { sentences?: unknown })?.sentences;
-  if (!Array.isArray(sentences)) {
-    throw new Error('Article response missing sentences');
-  }
-
-  const normalized = sentences.filter(isArticleSentence).map((sentence) => ({
-    en: sentence.en.trim(),
-    zh: sentence.zh.trim(),
-  }));
-
-  if (normalized.length === 0) {
-    throw new Error('Article response has no valid sentences');
-  }
-
-  return normalized;
-}
-
-function buildArticleGenerationKey(groupId: string, words: Word[]) {
-  return `${groupId}:${words.map((word) => word.id).join('|')}`;
-}
-
-function serializeArticleSentences(sentences: ArticleSentence[]) {
-  return JSON.stringify({ sentences });
-}
-
-function parsePersistedArticleContent(content: string | null | undefined) {
-  const trimmed = content?.trim();
-  if (!trimmed) return null;
-
-  try {
-    return normalizeArticleResponse(JSON.parse(trimmed) as unknown);
-  } catch {
-    return null;
-  }
-}
-
-function buildEmptyStats(): UserStats {
-  const timeZone = resolveBrowserTimeZone();
-  const todayKey = toRoutineDateKey(new Date(), timeZone);
-
-  return {
-    todayReviewCount: 0,
-    streak: 0,
-    perfectCheckinDays: 0,
-    stableRecallCount: 0,
-    orbitDays: buildFallbackOrbitDays(timeZone),
-    activityDays: buildFallbackActivityDays(timeZone),
-    selectedDate: todayKey,
-    selectedDayReviewWordCount: 0,
-    selectedDayLearnedWordCount: 0,
-    resumeCandidate: null,
-    routineCard: {
-      state: 'not_started',
-      title: '开始今天的学习',
-      subtitle: '先完成第一轮，再进入回忆与听写',
-      ctaLabel: '先选择学习词库',
-      ctaMode: 'start_learning',
-      boundLearningGroupId: null,
-      lastUsedOfficialLibraryId: null,
-      lastUsedOfficialMode: null,
-      lastUsedOfficialGroupCount: 0,
-      selectedOfficialLibraryId: null,
-      officialLibraryOptions: [],
-      visibleSteps: [
-        { key: 'round1', label: 'Round 1 · 词汇记忆', status: 'current' },
-        { key: 'round2', label: 'Round 2 · 主动回忆', status: 'upcoming' },
-        { key: 'round3', label: 'Round 3 · 听写', status: 'upcoming' },
-      ],
-    },
-  };
-}
-
-function applyLearningPreferencesToStats(stats: UserStats, preferences: LearningPreferences): UserStats {
-  if (preferences.reinforcementRound3Enabled && preferences.round2Enabled) return stats;
-
-  return {
-    ...stats,
-    routineCard: {
-      ...stats.routineCard,
-      visibleSteps: stats.routineCard.visibleSteps.filter((step) => {
-        if (step.key === 'round2') return preferences.reinforcementRound3Enabled;
-        if (step.key === 'round3') return preferences.round2Enabled;
-        return true;
-      }),
-    },
-  };
-}
 
 export default function App() {
   const navigate = useNavigate();
@@ -381,19 +206,10 @@ export default function App() {
   const mainScrollRef = useRef<HTMLElement | null>(null);
   const activeLearningGroupIdRef = useRef<string | null>(null);
   const sessionAutoRestoreRef = useRef<string | null>(null);
-  const articleGenerationRef = useRef<ArticleGenerationJob | null>(null);
-  const articleGenerationRunIdRef = useRef(0);
   const activeWordsRef = useRef<Word[]>([]);
   const activeSessionSeedRef = useRef<PersistedLearningSession | null>(null);
   const lastSessionChangeSignatureRef = useRef<string | null>(null);
   const userIdRef = useRef<string | null>(null);
-  const homeStatsInFlightRef = useRef<Promise<void> | null>(null);
-  const homeStatsRequestIdRef = useRef(0);
-  const hasTrustedHomeStatsRef = useRef(false);
-  const homeOverviewDirtyRef = useRef(false);
-  const forceNextHomeRefreshRef = useRef(false);
-  const pendingLearningHomeSyncsRef = useRef<Set<Promise<void>>>(new Set());
-  const homeRefreshAfterSyncRef = useRef<Promise<void> | null>(null);
   const [round, setRound] = useState<RoundType>('round1');
   const [activeWords, setActiveWords] = useState<Word[]>([]);
   const [activeReviewRecovery, setActiveReviewRecovery] = useState<ReviewRecovery | null>(null);
@@ -407,15 +223,18 @@ export default function App() {
   );
   const [activeLearningGroupId, setActiveLearningGroupId] = useState<string | null>(null);
   const [activeSessionSeed, setActiveSessionSeedState] = useState<PersistedLearningSession | null>(null);
-  const [articleSentences, setArticleSentences] = useState<ArticleSentence[] | null>(null);
-  const [articleGenerationError, setArticleGenerationError] = useState('');
+  const {
+    articleSentences,
+    setArticleSentences,
+    articleGenerationError,
+    setArticleGenerationError,
+    ensureArticleForGroup,
+    cancelArticleGeneration,
+  } = useArticleGeneration(user?.id, activeLearningGroupId);
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [reviewSummary, setReviewSummary] = useState<ReviewSummaryItem[]>([]);
   const [sessionStartError, setSessionStartError] = useState('');
   const [isSessionSettingsOpen, setIsSessionSettingsOpen] = useState(false);
-  const [stats, setStats] = useState<UserStats>(buildEmptyStats);
-  const [hasTrustedHomeStats, setHasTrustedHomeStats] = useState(false);
-  const [isHomeStatsRefreshing, setIsHomeStatsRefreshing] = useState(false);
   const isSessionRoute = location.pathname.startsWith('/app/session');
   const isHomeRoute = location.pathname.startsWith('/app/home');
   const isIeltsTestRoute =
@@ -424,60 +243,31 @@ export default function App() {
   const recallRoundEnabled = learningPreferences.reinforcementRound3Enabled;
   const dictationRoundEnabled = learningPreferences.round2Enabled;
   const articleReinforcementEnabled = ARTICLE_REINFORCEMENT_ENABLED && learningPreferences.reinforcementArticleEnabled;
-  const requestedOfficialLibraryId = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    const value = params.get('officialLibraryId');
-    return isOfficialLibraryId(value) ? value : null;
-  }, [location.search]);
-  const homeStats = useMemo(() => {
-    const preferenceAwareStats = applyLearningPreferencesToStats(stats, learningPreferences);
-    if (!isHomeRoute || !requestedOfficialLibraryId) return preferenceAwareStats;
 
-    const existingOption = preferenceAwareStats.routineCard.officialLibraryOptions.find(
-      (option) => option.libraryId === requestedOfficialLibraryId,
-    );
-    const definition = getOfficialLibraryDefinition(requestedOfficialLibraryId);
-    const injectedOption: HomeOfficialLibraryOption = existingOption ?? {
-      libraryId: requestedOfficialLibraryId,
-      title: definition.title,
-      mode:
-        preferenceAwareStats.routineCard.lastUsedOfficialLibraryId === requestedOfficialLibraryId
-          ? (preferenceAwareStats.routineCard.lastUsedOfficialMode ?? 'sequential')
-          : 'sequential',
-      existingGroupCount:
-        preferenceAwareStats.routineCard.lastUsedOfficialLibraryId === requestedOfficialLibraryId
-          ? preferenceAwareStats.routineCard.lastUsedOfficialGroupCount
-          : 0,
-      activeGroupId: null,
-      activeRound: null,
-      confirmedWordCount: 0,
-      loadedWordCount: 0,
-      completedMemoryWordCount: 0,
-      totalWordCount: definition.words.length,
-    };
-
-    return {
-      ...preferenceAwareStats,
-      routineCard: {
-        ...preferenceAwareStats.routineCard,
-        ctaLabel:
-          preferenceAwareStats.routineCard.ctaMode === 'open_library'
-            ? '开始学习'
-            : preferenceAwareStats.routineCard.ctaLabel,
-        ctaMode:
-          preferenceAwareStats.routineCard.ctaMode === 'open_library'
-            ? 'start_learning'
-            : preferenceAwareStats.routineCard.ctaMode,
-        selectedOfficialLibraryId: requestedOfficialLibraryId,
-        officialLibraryOptions: [
-          injectedOption,
-          ...preferenceAwareStats.routineCard.officialLibraryOptions.filter(
-            (option) => option.libraryId !== requestedOfficialLibraryId,
-          ),
-        ],
-      },
-    };
-  }, [isHomeRoute, learningPreferences, requestedOfficialLibraryId, stats]);
+  const {
+    stats,
+    homeStats,
+    hasTrustedHomeStats,
+    isHomeStatsRefreshing,
+    requestedOfficialLibraryId,
+    fetchStats,
+    markHomeOverviewDirty,
+    trackLearningHomeSync,
+    navigateWithFreshHomeStats,
+    handleSelectOrbitDate,
+    getHasPendingHomeSync,
+    getIsHomeOverviewDirty,
+  } = useHomeStats({
+    user,
+    activeLearningGroupId,
+    activeSessionSeed,
+    learningPreferences,
+    isHomeRoute,
+    locationPathname: location.pathname,
+    locationSearch: location.search,
+    navigate,
+    onCloseSessionSettings: () => setIsSessionSettingsOpen(false),
+  });
 
   const setActiveSessionSeed = useCallback((next: React.SetStateAction<PersistedLearningSession | null>) => {
     setActiveSessionSeedState((current) => {
@@ -502,15 +292,6 @@ export default function App() {
 
   useEffect(() => {
     userIdRef.current = user?.id ?? null;
-    homeStatsRequestIdRef.current += 1;
-    homeStatsInFlightRef.current = null;
-    homeOverviewDirtyRef.current = false;
-    forceNextHomeRefreshRef.current = false;
-    pendingLearningHomeSyncsRef.current.clear();
-    homeRefreshAfterSyncRef.current = null;
-    hasTrustedHomeStatsRef.current = false;
-    setHasTrustedHomeStats(false);
-    setIsHomeStatsRefreshing(false);
   }, [user?.id]);
 
   useEffect(
@@ -540,219 +321,6 @@ export default function App() {
     [],
   );
 
-  const cancelArticleGeneration = useCallback((groupId?: string) => {
-    const current = articleGenerationRef.current;
-    if (!current) return;
-    if (groupId && current.groupId !== groupId) return;
-
-    if (current.timerId) {
-      clearTimeout(current.timerId);
-    }
-    current.controller?.abort();
-
-    articleGenerationRef.current = null;
-  }, []);
-
-  const fetchStats = useCallback(
-    async (options: FetchStatsOptions = {}) => {
-      if (!user) {
-        homeStatsInFlightRef.current = null;
-        hasTrustedHomeStatsRef.current = false;
-        setHasTrustedHomeStats(false);
-        setStats(buildEmptyStats());
-        return;
-      }
-
-      const timeZone = resolveBrowserTimeZone();
-      const mustRefreshHomeOverview = options.forceRefresh || homeOverviewDirtyRef.current;
-      if (mustRefreshHomeOverview) {
-        invalidateCachedHomeOverview(user.id, timeZone);
-      } else {
-        const cached = readCachedHomeOverview(user.id, timeZone);
-        const activeGroupId = activeLearningGroupIdRef.current ?? activeSessionSeedRef.current?.groupId ?? null;
-        if (cached && isCachedHomeOverviewCompatibleWithActiveLearningGroup(cached.stats, activeGroupId)) {
-          if (options.preferCache || !hasTrustedHomeStatsRef.current) {
-            hasTrustedHomeStatsRef.current = true;
-            setHasTrustedHomeStats(true);
-            setStats(cached.stats);
-          }
-          if (options.preferCache && cached.isFresh) {
-            return;
-          }
-        }
-      }
-
-      if (homeStatsInFlightRef.current && !mustRefreshHomeOverview) {
-        return homeStatsInFlightRef.current;
-      }
-
-      const requestId = homeStatsRequestIdRef.current + 1;
-      homeStatsRequestIdRef.current = requestId;
-      const request = (async () => {
-        setIsHomeStatsRefreshing(true);
-        try {
-          const overview = await queryClient.fetchQuery({
-            queryKey: queryKeys.home.overview(user.id, timeZone),
-            queryFn: () => fetchHomeOverview(timeZone),
-            staleTime: mustRefreshHomeOverview ? 0 : 60 * 1000,
-          });
-          if (userIdRef.current !== user.id || homeStatsRequestIdRef.current !== requestId) {
-            return;
-          }
-          const fallback = buildEmptyStats();
-          const nextStats = {
-            ...fallback,
-            ...overview,
-            orbitDays: overview.orbitDays?.length ? overview.orbitDays : fallback.orbitDays,
-            activityDays: overview.activityDays?.length ? overview.activityDays : fallback.activityDays,
-            routineCard: overview.routineCard ?? fallback.routineCard,
-          };
-          writeCachedHomeOverview(user.id, timeZone, nextStats);
-          homeOverviewDirtyRef.current = false;
-          hasTrustedHomeStatsRef.current = true;
-          setHasTrustedHomeStats(true);
-          setStats(nextStats);
-        } catch (err) {
-          console.error('Failed to fetch stats:', err);
-          if (userIdRef.current !== user.id || homeStatsRequestIdRef.current !== requestId) {
-            return;
-          }
-          if (!hasTrustedHomeStatsRef.current) {
-            setStats(buildEmptyStats());
-          }
-        } finally {
-          if (homeStatsInFlightRef.current === request) {
-            setIsHomeStatsRefreshing(false);
-            homeStatsInFlightRef.current = null;
-          }
-        }
-      })();
-
-      homeStatsInFlightRef.current = request;
-      return request;
-    },
-    [user],
-  );
-
-  const markHomeOverviewDirty = useCallback(() => {
-    homeOverviewDirtyRef.current = true;
-    const userId = userIdRef.current;
-    if (userId) {
-      invalidateCachedHomeOverview(userId, resolveBrowserTimeZone());
-    }
-  }, []);
-
-  const trackLearningHomeSync = useCallback(
-    (promise: Promise<void>) => {
-      markHomeOverviewDirty();
-      const trackedPromise = promise.finally(() => {
-        pendingLearningHomeSyncsRef.current.delete(trackedPromise);
-      });
-      pendingLearningHomeSyncsRef.current.add(trackedPromise);
-      void trackedPromise.catch(() => {
-        // Individual sync tasks log their own failures; refresh should still continue.
-      });
-      return trackedPromise;
-    },
-    [markHomeOverviewDirty],
-  );
-
-  const waitForPendingLearningHomeSync = useCallback(async () => {
-    while (pendingLearningHomeSyncsRef.current.size > 0) {
-      await Promise.allSettled([...pendingLearningHomeSyncsRef.current]);
-    }
-  }, []);
-
-  const refreshHomeStatsAfterLearningSync = useCallback(() => {
-    if (homeRefreshAfterSyncRef.current) {
-      return homeRefreshAfterSyncRef.current;
-    }
-
-    const refreshPromise = (async () => {
-      await waitForPendingLearningHomeSync();
-      await fetchStats({ forceRefresh: true });
-    })();
-    const trackedRefresh = refreshPromise.finally(() => {
-      if (homeRefreshAfterSyncRef.current === trackedRefresh) {
-        homeRefreshAfterSyncRef.current = null;
-      }
-    });
-    homeRefreshAfterSyncRef.current = trackedRefresh;
-    return trackedRefresh;
-  }, [fetchStats, waitForPendingLearningHomeSync]);
-
-  const navigateWithFreshHomeStats = useCallback(
-    (targetPath = '/app/home') => {
-      setIsSessionSettingsOpen(false);
-      if (targetPath.startsWith('/app/home')) {
-        forceNextHomeRefreshRef.current = true;
-      }
-      navigate(targetPath);
-      if (targetPath.startsWith('/app/home')) {
-        void refreshHomeStatsAfterLearningSync();
-      }
-    },
-    [navigate, refreshHomeStatsAfterLearningSync],
-  );
-
-  const handleSelectOrbitDate = useCallback((date: string) => {
-    setStats((current) => {
-      const selectedDay = current.orbitDays.find((day) => day.date === date);
-      if (!selectedDay) {
-        return current;
-      }
-
-      return {
-        ...current,
-        selectedDate: selectedDay.date,
-        selectedDayReviewWordCount: selectedDay.reviewWordCount,
-        selectedDayLearnedWordCount: selectedDay.learnedWordCount,
-      };
-    });
-  }, []);
-
-  useEffect(() => {
-    void fetchStats({ preferCache: true });
-  }, [fetchStats]);
-  useEffect(() => {
-    if (!user || !isHomeRoute) return;
-    let timer: ReturnType<typeof setTimeout>;
-    const schedule = () => {
-      const now = new Date();
-      const next = new Date(now);
-      next.setHours(9, 0, 0, 0);
-      if (next <= now) next.setDate(next.getDate() + 1);
-      timer = setTimeout(() => {
-        void fetchStats({ forceRefresh: true });
-        schedule();
-      }, next.getTime() - now.getTime());
-    };
-    const onVisible = () => {
-      if (document.visibilityState !== 'visible') return;
-      clearTimeout(timer);
-      void fetchStats({ forceRefresh: true });
-      schedule();
-    };
-    schedule();
-    document.addEventListener('visibilitychange', onVisible);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
-  }, [fetchStats, isHomeRoute, user]);
-
-  useEffect(() => {
-    if (location.pathname.startsWith('/app/home')) {
-      const shouldForceRefresh =
-        forceNextHomeRefreshRef.current || homeOverviewDirtyRef.current || pendingLearningHomeSyncsRef.current.size > 0;
-      forceNextHomeRefreshRef.current = false;
-      if (shouldForceRefresh) {
-        void refreshHomeStatsAfterLearningSync();
-        return;
-      }
-      void fetchStats({ preferCache: true });
-    }
-  }, [fetchStats, location.pathname, refreshHomeStatsAfterLearningSync]);
   useEffect(() => {
     if (!user) {
       cancelArticleGeneration();
@@ -781,146 +349,6 @@ export default function App() {
     setRound('round1');
   }, [cancelArticleGeneration, setActiveSessionSeed]);
 
-  const ensureArticleForGroup = useCallback(
-    async (groupId: string, words: Word[]) => {
-      if (!user) return null;
-
-      const generationKey = buildArticleGenerationKey(groupId, words);
-      const existingJob = articleGenerationRef.current;
-      if (existingJob && existingJob.key !== generationKey) {
-        cancelArticleGeneration();
-      }
-
-      const cachedArticle = getCachedArticle(groupId, words);
-      if (cachedArticle) {
-        cancelArticleGeneration(groupId);
-        if (activeLearningGroupIdRef.current === groupId) {
-          setArticleSentences(cachedArticle);
-          setArticleGenerationError('');
-        }
-        return cachedArticle;
-      }
-
-      const currentJob = articleGenerationRef.current;
-      if (currentJob?.key === generationKey && currentJob.exhausted) {
-        if (activeLearningGroupIdRef.current === groupId) {
-          setArticleGenerationError(ARTICLE_RETRY_EXHAUSTED_MESSAGE);
-        }
-        return null;
-      }
-
-      if (currentJob?.key === generationKey && (currentJob.inFlight || currentJob.timerId)) {
-        return null;
-      }
-
-      const runId = currentJob?.key === generationKey ? currentJob.runId : articleGenerationRunIdRef.current + 1;
-      articleGenerationRunIdRef.current = Math.max(articleGenerationRunIdRef.current, runId);
-
-      const startingAttempt = currentJob?.key === generationKey ? currentJob.attempt : 0;
-      articleGenerationRef.current = {
-        key: generationKey,
-        groupId,
-        runId,
-        attempt: startingAttempt,
-        inFlight: true,
-        timerId: null,
-        controller: null,
-        exhausted: false,
-      };
-      setArticleGenerationError('');
-
-      const isCurrentJob = () =>
-        articleGenerationRef.current?.key === generationKey && articleGenerationRef.current.runId === runId;
-
-      const completeWithSentences = (sentences: ArticleSentence[]) => {
-        if (!isCurrentJob()) return;
-        setCachedArticle(groupId, words, sentences);
-        if (activeLearningGroupIdRef.current === groupId) {
-          setArticleSentences(sentences);
-          setArticleGenerationError('');
-        }
-        articleGenerationRef.current = null;
-      };
-
-      const scheduleRetry = () => {
-        const current = articleGenerationRef.current;
-        if (!current || current.key !== generationKey || current.runId !== runId) return;
-
-        if (current.attempt >= ARTICLE_MAX_RETRY_ATTEMPTS) {
-          current.inFlight = false;
-          current.timerId = null;
-          current.controller = null;
-          current.exhausted = true;
-          if (activeLearningGroupIdRef.current === groupId) {
-            setArticleGenerationError(ARTICLE_RETRY_EXHAUSTED_MESSAGE);
-          }
-          return;
-        }
-
-        current.inFlight = false;
-        current.attempt += 1;
-        current.timerId = setTimeout(() => {
-          const scheduled = articleGenerationRef.current;
-          if (!scheduled || scheduled.key !== generationKey || scheduled.runId !== runId) return;
-          scheduled.timerId = null;
-          void ensureArticleForGroup(groupId, words);
-        }, ARTICLE_RETRY_DELAY_MS);
-      };
-
-      try {
-        const persistedArticle = await fetchGeneratedArticle(user.id, groupId);
-        const persistedSentences = parsePersistedArticleContent(persistedArticle);
-        if (persistedSentences) {
-          completeWithSentences(persistedSentences);
-          return persistedSentences;
-        }
-
-        const controller = new AbortController();
-        const currentJobForRequest = articleGenerationRef.current;
-        if (currentJobForRequest && isCurrentJob()) {
-          currentJobForRequest.controller = controller;
-        }
-        const timeoutId = setTimeout(() => controller.abort(), ARTICLE_REQUEST_TIMEOUT_MS);
-        let sentences: ArticleSentence[];
-        try {
-          const res = await apiFetch('/api/vocab/article', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ words: words.map((word) => word.word) }),
-            signal: controller.signal,
-          });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const { data } = await res.json();
-          sentences = normalizeArticleResponse(data);
-        } finally {
-          clearTimeout(timeoutId);
-          const currentJobAfterRequest = articleGenerationRef.current;
-          if (currentJobAfterRequest && isCurrentJob()) {
-            currentJobAfterRequest.controller = null;
-          }
-        }
-
-        if (!isCurrentJob()) {
-          return sentences;
-        }
-
-        await upsertGeneratedArticle(
-          user.id,
-          groupId,
-          serializeArticleSentences(sentences),
-          words.map((word) => word.word.trim()).filter(Boolean),
-        );
-        completeWithSentences(sentences);
-
-        return sentences;
-      } catch (error) {
-        console.error('Article generation failed:', error);
-        scheduleRetry();
-        return null;
-      }
-    },
-    [cancelArticleGeneration, user],
-  );
 
   const openLearningGroup = useCallback(
     async (groupId: string, preloadedWords?: Word[], options: OpenLearningGroupOptions = {}) => {
@@ -1214,7 +642,7 @@ export default function App() {
       return;
     }
 
-    if (!hasTrustedHomeStatsRef.current) {
+    if (!hasTrustedHomeStats) {
       setSessionStartError('学习数据正在同步，请稍后继续。');
       void fetchStats({ forceRefresh: true });
       return;
@@ -1821,12 +1249,12 @@ export default function App() {
 
   const handleSidebarNavigate = useCallback(
     (targetPath: string) => {
-      const hasPendingHomeSync = pendingLearningHomeSyncsRef.current.size > 0;
+      const hasPendingHomeSync = getHasPendingHomeSync();
       if (
         shouldForceHomeRefreshForNavigation(
           location.pathname,
           targetPath,
-          homeOverviewDirtyRef.current || hasPendingHomeSync,
+          getIsHomeOverviewDirty() || hasPendingHomeSync,
         )
       ) {
         navigateWithFreshHomeStats(targetPath);
@@ -1835,7 +1263,7 @@ export default function App() {
 
       navigate(targetPath);
     },
-    [location.pathname, navigate, navigateWithFreshHomeStats],
+    [getHasPendingHomeSync, getIsHomeOverviewDirty, location.pathname, navigate, navigateWithFreshHomeStats],
   );
 
   useEffect(() => {
@@ -1964,23 +1392,6 @@ export default function App() {
     stats.routineCard.ctaMode,
     user,
   ]);
-
-  const sessionEmptyState = (
-    <div className="glass mx-auto max-w-3xl rounded-apple-lg p-16 text-center shadow-xl">
-      <p className="text-xs font-bold uppercase tracking-[0.24em] text-text-secondary">这里还没有内容</p>
-      <h2 className="mt-4 text-3xl font-black text-text-primary">回到首页，查看今天的学习安排。</h2>
-      <IslandButton
-        onClick={() => {
-          navigateWithFreshHomeStats('/app/home');
-        }}
-        className="mt-8"
-        tone="mint"
-        size="large"
-      >
-        回到首页
-      </IslandButton>
-    </div>
-  );
 
   return (
     <SavedWordsProvider>
@@ -2122,68 +1533,27 @@ export default function App() {
                       <Route
                         path="session"
                         element={
-                          activeWords.length === 0 ? (
-                            sessionEmptyState
-                          ) : round === 'article' && ARTICLE_REINFORCEMENT_ENABLED ? (
-                            articleSentences === null ? (
-                              articleGenerationError ? (
-                                <motion.div
-                                  initial={{ opacity: 0 }}
-                                  animate={{ opacity: 1 }}
-                                  className="glass p-16 rounded-apple-lg shadow-2xl flex flex-col items-center gap-6 text-center"
-                                >
-                                  <AlertCircle className="h-10 w-10 text-apple-red" />
-                                  <div>
-                                    <p className="font-black text-xl text-text-primary">文章暂时没有生成</p>
-                                    <p className="mt-2 text-sm font-bold text-text-secondary">
-                                      {articleGenerationError}
-                                    </p>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={handleRetryArticleGeneration}
-                                    className="flex items-center justify-center gap-2 rounded-2xl bg-apple-blue px-6 py-3.5 text-sm font-black text-white shadow-lg shadow-apple-blue/20 transition-transform active:scale-95"
-                                  >
-                                    <RefreshCw className="h-4 w-4" />
-                                    再试一次
-                                  </button>
-                                </motion.div>
-                              ) : (
-                                <motion.div
-                                  initial={{ opacity: 0 }}
-                                  animate={{ opacity: 1 }}
-                                  className="glass p-16 rounded-apple-lg shadow-2xl flex flex-col items-center gap-6"
-                                >
-                                  <Loader2 className="w-10 h-10 text-apple-green animate-spin" />
-                                  <p className="font-black text-xl">正在生成巩固文章，失败后最多自动重试 3 次</p>
-                                </motion.div>
-                              )
-                            ) : (
-                              <ArticleView
-                                sentences={articleSentences}
-                                words={activeWords}
-                                onFinish={handleRoundComplete}
-                              />
-                            )
-                          ) : (
-                            <React.Fragment key={`${activeLearningGroupId ?? 'review'}:${round}`}>
-                              <LearningEngine
-                                userId={user?.id}
-                                type={round}
-                                words={activeWords}
-                                initialSession={activeSessionSeed}
-                                onComplete={handleRoundComplete}
-                                onSessionChange={handleLearningSessionChange}
-                                initialReviewRecovery={activeReviewRecovery}
-                                onReviewChange={handleReviewChange}
-                                onWordMastered={handleSessionWordMastered}
-                                onWordMasteredRollback={handleSessionWordMasteredRollback}
-                                sessionLeadingAction={sessionBackButton}
-                                sessionActions={sessionSettingsButton}
-                                round1CanWaitForMoreWords={round1CanWaitForMoreWords}
-                              />
-                            </React.Fragment>
-                          )
+                          <SessionRouteView
+                            userId={user?.id}
+                            round={round}
+                            words={activeWords}
+                            activeLearningGroupId={activeLearningGroupId}
+                            activeSessionSeed={activeSessionSeed}
+                            activeReviewRecovery={activeReviewRecovery}
+                            articleSentences={articleSentences}
+                            articleGenerationError={articleGenerationError}
+                            articleReinforcementEnabled={ARTICLE_REINFORCEMENT_ENABLED}
+                            round1CanWaitForMoreWords={round1CanWaitForMoreWords}
+                            sessionLeadingAction={sessionBackButton}
+                            sessionActions={sessionSettingsButton}
+                            onNavigateHome={() => navigateWithFreshHomeStats('/app/home')}
+                            onRetryArticleGeneration={handleRetryArticleGeneration}
+                            onRoundComplete={handleRoundComplete}
+                            onLearningSessionChange={handleLearningSessionChange}
+                            onReviewChange={handleReviewChange}
+                            onWordMastered={handleSessionWordMastered}
+                            onWordMasteredRollback={handleSessionWordMasteredRollback}
+                          />
                         }
                       />
                       <Route

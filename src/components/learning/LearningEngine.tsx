@@ -1,22 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import {
-  BookMarked,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Flag,
-  Loader2,
-  MoreHorizontal,
-  Volume2,
-  X,
-  XCircle,
 } from 'lucide-react';
 import {
   getWordPhonetic,
   LearningRoundType,
   PersistedLearningSession,
-  PronunciationLocale,
   ReviewAttemptSource,
   RoundType,
   Word,
@@ -24,15 +15,21 @@ import {
 import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
 import { useSavedWords } from '../../contexts/SavedWordsContext';
 import { useWordPopover } from '../../contexts/WordPopoverContext';
-import { cancelBrowserSpeech, isBrowserSpeechSupported, speakTextViaBrowser } from '../../lib/browserSpeech';
-import { fetchExampleAudioUrl } from '../../lib/exampleAudio';
+import { isBrowserSpeechSupported } from '../../lib/browserSpeech';
 import { preloadRound1CardResources } from '../../lib/round1Preload';
 import { preloadRound2CardResources } from '../../lib/round2Preload';
-import { fetchWordAudioUrl, primeWordAudioUrl } from '../../lib/wordAudio';
-import { ExampleSentenceList } from '../shared/ExampleSentenceList';
-import { cx, PronunciationControls, RoundIndicator, WordSenseList } from '../shared/LearningUI';
+import { cx } from '../shared/LearningUI';
 import { buildClozePrompt } from '../../lib/cloze';
-import { Round2ClozePrompt } from './Round2ClozePrompt';
+import { useLearningAudio } from './hooks/useLearningAudio';
+import { Round1View } from './views/Round1View';
+import {
+  type Round2ChoiceOption,
+  type Round2ChoiceSelection,
+} from './views/Round2ChoiceView';
+import { DictationRecallView } from './views/DictationRecallView';
+import { Round2View } from './views/Round2View';
+import { ActionFeedbackToast, ReportIssueSheet, WordActionMenu } from './views/LearningOverlays';
+
 import { attemptBuffer } from '../../lib/attemptBuffer';
 import { readLocal, writeLocal } from '../../lib/durableStorage';
 import type { ReviewRecovery } from '../../lib/learningRecovery';
@@ -40,26 +37,18 @@ import { markReviewWordMastered, markReviewWordUnknown } from '../../lib/reviewA
 import { reportVocabularyIssue, type VocabularyIssueType } from '../../lib/vocabReportApi';
 import {
   ActionFeedback,
+  formatClozeWordInfo,
   getWrongAnswerRequeueIndex,
   hasRound1ContextContent,
   hasRound1MorphologyContent,
   hasRound1RelationsContent,
   isTextEditingTarget,
-  PlaybackTarget,
   SessionActionKind,
   stripDiacritics,
   trimDisplayText,
-  VOCABULARY_ISSUE_OPTIONS,
 } from './learningEngineUtils';
 import {
-  AnswerFeedbackCard,
   InputSessionShell,
-  renderProgressBar,
-  Round1ConfusingCard,
-  Round1LookupText,
-  Round1MemoryTipCard,
-  Round1MorphologyCard,
-  Round1RelationsCard,
 } from './Round1Cards';
 import { ROUND1_REINFORCEMENT_WORD_LIMIT } from '../../../shared/learningProgress';
 
@@ -77,18 +66,6 @@ function areWordQueuesEqual(left: Word[], right: Word[]) {
 
 function areNumberArraysEqual(left: readonly number[] = [], right: readonly number[] = []) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
-function formatClozeWordInfo(pos: string | undefined | null, meaning: string | undefined | null) {
-  const trimmedPos = pos?.trim();
-  const trimmedMeaning = meaning?.trim();
-
-  if (trimmedPos && trimmedMeaning) {
-    const displayPos = trimmedPos.endsWith('.') ? trimmedPos : `${trimmedPos}.`;
-    return `${displayPos} ${trimmedMeaning}`;
-  }
-
-  return trimmedMeaning || trimmedPos || '';
 }
 
 function hashString(value: string) {
@@ -152,20 +129,6 @@ interface OptimisticallyRemovedWord {
   word: Word;
   wasCompleted: boolean;
   wasRound1Confirmed: boolean;
-}
-
-interface Round2ChoiceOption {
-  id: string;
-  word: string;
-  pos: string;
-  meaningZh: string;
-  isCorrect: boolean;
-}
-
-interface Round2ChoiceSelection {
-  wordId: string;
-  optionId: string;
-  wasCorrect: boolean;
 }
 
 export const LearningEngine = ({
@@ -320,8 +283,7 @@ export const LearningEngine = ({
     [queue, round1ConfirmedWordIds],
   );
 
-  const [audioLocale, setAudioLocale] = useState<PronunciationLocale>(preferences.defaultPronunciationLocale);
-  const [playbackTarget, setPlaybackTarget] = useState<PlaybackTarget | null>(null);
+  const canPlayExampleAudio = useMemo(() => typeof Audio !== 'undefined' || isBrowserSpeechSupported(), []);
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
   const [activeActionKind, setActiveActionKind] = useState<SessionActionKind | null>(null);
   const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
@@ -337,12 +299,8 @@ export const LearningEngine = ({
   const round3ActionMenuRef = useRef<HTMLDivElement | null>(null);
   const actionFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const promptStartedAtRef = useRef<number>(0);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const answerRevealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const correctReadbackTokenRef = useRef<symbol | null>(null);
-  const audioGapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const playbackRunIdRef = useRef(0);
-  const activePlaybackFinishRef = useRef<(() => void) | null>(null);
   const lastRound1PreloadKeyRef = useRef<string | null>(null);
   const lastRound2PreloadKeyRef = useRef<string | null>(null);
   const lastSessionSnapshotSignatureRef = useRef<string | null>(null);
@@ -350,7 +308,6 @@ export const LearningEngine = ({
   const round3AutoSubmitKeyRef = useRef<string | null>(null);
   const round1SubmittedInputKeyRef = useRef<string | null>(null);
   const preferencesRef = useRef(preferences);
-  const canPlayExampleAudio = useMemo(() => typeof Audio !== 'undefined' || isBrowserSpeechSupported(), []);
 
   const queueRef = useRef<Word[]>(initialEngineState.queue);
   const currentIndexRef = useRef(initialEngineState.currentIndex);
@@ -377,6 +334,18 @@ export const LearningEngine = ({
   }, [preferences]);
 
   const currentWord = queue[currentIndex];
+  const {
+    audioLocale,
+    setAudioLocale,
+    activePronunciationLocale,
+    activeExampleKey,
+    stopPlayback,
+    playAudioSequence,
+    playExampleSentence,
+  } = useLearningAudio({
+    currentWord,
+    canPlayExampleAudio,
+  });
   const inputDraftKey =
     userId && currentWord
       ? `lumina.input.v1.${userId}.${initialSession?.groupId ?? reviewRunId.current}.${type}.${currentIndex}.${currentWord.id}`
@@ -452,9 +421,6 @@ export const LearningEngine = ({
     : (viewedWord?.word ?? '').trim().toLowerCase();
   const displayedInputValue = isViewingHistory ? viewedExpectedInput : inputValue;
   const roundSource = type === 'review' ? 'review' : type === 'round3' ? 'round3' : type === 'round2' ? 'round2' : null;
-  const activePronunciationLocale = playbackTarget?.kind === 'pronunciation' ? playbackTarget.locale : null;
-  const activeExampleKey = playbackTarget?.kind === 'example' ? playbackTarget.key : null;
-
   const clearAnswerRevealTimeout = useCallback(() => {
     correctReadbackTokenRef.current = null;
     if (answerRevealTimeoutRef.current === null) return;
@@ -462,31 +428,6 @@ export const LearningEngine = ({
     answerRevealTimeoutRef.current = null;
   }, []);
 
-  const stopPlayback = useCallback(() => {
-    playbackRunIdRef.current += 1;
-    const finishActivePlayback = activePlaybackFinishRef.current;
-
-    if (audioGapTimeoutRef.current !== null) {
-      clearTimeout(audioGapTimeoutRef.current);
-      audioGapTimeoutRef.current = null;
-    }
-
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.onended = null;
-      audioRef.current.onerror = null;
-      audioRef.current = null;
-    }
-
-    finishActivePlayback?.();
-    cancelBrowserSpeech();
-    setPlaybackTarget(null);
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener('lumina:pause', stopPlayback);
-    return () => window.removeEventListener('lumina:pause', stopPlayback);
-  }, [stopPlayback]);
 
   useEffect(() => {
     const currentPassedQueueIndices = [...passedQueueIndicesRef.current].sort((left, right) => left - right);
@@ -574,231 +515,6 @@ export const LearningEngine = ({
       inputRef.current?.focus();
     }
   }, [currentIndex, viewIndex]);
-
-  const speakViaBrowser = useCallback(
-    (text: string, locale: PronunciationLocale, runId: number, target: PlaybackTarget) => {
-      if (!canPlayExampleAudio || runId !== playbackRunIdRef.current) {
-        return Promise.resolve(false);
-      }
-
-      setPlaybackTarget(target);
-
-      return speakTextViaBrowser(text, locale, preferencesRef.current.speechPlaybackRate).finally(() => {
-        if (runId === playbackRunIdRef.current) {
-          setPlaybackTarget(null);
-        }
-      });
-    },
-    [canPlayExampleAudio],
-  );
-
-  const resolveAudioUrl = useCallback(async (word: Word, locale: PronunciationLocale) => {
-    const cachedUrl = locale === 'uk' ? word.audio_uk_url : word.audio_us_url;
-    if (cachedUrl) {
-      primeWordAudioUrl(word.word, locale, cachedUrl);
-      return cachedUrl;
-    }
-
-    return fetchWordAudioUrl(word.word, locale);
-  }, []);
-
-  const resolveExampleAudioUrl = useCallback(
-    (sentence: string, locale: PronunciationLocale) => fetchExampleAudioUrl(sentence, locale),
-    [],
-  );
-
-  const waitForGap = useCallback(
-    (gapMs: number, runId: number) =>
-      new Promise<void>((resolve) => {
-        if (gapMs <= 0 || runId !== playbackRunIdRef.current) {
-          resolve();
-          return;
-        }
-
-        let settled = false;
-        const finish = () => {
-          if (settled) return;
-          settled = true;
-          audioGapTimeoutRef.current = null;
-          if (activePlaybackFinishRef.current === finish) {
-            activePlaybackFinishRef.current = null;
-          }
-          resolve();
-        };
-
-        activePlaybackFinishRef.current = finish;
-        audioGapTimeoutRef.current = setTimeout(finish, gapMs);
-      }),
-    [],
-  );
-
-  const playAudioOnce = useCallback(
-    async (word: Word, locale: PronunciationLocale, runId: number) => {
-      if (runId !== playbackRunIdRef.current) return;
-
-      const resolvedUrl = await resolveAudioUrl(word, locale);
-      const pronunciationTarget: PlaybackTarget = { kind: 'pronunciation', locale };
-      if (runId !== playbackRunIdRef.current) return;
-
-      if (!resolvedUrl) {
-        await speakViaBrowser(word.word, locale, runId, pronunciationTarget);
-        return;
-      }
-
-      setPlaybackTarget(pronunciationTarget);
-
-      await new Promise<void>((resolve) => {
-        const audio = new Audio(resolvedUrl);
-        let settled = false;
-        const playbackRate = preferencesRef.current.speechPlaybackRate;
-        audio.defaultPlaybackRate = playbackRate;
-        audio.playbackRate = playbackRate;
-
-        const finish = () => {
-          if (settled) return;
-          settled = true;
-          if (activePlaybackFinishRef.current === finish) {
-            activePlaybackFinishRef.current = null;
-          }
-          if (audioRef.current === audio) {
-            audioRef.current = null;
-          }
-          if (runId === playbackRunIdRef.current) {
-            setPlaybackTarget(null);
-          }
-          resolve();
-        };
-
-        const fallbackToSpeech = () => {
-          if (settled) return;
-          settled = true;
-          if (activePlaybackFinishRef.current === finish) {
-            activePlaybackFinishRef.current = null;
-          }
-          if (audioRef.current === audio) {
-            audioRef.current = null;
-          }
-          void speakViaBrowser(word.word, locale, runId, pronunciationTarget).then(() => resolve());
-        };
-
-        audioRef.current = audio;
-        activePlaybackFinishRef.current = finish;
-        audio.onended = finish;
-        audio.onerror = fallbackToSpeech;
-        audio.play().catch(fallbackToSpeech);
-      });
-    },
-    [resolveAudioUrl, speakViaBrowser],
-  );
-
-  const playAudioSequence = useCallback(
-    async (word: Word, locale: PronunciationLocale, repeatCount: number, gapMs: number) => {
-      stopPlayback();
-      const runId = playbackRunIdRef.current;
-
-      for (let attempt = 0; attempt < repeatCount; attempt += 1) {
-        await playAudioOnce(word, locale, runId);
-
-        if (runId !== playbackRunIdRef.current) {
-          return;
-        }
-
-        if (attempt < repeatCount - 1) {
-          await waitForGap(gapMs, runId);
-        }
-      }
-    },
-    [playAudioOnce, stopPlayback, waitForGap],
-  );
-
-  const playExampleSentence = useCallback(
-    async (sentence: string, key: string) => {
-      if (!canPlayExampleAudio) return;
-
-      if (playbackTarget?.kind === 'example' && playbackTarget.key === key) {
-        stopPlayback();
-        return;
-      }
-
-      stopPlayback();
-      const runId = playbackRunIdRef.current;
-      const exampleTarget: PlaybackTarget = { kind: 'example', key };
-      setPlaybackTarget(exampleTarget);
-
-      const resolvedUrl = await resolveExampleAudioUrl(sentence, audioLocale);
-      if (runId !== playbackRunIdRef.current) return;
-
-      if (!resolvedUrl || typeof Audio === 'undefined') {
-        await speakViaBrowser(sentence, audioLocale, runId, exampleTarget);
-        return;
-      }
-
-      await new Promise<void>((resolve) => {
-        const audio = new Audio(resolvedUrl);
-        let settled = false;
-        const playbackRate = preferencesRef.current.speechPlaybackRate;
-        audio.defaultPlaybackRate = playbackRate;
-        audio.playbackRate = playbackRate;
-
-        const finish = () => {
-          if (settled) return;
-          settled = true;
-          if (activePlaybackFinishRef.current === finish) {
-            activePlaybackFinishRef.current = null;
-          }
-          if (audioRef.current === audio) {
-            audioRef.current = null;
-          }
-          if (runId === playbackRunIdRef.current) {
-            setPlaybackTarget(null);
-          }
-          resolve();
-        };
-
-        const fallbackToSpeech = () => {
-          if (settled) return;
-          settled = true;
-          if (activePlaybackFinishRef.current === finish) {
-            activePlaybackFinishRef.current = null;
-          }
-          if (audioRef.current === audio) {
-            audioRef.current = null;
-          }
-          void speakViaBrowser(sentence, audioLocale, runId, exampleTarget).then(() => resolve());
-        };
-
-        audioRef.current = audio;
-        activePlaybackFinishRef.current = finish;
-        audio.onended = finish;
-        audio.onerror = fallbackToSpeech;
-        audio.play().catch(fallbackToSpeech);
-      });
-    },
-    [audioLocale, canPlayExampleAudio, playbackTarget, resolveExampleAudioUrl, speakViaBrowser, stopPlayback],
-  );
-
-  useEffect(() => {
-    if (!currentWord) return;
-
-    const locale = preferences.defaultPronunciationLocale;
-    setAudioLocale(locale);
-    stopPlayback();
-
-    if (!preferences.autoPlayEnabled) {
-      return;
-    }
-
-    void playAudioSequence(currentWord, locale, preferences.autoPlayRepeatCount, preferences.autoPlayRepeatGapMs);
-  }, [
-    currentWord,
-    playAudioSequence,
-    preferences.autoPlayEnabled,
-    preferences.autoPlayRepeatCount,
-    preferences.autoPlayRepeatGapMs,
-    preferences.defaultPronunciationLocale,
-    preferences.speechPlaybackRate,
-    stopPlayback,
-  ]);
 
   useEffect(() => {
     if (type !== 'round1') {
@@ -1865,93 +1581,6 @@ export const LearningEngine = ({
     </form>
   );
 
-  const feedbackReveal = (
-    <AnimatePresence>
-      {showAnswer && (
-        <AnswerFeedbackCard
-          word={currentWord}
-          clozePrompt={clozePrompt}
-          isWrong={isWrong}
-          wrongInput={lastWrongInput}
-        />
-      )}
-    </AnimatePresence>
-  );
-
-  const replayControls = isDictationRound ? (
-    <div className="mx-auto mb-8 flex flex-wrap items-center justify-center gap-2.5">
-      {(['uk', 'us'] as const).map((loc) => (
-        <button
-          key={`${type}-replay-${loc}`}
-          type="button"
-          onClick={() => {
-            setAudioLocale(loc);
-            void playAudioSequence(viewedWord, loc, 1, 0);
-          }}
-          className={cx(
-            'flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-black tracking-[0.14em] transition-all',
-            audioLocale === loc
-              ? type === 'round3'
-                ? 'bg-[#2563eb] text-white shadow-[0_12px_24px_rgba(37,99,235,0.18)]'
-                : 'bg-apple-blue text-white shadow-[0_12px_24px_rgba(25,200,185,0.18)]'
-              : type === 'round3'
-                ? 'bg-[#eaf2ff] text-[#2563eb] hover:bg-[#dbeafe]'
-                : 'bg-apple-blue/10 text-apple-blue hover:bg-apple-blue/15',
-          )}
-        >
-          {activePronunciationLocale === loc ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Volume2 className="h-3.5 w-3.5" />
-          )}
-          再听 {loc.toUpperCase()}
-        </button>
-      ))}
-    </div>
-  ) : null;
-
-  const phoneticToggleHideLabel = type === 'review' ? '隐藏复习轮音标' : '隐藏 Round 3 音标';
-  const phoneticToggleShowLabel = type === 'review' ? '显示复习轮音标' : '显示 Round 3 音标';
-  const phoneticToggleActiveClass =
-    type === 'round3'
-      ? 'border-[#2563eb]/18 bg-[#eaf2ff]/95 text-[#2563eb] hover:bg-[#dbeafe]'
-      : 'border-apple-blue/18 bg-apple-blue/10 text-apple-blue hover:bg-apple-blue/15';
-  const phoneticToggleSwitchClass = type === 'round3' ? 'bg-[#2563eb]' : 'bg-apple-blue';
-
-  const dictationPhoneticToggle = canToggleDictationPhonetic ? (
-    <button
-      type="button"
-      aria-pressed={dictationPhoneticVisible}
-      aria-label={dictationPhoneticVisible ? phoneticToggleHideLabel : phoneticToggleShowLabel}
-      title={dictationPhoneticVisible ? '隐藏音标' : '显示音标'}
-      onClick={(event) => {
-        event.stopPropagation();
-        setDictationPhoneticVisible((visible) => !visible);
-      }}
-      className={cx(
-        'absolute left-4 top-4 z-20 inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-black tracking-[0.12em] shadow-[0_12px_28px_rgba(14,26,56,0.08)] backdrop-blur-xl transition-all active:scale-[0.98] sm:left-5 sm:top-5',
-        dictationPhoneticVisible
-          ? phoneticToggleActiveClass
-          : 'border-black/6 bg-white/76 text-text-secondary/70 hover:bg-white hover:text-text-secondary',
-      )}
-    >
-      音标
-      <span
-        aria-hidden="true"
-        className={cx(
-          'inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors',
-          dictationPhoneticVisible ? phoneticToggleSwitchClass : 'bg-black/15',
-        )}
-      >
-        <span
-          className={cx(
-            'h-3 w-3 rounded-full bg-white shadow-sm transition-transform',
-            dictationPhoneticVisible ? 'translate-x-3' : 'translate-x-0',
-          )}
-        />
-      </span>
-    </button>
-  ) : null;
 
   const submitErrorBanner = submitError ? (
     <div className="rounded-2xl bg-apple-red/10 px-4 py-3 text-sm font-medium text-apple-red">{submitError}</div>
@@ -1986,423 +1615,102 @@ export const LearningEngine = ({
   const shouldShowRound3Answer = isViewingHistory || showAnswer;
   const round3ExampleSentence = viewedWord.example_sentences[0] ?? '';
   const round3ExampleKey = `${viewedWord.id}:${viewIndex}:round3-example-0`;
-  const renderWordActionMenu = (
-    className = '!absolute right-3 top-3 z-30',
-    ref: React.RefObject<HTMLDivElement | null> = mobileActionMenuRef,
-  ) => (
-    <div
-      ref={ref}
-      className={className}
-      style={{ zIndex: 80 }}
-      onPointerDown={(event) => event.stopPropagation()}
-      onClick={(event) => event.stopPropagation()}
-    >
-      <button
-        type="button"
-        aria-label="更多操作"
-        aria-expanded={isActionMenuOpen}
-        onClick={() => setIsActionMenuOpen((prev) => !prev)}
-        className={cx(
-          'flex h-11 w-11 items-center justify-center rounded-[18px] border border-white/85 bg-white/82 text-[#8f826d] shadow-[0_12px_26px_rgba(61,52,40,0.10)] backdrop-blur-xl transition-all active:scale-95 sm:h-12 sm:w-12',
-          isActionMenuOpen && 'text-[#4f46e5] shadow-[0_14px_30px_rgba(79,70,229,0.14)]',
-        )}
-      >
-        <MoreHorizontal className="h-5 w-5" strokeWidth={2.7} />
-      </button>
-
-      <AnimatePresence>
-        {isActionMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -6, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -6, scale: 0.98 }}
-            transition={{ duration: 0.14, ease: 'easeOut' }}
-            className="absolute right-0 top-[3.25rem] z-[90] w-52 overflow-hidden rounded-[22px] border border-white/85 bg-white/92 p-1.5 text-left shadow-[0_22px_56px_rgba(61,52,40,0.18)] backdrop-blur-xl"
-          >
-            <button
-              type="button"
-              onClick={() => {
-                void handleMarkViewedWordMastered();
-              }}
-              disabled={Boolean(activeActionKind)}
-              className="flex min-h-11 w-full items-center gap-3 rounded-[17px] px-3.5 text-sm font-black text-apple-red transition-colors hover:bg-apple-red/8 disabled:cursor-wait disabled:opacity-60"
-            >
-              {activeActionKind === 'mastered' ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <CheckCircle2 className="h-4 w-4" />
-              )}
-              标记已掌握
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                void handleSaveViewedWord();
-              }}
-              disabled={Boolean(activeActionKind)}
-              className="flex min-h-11 w-full items-center gap-3 rounded-[17px] px-3.5 text-sm font-black text-text-primary transition-colors hover:bg-black/5 disabled:cursor-wait disabled:opacity-60"
-            >
-              {activeActionKind === 'save' ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <BookMarked className="h-4 w-4" />
-              )}
-              加入个人词库
-            </button>
-            <button
-              type="button"
-              onClick={handleOpenReportSheet}
-              disabled={Boolean(activeActionKind)}
-              className="flex min-h-11 w-full items-center gap-3 rounded-[17px] px-3.5 text-sm font-black text-text-primary transition-colors hover:bg-black/5 disabled:cursor-wait disabled:opacity-60"
-            >
-              <Flag className="h-4 w-4" />
-              报告问题
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-  const mobileWordActionMenu = renderWordActionMenu('!absolute right-3 top-3 !z-30 sm:hidden', mobileActionMenuRef);
-  const desktopWordActionMenu = renderWordActionMenu('relative z-30', desktopActionMenuRef);
-  const actionFeedbackToast = (
-    <AnimatePresence>
-      {actionFeedback && (
-        <motion.div
-          initial={{ opacity: 0, y: 14, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 10, scale: 0.98 }}
-          className={cx(
-            'fixed bottom-[calc(env(safe-area-inset-bottom)+1.25rem)] left-1/2 z-[110] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-[18px] px-4 py-3 text-sm font-black text-white shadow-[0_20px_52px_rgba(0,0,0,0.22)]',
-            actionFeedback.tone === 'error' ? 'bg-apple-red' : 'bg-[#222222]',
-          )}
-        >
-          {actionFeedback.tone === 'error' ? (
-            <XCircle className="h-4 w-4 shrink-0" />
-          ) : (
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-[#7ddc8a]" />
-          )}
-          <span className="min-w-0 truncate">{actionFeedback.text}</span>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-  const reportIssueSheet = (
-    <AnimatePresence>
-      {isReportSheetOpen && (
-        <motion.div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/18 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur-[2px]"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={() => {
-            if (activeActionKind !== 'report') {
-              setIsReportSheetOpen(false);
-            }
-          }}
-        >
-          <motion.div
-            initial={{ y: 24, scale: 0.98 }}
-            animate={{ y: 0, scale: 1 }}
-            exit={{ y: 24, scale: 0.98 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            className="w-full max-w-md rounded-[28px] border border-white/85 bg-white/95 p-4 shadow-[0_28px_70px_rgba(61,52,40,0.22)] backdrop-blur-xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm font-black text-text-primary">报告问题</p>
-                <p className="mt-0.5 truncate text-xs font-bold text-text-secondary">
-                  {reportTargetWord?.word ?? viewedWord.word}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsReportSheetOpen(false)}
-                disabled={activeActionKind === 'report'}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/5 text-text-secondary transition-colors hover:bg-black/8 disabled:opacity-50"
-                aria-label="关闭报告问题"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              {VOCABULARY_ISSUE_OPTIONS.map((option) => (
-                <button
-                  key={option.type}
-                  type="button"
-                  onClick={() => setReportIssueType(option.type)}
-                  disabled={activeActionKind === 'report'}
-                  className={cx(
-                    'min-h-10 rounded-[15px] px-3 text-sm font-black transition-all disabled:opacity-60',
-                    reportIssueType === option.type
-                      ? 'bg-[#4f46e5] text-white shadow-[0_12px_26px_rgba(79,70,229,0.18)]'
-                      : 'bg-black/5 text-text-primary hover:bg-black/8',
-                  )}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-
-            <textarea
-              value={reportNote}
-              onChange={(event) => setReportNote(event.target.value.slice(0, 1000))}
-              disabled={activeActionKind === 'report'}
-              rows={4}
-              className="mt-3 w-full resize-none rounded-[18px] border border-black/8 bg-white/75 px-3 py-3 text-sm font-bold leading-6 text-text-primary outline-none transition-colors placeholder:text-text-secondary/50 focus:border-[#4f46e5]/35 disabled:opacity-60"
-              placeholder="哪里不对？可选"
-            />
-
-            <button
-              type="button"
-              onClick={() => {
-                void handleSubmitReport();
-              }}
-              disabled={activeActionKind === 'report'}
-              className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-[18px] bg-[#4f46e5] px-4 text-sm font-black text-white shadow-[0_16px_34px_rgba(79,70,229,0.20)] transition-all active:scale-[0.98] disabled:cursor-wait disabled:opacity-70"
-            >
-              {activeActionKind === 'report' && <Loader2 className="h-4 w-4 animate-spin" />}
-              提交
-            </button>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-
   if (type === 'round2') {
     return (
-      <div className="relative w-full max-w-4xl mx-auto flex h-full min-h-0 flex-col items-center">
-        {renderWordActionMenu('!absolute right-3 top-12 z-30', round3ActionMenuRef)}
-        {actionFeedbackToast}
-        {reportIssueSheet}
-        <div className="flex w-full max-w-3xl items-center gap-2">
-          {sessionLeadingAction && <div className="shrink-0">{sessionLeadingAction}</div>}
-          <RoundIndicator type={type} className="min-w-0 flex-1" />
-          {sessionActions}
-        </div>
-        <div className="grid w-full flex-1 min-h-0 grid-cols-[minmax(0,1fr)] items-stretch gap-2 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-3">
-          <div className="hidden items-center sm:flex">{leftNavigationButton}</div>
-
-          <motion.div
-            key={`${viewedWord.id}:${viewIndex}`}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            onTouchStart={handleCardTouchStart}
-            onTouchEnd={handleCardTouchEnd}
-            onTouchCancel={() => {
-              swipeStartRef.current = null;
+      <Round2View
+        viewedWord={viewedWord}
+        viewIndex={viewIndex}
+        audioLocale={audioLocale}
+        activePronunciationLocale={activePronunciationLocale}
+        displayedPhonetic={displayedPhonetic}
+        onPlayAudio={(loc) => {
+          setAudioLocale(loc);
+          void playAudioSequence(viewedWord, loc, 1, 0);
+        }}
+        canPlayExampleAudio={canPlayExampleAudio}
+        activeExampleKey={activeExampleKey}
+        onPlayExampleSentence={(sentence, key) => {
+          void playExampleSentence(sentence, key);
+        }}
+        hasRound2ChoiceOptions={hasRound2ChoiceOptions}
+        round2ChoiceOptions={round2ChoiceOptions}
+        activeRound2ChoiceSelection={activeRound2ChoiceSelection}
+        isRound2ChoiceRevealed={isRound2ChoiceRevealed}
+        isViewingHistory={isViewingHistory}
+        onSelectRound2Choice={handleRound2ChoiceSelect}
+        shouldShowRound3Answer={shouldShowRound3Answer}
+        round3ExampleSentence={round3ExampleSentence}
+        round3ExampleKey={round3ExampleKey}
+        showAnswer={showAnswer}
+        isSubmittingAttempt={isSubmittingAttempt}
+        submitErrorBanner={submitErrorBanner}
+        onRound3PrimaryAction={handleRound3PrimaryAction}
+        onRound3Unknown={() => {
+          void handleRound3Unknown();
+        }}
+        onCardTouchStart={handleCardTouchStart}
+        onCardTouchEnd={handleCardTouchEnd}
+        onCardTouchCancel={() => {
+          swipeStartRef.current = null;
+        }}
+        sessionLeadingAction={sessionLeadingAction}
+        sessionActions={sessionActions}
+        displayProgressIndex={displayProgressIndex}
+        progressQueueLength={progressQueueLength}
+        leftNavigationButton={leftNavigationButton}
+        rightNavigationButton={rightNavigationButton}
+        wordActionMenu={
+          <WordActionMenu
+            isOpen={isActionMenuOpen}
+            onToggle={() => setIsActionMenuOpen((prev) => !prev)}
+            onMarkMastered={() => {
+              void handleMarkViewedWordMastered();
             }}
-            style={{ touchAction: 'pan-y' }}
-            className="w-full flex min-h-0 flex-col items-center justify-center py-6 sm:min-h-[500px]"
-          >
-            <motion.div
-              initial={{ y: -10, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              className="flex items-center gap-2 mb-8"
-            >
-              <span className="bg-[#0ea5e9] text-white px-4 py-1 rounded-lg text-sm font-bold shadow-[0_8px_18px_rgba(14,165,233,0.18)]">
-                {displayedPhonetic}
-              </span>
-              {(['uk', 'us'] as const).map((loc) => (
-                <button
-                  key={loc}
-                  type="button"
-                  onClick={() => {
-                    setAudioLocale(loc);
-                    void playAudioSequence(viewedWord, loc, 1, 0);
-                  }}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold transition-all ${
-                    audioLocale === loc
-                      ? 'bg-[#0ea5e9] text-white shadow-[0_8px_18px_rgba(14,165,233,0.16)]'
-                      : 'bg-[#e0f2fe] text-[#0284c7] hover:bg-[#bae6fd]'
-                  }`}
-                >
-                  {activePronunciationLocale === loc ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Volume2 className="w-3 h-3" />
-                  )}
-                  {loc.toUpperCase()}
-                </button>
-              ))}
-            </motion.div>
-
-            <div className="mb-4 max-w-full text-center text-6xl font-black leading-tight text-text-primary sm:text-7xl [overflow-wrap:anywhere]">
-              {viewedWord.word}
-            </div>
-            <div className="text-sm font-bold text-text-secondary uppercase tracking-widest mb-8">
-              {viewedWord.pos_tags[0]}
-            </div>
-
-            {hasRound2ChoiceOptions ? (
-              <div className="grid w-full max-w-2xl gap-3 sm:grid-cols-2">
-                {round2ChoiceOptions.map((option) => {
-                  const isSelected = activeRound2ChoiceSelection?.optionId === option.id;
-                  const isWrongSelection = isRound2ChoiceRevealed && isSelected && !option.isCorrect;
-                  const label = formatClozeWordInfo(option.pos, option.meaningZh) || option.meaningZh || option.word;
-                  const displayLabel = isRound2ChoiceRevealed ? `${label}：${option.word}` : label;
-
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => handleRound2ChoiceSelect(option)}
-                      disabled={isViewingHistory || Boolean(activeRound2ChoiceSelection)}
-                      aria-label={`Round2 选项 ${displayLabel}`}
-                      className={cx(
-                        'flex min-h-[5rem] w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left text-base font-black leading-7 shadow-[0_14px_34px_rgba(14,26,56,0.06)] transition-all active:scale-[0.99] disabled:cursor-default sm:px-5',
-                        !isRound2ChoiceRevealed &&
-                          'border-white/80 bg-white/78 text-text-primary hover:-translate-y-0.5 hover:bg-white',
-                        isRound2ChoiceRevealed &&
-                          option.isCorrect &&
-                          'border-[#16A34A]/25 bg-[#ECFDF5] text-[#15803D] shadow-[0_14px_34px_rgba(22,163,74,0.12)]',
-                        isWrongSelection &&
-                          'border-apple-red/30 bg-apple-red/10 text-apple-red shadow-[0_14px_34px_rgba(224,90,90,0.12)]',
-                        isRound2ChoiceRevealed &&
-                          !option.isCorrect &&
-                          !isWrongSelection &&
-                          'border-white/70 bg-white/58 text-text-secondary/70',
-                      )}
-                    >
-                      <span className="min-w-0 [overflow-wrap:anywhere]">{displayLabel}</span>
-                      {isRound2ChoiceRevealed && option.isCorrect && <CheckCircle2 className="h-5 w-5 shrink-0" />}
-                      {isWrongSelection && <XCircle className="h-5 w-5 shrink-0" />}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <>
-                <AnimatePresence>
-                  {shouldShowRound3Answer && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 16 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                      className="mt-4 text-center"
-                    >
-                      <div className="[&_span]:bg-black/5">
-                        <WordSenseList word={viewedWord} centered />
-                      </div>
-                      {round3ExampleSentence && (
-                        <div className="mx-auto mt-4 w-full max-w-xl">
-                          <ExampleSentenceList
-                            items={[
-                              {
-                                key: round3ExampleKey,
-                                sentence: round3ExampleSentence,
-                              },
-                            ]}
-                            locale={audioLocale}
-                            activeExampleKey={activeExampleKey}
-                            canPlayAudio={canPlayExampleAudio}
-                            onPlayExample={({ sentence, key }) => {
-                              void playExampleSentence(sentence, key);
-                            }}
-                            emptyMessage="暂无例句。"
-                            variant="inline"
-                          />
-                        </div>
-                      )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {!shouldShowRound3Answer && (
-                  <p className="text-text-secondary/40 text-sm mt-8">先自己判断，再决定要不要展开答案。</p>
-                )}
-              </>
-            )}
-
-            {hasRound2ChoiceOptions && !isRound2ChoiceRevealed && (
-              <p className="text-text-secondary/40 text-sm mt-8">选择最贴近的中文释义。</p>
-            )}
-          </motion.div>
-
-          <div className="hidden items-center sm:flex">{rightNavigationButton}</div>
-        </div>
-
-        {renderProgressBar(displayProgressIndex, progressQueueLength)}
-
-        <div className="w-full max-w-3xl space-y-3 px-4 pb-4 sm:pb-8">
-          {submitErrorBanner}
-          {hasRound2ChoiceOptions ? (
-            <>
-              {activeRound2ChoiceSelection && !isViewingHistory && (
-                <button
-                  type="button"
-                  onClick={handleRound3PrimaryAction}
-                  disabled={isSubmittingAttempt}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0ea5e9] px-5 py-4 font-bold text-white shadow-[0_16px_34px_rgba(14,165,233,0.22)] transition-all hover:scale-[1.01] hover:bg-[#0284c7] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 disabled:hover:bg-[#0ea5e9]"
-                >
-                  继续下一个词
-                  <ChevronRight className="h-5 w-5" />
-                </button>
-              )}
-              {isViewingHistory && (
-                <button
-                  type="button"
-                  disabled
-                  className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-2xl bg-[#0ea5e9] px-5 py-4 font-bold text-white opacity-50"
-                >
-                  回看中
-                  <ChevronRight className="h-5 w-5" />
-                </button>
-              )}
-            </>
-          ) : (
-            <div
-              className={cx(
-                'grid gap-3',
-                showAnswer && !isViewingHistory ? 'sm:grid-cols-[minmax(0,0.72fr)_minmax(0,1fr)]' : 'grid-cols-1',
-              )}
-            >
-              {showAnswer && !isViewingHistory && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleRound3Unknown();
-                  }}
-                  disabled={isSubmittingAttempt}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl border border-apple-red/20 bg-apple-red/10 px-5 py-4 font-bold text-apple-red transition-all hover:scale-[1.01] hover:bg-apple-red/15 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
-                >
-                  {isSubmittingAttempt ? <Loader2 className="h-5 w-5 animate-spin" /> : <XCircle className="h-5 w-5" />}
-                  不认识
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={handleRound3PrimaryAction}
-                disabled={isViewingHistory || isSubmittingAttempt}
-                className="w-full py-4 bg-[#0ea5e9] text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-[0_16px_34px_rgba(14,165,233,0.22)] hover:scale-[1.01] hover:bg-[#0284c7] active:scale-[0.99] transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 disabled:hover:bg-[#0ea5e9]"
-              >
-                {isViewingHistory
-                  ? '回看中'
-                  : isSubmittingAttempt
-                    ? '正在保存…'
-                    : showAnswer
-                      ? '继续下一个词'
-                      : '展开释义'}
-                {isSubmittingAttempt ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <ChevronRight className="w-5 h-5" />
-                )}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
+            onSaveWord={() => {
+              void handleSaveViewedWord();
+            }}
+            onOpenReportSheet={handleOpenReportSheet}
+            activeActionKind={activeActionKind}
+            className="!absolute right-3 top-12 z-30"
+            menuRef={round3ActionMenuRef}
+          />
+        }
+        actionFeedbackToast={<ActionFeedbackToast feedback={actionFeedback} />}
+        reportIssueSheet={
+          <ReportIssueSheet
+            isOpen={isReportSheetOpen}
+            onClose={() => setIsReportSheetOpen(false)}
+            targetWordName={reportTargetWord?.word ?? viewedWord.word}
+            issueType={reportIssueType}
+            onSelectIssueType={setReportIssueType}
+            note={reportNote}
+            onChangeNote={setReportNote}
+            activeActionKind={activeActionKind}
+            onSubmit={() => {
+              void handleSubmitReport();
+            }}
+          />
+        }
+      />
     );
   }
 
   return (
     <>
-      {actionFeedbackToast}
-      {reportIssueSheet}
+      <ActionFeedbackToast feedback={actionFeedback} />
+      <ReportIssueSheet
+        isOpen={isReportSheetOpen}
+        onClose={() => setIsReportSheetOpen(false)}
+        targetWordName={reportTargetWord?.word ?? viewedWord.word}
+        issueType={reportIssueType}
+        onSelectIssueType={setReportIssueType}
+        note={reportNote}
+        onChangeNote={setReportNote}
+        activeActionKind={activeActionKind}
+        onSubmit={() => {
+          void handleSubmitReport();
+        }}
+      />
       <InputSessionShell
         type={type}
         currentIndex={displayProgressIndex}
@@ -2424,229 +1732,110 @@ export const LearningEngine = ({
               style={{ touchAction: 'pan-y' }}
               className="glass relative flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] shadow-[0_24px_64px_rgba(14,26,56,0.08)] sm:rounded-[30px]"
             >
-              {mobileWordActionMenu}
+              <WordActionMenu
+                isOpen={isActionMenuOpen}
+                onToggle={() => setIsActionMenuOpen((prev) => !prev)}
+                onMarkMastered={() => {
+                  void handleMarkViewedWordMastered();
+                }}
+                onSaveWord={() => {
+                  void handleSaveViewedWord();
+                }}
+                onOpenReportSheet={handleOpenReportSheet}
+                activeActionKind={activeActionKind}
+                className="!absolute right-3 top-3 !z-30 sm:hidden"
+                menuRef={mobileActionMenuRef}
+              />
               {type === 'round1' ? (
-                <div className="flex h-full min-h-0 flex-col">
-                  <div className={cx(contentAreaClassName, 'pb-4 sm:pb-5')}>
-                    <div className="space-y-3 sm:space-y-4">
-                      <div
-                        className={cx(
-                          'grid gap-3 lg:items-start lg:gap-8',
-                          round1MemoryTip ? 'lg:grid-cols-[minmax(0,1fr)_minmax(300px,30vw)]' : 'lg:grid-cols-1',
-                        )}
-                      >
-                        <div className="min-w-0 space-y-3 sm:space-y-4">
-                          <PronunciationControls
-                            phonetic={displayedPhonetic}
-                            audioLocale={audioLocale}
-                            activePronunciationLocale={activePronunciationLocale}
-                            size="small"
-                            onPlay={(locale) => {
-                              setAudioLocale(locale);
-                              void playAudioSequence(viewedWord, locale, 1, 0);
-                            }}
-                          />
-
-                          <div
-                            className={cx(
-                              'flex min-w-0 flex-col gap-2',
-                              round1MemoryTip
-                                ? '2xl:flex-row 2xl:items-start 2xl:gap-6'
-                                : 'lg:flex-row lg:items-start lg:gap-6',
-                            )}
-                          >
-                            <div className={cx('min-w-0', round1MemoryTip ? '2xl:flex-shrink-0' : 'lg:flex-shrink-0')}>
-                              <p className="max-w-full text-[clamp(1.296rem,7.2vw,3.024rem)] font-black leading-tight tracking-tight text-text-primary [overflow-wrap:anywhere]">
-                                <Round1LookupText
-                                  text={viewedWord.word}
-                                  targetWords={lookupTargetWords}
-                                  onWordClick={openPopover}
-                                />
-                              </p>
-                              {viewedWord.ner_entities.length > 0 && (
-                                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                                  {viewedWord.ner_entities.map((entity, index) => (
-                                    <span
-                                      key={`${viewedWord.id}-ner-${index}`}
-                                      className="rounded-full bg-[#eef2ff] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[#4f46e5]"
-                                    >
-                                      专有名词 · {entity.label}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            <div
-                              className={cx(
-                                'min-w-0',
-                                round1MemoryTip
-                                  ? '2xl:min-w-[18rem] 2xl:max-w-[680px] 2xl:flex-1 2xl:pt-1'
-                                  : 'lg:min-w-[18rem] lg:max-w-[680px] lg:flex-1 lg:pt-1',
-                              )}
-                            >
-                              <WordSenseList word={viewedWord} size="small" />
-                            </div>
-                          </div>
-                        </div>
-
-                        {round1MemoryTip && (
-                          <div className="flex justify-end">
-                            <Round1MemoryTipCard
-                              memoryTip={round1MemoryTip}
-                              targetWords={lookupTargetWords}
-                              onWordClick={openPopover}
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                      {hasRound1InfoCards && (
-                        <div className="grid gap-3 sm:gap-4 lg:grid-cols-[repeat(auto-fit,minmax(18rem,1fr))]">
-                          {showRound1MorphologyCard && (
-                            <Round1MorphologyCard
-                              word={viewedWord}
-                              targetWords={lookupTargetWords}
-                              onWordClick={openPopover}
-                            />
-                          )}
-                          {showRound1RelationsCard && (
-                            <Round1RelationsCard
-                              word={viewedWord}
-                              targetWords={lookupTargetWords}
-                              onWordClick={openPopover}
-                            />
-                          )}
-                          {showRound1ContextCard && (
-                            <Round1ConfusingCard
-                              word={viewedWord}
-                              activeExampleKey={activeExampleKey}
-                              canPlayExampleAudio={canPlayExampleAudio}
-                              exampleLocale={audioLocale}
-                              onPlayExample={(sentence, key) => {
-                                void playExampleSentence(sentence, key);
-                              }}
-                              targetWords={lookupTargetWords}
-                              onWordClick={openPopover}
-                            />
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className={round1InputDockClassName}>
-                    <div className="mx-auto w-full max-w-[1200px]">
-                      {isViewingHistory ? (
-                        <div className="flex min-h-[50px] items-center justify-between gap-3 rounded-[22px] border border-[#10B981]/15 bg-[#10B981]/10 px-5 text-[#10B981] shadow-[0_12px_32px_rgba(16,185,129,0.08)]">
-                          <div className="flex min-w-0 items-center gap-3">
-                            <CheckCircle2 className="h-5 w-5 shrink-0" />
-                            <span className="truncate text-sm font-black sm:text-base">已通过</span>
-                          </div>
-                          <span className="truncate text-xl font-black sm:text-2xl">{viewedWord.word}</span>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="min-w-0">{inputField}</div>
-                          {submitErrorBanner && <div className="mt-2">{submitErrorBanner}</div>}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div
-                  className="relative flex h-full min-h-0 flex-col"
-                  onClick={() => {
-                    if (!isViewingHistory) {
-                      inputRef.current?.focus();
-                    }
+                <Round1View
+                  viewedWord={viewedWord}
+                  displayedPhonetic={displayedPhonetic}
+                  audioLocale={audioLocale}
+                  activePronunciationLocale={activePronunciationLocale}
+                  onPlayAudio={(locale) => {
+                    setAudioLocale(locale);
+                    void playAudioSequence(viewedWord, locale, 1, 0);
                   }}
-                >
-                  {dictationPhoneticToggle}
-                  <div className={cx(contentAreaClassName, 'py-8')}>
-                    <div className="flex min-h-full flex-col justify-center text-center">
-                      {replayControls}
-                      {viewedClozePrompt ? (
-                        <Round2ClozePrompt
-                          prompt={viewedClozePrompt}
-                          inputValue={displayedInputValue}
-                          phonetic={displayedClozePhonetic}
-                          targetWords={lookupTargetWords}
-                          onWordClick={openPopover}
-                          canPlaySentenceAudio={canPlayExampleAudio && Boolean(viewedClozeFullSentence)}
-                          isSentencePlaying={activeExampleKey === viewedClozeSentenceAudioKey}
-                          sentenceAudioLocale={audioLocale}
-                          wordInfoText={viewedClozeWordInfoText}
-                          onPlaySentence={() => {
-                            if (!viewedClozeFullSentence || !viewedClozeSentenceAudioKey) return;
-                            void playExampleSentence(viewedClozeFullSentence, viewedClozeSentenceAudioKey);
-                          }}
-                        />
-                      ) : (
-                        <div className="mx-auto max-w-3xl">
-                          <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary">
-                            {type === 'review' ? '根据发音写出单词' : '根据提示写出单词'}
-                          </p>
-                          <p className="mt-5 text-4xl font-black leading-tight text-text-primary md:text-5xl">
-                            {viewedWord.chinese_definition}
-                          </p>
-                          <div className="mt-4 flex items-center justify-center gap-3">
-                            <span className="rounded-full bg-black/5 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">
-                              {primaryPos}
-                            </span>
-                          </div>
-                          <div
-                            className={cx(
-                              'mt-7 inline-flex items-baseline gap-1.5 rounded-md px-4 py-2 text-2xl md:text-3xl',
-                              type === 'round3' ? 'bg-[#eaf2ff] text-[#2563eb]' : 'bg-apple-blue/10 text-apple-blue/80',
-                            )}
-                          >
-                            {Array.from({ length: viewedExpectedInput.length }, (_, i) => (
-                              <span key={i} className="inline-block min-w-[0.9ch] text-center font-mono">
-                                {displayedInputValue[i] ?? '_'}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="mt-6 space-y-3">
-                        {isViewingHistory ? (
-                          <AnswerFeedbackCard word={viewedWord} clozePrompt={viewedClozePrompt} />
-                        ) : (
-                          <>
-                            {feedbackReveal}
-                            {submitErrorBanner}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {!isViewingHistory && (
-                    <form onSubmit={handleSubmit}>
-                      <input
-                        ref={inputRef}
-                        type="text"
-                        value={inputValue}
-                        onChange={handleInput}
-                        disabled={isSubmittingAttempt || showAnswer}
-                        maxLength={expectedInput.length}
-                        autoFocus
-                        autoComplete="off"
-                        autoCorrect="off"
-                        autoCapitalize="off"
-                        spellCheck={false}
-                        className="absolute left-1/2 top-1/2 h-px w-px -translate-x-1/2 -translate-y-1/2 opacity-0"
-                        aria-label="拼写输入"
-                      />
-                    </form>
-                  )}
-                </div>
+                  lookupTargetWords={lookupTargetWords}
+                  openPopover={openPopover}
+                  round1MemoryTip={round1MemoryTip}
+                  hasRound1InfoCards={hasRound1InfoCards}
+                  showRound1MorphologyCard={showRound1MorphologyCard}
+                  showRound1RelationsCard={showRound1RelationsCard}
+                  showRound1ContextCard={showRound1ContextCard}
+                  activeExampleKey={activeExampleKey}
+                  canPlayExampleAudio={canPlayExampleAudio}
+                  onPlayExampleSentence={(sentence, key) => {
+                    void playExampleSentence(sentence, key);
+                  }}
+                  isViewingHistory={isViewingHistory}
+                  contentAreaClassName={contentAreaClassName}
+                  round1InputDockClassName={round1InputDockClassName}
+                  inputField={inputField}
+                  submitErrorBanner={submitErrorBanner}
+                />
+              ) : (
+                <DictationRecallView
+                  type={type}
+                  viewedWord={viewedWord}
+                  currentWord={currentWord}
+                  viewedClozePrompt={viewedClozePrompt}
+                  clozePrompt={clozePrompt}
+                  viewedClozeFullSentence={viewedClozeFullSentence}
+                  viewedClozeSentenceAudioKey={viewedClozeSentenceAudioKey}
+                  viewedClozeWordInfoText={viewedClozeWordInfoText}
+                  displayedInputValue={displayedInputValue}
+                  displayedClozePhonetic={displayedClozePhonetic}
+                  viewedExpectedInput={viewedExpectedInput}
+                  lookupTargetWords={lookupTargetWords}
+                  openPopover={openPopover}
+                  canPlayExampleAudio={canPlayExampleAudio}
+                  activeExampleKey={activeExampleKey}
+                  audioLocale={audioLocale}
+                  activePronunciationLocale={activePronunciationLocale}
+                  onPlayAudioLocale={(loc) => {
+                    setAudioLocale(loc);
+                    void playAudioSequence(viewedWord, loc, 1, 0);
+                  }}
+                  onPlayExampleSentence={(sentence, key) => {
+                    void playExampleSentence(sentence, key);
+                  }}
+                  primaryPos={primaryPos}
+                  isViewingHistory={isViewingHistory}
+                  showAnswer={showAnswer}
+                  isWrong={isWrong}
+                  lastWrongInput={lastWrongInput ?? ''}
+                  canToggleDictationPhonetic={canToggleDictationPhonetic}
+                  dictationPhoneticVisible={dictationPhoneticVisible}
+                  onToggleDictationPhonetic={() => setDictationPhoneticVisible((visible) => !visible)}
+                  contentAreaClassName={contentAreaClassName}
+                  inputRef={inputRef}
+                  inputValue={inputValue}
+                  onInput={handleInput}
+                  onSubmit={handleSubmit}
+                  isSubmittingAttempt={isSubmittingAttempt}
+                  expectedInputLength={expectedInput.length}
+                  submitErrorBanner={submitErrorBanner}
+                />
               )}
             </motion.div>
             <div className="relative z-[70] hidden items-center justify-center sm:flex">
-              <div className="absolute left-1/2 top-3 z-[80] -translate-x-1/2">{desktopWordActionMenu}</div>
+              <div className="absolute left-1/2 top-3 z-[80] -translate-x-1/2">
+                <WordActionMenu
+                  isOpen={isActionMenuOpen}
+                  onToggle={() => setIsActionMenuOpen((prev) => !prev)}
+                  onMarkMastered={() => {
+                    void handleMarkViewedWordMastered();
+                  }}
+                  onSaveWord={() => {
+                    void handleSaveViewedWord();
+                  }}
+                  onOpenReportSheet={handleOpenReportSheet}
+                  activeActionKind={activeActionKind}
+                  className="relative z-30"
+                  menuRef={desktopActionMenuRef}
+                />
+              </div>
               {rightNavigationButton}
             </div>
           </div>

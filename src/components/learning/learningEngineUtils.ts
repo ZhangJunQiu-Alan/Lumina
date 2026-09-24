@@ -86,3 +86,15 @@ export function isTextEditingTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable;
 }
+
+export function formatClozeWordInfo(pos: string | undefined | null, meaning: string | undefined | null) {
+  const trimmedPos = pos?.trim();
+  const trimmedMeaning = meaning?.trim();
+
+  if (trimmedPos && trimmedMeaning) {
+    const displayPos = trimmedPos.endsWith('.') ? trimmedPos : `${trimmedPos}.`;
+    return `${displayPos} ${trimmedMeaning}`;
+  }
+
+  return trimmedMeaning || trimmedPos || '';
+}
