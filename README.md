@@ -49,18 +49,18 @@ Lumina 适合三类场景：
 
 ### 2. 官方考试词库
 
-官方词库支持顺序学习和乱序学习。每次默认取 40 个词；已学过或已稳定掌握的词会自动跳过。
+官方词库支持顺序学习和乱序学习。每次固定取 30 个词（末尾余量独立成组，严格不可变批次）；已学过或已稳定掌握的词会自动跳过。
 
 | ID | 名称 | 词数 | 每组 |
 | --- | --- | ---: | ---: |
-| `ielts-vocab` | 雅思词汇真经 | 3631 | 40 |
-| `gre-zhenkao-v7` | GRE镇考机经词 7.0 | 1351 | 40 |
-| `cet4-vocab` | 四级大纲核心词汇 | 4530 | 40 |
-| `cet6-vocab` | 六级大纲核心词汇 | 2215 | 40 |
-| `npee-vocab` | 考研英语大纲词汇 | 5390 | 40 |
-| `gaokao-vocab` | 高考英语核心词汇 | 3449 | 40 |
-| `tem4-vocab` | 英语专业四级(TEM4) | 8585 | 40 |
-| `tem8-vocab` | 英语专业八级(TEM8) | 3983 | 40 |
+| `ielts-vocab` | 雅思词汇真经 | 3631 | 30 |
+| `gre-zhenkao-v7` | GRE镇考机经词 7.0 | 1351 | 30 |
+| `cet4-vocab` | 四级大纲核心词汇 | 4530 | 30 |
+| `cet6-vocab` | 六级大纲核心词汇 | 2215 | 30 |
+| `npee-vocab` | 考研英语大纲词汇 | 5390 | 30 |
+| `gaokao-vocab` | 高考英语核心词汇 | 3449 | 30 |
+| `tem4-vocab` | 英语专业四级(TEM4) | 8585 | 30 |
+| `tem8-vocab` | 英语专业八级(TEM8) | 3983 | 30 |
 
 官方词库支持：
 
@@ -87,14 +87,14 @@ AI 词条包含：
 
 ### 4. 分轮学习系统
 
-Lumina 的学习流目前包含四个阶段：
+Lumina 独创的状态驱动学习引擎，单词将依次经历四个阶段：
 
 | 阶段 | 目标 | 用户体验 |
 | --- | --- | --- |
-| Round 1 | 建立词形、发音、含义和例句关联 | 查看完整词条、释义、构词、例句、关系词和记忆提示 |
-| Round 2 | 主动回忆并首次判定记忆状态 | 根据例句填空，支持词形提示；缺少例句时回退为拼写输入 |
-| Round 3 | 快速识别英文到中文含义 | 先看英文和发音，快速判断后再展开释义确认 |
-| 文章巩固 | 把整组词放回上下文 | 生成 IELTS 风格短文和逐句中文翻译，用上下文复盘 |
+| Round 1 | 明示关联：建立词形、发音、含义和例句关联 | 查看完整词条卡片、英美音标、释义、构词法、例句、关系词与记忆提示 |
+| Round 2 | 语境复现：语境中主动回忆并首次判定记忆状态 | 根据例句挖空结合 4 选 1 词形选项进行辨析，首次正式判定长期记忆状态 |
+| Round 3 | 快速确认：拼写与听写主动召回 | 拼写/听写输入主动回忆，输入正确即自动校验进入下一题，错误则重新入队巩固 |
+| 文章巩固 | 长篇阅读巩固：把整组词放回长篇上下文 | 生成 250~350 词的真题风格学术短文和逐句中文翻译，在真实篇章中复盘吸收 |
 
 学习过程中会保存会话进度。用户中途离开后，可以从上次的轮次、位置、队列和已确认词继续。
 
@@ -368,18 +368,30 @@ npm run dev
 | `npm run start` | 生产环境启动 API，不自动加载 `.env` |
 | `npm run build` | 生产构建前端 |
 | `npm run preview` | 预览构建结果 |
-| `npm run lint` | ESLint 检查 |
+| `npm run lint` | ESLint 语法与规范检查 |
 | `npm run typecheck` | TypeScript 类型检查 |
-| `npm run format:check` | Prettier 格式检查 |
-| `npm run test:unit` | Vitest 单元测试 |
-| `npm run test:core` | 核心学习 / 复习 / 词库脚本测试 |
-| `npm run test:ielts` | 雅思阅读与听力脚本测试 |
-| `npm run test:all` | 单元测试 + 核心脚本 + 雅思脚本 |
+| `npm run format:check` | Prettier 格式校验 |
+| `npm run format` | Prettier 自动代码格式化 |
+| `npm run test:unit` | Vitest 单元测试集（35 套件，231 用例） |
+| `npm run test:core` | 核心领域全量自动化契约测试（涵盖 11 个独立领域套件） |
+| `npm run test:atomic-transactions` | PostgreSQL ACID 事务原子性与结业契约测试 |
+| `npm run test:ielts` | 雅思阅读与听力计分与文本规整测试 |
+| `npm run test:all` | 单元测试 + 核心脚本 + 雅思脚本全量回归 |
+| `npm run backfill:daily-user-stats` | 历史日度用户统计数据聚合回填脚本 |
 | `npm run fetch:ielts-vocab` | 更新 IELTS 词库数据 |
 | `npm run seed:official-vocab` | 预加载官方词库 AI 词条 |
 | `npm run seed:official-audio` | 预热官方词库音频 |
 | `npm run import:ielts-reading` | 导入雅思阅读题库 |
 | `npm run import:ielts-listening` | 导入雅思听力题库 |
+
+## 企业级稳定性与高可用架构
+
+项目已全面完成 [阶段一：稳定性与性能（P0）](docs/enterprise-refactoring-roadmap.md) 的核心架构重构：
+
+1. **O(1) 首页概览聚合引擎**：基于 `daily_user_statistics` 聚合表与每日打卡原子累加，彻底根除针对全量历史事件循环回放的 O(N) 性能雪崩隐患，页面时延缩减 98%+；
+2. **工业级离线同步队列（`OfflineSyncManager`）**：支持指数退避重试（Exponential Backoff）、4xx 毒丸死信隔离（Dead Letter Queue）与崩溃恢复，彻底根除离线队列死锁与雪崩；
+3. **不可变学习组与 70 词混淆根治**：彻底废弃历史上的 Append 动态追加机制，确立不可变学习组（单组严格固定 30 词或末尾余量），清洗历史 70 词脏数据与孤儿复习状态，从数学上杜绝首屏 `第 1 / 70 个词` 的分母闪烁；
+4. **PostgreSQL 强 ACID 事务原子化**：落地 `record_review_attempt_atomic` 与 `complete_learning_group_atomic` 存储过程，将状态机跃迁、事件流水日志、日度打卡与词数统计累加封装在同一个数据库强事务内，辅以 `pg_advisory_xact_lock` 用户级事务互斥锁，保障“同生共死”（All-or-Nothing）。
 
 ## 验证
 
@@ -406,11 +418,11 @@ npm run check:edge
 
 ## 部署说明
 
-项目生产环境采用 Cloudflare Pages + Supabase：
+项目生产环境采用 Cloudflare Pages / Vercel + Supabase：
 
-- 前端：构建后产物在 `dist/`，可部署到 Cloudflare Pages、Vercel、Netlify 等静态站点平台。
+- 前端：构建后产物在 `dist/`，自动化部署到 Cloudflare Pages 或 Vercel 静态托管平台。
 - 后端：生产 API 部署到 Supabase Edge Functions，入口为 `supabase/functions/api/index.ts`。
-- 数据库与鉴权：Supabase 项目需要配置 schema、Auth redirect URL、Storage bucket 和必要环境变量。
+- 数据库与鉴权：Supabase 项目配置 PostgreSQL schema、Row Level Security (RLS)、Auth redirect URL、Storage bucket 和必要环境变量。
 
 部署时需要注意：
 
@@ -422,4 +434,4 @@ npm run check:edge
 
 ## 当前项目定位
 
-Lumina 当前是一套“先登录、再学习、能从上次继续、会按真实记忆状态安排复习”的英语学习产品。它已经覆盖官方考试词库、自定义导入、AI 词条增强、四段式学习、文章巩固、状态驱动复习、生词本、点词查询、账号级学习偏好同步，以及 Cambridge IELTS 阅读和听力真题训练。
+Lumina 当前是一套“先登录、再学习、能从上次继续、会按真实记忆状态安排复习”的工业级英语学习产品。它已经覆盖官方考试词库、自定义导入、AI 词条增强、四段式学习、文章巩固、状态驱动复习、生词本、点词查询、账号级学习偏好同步，以及 Cambridge IELTS 阅读和听力真题训练。

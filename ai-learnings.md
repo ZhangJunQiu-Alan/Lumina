@@ -7,26 +7,35 @@
 
 ## 技术栈
 
-| 层级 | 技术 | 版本 | 状态 |
+| 层级 | 技术 | 版本 / 方案 | 状态 |
 |---|---|---|---|
 | 前端 | React | 19 | ✅ |
 | 语言 | TypeScript | ~5.8 | ✅ |
 | 构建工具 | Vite | ^6.2 | ✅ |
 | 样式 | TailwindCSS | ^4.1（Vite 插件，非 PostCSS） | ✅ |
-| 动画 | motion/react | ^12 | ✅ |
+| 动画 | motion | ^12 | ✅ |
 | 图标 | lucide-react | ^0.546 | ✅ |
-| AI | @google/genai | ^1.29（Gemini 2.0 Flash） | ✅ 仅服务端 |
-| 后端 | Express | ^4.21（端口 4000） | ✅ |
-| 数据库/存储 | Supabase JS | ^2 | ✅ |
-| 数据库客户端（脚本） | pg | ^8 | ✅ 仅脚本 |
+| AI | @google/genai | ^1.29（Gemini 2.0 / 2.5 Flash） | ✅ 仅服务端 |
+| 本地后端 | Express | ^4.21（端口 4000） | ✅ 开发环境 |
+| 生产后端 | Supabase Edge Functions | Deno / Web Standards | ✅ 生产环境 |
+| 数据库/存储 | Supabase (PostgreSQL) | RLS + ACID Stored Procedures | ✅ |
+| 离线同步 | OfflineSyncManager | 指数退避 + 毒丸死信隔离 | ✅ |
+| 移动端 | Kotlin / Capacitor | Native & Capacitor 8 | ✅ |
 
-### 开发命令
+### 开发与验证命令
 ```bash
-npm run dev      # Vite 前端 :3000
-npm run server   # Express 后端 :4000 (tsx --env-file=.env server/index.ts)
-npm run test:review  # 纯复习域规则检查
+npm run dev                    # Vite 前端 :3000
+npm run server                 # 本地 Express 后端 :4000
+npm run test:core              # 核心领域自动化测试（含复习、会话、词表批次、原子事务等 11 个脚本）
+npm run test:unit              # Vitest 单元测试全集（35 套件，231 用例）
+npm run test:ielts             # 雅思阅读/听力文本规整与计分测试
+npm run test:atomic-transactions # 数据库强 ACID 事务与结业契约测试
+npm run typecheck              # TypeScript 全局静态检查
+npm run lint                   # ESLint 语法规范检查
+npm run format:check           # Prettier 代码格式检查
+npm run build                  # Vite 生产环境打包
 ```
-两个进程必须同时运行。Vite 会将 `/api/*` 代理到 `http://localhost:4000`。
+本地开发时两个进程运行，Vite 会将 `/api/*` 代理到 `http://localhost:4000`；生产环境前端直连 Supabase Edge Functions 网关。
 
 ---
 
@@ -181,23 +190,28 @@ ReviewWord extends Word {
 
 ---
 
-## 数据库 Schema（Supabase — 8 张表）
+## 数据库 Schema（Supabase PostgreSQL）
 
-**部署方式**：将 `supabase/schema.sql` 粘贴到 Supabase Dashboard → SQL 编辑器 → 执行。
-直连 pg 在没有 IPv6 的机器上会失败（Supabase 只有 AAAA 记录）。
+**部署方式**：将 `supabase/schema.sql` 粘贴到 Supabase Dashboard → SQL 编辑器 → 执行，或应用 `supabase/migrations/`。
 
-| 表名 | 关键字段 | 备注 |
+| 核心表名 | 关键字段 | 备注 |
 |---|---|---|
-| vocabulary_items | id, word (UNIQUE), ipa_uk, ipa_us, primary_meaning_zh, ner_label, memory_tip, audio_uk_url, audio_us_url, source_type | 核心词汇数据 |
-| vocabulary_senses | id, vocabulary_item_id, pos, meaning_zh, example_sentence, example_translation_zh | 每词 1~N 条 |
-| confused_words | id, vocabulary_item_id, confused_word, difference_note_zh | 每词 0~1 条 |
-| learning_groups | id, group_name, source_type, created_at | 30 词一组 |
-| learning_group_words | learning_group_id, vocabulary_item_id, sequence_no | 关联表 |
-| review_states | user_id, vocabulary_item_id, memory_state, next_review_at, last_result, last_elapsed_ms | 复习快照 / due 调度 |
-| review_events | vocabulary_item_id, learning_group_id, source, was_correct, elapsed_ms, previous_state, next_state | 完整复习历史 |
-| generated_articles | id, learning_group_id, content, created_at | Round3 后阅读文章 |
+| `vocabulary_items` | id, word (UNIQUE), ipa_uk, ipa_us, primary_meaning_zh, ner_label, memory_tip, audio_uk_url, audio_us_url, source_type | 核心词汇结构化数据 |
+| `vocabulary_senses` | id, vocabulary_item_id, pos, meaning_zh, example_sentence, example_translation_zh | 每词 1~N 条分义项与例句 |
+| `vocabulary_item_forms` | id, vocabulary_item_id, form (UNIQUE) | 词形屈折变化（用于填空还原） |
+| `confused_words` | id, vocabulary_item_id, confused_word, difference_note_zh | 易混词对比与记忆辨析 |
+| `learning_groups` | id, group_name, source_type, status, word_count | 学习组（严格 30 词不可变批次） |
+| `learning_group_words` | learning_group_id, vocabulary_item_id, sequence_no, learned_at | 组内词进度明细 |
+| `user_saved_words` | user_id, vocabulary_item_id, source | 个人生词本（学完自动级联清理） |
+| `review_states` | user_id, vocabulary_item_id, memory_state, next_review_at, last_result, last_elapsed_ms | 复习快照 / 9 点本地到期调度 |
+| `review_events` | vocabulary_item_id, learning_group_id, source, was_correct, elapsed_ms, previous_state, next_state | 完整历史审计日志 |
+| `daily_user_statistics` | user_id, date_key, learned_word_count, review_word_count, attempt_count, correct_count | 核心日度统计与打卡聚合表（O(1)） |
+| `daily_routine_progress` | user_id, routine_date, completed_steps_json, is_routine_completed | 今日学习主线步骤推进状态 |
+| `generated_articles` | id, learning_group_id, content, created_at | 学完 30 词后生成的长篇学术短文 |
 
-所有表已启用 RLS，开发阶段使用开放的 `public_all` 策略（上线前需收紧）。
+### 核心存储过程（强 ACID 事务保障）
+- **`record_review_attempt_atomic`**：复习判题时，状态变更、历史流水与打卡统计在单一事务内全原子提交，杜绝孤儿记录与计数撕裂；
+- **`complete_learning_group_atomic`**：学习组结业时，组词状态标记、生词本自动移除、打卡进度更新与新学词数累加在单一事务内全部完成。
 
 ---
 
@@ -206,18 +220,18 @@ ReviewWord extends Word {
 ### `POST /api/vocab/enrich`
 - **请求体**：`{ words: string[] }`（最多 30 个）
 - **响应**：`{ data: EnrichedWord[] }`
-- 调用 Gemini 2.0 Flash，使用 `responseMimeType: 'application/json'` 强制结构化输出
+- 调用 Gemini 2.0/2.5 Flash，使用 `responseMimeType: 'application/json'` 强制结构化输出
 - 避免了 Markdown 代码围栏和无效 JSON 转义序列问题
 
 ### `POST /api/vocab/article`
 - **请求体**：`{ words: string[] }`
 - **响应**：`{ data: string }`
-- 生成 Round3 阅读文章
+- 生成长篇学术阅读巩固文章
 
 ### `POST /api/review/attempt`
-- **请求体**：`{ vocabularyItemId, learningGroupId?, source, wasCorrect, elapsedMs }`
+- **请求体**：`{ vocabularyItemId, learningGroupId?, source, wasCorrect, elapsedMs, routineDate? }`
 - **响应**：`{ data: { memoryState, nextReviewAt, graduated, transition } }`
-- 服务端计算状态转换，同时写入 `review_states` 和 `review_events`
+- 服务端计算状态机跃迁，统一调用 PostgreSQL `record_review_attempt_atomic` 存储过程强 ACID 原子落库，配备自愈降级回退机制
 
 ### `GET /api/review/due`
 - **响应**：`{ data: ReviewWord[] }`

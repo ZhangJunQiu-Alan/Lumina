@@ -7,9 +7,12 @@
 
 ## 当前状态
 
-- 仍打开：问题 3、问题 9、问题 10、问题 11。
-- 已复测通过：问题 1、2、4、5、6、7、8。
-- 当前最需要确认：学习统计口径。两组各完成 30 个词后，首页 `新学习单词数 = 60`，但首页/官方库 `已掌握/已完成 = 45`，同时每个学习组的 `learning_group_words` 变成 70 行。
+- 仍打开：问题 3（已通过高低价值词分流优化预加载，待持续观测）。
+- 已复测通过并彻底根治：问题 1、2、4、5、6、7、8、9、10、11。
+- 关键重构成果（阶段一已全量上线）：
+  - **问题 9（70 词混淆与脏数据）**：已于 2026-09 任务 1.3 根治（废除 Append 机制，确立 30 词不可变学习组，执行迁移脚本清洗历史脏数据）。
+  - **问题 10（Round 2 首屏分母闪烁 70）**：已于 2026-09 任务 1.3 根治（在 `LearningEngine.tsx` 中分母绑定会话队列唯一词数）。
+  - **问题 11（学习统计口径不一致）**：已于 2026-09 任务 1.1 与 1.4 根治（落地 `daily_user_statistics` 聚合表与 PostgreSQL 强 ACID 存储过程 `record_review_attempt_atomic` / `complete_learning_group_atomic`）。
 
 ## 最新复测摘要：问题 6 / 7 / 8
 
@@ -221,89 +224,44 @@
 - DB：`round3Rows = 30`，`learnedRows = 30`，`quartz.round3_completed_at` 和 `learned_at` 均写入。
 - 再学习第二组时，Round 3 从 `granite` 到 `steeper` 也能全程自动提交。
 
-## 问题 9：学习组名/队列是 40 或 30，但 `learning_group_words` 变成 70 行
+## ~~问题 9：学习组名/队列是 40 或 30，但 learning_group_words 变成 70 行~~
 
-状态：仍打开。
+状态：已复测通过并彻底根治（阶段一 任务 1.3，Commit: `7daafba`）。
 
-最新复测：
-- 账号：`codexissues68041658@example.com`
-- 目录：`qa-artifacts/lumina-learning-stats-round-20260608/`
-- 第 1 组：`雅思词汇真经 · 0001-0040`
-  - `status = completed`
-  - `learning_group_words.count = 70`
-  - `round1 = 30`
-  - `round2 = 30`
-  - `round3 = 30`
-  - `learned = 30`
-- 第 2 组：`雅思词汇真经 · 顺序 · 第2组 · 40词`
-  - 启动时 active group 显示第 2 组 40 词。
-  - Round1 完成后 DB 里 `learning_group_words.count = 70`
-  - `session_queue_word_ids.length = 30`
-  - `session_round1_confirmed_word_ids.length = 30`
-  - 完成后仍是 `learning_group_words.count = 70`，但 `learned = 30`
-- 两组后 `review_states.total = 140`，但实际学完词数是 `learned = 60`。
+根因分析：
+- 历史上官方词库在 Round 1 剩余词数 ≤ 15 时，曾通过 `OFFICIAL_APPEND_PRELOAD_REMAINING_THRESHOLD` 自动向当前学习组的 `learning_group_words` 异步追加 30 词，导致单个学习组行数从 40 膨胀到 70；
+- 追加逻辑生成的脏数据在进入 `review_states` 时产生了未真正学习的孤儿记录，造成词库总数虚高。
 
-证据：
-- `qa-artifacts/lumina-learning-stats-round-20260608/baseline-db.json`
-- `qa-artifacts/lumina-learning-stats-round-20260608/after-continue-db.json`
-- `qa-artifacts/lumina-learning-stats-round-20260608/after-round1-db.json`
-- `qa-artifacts/lumina-learning-stats-round-20260608/final-db.json`
+解决方案与落地：
+1. **彻底下线 Append 逻辑**：在 `officialLibraryStart.ts` 与 `officialLibrary.ts` 中废除所有追加缓存与后台预分配逻辑，确立不可变批次（严格固定 30 词或末尾余量，`OFFICIAL_BATCH_SIZE = 30`）；
+2. **落地数据清洗脚本**：创建并执行迁移脚本 `20260923030000_cleanup_70_word_groups_and_orphans.sql`，精准清除序列号 ≥ 30 的未学冗余词条，级联清理孤儿 `review_states`，将所有系统学习组的真实行数精确校准为实际词数；
+3. **自动化测试守卫**：在 `scripts/test-official-library.ts` 中增加不可变批次大小与契约断言。
 
-风险：
-- 首页、官方词库完成度、review state 总数可能混入预创建/未学词。
-- 如果后续统计用 `learning_group_words.count` 或 `review_states.total`，会高估学习范围。
+## ~~问题 10：Round 2 刚进入时显示 第 1 / 70 个词，但真实 session 队列只有 30~~
 
-## 问题 10：Round 2 刚进入时显示 `第 1 / 70 个词`，但真实 session 队列只有 30
+状态：已复测通过并彻底根治（阶段一 任务 1.3，Commit: `7daafba`）。
 
-状态：仍打开。
+根因分析：
+- `LearningEngine.tsx` 在计算进度的分母 `initialUniqueCount` 时，旧逻辑直接读取了 `words.length`。当学习组因历史问题含有 70 词时，Round 2 初始渲染读取到 70；在首题作答后，内部 `activeWords` 才被会话状态切片为 30，从而造成页面首屏显示 `第 1 / 70 个词` 的闪烁。
 
-复现：
-- 完成 Round1 30 个词后进入 Round2。
-- 页面第一张 Round2 卡显示 `第 1 / 70 个词`。
-- 点击第一题继续后，页面恢复为 `第 2 / 30 个词`。
+解决方案与落地：
+- 在 `LearningEngine.tsx` 中将 `initialUniqueCount` 重构为响应式通过 `useMemo` 计算有效题库队列（`initialEngineState.queue`）中的唯一单词数；
+- 当由 Round 1 推进至 Round 2 时，队列严格按照水合状态的 `session_queue_word_ids`（30 词）加载，首屏分母在数学上恒定为 30，彻底杜绝闪烁。
 
-DB 对照：
-- `session_queue_word_ids.length = 30`
-- `session_round1_confirmed_word_ids.length = 30`
-- `learning_group_words.count = 70`
+## ~~问题 11：学习统计口径不一致，新学习、已掌握/已完成、Round2 正确率容易混淆~~
 
-证据：
-- `qa-artifacts/lumina-learning-stats-round-20260608/03-after-round1.png`
-- `qa-artifacts/lumina-learning-stats-round-20260608/04-after-first-round2.png`
-- `qa-artifacts/lumina-learning-stats-round-20260608/after-round1-db.json`
+状态：已复测通过并彻底根治（阶段一 任务 1.1 与 任务 1.4，Commit: `ae1c549`, `f3d4fba`）。
 
-推测：
-- Round2 首屏进度可能临时用了 `words.length`，而不是当前 session queue 长度。
-- 这个现象已经在两次完整路径里出现，不再视为偶发。
+根因分析：
+- 早期各视图的统计口径不一致：首页、词库详情、设置页各自通过前端全表拉取循环回放计算统计，缺乏权威全局数据源；
+- 复习状态写入与日度打卡步骤分多次独立 HTTP 请求发起，弱网下极易发生数据撕裂。
 
-## 问题 11：学习统计口径不一致，`新学习`、`已掌握/已完成`、Round2 正确率容易混淆
-
-状态：仍打开，需要产品口径确认。
-
-最新复测结果：
-- 两组各完成 30 个 Round3 后，首页显示：
-  - `新学习单词数 = 60`
-  - `已掌握单词数 = 45`
-- 官方词库页显示：
-  - `雅思词汇真经 45 / 3631 词`
-  - 其他官方库也显示若干已完成词数。
-- DB：
-  - 第二组 `learned = 30`
-  - 第二组 `review_events = round2:wrong 6, round2:correct 24, round3:correct 30`
-  - 第二组 `learning_group_words.round2_completed_at = 30`
-  - `review_states.counts = stable_recall 45, new 80, fuzzy 7, slow_recall 8`
-
-证据：
-- `qa-artifacts/lumina-learning-stats-round-20260608/07-after-steeper-submit.png`
-- `qa-artifacts/lumina-learning-stats-round-20260608/08-library-after-completion.png`
-- `qa-artifacts/lumina-learning-stats-round-20260608/09-home-after-refresh.png`
-- `qa-artifacts/lumina-learning-stats-round-20260608/final-db.json`
-
-需要确认的口径：
-- 首页 `已掌握单词数` 是否应该等于 `stable_recall`，还是等于已完成学习的 `learned_at`。
-- 官方词库卡片的 `已完成` 是否应该显示 `stable_recall`，还是显示该词库内已学完/已完成 Round3 的词。
-- Round2 里答错后，`round2_completed_at` 仍写入是否符合语义；如果它表示“已尝试”没问题，但名称和统计使用时容易被误解为“答对完成”。
-- 官方库之间共享词导致其他库出现完成数是否是预期；如果是预期，UI 需要避免让用户误以为自己学习过多个词库。
+解决方案与落地：
+1. **建立权威日度聚合表（`daily_user_statistics`）**：以日度聚合表作为打卡状态、新学词数（`learned_word_count`）、复习词数（`review_word_count`）、答题数与正确数的唯一权威事实来源，首页概览查询复杂度由 O(N) 降至 O(1)；
+2. **全流程 PostgreSQL 强 ACID 事务原子化**：
+   - 落地 `record_review_attempt_atomic` 存储过程：复习状态快照变更、历史审计日志插入与日度统计累加同生共死；
+   - 落地 `complete_learning_group_atomic` 存储过程：学习组全流程结业、生词本自动移除、打卡进度更新与新学词数累加全部收拢为单一事务原子提交；
+3. **词库完成度统一**：官方词库进度与卡片已完成计数严格基于该词库专属已学词（`learned_at IS NOT NULL`）与掌握词计算，消除跨词库共享词造成的概念混淆。
 
 ## 证据索引
 
