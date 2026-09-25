@@ -1,8 +1,10 @@
 {
   "imports": {
+    "@hono/zod-validator": "npm:@hono/zod-validator@^0.9.1",
     "@supabase/supabase-js": "npm:@supabase/supabase-js@2.103.0",
     "hono": "npm:hono@^4.7.2",
     "hono/": "npm:/hono@^4.7.2/",
-    "pg": "npm:pg@^8.20.0"
+    "pg": "npm:pg@^8.20.0",
+    "zod": "npm:zod@^4.6.5"
   }
 }

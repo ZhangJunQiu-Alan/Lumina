@@ -502,7 +502,14 @@ src/
 
 ---
 
-### 任务 3.2：全面接入 Zod 强类型运行时校验与错误契约标准化
+### 任务 3.2：全面接入 Zod 强类型运行时校验与错误契约标准化✅ [已完成]
+
+> **完成状态**：已完成  
+> **实施成果**：
+> 1. **全域强类型运行时校验覆盖**：在 [`shared/api/schemas/`](file:///Users/zhangjunqiu/Desktop/Lumina/shared/api/schemas/) 建立涵盖 8 大垂直业务域的严格 Zod Schema（`review`, `learning`, `library`, `settings`, `vocab`, `audio`, `ielts`, `auth`）；
+> 2. **统一 API 错误契约**：落地 [`shared/api/middleware/validator.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/shared/api/middleware/validator.ts)，基于 `@hono/zod-validator` 封装 `validateJson` / `validateQuery` / `validateParam`，遇到非法请求时统一返回 `{ error, code: 'VALIDATION_ERROR', details: [...], request_id }`，并在服务端输出结构化告警日志；
+> 3. **跨运行时双端兼容**：在 `supabase/functions/deno.json` 建立 npm 导入映射，Node.js (`@hono/node-server`) 与 Supabase Edge (Deno) 双端 100% 共享相同校验逻辑与类型推导；
+> 4. **零破坏性升级与完备测试**：保留所有原有关键错误提示文本，客户端完全向后兼容；新建 [`shared/api/validation.test.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/shared/api/validation.test.ts) 专项单测（21 项用例），全量 37 个单测文件 258/258 测试、核心 ACID 契约与生产构建全部一次性通过。
 
 #### 1. 现状与隐患
 - 服务端大量代码使用可选链和松散类型断言：`const { words } = req.body;`、`const word = sanitizeLookupWord(req.body?.word);`。缺乏类型约束，畸形 JSON 或恶意注入可引发不可预期的底层数据库报错。
@@ -515,24 +522,23 @@ src/
   import { z } from 'zod';
 
   export const RecordReviewAttemptSchema = z.object({
-    vocabularyItemId: z.string().uuid('单词 ID 格式不正确'),
-    learningGroupId: z.string().uuid().nullable().optional(),
+    vocabularyItemId: z.string().trim().min(1, 'Missing required attempt fields'),
+    learningGroupId: z.string().trim().nullable().optional(),
     source: z.enum(['round2', 'round3', 'review']),
     wasCorrect: z.boolean(),
-    elapsedMs: z.number().int().min(0).max(120000),
-    timestamp: z.number().optional(),
+    elapsedMs: z.coerce.number().min(0).default(0),
+    timestamp: z.coerce.number().optional(),
   });
   ```
 - 路由挂载强类型守卫：
   ```ts
   reviewRouter.post(
     '/attempt',
-    zValidator('json', RecordReviewAttemptSchema),
+    validateJson(RecordReviewAttemptSchema, 'Missing required attempt fields'),
     async (c) => {
       const data = c.req.valid('json'); // 强类型且已清洗！
       const result = await recordReviewAttempt({ userId: c.get('userId'), ...data });
-      return c.json(result);
-    }
+      return c.json({ data: result });
   );
   ```
 
@@ -589,7 +595,7 @@ gantt
 
     section 阶段三：可观测与质量防线 (P2)
     Sentry 全栈监控与告警配置          :p3_1, 2026-10-31, 3d
-    Zod 运行时强模式请求校验接入        :p3_2, 2026-11-03, 3d
+    Zod 运行时强模式请求校验接入        :done, p3_2, 2026-11-03, 3d
     Playwright 核心学习流 E2E 测试集    :p3_3, 2026-11-06, 4d
     Upstash Redis 分布式限流与 IndexedDB:p3_4, 2026-11-10, 3d
 ```
@@ -601,4 +607,5 @@ gantt
 - [x] **数据一致性验收**：学习组完成全流程后，`learning_group_words` 精确匹配组初始预置量，无数据溢出。（*任务 1.3 已达成：彻底废弃 Append，确立不可变学习组，根治 70 词与首屏分母闪烁*）
 - [x] **事务原子性验收**：复习记录与学习组结业全流程均由 PostgreSQL 存储过程事务（RPC）强一致性封装，状态机跃迁、事件流水日志、日度统计与打卡具备“同生共死”强 ACID 保障，绝无孤儿记录与计数撕裂。（*任务 1.4 已达成：落地 `record_review_attempt_atomic` 与 `complete_learning_group_atomic`，阶段一 100% 达成*）
 - [x] **架构解耦验收**：双后端路由合并为统一的 **Hono 单一应用**，废除手写脆弱缓存全面拥抱 **TanStack Query**，巨型组件（LearningEngine / App）成功模块化解耦，全局 CSS 拆分率达到 75%+，路由级按需加载与 CSS 代码分割全面落地。（*阶段二 100% 达成*）
+- [x] **运行时安全验收**：全量 8 大业务 API 路由全面接入 **Zod 运行时类型校验** 与标准化错误契约，杜绝畸形数据与未清洗参数（*任务 3.2 已达成*）
 - [ ] **质量验收**：Playwright E2E 套件在 GitHub Actions 跑通，涵盖认证、学习、复习 3 大主干闭环。

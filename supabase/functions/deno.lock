@@ -1,11 +1,20 @@
 {
   "version": "5",
   "specifiers": {
+    "npm:@hono/zod-validator@~0.9.1": "0.9.1_hono@4.13.9_zod@4.6.5",
     "npm:@supabase/supabase-js@2.103.0": "2.103.0",
     "npm:hono@^4.7.2": "4.13.9",
-    "npm:pg@^8.20.0": "8.23.0"
+    "npm:pg@^8.20.0": "8.23.0",
+    "npm:zod@^4.6.5": "4.6.5"
   },
   "npm": {
+    "@hono/zod-validator@0.9.1_hono@4.13.9_zod@4.6.5": {
+      "integrity": "sha512-iiv6w0qrIc0arfvCtUqBWsvl4fXjzaTcQcCJTTtCnkawF9HHGE+KjEl0ox3gQJ6rKZEgE3mLExlQCF72M+mNuw==",
+      "dependencies": [
+        "hono",
+        "zod"
+      ]
+    },
     "@supabase/auth-js@2.103.0": {
       "integrity": "sha512-6zAanO6c+6gpHOlt5Lb9TlBBkJdZiUWkWCJKAxzkywBDcwaHlLJKXnjQGX6GyVCyKRR1e7sTq4re/yRTH6U/9A==",
       "dependencies": [
@@ -147,13 +156,18 @@
     },
     "xtend@4.0.2": {
       "integrity": "sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ=="
+    },
+    "zod@4.6.5": {
+      "integrity": "sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q=="
     }
   },
   "workspace": {
     "dependencies": [
+      "npm:@hono/zod-validator@~0.9.1",
       "npm:@supabase/supabase-js@2.103.0",
       "npm:hono@^4.7.2",
-      "npm:pg@^8.20.0"
+      "npm:pg@^8.20.0",
+      "npm:zod@^4.6.5"
     ]
   }
 }

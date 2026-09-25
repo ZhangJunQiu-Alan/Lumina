@@ -1,6 +1,13 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types.ts';
 import { requireAuth } from '../middleware/auth.ts';
+import { validateJson } from '../middleware/validator.ts';
+import {
+  ResetPasswordSchema,
+  SignInSchema,
+  SignUpSchema,
+  UpdatePasswordSchema,
+} from '../schemas/auth.ts';
 import {
   authenticateLocalUser,
   createLocalUser,
@@ -100,140 +107,135 @@ authRouter.get('/session', async (c) => {
 });
 
 // POST /api/auth/sign-in
-authRouter.post('/sign-in', async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  const email = typeof body?.email === 'string' ? body.email.trim() : '';
-  const password = typeof body?.password === 'string' ? body.password : '';
+authRouter.post(
+  '/sign-in',
+  validateJson(SignInSchema, '请输入邮箱和密码。'),
+  async (c) => {
+    const { email, password } = c.req.valid('json');
 
-  if (isLocalAuthEnabled()) {
+    if (isLocalAuthEnabled()) {
+      try {
+        const session = await authenticateLocalUser(email, password);
+        return c.json({ session });
+      } catch {
+        return c.json({ error: '邮箱或密码不正确。' }, 401);
+      }
+    }
+
     try {
-      const session = await authenticateLocalUser(email, password);
-      return c.json({ session });
-    } catch {
-      return c.json({ error: '邮箱或密码不正确。' }, 401);
+      const authResponse = await supabaseAuthRequest('/token?grant_type=password', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
+      const { payload } = await readSupabaseAuthResponse(authResponse);
+      if (!authResponse.ok || typeof payload.access_token !== 'string' || typeof payload.user !== 'object') {
+        return c.json({ error: '邮箱或密码不正确。' }, 401);
+      }
+
+      return c.json({ session: payload });
+    } catch (e) {
+      logger.error('API Error: /api/auth/sign-in', e);
+      return c.json({ error: 'Authentication failed.' }, 500);
     }
-  }
-
-  if (!email || !password) {
-    return c.json({ error: '请输入邮箱和密码。' }, 400);
-  }
-
-  try {
-    const authResponse = await supabaseAuthRequest('/token?grant_type=password', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
-    const { payload } = await readSupabaseAuthResponse(authResponse);
-    if (!authResponse.ok || typeof payload.access_token !== 'string' || typeof payload.user !== 'object') {
-      return c.json({ error: '邮箱或密码不正确。' }, 401);
-    }
-
-    return c.json({ session: payload });
-  } catch (e) {
-    logger.error('API Error: /api/auth/sign-in', e);
-    return c.json({ error: 'Authentication failed.' }, 500);
-  }
-});
+  },
+);
 
 // POST /api/auth/sign-up
-authRouter.post('/sign-up', async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  const email = typeof body?.email === 'string' ? body.email.trim() : '';
-  const password = typeof body?.password === 'string' ? body.password : '';
-  const fullName = typeof body?.fullName === 'string' ? body.fullName.trim() : '';
+authRouter.post(
+  '/sign-up',
+  validateJson(SignUpSchema, '请填写有效邮箱和至少 8 位密码。'),
+  async (c) => {
+    const { email, password, fullName = '' } = c.req.valid('json');
 
-  if (isLocalAuthEnabled()) {
+    if (isLocalAuthEnabled()) {
+      try {
+        const session = await createLocalUser({ email, password, fullName });
+        return c.json({ session }, 201);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Sign up failed.';
+        return c.json({ error: message }, 400);
+      }
+    }
+
     try {
-      const session = await createLocalUser({ email, password, fullName });
-      return c.json({ session }, 201);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Sign up failed.';
-      return c.json({ error: message }, 400);
+      const authResponse = await supabaseAuthRequest('/signup', {
+        method: 'POST',
+        body: JSON.stringify({ email, password, data: { full_name: fullName } }),
+      });
+      const { payload, message } = await readSupabaseAuthResponse(authResponse);
+      if (!authResponse.ok) {
+        return c.json({ error: message }, 400);
+      }
+
+      return c.json({
+        session: typeof payload.access_token === 'string' ? payload : null,
+        user: payload.user ?? null,
+      });
+    } catch (e) {
+      logger.error('API Error: /api/auth/sign-up', e);
+      return c.json({ error: 'Sign up failed.' }, 500);
     }
-  }
-
-  if (!email || password.length < 8) {
-    return c.json({ error: '请填写有效邮箱和至少 8 位密码。' }, 400);
-  }
-
-  try {
-    const authResponse = await supabaseAuthRequest('/signup', {
-      method: 'POST',
-      body: JSON.stringify({ email, password, data: { full_name: fullName } }),
-    });
-    const { payload, message } = await readSupabaseAuthResponse(authResponse);
-    if (!authResponse.ok) {
-      return c.json({ error: message }, 400);
-    }
-
-    return c.json({
-      session: typeof payload.access_token === 'string' ? payload : null,
-      user: payload.user ?? null,
-    });
-  } catch (e) {
-    logger.error('API Error: /api/auth/sign-up', e);
-    return c.json({ error: 'Sign up failed.' }, 500);
-  }
-});
+  },
+);
 
 // POST /api/auth/update-password
-authRouter.post('/update-password', requireAuth, async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  const password = typeof body?.password === 'string' ? body.password : '';
-  const userId = c.get('userId');
+authRouter.post(
+  '/update-password',
+  requireAuth,
+  validateJson(UpdatePasswordSchema, '密码至少需要 8 位。'),
+  async (c) => {
+    const { password } = c.req.valid('json');
+    const userId = c.get('userId');
 
-  if (isLocalAuthEnabled()) {
-    try {
-      await updateLocalPassword(userId, password);
-      return c.json({ ok: true });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Password update failed.';
-      return c.json({ error: message }, 400);
+    if (isLocalAuthEnabled()) {
+      try {
+        await updateLocalPassword(userId, password);
+        return c.json({ ok: true });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Password update failed.';
+        return c.json({ error: message }, 400);
+      }
     }
-  }
 
-  if (password.length < 8) {
-    return c.json({ error: '密码至少需要 8 位。' }, 400);
-  }
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, { password });
+    if (error) {
+      return c.json({ error: error.message }, 400);
+    }
 
-  const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, { password });
-  if (error) {
-    return c.json({ error: error.message }, 400);
-  }
-
-  return c.json({ ok: true });
-});
+    return c.json({ ok: true });
+  },
+);
 
 // POST /api/auth/reset-password
-authRouter.post('/reset-password', async (c) => {
-  if (isLocalAuthEnabled()) {
-    return c.json({
-      ok: true,
-      message: 'Password reset email is not configured yet. Please sign up again or contact support.',
-    });
-  }
-
-  const body = await c.req.json().catch(() => ({}));
-  const email = typeof body?.email === 'string' ? body.email.trim() : '';
-  if (!email) {
-    return c.json({ error: '请输入邮箱。' }, 400);
-  }
-
-  try {
-    const authResponse = await supabaseAuthRequest('/recover', {
-      method: 'POST',
-      body: JSON.stringify({ email }),
-    });
-    const { message } = await readSupabaseAuthResponse(authResponse);
-    if (!authResponse.ok) {
-      return c.json({ error: message }, 400);
+authRouter.post(
+  '/reset-password',
+  validateJson(ResetPasswordSchema, '请输入邮箱。'),
+  async (c) => {
+    if (isLocalAuthEnabled()) {
+      return c.json({
+        ok: true,
+        message: 'Password reset email is not configured yet. Please sign up again or contact support.',
+      });
     }
-    return c.json({ ok: true });
-  } catch (e) {
-    logger.error('API Error: /api/auth/reset-password', e);
-    return c.json({ error: 'Password reset request failed.' }, 500);
-  }
-});
+
+    const { email } = c.req.valid('json');
+
+    try {
+      const authResponse = await supabaseAuthRequest('/recover', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      });
+      const { message } = await readSupabaseAuthResponse(authResponse);
+      if (!authResponse.ok) {
+        return c.json({ error: message }, 400);
+      }
+      return c.json({ ok: true });
+    } catch (e) {
+      logger.error('API Error: /api/auth/reset-password', e);
+      return c.json({ error: 'Password reset request failed.' }, 500);
+    }
+  },
+);
 
 // POST /api/auth/resend-confirmation
 authRouter.post('/resend-confirmation', async (c) => {

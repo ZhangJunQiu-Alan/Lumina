@@ -1,6 +1,15 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types.ts';
 import { requireAuth } from '../middleware/auth.ts';
+import { validateJson } from '../middleware/validator.ts';
+import {
+  BatchReviewAttemptSchema,
+  MarkMasteredSchema,
+  MarkUnknownSchema,
+  ReviewAttemptSchema,
+  ReviewSessionCompleteSchema,
+  ReviewSessionStartSchema,
+} from '../schemas/review.ts';
 import {
   completeReviewSession,
   fetchDueReviewWords,
@@ -31,45 +40,35 @@ reviewRouter.get('/due', async (c) => {
 });
 
 // POST /attempt
-reviewRouter.post('/attempt', async (c) => {
-  const userId = c.get('userId');
-  const body = await c.req.json().catch(() => ({}));
-  const { vocabularyItemId, learningGroupId, source, wasCorrect, elapsedMs, timestamp } = body;
+reviewRouter.post(
+  '/attempt',
+  validateJson(ReviewAttemptSchema, 'Missing required attempt fields'),
+  async (c) => {
+    const userId = c.get('userId');
+    const { vocabularyItemId, learningGroupId, source, wasCorrect, elapsedMs, timestamp } = c.req.valid('json');
 
-  if (
-    !vocabularyItemId ||
-    (source !== 'round2' && source !== 'round3' && source !== 'review') ||
-    typeof wasCorrect !== 'boolean'
-  ) {
-    return c.json({ error: 'Missing required attempt fields' }, 400);
-  }
-
-  try {
-    const result = await recordReviewAttempt({
-      userId,
-      vocabularyItemId,
-      learningGroupId,
-      source,
-      wasCorrect,
-      elapsedMs: Number(elapsedMs) || 0,
-      timestamp: Number(timestamp) || undefined,
-    });
-    return c.json({ data: result });
-  } catch (e) {
-    logger.error('API Error: /api/review/attempt', e, { endpoint: '/api/review/attempt', user_id: userId });
-    return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
-  }
-});
+    try {
+      const result = await recordReviewAttempt({
+        userId,
+        vocabularyItemId,
+        learningGroupId,
+        source,
+        wasCorrect,
+        elapsedMs: Number(elapsedMs) || 0,
+        timestamp: timestamp ? Number(timestamp) : undefined,
+      });
+      return c.json({ data: result });
+    } catch (e) {
+      logger.error('API Error: /api/review/attempt', e, { endpoint: '/api/review/attempt', user_id: userId });
+      return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
+    }
+  },
+);
 
 // POST /batch-attempt & /batch-attempts
 const handleBatchAttempt = async (c: any) => {
   const userId = c.get('userId');
-  const body = await c.req.json().catch(() => ({}));
-  const { attempts } = body;
-
-  if (!Array.isArray(attempts)) {
-    return c.json({ error: 'Missing attempts array' }, 400);
-  }
+  const { attempts } = c.req.valid('json');
 
   try {
     const results = await recordBatchReviewAttempts(userId, attempts);
@@ -80,86 +79,91 @@ const handleBatchAttempt = async (c: any) => {
   }
 };
 
-reviewRouter.post('/batch-attempt', handleBatchAttempt);
-reviewRouter.post('/batch-attempts', handleBatchAttempt);
+const batchAttemptMiddleware = validateJson(BatchReviewAttemptSchema, 'Missing attempts array');
+reviewRouter.post('/batch-attempt', batchAttemptMiddleware, handleBatchAttempt);
+reviewRouter.post('/batch-attempts', batchAttemptMiddleware, handleBatchAttempt);
 
 // POST /unknown
-reviewRouter.post('/unknown', async (c) => {
-  const userId = c.get('userId');
-  const body = await c.req.json().catch(() => ({}));
-  const { vocabularyItemId, learningGroupId, timestamp } = body;
+reviewRouter.post(
+  '/unknown',
+  validateJson(MarkUnknownSchema, 'Missing vocabularyItemId'),
+  async (c) => {
+    const userId = c.get('userId');
+    const { vocabularyItemId, learningGroupId, timestamp } = c.req.valid('json');
 
-  if (!vocabularyItemId) {
-    return c.json({ error: 'Missing vocabularyItemId' }, 400);
-  }
-
-  try {
-    const result = await markVocabularyUnknown({
-      userId,
-      vocabularyItemId,
-      learningGroupId,
-      timestamp: Number(timestamp) || undefined,
-    });
-    return c.json({ data: result });
-  } catch (e) {
-    logger.error('API Error: /api/review/unknown', e, { endpoint: '/api/review/unknown', user_id: userId });
-    return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
-  }
-});
+    try {
+      const result = await markVocabularyUnknown({
+        userId,
+        vocabularyItemId,
+        learningGroupId,
+        timestamp: timestamp ? Number(timestamp) : undefined,
+      });
+      return c.json({ data: result });
+    } catch (e) {
+      logger.error('API Error: /api/review/unknown', e, { endpoint: '/api/review/unknown', user_id: userId });
+      return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
+    }
+  },
+);
 
 // POST /mastered
-reviewRouter.post('/mastered', async (c) => {
-  const userId = c.get('userId');
-  const body = await c.req.json().catch(() => ({}));
-  const { vocabularyItemId, learningGroupId } = body;
+reviewRouter.post(
+  '/mastered',
+  validateJson(MarkMasteredSchema, 'Missing vocabularyItemId'),
+  async (c) => {
+    const userId = c.get('userId');
+    const { vocabularyItemId, learningGroupId } = c.req.valid('json');
 
-  if (!vocabularyItemId) {
-    return c.json({ error: 'Missing vocabularyItemId' }, 400);
-  }
-
-  try {
-    const result = await markVocabularyMastered({
-      userId,
-      vocabularyItemId,
-      learningGroupId,
-    });
-    return c.json({ data: result });
-  } catch (e) {
-    logger.error('API Error: /api/review/mastered', e, { endpoint: '/api/review/mastered', user_id: userId });
-    return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
-  }
-});
+    try {
+      const result = await markVocabularyMastered({
+        userId,
+        vocabularyItemId,
+        learningGroupId,
+      });
+      return c.json({ data: result });
+    } catch (e) {
+      logger.error('API Error: /api/review/mastered', e, { endpoint: '/api/review/mastered', user_id: userId });
+      return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
+    }
+  },
+);
 
 // POST /session/start
-reviewRouter.post('/session/start', async (c) => {
-  const userId = c.get('userId');
-  const body = await c.req.json().catch(() => ({}));
-  const { timeZone } = body;
+reviewRouter.post(
+  '/session/start',
+  validateJson(ReviewSessionStartSchema),
+  async (c) => {
+    const userId = c.get('userId');
+    const { timeZone } = c.req.valid('json');
 
-  try {
-    const words = await startReviewSession(userId, {
-      timeZone: typeof timeZone === 'string' ? timeZone : null,
-    });
-    return c.json({ data: { words } });
-  } catch (e) {
-    logger.error('API Error: /api/review/session/start', e, { endpoint: '/api/review/session/start', user_id: userId });
-    return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
-  }
-});
+    try {
+      const words = await startReviewSession(userId, {
+        timeZone: typeof timeZone === 'string' ? timeZone : null,
+      });
+      return c.json({ data: { words } });
+    } catch (e) {
+      logger.error('API Error: /api/review/session/start', e, { endpoint: '/api/review/session/start', user_id: userId });
+      return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
+    }
+  },
+);
 
 // POST /session/complete
-reviewRouter.post('/session/complete', async (c) => {
-  const userId = c.get('userId');
-  const body = await c.req.json().catch(() => ({}));
-  const { timeZone } = body;
+reviewRouter.post(
+  '/session/complete',
+  validateJson(ReviewSessionCompleteSchema),
+  async (c) => {
+    const userId = c.get('userId');
+    const { timeZone } = c.req.valid('json');
 
-  try {
-    const data = await completeReviewSession(userId, {
-      timeZone: typeof timeZone === 'string' ? timeZone : null,
-    });
-    return c.json({ data });
-  } catch (e) {
-    logger.error('API Error: /api/review/session/complete', e, { endpoint: '/api/review/session/complete', user_id: userId });
-    return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
-  }
-});
+    try {
+      const data = await completeReviewSession(userId, {
+        timeZone: typeof timeZone === 'string' ? timeZone : null,
+      });
+      return c.json({ data });
+    } catch (e) {
+      logger.error('API Error: /api/review/session/complete', e, { endpoint: '/api/review/session/complete', user_id: userId });
+      return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
+    }
+  },
+);
