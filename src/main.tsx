@@ -7,6 +7,10 @@ import { LearningPreferencesProvider } from './contexts/LearningPreferencesConte
 import 'animal-island-ui/style';
 import './index.css';
 import { readLocal } from './lib/durableStorage';
+import { initObservability } from './lib/observability/sentry';
+
+// Initialize enterprise error & performance observability
+initObservability();
 
 if (import.meta.env.VITE_NATIVE_APP === 'true') {
   if (window.location.pathname === '/') {

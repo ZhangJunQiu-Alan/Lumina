@@ -13,6 +13,7 @@ import { audioRouter, handleExampleAudio } from './routes/audio.ts';
 import { ieltsRouter } from './routes/ielts.ts';
 import { authRouter } from './routes/auth.ts';
 import { logger } from '../server/logger.ts';
+import { captureServerException } from '../server/telemetry.ts';
 
 export const app = new Hono<AppEnv>();
 
@@ -70,10 +71,19 @@ app.route('/api', api);
 // Global Error Handler
 app.onError((err, c) => {
   const requestId = c.get('requestId');
+  const userId = c.get('userId');
   logger.error('Unhandled API Error', err, {
     endpoint: c.req.path,
     method: c.req.method,
     request_id: requestId,
+    user_id: userId,
+  });
+
+  void captureServerException(err, {
+    endpoint: c.req.path,
+    method: c.req.method,
+    requestId,
+    userId,
   });
 
   const status = (err as any)?.status || (err as any)?.statusCode;

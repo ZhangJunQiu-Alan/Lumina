@@ -2,6 +2,7 @@ import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { AlertCircle, RefreshCcw, Home } from 'lucide-react';
 import { IslandButton } from './AnimalPrimitives';
+import { captureClientException } from '../../lib/observability/sentry';
 
 interface Props {
   children: ReactNode;
@@ -28,8 +29,11 @@ export class GlobalErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // 在这里可以接入 Sentry, LogRocket 等外部监控系统
     console.error('Unhandled React Error:', error, errorInfo);
+    captureClientException(error, {
+      boundary: 'GlobalErrorBoundary',
+      componentStack: errorInfo.componentStack,
+    });
   }
 
   private handleReset = () => {

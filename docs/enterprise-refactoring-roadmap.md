@@ -487,7 +487,15 @@ src/
 
 ---
 
-### 任务 3.1：接入企业级可观测性监控体系（Sentry 前后端异常监控）
+### 任务 3.1：接入企业级可观测性监控体系（Sentry 前后端异常监控）✅ [已完成]
+
+> **完成状态**：已完成  
+> **实施成果**：
+> 1. **前端 Sentry 体系与 Session Replay 落地**：新建 [`src/lib/observability/sentry.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/src/lib/observability/sentry.ts)，接入 `@sentry/react` (v11)；支持浏览器追踪（Browser Tracing & Web Vitals）与用户操作录屏回放（Session Replay，异常时 100% 录屏，文本输入智能脱敏）；
+> 2. **React 全局错误边界自动捕获**：改造 [`src/components/shared/GlobalErrorBoundary.tsx`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/shared/GlobalErrorBoundary.tsx)，捕获未捕获渲染崩溃并自动上报附带 `componentStack` 的完整异常上下文；
+> 3. **用户身份与用户旅程链路关联**：改造 [`src/contexts/AuthContext.tsx`](file:///Users/zhangjunqiu/Desktop/Lumina/src/contexts/AuthContext.tsx)，在登录与会话初始化时自动将 `userId` 与 `email` 绑定至 Sentry 上下文，登出时自动注销；
+> 4. **跨运行时同构服务端 Telemetry**：新建 [`shared/server/telemetry.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/shared/server/telemetry.ts)，基于标准 Web API 封装零依赖 Sentry Store 协议，跨 Node.js (`server/index.ts`) 与 Supabase Edge (Deno) 通用；在 [`shared/api/app.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/shared/api/app.ts)（`app.onError`）与 [`shared/server/logger.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/shared/server/logger.ts)（`logger.error`）全自动分发未处理服务端异常；
+> 5. **全流程防护与专项单测**：未配置 DSN 或自动化测试环境下自动静默熔断，绝无网络污染；新建 8 项专项单元测试，全量 39 个单测套件 266/266 测试 100% 通过。
 
 #### 1. 现状与隐患
 - [`src/components/shared/GlobalErrorBoundary.tsx#L31`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/shared/GlobalErrorBoundary.tsx#L31) 注释写着 `// 在这里可以接入 Sentry, LogRocket 等外部监控系统`。生产环境中，一旦用户遇到音频无法播放、离线同步异常、页面渲染白屏，开发者完全无法感知。
@@ -594,7 +602,7 @@ gantt
     全局 CSS 模块化与体积瘦身          :done, p2_4, 2026-10-28, 3d
 
     section 阶段三：可观测与质量防线 (P2)
-    Sentry 全栈监控与告警配置          :p3_1, 2026-10-31, 3d
+    Sentry 全栈监控与告警配置          :done, p3_1, 2026-10-31, 3d
     Zod 运行时强模式请求校验接入        :done, p3_2, 2026-11-03, 3d
     Playwright 核心学习流 E2E 测试集    :p3_3, 2026-11-06, 4d
     Upstash Redis 分布式限流与 IndexedDB:p3_4, 2026-11-10, 3d
@@ -608,4 +616,5 @@ gantt
 - [x] **事务原子性验收**：复习记录与学习组结业全流程均由 PostgreSQL 存储过程事务（RPC）强一致性封装，状态机跃迁、事件流水日志、日度统计与打卡具备“同生共死”强 ACID 保障，绝无孤儿记录与计数撕裂。（*任务 1.4 已达成：落地 `record_review_attempt_atomic` 与 `complete_learning_group_atomic`，阶段一 100% 达成*）
 - [x] **架构解耦验收**：双后端路由合并为统一的 **Hono 单一应用**，废除手写脆弱缓存全面拥抱 **TanStack Query**，巨型组件（LearningEngine / App）成功模块化解耦，全局 CSS 拆分率达到 75%+，路由级按需加载与 CSS 代码分割全面落地。（*阶段二 100% 达成*）
 - [x] **运行时安全验收**：全量 8 大业务 API 路由全面接入 **Zod 运行时类型校验** 与标准化错误契约，杜绝畸形数据与未清洗参数（*任务 3.2 已达成*）
+- [x] **可观测性监控验收**：前端接入 **Sentry (v11)** 并装配 Session Replay、Web Vitals 与 GlobalErrorBoundary 自动崩溃捕获；服务端构建同构 **Telemetry 跨端遥测**，在 `app.onError` 与 `logger.error` 自动上报（*任务 3.1 已达成*）
 - [ ] **质量验收**：Playwright E2E 套件在 GitHub Actions 跑通，涵盖认证、学习、复习 3 大主干闭环。

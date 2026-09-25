@@ -8,6 +8,7 @@
  * NODE_ENV=development locally for the pretty console format.
  */
 import { getEnv } from '../runtime.ts';
+import { captureServerException } from './telemetry.ts';
 
 type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
@@ -63,6 +64,10 @@ class Logger {
           : { error };
 
       console.error(this.format('error', message, { ...errorDetail, ...context }));
+
+      if (error) {
+        void captureServerException(error, { message, ...context });
+      }
     }
   }
 

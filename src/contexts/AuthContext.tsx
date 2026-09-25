@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type PropsWith
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { isGoogleAuthEnabled } from '../lib/authFeatures';
+import { setObservabilityUser } from '../lib/observability/sentry';
 
 interface AuthContextValue {
   session: Session | null;
@@ -65,16 +66,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (!active) return;
 
       setSession(nextSession);
-      setUser((current) => {
-        const nextUser = nextSession?.user ?? null;
-        return canReuseUser(current, nextUser) ? current : nextUser;
-      });
+      const nextUser = nextSession?.user ?? null;
+      setObservabilityUser(nextUser ? { id: nextUser.id, email: nextUser.email } : null);
+      setUser((current) => (canReuseUser(current, nextUser) ? current : nextUser));
       setIsAuthLoading(false);
 
       if (event === 'PASSWORD_RECOVERY' || hasPasswordRecoveryMarker()) {
         setIsPasswordRecovery(true);
       } else if (event === 'SIGNED_OUT') {
         setIsPasswordRecovery(false);
+        setObservabilityUser(null);
       }
     });
 
@@ -85,10 +86,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (!active) return;
 
       setSession(data.session ?? null);
-      setUser((current) => {
-        const nextUser = data.session?.user ?? null;
-        return canReuseUser(current, nextUser) ? current : nextUser;
-      });
+      const nextUser = data.session?.user ?? null;
+      setObservabilityUser(nextUser ? { id: nextUser.id, email: nextUser.email } : null);
+      setUser((current) => (canReuseUser(current, nextUser) ? current : nextUser));
       setIsAuthLoading(false);
     });
 
