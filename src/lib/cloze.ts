@@ -314,8 +314,8 @@ function blankifyMatch(sentence: string, hit: { matchedText: string; wholeWord: 
 }
 
 export function buildClozePrompt(input: ClozeInput): ClozePrompt | null {
-  const base = input.word.trim().toLowerCase();
-  if (!base) return null;
+  const base = input.word?.trim().toLowerCase();
+  if (!base || !Array.isArray(input.senses)) return null;
 
   const candidates = generateCandidates(base);
 

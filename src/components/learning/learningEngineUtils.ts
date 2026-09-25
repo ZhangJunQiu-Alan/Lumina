@@ -41,16 +41,17 @@ export const getRound1ExampleItems = (word: Word) =>
         : undefined,
     }));
 
-export const hasRound1Examples = (word: Word) => word.senses.some((sense) => hasDisplayText(sense.example_sentence));
+export const hasRound1Examples = (word: Word) =>
+  word.senses?.some((sense) => hasDisplayText(sense.example_sentence)) ?? false;
 
 export const hasRound1MorphologyContent = (word: Word) =>
-  hasDisplayText(word.morphology.summaryZh) || hasRound1WordItems(word.derivedWords);
+  hasDisplayText(word.morphology?.summaryZh) || hasRound1WordItems(word.derivedWords ?? []);
 
 export const hasRound1RelationsContent = (word: Word) =>
-  hasRound1WordItems(word.synonyms) || hasRound1WordItems(word.antonyms);
+  hasRound1WordItems(word.synonyms ?? []) || hasRound1WordItems(word.antonyms ?? []);
 
 export const hasRound1ContextContent = (word: Word) =>
-  hasRound1WordItems(word.confusingPairs) || hasRound1Examples(word);
+  hasRound1WordItems(word.confusingPairs ?? []) || hasRound1Examples(word);
 
 export type PlaybackTarget = { kind: 'pronunciation'; locale: PronunciationLocale } | { kind: 'example'; key: string };
 

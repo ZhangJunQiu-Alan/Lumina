@@ -101,6 +101,8 @@ dist
 
 # Playwright / local tooling output
 output/
+test-results/
+playwright-report/
 __pycache__/
 *.py[cod]
 
