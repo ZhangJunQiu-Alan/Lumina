@@ -73,6 +73,13 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* Default press feedback. Layered so any Tailwind `active:` utility wins; island-style buttons keep their press-down. */
+@layer base {
+  button:not(:disabled, .lumina-island-button, .lumina-island-icon-button, .island-pressable, .jelly-shadow):active {
+    scale: 0.98;
+  }
+}
+
 input,
 textarea,
 select {

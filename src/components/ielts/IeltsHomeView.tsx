@@ -34,6 +34,8 @@ import { formatElapsedTime } from '../../lib/ieltsReadingScoring';
 import { IELTS_TARGET_SCORE_OPTIONS } from '../../lib/learningPreferences';
 import { cx } from '../shared/LearningUI';
 import { buildIeltsDashboardModel, type IeltsDashboardModel, type IeltsDashboardModuleKey } from './ieltsDashboard';
+import { motion } from 'motion/react';
+import { duration, ease, fadeUp, stagger } from '../../lib/motion';
 
 type DisplayModuleKey = IeltsDashboardModuleKey | 'writing' | 'speaking';
 type Accent = 'teal' | 'amber' | 'violet' | 'coral';
@@ -879,10 +881,29 @@ function AccuracyTrendChart({ points }: { points: Array<number | null> }) {
             <line x1="12" y1="55" x2="124" y2="55" stroke="rgba(114,93,66,0.12)" strokeWidth="1" />
             <line x1="12" y1="86" x2="124" y2="86" stroke="rgba(114,93,66,0.12)" strokeWidth="1" />
             {chartPoints.length > 1 && (
-              <polyline points={line} fill="none" stroke="#19c8b9" strokeWidth="4" strokeLinecap="round" />
+              <motion.polyline
+                key={line}
+                points={line}
+                fill="none"
+                stroke="#19c8b9"
+                strokeWidth="4"
+                strokeLinecap="round"
+                initial={{ pathLength: 0 }}
+                animate={{ pathLength: 1 }}
+                transition={{ duration: 0.8, delay: 0.35, ease: ease.inOut }}
+              />
             )}
-            {chartPoints.map((point) => (
-              <circle key={`${point.x}-${point.y}`} cx={point.x} cy={point.y} r="4.5" fill="#19c8b9" />
+            {chartPoints.map((point, index) => (
+              <motion.circle
+                key={`${point.x}-${point.y}`}
+                cx={point.x}
+                cy={point.y}
+                r="4.5"
+                fill="#19c8b9"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: duration.fast, delay: 0.35 + index * 0.2 }}
+              />
             ))}
             {['W1', 'W2', 'W3', 'W4'].map((label, index) => (
               <text key={label} x={14 + index * 36} y="98" textAnchor="middle" fontSize="8" fill="#9f927d">
@@ -1056,8 +1077,16 @@ export function IeltsHomeView() {
   }
 
   return (
-    <div className="-mx-3 w-[calc(100%+1.5rem)] max-w-[1480px] overflow-x-clip rounded-none border-0 bg-transparent p-0 shadow-none sm:mx-auto sm:w-full">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(430px,0.38fr)] xl:items-center xl:gap-7">
+    <motion.div
+      variants={stagger(0.07)}
+      initial="hidden"
+      animate="visible"
+      className="-mx-3 w-[calc(100%+1.5rem)] max-w-[1480px] overflow-x-clip rounded-none border-0 bg-transparent p-0 shadow-none sm:mx-auto sm:w-full"
+    >
+      <motion.div
+        variants={fadeUp}
+        className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(430px,0.38fr)] xl:items-center xl:gap-7"
+      >
         <header>
           <h2 className="text-[28px] font-black leading-tight tracking-tight text-text-primary sm:text-4xl xl:text-[42px]">
             剑桥雅思真题训练
@@ -1079,23 +1108,29 @@ export function IeltsHomeView() {
           targetScoreError={targetScoreError}
           onTargetScoreChange={handleTargetScoreChange}
         />
-      </div>
+      </motion.div>
 
-      <section className="mt-3 grid grid-cols-2 gap-3 sm:mt-7 sm:gap-4 xl:grid-cols-4">
+      <motion.section variants={fadeUp} className="mt-3 grid grid-cols-2 gap-3 sm:mt-7 sm:gap-4 xl:grid-cols-4">
         {MODULE_CARD_CONFIGS.map((config) => (
           <PracticeModuleCard key={config.key} config={config} model={model} onNavigate={navigate} />
         ))}
-      </section>
+      </motion.section>
 
-      <div className="mt-3 grid gap-3 sm:mt-5 sm:gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+      <motion.div
+        variants={fadeUp}
+        className="mt-3 grid gap-3 sm:mt-5 sm:gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]"
+      >
         <RecentPracticePanel model={model} onNavigate={navigate} />
         <RecommendationPanel model={model} onNavigate={navigate} />
-      </div>
+      </motion.div>
 
-      <div className="mt-3 grid gap-3 sm:mt-4 sm:gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
+      <motion.div
+        variants={fadeUp}
+        className="mt-3 grid gap-3 sm:mt-4 sm:gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]"
+      >
         <LearningDataPanel model={model} />
         <StudyAdvicePanel />
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

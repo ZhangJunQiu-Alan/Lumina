@@ -3,7 +3,9 @@ import type { User } from '@supabase/supabase-js';
 import { Activity, CalendarDays, CheckCircle2, Flame, LogOut, TrendingUp } from 'lucide-react';
 import type { ActivityDay, UserStats } from '../../types';
 import { fetchUserActivityHeatmap } from '../../lib/homeApi';
+import { motion } from 'motion/react';
 import { cx } from '../shared/LearningUI';
+import { duration, ease, fadeUp, stagger, staggerDelay } from '../../lib/motion';
 
 type TrendRange = 7 | 14 | 30;
 
@@ -180,12 +182,19 @@ function TrendChart({ days }: { days: ActivityDay[] }) {
 
           return (
             <g key={day.date}>
-              <rect x={x} y={reviewY} width={barWidth} height={reviewHeight} rx="4" fill="#34C759">
-                <title>{`${day.date} 复习 ${day.reviewWordCount} 词`}</title>
-              </rect>
-              <rect x={x} y={learnedY} width={barWidth} height={learnedHeight} rx="4" fill="#007AFF">
-                <title>{`${day.date} 新学 ${day.learnedWordCount} 词`}</title>
-              </rect>
+              <motion.g
+                initial={{ scaleY: 0 }}
+                animate={{ scaleY: 1 }}
+                transition={{ duration: duration.slow, ease: ease.out, delay: 0.2 + staggerDelay(index, 0.02, 0.3) }}
+                style={{ transformBox: 'fill-box', originY: 1 }}
+              >
+                <rect x={x} y={reviewY} width={barWidth} height={reviewHeight} rx="4" fill="#34C759">
+                  <title>{`${day.date} 复习 ${day.reviewWordCount} 词`}</title>
+                </rect>
+                <rect x={x} y={learnedY} width={barWidth} height={learnedHeight} rx="4" fill="#007AFF">
+                  <title>{`${day.date} 新学 ${day.learnedWordCount} 词`}</title>
+                </rect>
+              </motion.g>
               {shouldLabel && (
                 <text
                   x={left + index * step + step / 2}
@@ -201,7 +210,11 @@ function TrendChart({ days }: { days: ActivityDay[] }) {
         })}
 
         {accuracyPoints.length > 1 && (
-          <polyline
+          <motion.polyline
+            key={accuracyPath}
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: 0.9, delay: 0.45, ease: ease.inOut }}
             points={accuracyPath}
             fill="none"
             stroke="#FF9500"
@@ -210,9 +223,12 @@ function TrendChart({ days }: { days: ActivityDay[] }) {
             strokeLinejoin="round"
           />
         )}
-        {accuracyPoints.map((point) => (
-          <circle
+        {accuracyPoints.map((point, index) => (
+          <motion.circle
             key={`${point.x}:${point.y}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: duration.fast, delay: 0.45 + staggerDelay(index, 0.03, 0.9) }}
             cx={point.x}
             cy={point.y}
             r="4"
@@ -293,7 +309,7 @@ function ActivityHeatmap({ days }: { days: ActivityDay[] }) {
 
 function MetricPill({ icon: Icon, label, value }: { icon: typeof Flame; label: string; value: string }) {
   return (
-    <div className="rounded-[24px] border border-black/[0.04] bg-white/60 p-4">
+    <motion.div variants={fadeUp} className="rounded-[24px] border border-black/[0.04] bg-white/60 p-4">
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-black/[0.04] text-[#2f261d]">
           <Icon className="h-5 w-5" />
@@ -303,7 +319,7 @@ function MetricPill({ icon: Icon, label, value }: { icon: typeof Flame; label: s
           <p className="mt-1 text-2xl font-black tracking-tight text-[#2f261d]">{value}</p>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -353,8 +369,13 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
     yearlySummary.attempts > 0;
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <motion.div
+      variants={stagger(0.08)}
+      initial="hidden"
+      animate="visible"
+      className="mx-auto w-full max-w-6xl space-y-6"
+    >
+      <motion.section variants={stagger(0.05)} className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricPill icon={Flame} label="连续学习" value={`${stats.streak} 天`} />
         <MetricPill icon={CalendarDays} label="年度学习" value={`${yearlySummary.activeDays} 天`} />
         <MetricPill icon={Activity} label="新学单词" value={`${yearlySummary.learned}`} />
@@ -363,19 +384,19 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
           label="年度正确率"
           value={yearlyAccuracy === null ? '--' : `${yearlyAccuracy}%`}
         />
-      </section>
+      </motion.section>
 
       {!hasLearningActivity ? (
-        <section className="glass px-6 py-14 text-center md:px-10 md:py-20">
+        <motion.section variants={fadeUp} className="glass px-6 py-14 text-center md:px-10 md:py-20">
           <p className="text-[11px] font-black uppercase tracking-[0.24em] text-apple-blue">Learning record</p>
           <h3 className="mt-3 text-2xl font-black tracking-tight text-text-primary">暂无学习记录</h3>
           <p className="mx-auto mt-3 max-w-lg text-sm leading-7 text-text-secondary">
             完成学习后，可查看每日新学词数、复习词数、正确率与年度学习记录。
           </p>
-        </section>
+        </motion.section>
       ) : (
         <>
-          <section className="glass rounded-[34px] p-5 md:p-7">
+          <motion.section variants={fadeUp} className="glass rounded-[34px] p-5 md:p-7">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-[11px] font-black uppercase tracking-[0.24em] text-apple-blue">Learning Trend</p>
@@ -432,9 +453,9 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
               </div>
               <TrendChart days={trendDays} />
             </div>
-          </section>
+          </motion.section>
 
-          <section className="glass rounded-[34px] p-5 md:p-7">
+          <motion.section variants={fadeUp} className="glass rounded-[34px] p-5 md:p-7">
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               <div>
                 <p className="text-[11px] font-black uppercase tracking-[0.24em] text-apple-green">Activity Heatmap</p>
@@ -456,11 +477,11 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
             >
               <ActivityHeatmap days={activityDays} />
             </div>
-          </section>
+          </motion.section>
         </>
       )}
 
-      <section className="glass relative overflow-hidden rounded-[36px] p-6 md:p-8">
+      <motion.section variants={fadeUp} className="glass relative overflow-hidden rounded-[36px] p-6 md:p-8">
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="flex h-24 w-24 items-center justify-center rounded-[30px] bg-apple-blue text-4xl font-black text-white shadow-lg">
@@ -481,7 +502,7 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
             <LogOut className="h-5 w-5" />
           </button>
         </div>
-      </section>
-    </div>
+      </motion.section>
+    </motion.div>
   );
 }

@@ -47,6 +47,8 @@ const TEST_DURATION_SECONDS = 30 * 60;
 import { ResumableAudio } from '../shared/ResumableAudio';
 import { writeLocal } from '../../lib/durableStorage';
 import { ieltsSubmissionState } from '../../lib/ieltsSubmission';
+import { motion } from 'motion/react';
+import { fadeUp, stagger } from '../../lib/motion';
 
 interface ListeningDraft {
   startedAt: string;
@@ -214,8 +216,13 @@ export function IeltsListeningHomeView() {
   const totalTests = books.reduce((count, book) => count + book.tests.length, 0);
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-7">
-      <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+    <motion.div
+      variants={stagger(0.07)}
+      initial="hidden"
+      animate="visible"
+      className="mx-auto w-full max-w-7xl space-y-7"
+    >
+      <motion.header variants={fadeUp} className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
         <div className="flex items-start gap-4">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[22px] bg-apple-orange/12 text-apple-orange shadow-[0_16px_32px_rgba(245,195,28,0.14)]">
             <Headphones className="h-7 w-7" />
@@ -238,7 +245,7 @@ export function IeltsListeningHomeView() {
             <p className="text-xs font-bold text-text-secondary">套题</p>
           </div>
         </div>
-      </header>
+      </motion.header>
 
       {books.length === 0 ? (
         <section className="glass rounded-[34px] p-8 text-center jelly-shadow">
@@ -249,10 +256,11 @@ export function IeltsListeningHomeView() {
           </p>
         </section>
       ) : (
-        <section className="grid gap-5 lg:grid-cols-2">
+        <motion.section variants={stagger(0.06)} className="grid gap-5 lg:grid-cols-2">
           {books.map((book) => (
-            <div
+            <motion.div
               key={book.id}
+              variants={fadeUp}
               className="rounded-[30px] border border-white/70 bg-white/78 p-6 shadow-[0_18px_44px_rgba(14,26,56,0.07)]"
             >
               <div className="flex items-start justify-between gap-4">
@@ -280,12 +288,12 @@ export function IeltsListeningHomeView() {
                   </button>
                 ))}
               </div>
-            </div>
+            </motion.div>
           ))}
-        </section>
+        </motion.section>
       )}
 
-      <section className="space-y-4">
+      <motion.section variants={fadeUp} className="space-y-4">
         <div className="flex items-center gap-3">
           <Clock3 className="h-5 w-5 text-apple-orange" />
           <h3 className="text-xl font-black text-text-primary">最近记录</h3>
@@ -294,8 +302,8 @@ export function IeltsListeningHomeView() {
           attempts={attempts}
           onOpenAttempt={(attempt) => navigate(`/app/ielts-listening/test/${attempt.testId}?attempt=${attempt.id}`)}
         />
-      </section>
-    </div>
+      </motion.section>
+    </motion.div>
   );
 }
 

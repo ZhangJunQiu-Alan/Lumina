@@ -1,11 +1,18 @@
 import { SlidersHorizontal } from 'lucide-react';
+import { motion } from 'motion/react';
 import { LearningSettingsContent } from './LearningSettingsContent';
+import { fadeUp, stagger } from '../../lib/motion';
 
 export { LearningSettingsContent } from './LearningSettingsContent';
 
 export const SettingsView = () => (
-  <div className="settings-panel mx-auto w-full max-w-[680px] overflow-hidden">
-    <header className="px-7 pb-5 pt-7 sm:px-8 sm:pt-8">
+  <motion.div
+    variants={stagger(0.08)}
+    initial="hidden"
+    animate="visible"
+    className="settings-panel mx-auto w-full max-w-[680px] overflow-hidden"
+  >
+    <motion.header variants={fadeUp} className="px-7 pb-5 pt-7 sm:px-8 sm:pt-8">
       <div className="flex items-start gap-4">
         <div className="settings-panel__icon flex h-12 w-12 shrink-0 items-center justify-center">
           <SlidersHorizontal className="h-6 w-6" strokeWidth={2.4} />
@@ -15,10 +22,10 @@ export const SettingsView = () => (
           <h1 className="settings-panel__title">学习设置</h1>
         </div>
       </div>
-    </header>
+    </motion.header>
 
-    <div className="px-7 pb-7 sm:px-8 sm:pb-8">
+    <motion.div variants={fadeUp} className="px-7 pb-7 sm:px-8 sm:pb-8">
       <LearningSettingsContent />
-    </div>
-  </div>
+    </motion.div>
+  </motion.div>
 );
