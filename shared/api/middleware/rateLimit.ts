@@ -1,10 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
 import { isAiContentFeaturesEnabled } from '../../runtime.ts';
-import {
-  consumeExpensiveRateLimit,
-  isRateLimitExceeded,
-  type ExpensiveApiGroup,
-} from '../../expensiveRateLimit.ts';
+import { consumeExpensiveRateLimit, isRateLimitExceeded, type ExpensiveApiGroup } from '../../expensiveRateLimit.ts';
 import { logger } from '../../server/logger.ts';
 import type { AppEnv } from '../types.ts';
 

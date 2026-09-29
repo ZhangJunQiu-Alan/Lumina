@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  captureServerException,
-  captureServerMessage,
-  parseSentryDsn,
-} from './telemetry.ts';
+import { captureServerException, captureServerMessage, parseSentryDsn } from './telemetry.ts';
 
 describe('Task 3.1: Server-Side Telemetry & Sentry Integration', () => {
   describe('DSN Parser', () => {

@@ -20,10 +20,11 @@ export interface ApiValidationErrorResponse {
  * Standardized Hono Zod validator middleware that enforces Lumina's API error contract
  * and logs validation failures with request correlation IDs.
  */
-export function validate<
-  Target extends keyof ValidationTargets,
-  T extends z.ZodType<any, any, any>
->(target: Target, schema: T, defaultErrorMessage?: string) {
+export function validate<Target extends keyof ValidationTargets, T extends z.ZodType<any, any, any>>(
+  target: Target,
+  schema: T,
+  defaultErrorMessage?: string,
+) {
   return zValidator(target, schema, (result, c: any) => {
     if (!result.success) {
       const errorObj = 'error' in result ? (result as any).error : undefined;
@@ -55,17 +56,11 @@ export function validate<
   });
 }
 
-export const validateJson = <T extends z.ZodType<any, any, any>>(
-  schema: T,
-  defaultErrorMessage?: string,
-) => validate('json', schema, defaultErrorMessage);
+export const validateJson = <T extends z.ZodType<any, any, any>>(schema: T, defaultErrorMessage?: string) =>
+  validate('json', schema, defaultErrorMessage);
 
-export const validateQuery = <T extends z.ZodType<any, any, any>>(
-  schema: T,
-  defaultErrorMessage?: string,
-) => validate('query', schema, defaultErrorMessage);
+export const validateQuery = <T extends z.ZodType<any, any, any>>(schema: T, defaultErrorMessage?: string) =>
+  validate('query', schema, defaultErrorMessage);
 
-export const validateParam = <T extends z.ZodType<any, any, any>>(
-  schema: T,
-  defaultErrorMessage?: string,
-) => validate('param', schema, defaultErrorMessage);
+export const validateParam = <T extends z.ZodType<any, any, any>>(schema: T, defaultErrorMessage?: string) =>
+  validate('param', schema, defaultErrorMessage);

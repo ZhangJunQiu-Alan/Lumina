@@ -26,7 +26,6 @@ function assertIncludes(source: string, needle: string, label: string) {
   assert.ok(source.includes(needle), `${label} should include ${needle}`);
 }
 
-
 const packageJson = JSON.parse(read('package.json')) as { scripts: Record<string, string> };
 for (const script of ['test:official-library', 'test:core', 'test:ielts', 'test:all', 'check:edge', 'check:audit']) {
   assert.equal(typeof packageJson.scripts[script], 'string', `${script} should be declared`);

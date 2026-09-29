@@ -14,49 +14,47 @@ ieltsRouter.use('*', requireAuth);
 
 // POST /api/ielts/reading/attempts
 ieltsRouter.post('/reading/attempts', validateJson(IeltsReadingAttemptSchema, 'Missing test ID'), async (c) => {
-    const userId = c.get('userId');
-    const validBody = c.req.valid('json');
-    const responseCount = Array.isArray(validBody?.responses) ? validBody.responses.length : 0;
+  const userId = c.get('userId');
+  const validBody = c.req.valid('json');
+  const responseCount = Array.isArray(validBody?.responses) ? validBody.responses.length : 0;
 
-    try {
-      const data = await submitIeltsReadingAttempt(userId, validBody);
-      return c.json({ data });
-    } catch (e) {
-      logger.error('API Error: /api/ielts/reading/attempts', e, {
-        endpoint: '/api/ielts/reading/attempts',
-        user_id: userId,
-        test_id: validBody?.testId,
-        response_count: responseCount,
-      });
-      return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
-    }
-  },
-);
+  try {
+    const data = await submitIeltsReadingAttempt(userId, validBody);
+    return c.json({ data });
+  } catch (e) {
+    logger.error('API Error: /api/ielts/reading/attempts', e, {
+      endpoint: '/api/ielts/reading/attempts',
+      user_id: userId,
+      test_id: validBody?.testId,
+      response_count: responseCount,
+    });
+    return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
+  }
+});
 
 // POST /api/ielts/listening/attempts
 ieltsRouter.post('/listening/attempts', validateJson(IeltsListeningAttemptSchema, 'Missing test ID'), async (c) => {
-    if (!isIeltsListeningEnabled()) {
-      return c.json({ error: 'IELTS listening is disabled.' }, 404);
-    }
+  if (!isIeltsListeningEnabled()) {
+    return c.json({ error: 'IELTS listening is disabled.' }, 404);
+  }
 
-    const userId = c.get('userId');
-    const validBody = c.req.valid('json');
-    const responseCount = Array.isArray(validBody?.responses) ? validBody.responses.length : 0;
+  const userId = c.get('userId');
+  const validBody = c.req.valid('json');
+  const responseCount = Array.isArray(validBody?.responses) ? validBody.responses.length : 0;
 
-    try {
-      const data = await submitIeltsListeningAttempt(userId, validBody);
-      return c.json({ data });
-    } catch (e) {
-      logger.error('API Error: /api/ielts/listening/attempts', e, {
-        endpoint: '/api/ielts/listening/attempts',
-        user_id: userId,
-        test_id: validBody?.testId,
-        response_count: responseCount,
-      });
-      return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
-    }
-  },
-);
+  try {
+    const data = await submitIeltsListeningAttempt(userId, validBody);
+    return c.json({ data });
+  } catch (e) {
+    logger.error('API Error: /api/ielts/listening/attempts', e, {
+      endpoint: '/api/ielts/listening/attempts',
+      user_id: userId,
+      test_id: validBody?.testId,
+      response_count: responseCount,
+    });
+    return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
+  }
+});
 
 // GET /api/ielts/dashboard
 ieltsRouter.get('/dashboard', async (c) => {

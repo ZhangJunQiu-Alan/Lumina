@@ -181,27 +181,23 @@ libraryRouter.get('/saved-words', async (c) => {
 });
 
 // POST /api/library/saved-words
-libraryRouter.post(
-  '/saved-words',
-  validateJson(SaveWordSchema, 'Missing vocabulary item ID'),
-  async (c) => {
-    const { vocabularyItemId, source } = c.req.valid('json');
-    const userId = c.get('userId');
+libraryRouter.post('/saved-words', validateJson(SaveWordSchema, 'Missing vocabulary item ID'), async (c) => {
+  const { vocabularyItemId, source } = c.req.valid('json');
+  const userId = c.get('userId');
 
-    try {
-      const data = await saveWordToLibrary(userId, vocabularyItemId.trim(), source);
-      return c.json({ data });
-    } catch (e) {
-      logger.error('API Error: /api/library/saved-words', e, {
-        endpoint: '/api/library/saved-words',
-        user_id: userId,
-        vocabulary_item_id: vocabularyItemId,
-        source,
-      });
-      return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
-    }
-  },
-);
+  try {
+    const data = await saveWordToLibrary(userId, vocabularyItemId.trim(), source);
+    return c.json({ data });
+  } catch (e) {
+    logger.error('API Error: /api/library/saved-words', e, {
+      endpoint: '/api/library/saved-words',
+      user_id: userId,
+      vocabulary_item_id: vocabularyItemId,
+      source,
+    });
+    return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
+  }
+});
 
 // POST /api/library/saved-words/learning-group
 libraryRouter.post(

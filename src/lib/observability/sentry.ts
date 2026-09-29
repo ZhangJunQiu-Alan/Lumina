@@ -100,11 +100,7 @@ export function setObservabilityUser(user: ObservabilityUser | null): void {
 /**
  * Add custom breadcrumb for debugging user journeys leading up to an error
  */
-export function addObservabilityBreadcrumb(
-  message: string,
-  category = 'ui',
-  data?: Record<string, unknown>,
-): void {
+export function addObservabilityBreadcrumb(message: string, category = 'ui', data?: Record<string, unknown>): void {
   if (import.meta.env.MODE === 'test') return;
 
   Sentry.addBreadcrumb({

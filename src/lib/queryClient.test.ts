@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { queryClient, invalidateHomeQueries, invalidateLibraryQueries, invalidateSavedWordsQueries } from './queryClient';
+import {
+  queryClient,
+  invalidateHomeQueries,
+  invalidateLibraryQueries,
+  invalidateSavedWordsQueries,
+} from './queryClient';
 import { queryKeys } from './queryKeys';
 import {
   getCachedLibraryGroups,
@@ -59,9 +64,7 @@ describe('TanStack Query integration & queryClient', () => {
 
   describe('libraryCache backed by queryClient', () => {
     it('caches and retrieves library groups seamlessly', async () => {
-      const loader = vi.fn().mockResolvedValue([
-        { id: 'group-1', name: 'Group 1', totalWords: 10 },
-      ]);
+      const loader = vi.fn().mockResolvedValue([{ id: 'group-1', name: 'Group 1', totalWords: 10 }]);
 
       const groups = await refreshLibraryGroups('user-1', loader);
       expect(groups).toHaveLength(1);

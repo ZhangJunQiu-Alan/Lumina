@@ -55,10 +55,7 @@ export async function setupApiMocks(page: Page, options: SetupApiMockOptions = {
             lastActiveAt: new Date().toISOString(),
           },
         };
-        window.localStorage.setItem(
-          `lumina.learning-cache.v1.${user.id}.group-e2e-1`,
-          JSON.stringify(recoveryData),
-        );
+        window.localStorage.setItem(`lumina.learning-cache.v1.${user.id}.group-e2e-1`, JSON.stringify(recoveryData));
       } else {
         window.localStorage.removeItem('lumina.localAuth.session');
       }

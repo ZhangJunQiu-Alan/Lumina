@@ -15,7 +15,10 @@ audioRouter.use('*', requireAuth);
 
 const ttsSingleQuota = requireExpensiveQuota('tts');
 const ttsBatchQuota = requireExpensiveQuota('tts', async (c) => {
-  const body = await c.req.raw.clone().json().catch(() => ({}));
+  const body = await c.req.raw
+    .clone()
+    .json()
+    .catch(() => ({}));
   return Math.min(countStringArray(body?.words), 30) * 2;
 });
 
@@ -36,23 +39,21 @@ audioRouter.get('/:word', ttsSingleQuota, async (c) => {
 });
 
 // POST /api/audio/batch
-audioRouter.post(
-  '/batch',
-  ttsBatchQuota,
-  validateJson(AudioBatchSchema, 'Missing words array'),
-  async (c) => {
-    const { words } = c.req.valid('json');
-    const cleaned = words.map((w: string) => w.trim()).filter(Boolean).slice(0, 30);
+audioRouter.post('/batch', ttsBatchQuota, validateJson(AudioBatchSchema, 'Missing words array'), async (c) => {
+  const { words } = c.req.valid('json');
+  const cleaned = words
+    .map((w: string) => w.trim())
+    .filter(Boolean)
+    .slice(0, 30);
 
-    try {
-      const urls = await batchGenerateAudio(cleaned);
-      return c.json({ data: urls });
-    } catch (e) {
-      logger.error('API Error: /api/audio/batch', e, { endpoint: '/api/audio/batch' });
-      return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
-    }
-  },
-);
+  try {
+    const urls = await batchGenerateAudio(cleaned);
+    return c.json({ data: urls });
+  } catch (e) {
+    logger.error('API Error: /api/audio/batch', e, { endpoint: '/api/audio/batch' });
+    return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
+  }
+});
 
 // POST /api/example-audio
 export const handleExampleAudio = async (c: any) => {
@@ -72,9 +73,4 @@ export const handleExampleAudio = async (c: any) => {
   }
 };
 
-audioRouter.post(
-  '/example-audio',
-  ttsSingleQuota,
-  validateJson(ExampleAudioSchema),
-  handleExampleAudio,
-);
+audioRouter.post('/example-audio', ttsSingleQuota, validateJson(ExampleAudioSchema), handleExampleAudio);

@@ -77,9 +77,8 @@ export async function refreshSavedWords(
 }
 
 export function removeSavedWordFromCache(userId: string, vocabularyItemId: string) {
-  queryClient.setQueryData<SavedWordEntry[]>(
-    queryKeys.library.savedWords(userId),
-    (old) => (old ? old.filter((entry) => entry.vocabularyItemId !== vocabularyItemId) : old),
+  queryClient.setQueryData<SavedWordEntry[]>(queryKeys.library.savedWords(userId), (old) =>
+    old ? old.filter((entry) => entry.vocabularyItemId !== vocabularyItemId) : old,
   );
 }
 
@@ -103,9 +102,8 @@ export async function refreshLibraryGroupDetail(
 }
 
 export function removeLibraryGroupFromCache(userId: string, groupId: string) {
-  queryClient.setQueryData<LibraryGroupSummary[]>(
-    queryKeys.library.groups(userId),
-    (old) => (old ? old.filter((group) => group.id !== groupId) : old),
+  queryClient.setQueryData<LibraryGroupSummary[]>(queryKeys.library.groups(userId), (old) =>
+    old ? old.filter((group) => group.id !== groupId) : old,
   );
   queryClient.removeQueries({
     queryKey: queryKeys.library.groupDetail(userId, groupId),
@@ -146,9 +144,7 @@ export async function refreshOfficialLibraryDetail(
   });
 }
 
-export function getCachedOfficialCompletionCounts(
-  userId: string,
-): CacheEntry<OfficialLibraryCompletionCounts> | null {
+export function getCachedOfficialCompletionCounts(userId: string): CacheEntry<OfficialLibraryCompletionCounts> | null {
   return getEntryFromQuery(queryKeys.library.officialCompletion(userId));
 }
 

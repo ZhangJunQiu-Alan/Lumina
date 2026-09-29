@@ -95,7 +95,7 @@ app.onError((err, c) => {
 
   return c.json(
     {
-      error: httpStatus === 400 ? 'Bad request' : (err.message || 'Request failed'),
+      error: httpStatus === 400 ? 'Bad request' : err.message || 'Request failed',
       request_id: requestId,
     },
     httpStatus as any,

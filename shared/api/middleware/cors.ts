@@ -16,7 +16,8 @@ const defaultAllowedOrigins = [
 ];
 
 function resolveAllowedOrigins(): Set<string> {
-  const env = typeof process !== 'undefined' && process.env ? process.env : (globalThis as any).Deno?.env?.toObject() ?? {};
+  const env =
+    typeof process !== 'undefined' && process.env ? process.env : ((globalThis as any).Deno?.env?.toObject() ?? {});
   const appOrigin = env.APP_ORIGIN?.trim();
   const configuredOrigins = (env.LUMINA_APP_ORIGINS ?? '')
     .split(',')

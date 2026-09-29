@@ -11,10 +11,7 @@ export interface UseLearningAudioOptions {
   canPlayExampleAudio?: boolean;
 }
 
-export function useLearningAudio({
-  currentWord,
-  canPlayExampleAudio = true,
-}: UseLearningAudioOptions = {}) {
+export function useLearningAudio({ currentWord, canPlayExampleAudio = true }: UseLearningAudioOptions = {}) {
   const { preferences } = useLearningPreferences();
   const preferencesRef = useRef(preferences);
   preferencesRef.current = preferences;

@@ -78,9 +78,7 @@ export const Round1View: React.FC<Round1ViewProps> = ({
               <div
                 className={cx(
                   'flex min-w-0 flex-col gap-2',
-                  round1MemoryTip
-                    ? '2xl:flex-row 2xl:items-start 2xl:gap-6'
-                    : 'lg:flex-row lg:items-start lg:gap-6',
+                  round1MemoryTip ? '2xl:flex-row 2xl:items-start 2xl:gap-6' : 'lg:flex-row lg:items-start lg:gap-6',
                 )}
               >
                 <div className={cx('min-w-0', round1MemoryTip ? '2xl:flex-shrink-0' : 'lg:flex-shrink-0')}>
@@ -131,18 +129,10 @@ export const Round1View: React.FC<Round1ViewProps> = ({
           {hasRound1InfoCards && (
             <div className="grid gap-3 sm:gap-4 lg:grid-cols-[repeat(auto-fit,minmax(18rem,1fr))]">
               {showRound1MorphologyCard && (
-                <Round1MorphologyCard
-                  word={viewedWord}
-                  targetWords={lookupTargetWords}
-                  onWordClick={openPopover}
-                />
+                <Round1MorphologyCard word={viewedWord} targetWords={lookupTargetWords} onWordClick={openPopover} />
               )}
               {showRound1RelationsCard && (
-                <Round1RelationsCard
-                  word={viewedWord}
-                  targetWords={lookupTargetWords}
-                  onWordClick={openPopover}
-                />
+                <Round1RelationsCard word={viewedWord} targetWords={lookupTargetWords} onWordClick={openPopover} />
               )}
               {showRound1ContextCard && (
                 <Round1ConfusingCard

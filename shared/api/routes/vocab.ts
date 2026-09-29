@@ -38,7 +38,10 @@ export const vocabRouter = new Hono<AppEnv>();
 vocabRouter.use('*', requireAuth);
 
 const aiVocabQuota = requireExpensiveQuota('ai_vocab', async (c) => {
-  const body = await c.req.raw.clone().json().catch(() => ({}));
+  const body = await c.req.raw
+    .clone()
+    .json()
+    .catch(() => ({}));
   return countStringArray(body?.words);
 });
 const aiVocabSingleQuota = requireExpensiveQuota('ai_vocab');
@@ -162,60 +165,52 @@ vocabRouter.post(
 );
 
 // POST /api/vocab/lookup
-vocabRouter.post(
-  '/lookup',
-  validateJson(VocabLookupSchema, 'Missing word'),
-  async (c) => {
-    const { word } = c.req.valid('json');
-    const userId = c.get('userId');
+vocabRouter.post('/lookup', validateJson(VocabLookupSchema, 'Missing word'), async (c) => {
+  const { word } = c.req.valid('json');
+  const userId = c.get('userId');
 
-    try {
-      const data = await lookupWordForPopover(userId, word);
-      return c.json(data ? { data } : { data: null, missing: true });
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      logger.error('API Error: /api/vocab/lookup', e, { endpoint: '/api/vocab/lookup', user_id: userId, word });
+  try {
+    const data = await lookupWordForPopover(userId, word);
+    return c.json(data ? { data } : { data: null, missing: true });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error('API Error: /api/vocab/lookup', e, { endpoint: '/api/vocab/lookup', user_id: userId, word });
 
-      if (e instanceof EnrichmentResponseValidationError || e instanceof EnrichmentServiceUnavailableError) {
-        return c.json({ error: message }, e.statusCode as any);
-      }
-      return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
+    if (e instanceof EnrichmentResponseValidationError || e instanceof EnrichmentServiceUnavailableError) {
+      return c.json({ error: message }, e.statusCode as any);
     }
-  },
-);
+    return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
+  }
+});
 
 // POST /api/vocab/report
-vocabRouter.post(
-  '/report',
-  validateJson(VocabReportSchema, 'Missing vocabulary item ID'),
-  async (c) => {
-    const userId = c.get('userId');
-    const { vocabularyItemId, wordSnapshot, learningGroupId, sessionRound, issueType, note, routePath, userAgent } =
-      c.req.valid('json');
+vocabRouter.post('/report', validateJson(VocabReportSchema, 'Missing vocabulary item ID'), async (c) => {
+  const userId = c.get('userId');
+  const { vocabularyItemId, wordSnapshot, learningGroupId, sessionRound, issueType, note, routePath, userAgent } =
+    c.req.valid('json');
 
-    try {
-      const data = await reportVocabularyIssue(userId, {
-        vocabularyItemId,
-        wordSnapshot: typeof wordSnapshot === 'string' ? wordSnapshot : null,
-        learningGroupId: typeof learningGroupId === 'string' ? learningGroupId : null,
-        sessionRound: typeof sessionRound === 'string' ? sessionRound : null,
-        issueType,
-        note: typeof note === 'string' ? note : null,
-        routePath: typeof routePath === 'string' ? routePath : null,
-        userAgent: typeof userAgent === 'string' ? userAgent : null,
-      });
-      return c.json({ data });
-    } catch (e) {
-      logger.error('API Error: /api/vocab/report', e, {
-        endpoint: '/api/vocab/report',
-        user_id: userId,
-        vocabulary_item_id: vocabularyItemId,
-        issue_type: issueType,
-      });
-      return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
-    }
-  },
-);
+  try {
+    const data = await reportVocabularyIssue(userId, {
+      vocabularyItemId,
+      wordSnapshot: typeof wordSnapshot === 'string' ? wordSnapshot : null,
+      learningGroupId: typeof learningGroupId === 'string' ? learningGroupId : null,
+      sessionRound: typeof sessionRound === 'string' ? sessionRound : null,
+      issueType,
+      note: typeof note === 'string' ? note : null,
+      routePath: typeof routePath === 'string' ? routePath : null,
+      userAgent: typeof userAgent === 'string' ? userAgent : null,
+    });
+    return c.json({ data });
+  } catch (e) {
+    logger.error('API Error: /api/vocab/report', e, {
+      endpoint: '/api/vocab/report',
+      user_id: userId,
+      vocabulary_item_id: vocabularyItemId,
+      issue_type: issueType,
+    });
+    return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
+  }
+});
 
 // POST /api/vocab/full-enrich
 vocabRouter.post(
@@ -234,31 +229,34 @@ vocabRouter.post(
       }
       return c.json(result, (result.queued ? 202 : 200) as any);
     } catch (e) {
-      logger.error('API Error: /api/vocab/full-enrich', e, { endpoint: '/api/vocab/full-enrich', user_id: userId, word });
+      logger.error('API Error: /api/vocab/full-enrich', e, {
+        endpoint: '/api/vocab/full-enrich',
+        user_id: userId,
+        word,
+      });
       return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
     }
   },
 );
 
 vocabRouter.post('/persist', validateJson(VocabPersistSchema, 'Missing entries array'), async (c) => {
-    const { entries, sourceType: rawSourceType } = c.req.valid('json');
-    const sourceType = resolveVocabularySourceType(rawSourceType);
-    const userId = c.get('userId');
+  const { entries, sourceType: rawSourceType } = c.req.valid('json');
+  const sourceType = resolveVocabularySourceType(rawSourceType);
+  const userId = c.get('userId');
 
-    try {
-      const data = await persistFullVocabularyEntries(entries as any, sourceType);
-      return c.json({ data });
-    } catch (e) {
-      logger.error('API Error: /api/vocab/persist', e, {
-        endpoint: '/api/vocab/persist',
-        user_id: userId,
-        source_type: sourceType,
-        entry_count: entries.length,
-      });
-      return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
-    }
-  },
-);
+  try {
+    const data = await persistFullVocabularyEntries(entries as any, sourceType);
+    return c.json({ data });
+  } catch (e) {
+    logger.error('API Error: /api/vocab/persist', e, {
+      endpoint: '/api/vocab/persist',
+      user_id: userId,
+      source_type: sourceType,
+      entry_count: entries.length,
+    });
+    return c.json({ error: 'Internal server error', request_id: c.get('requestId') }, 500);
+  }
+});
 
 // POST /api/vocab/article
 vocabRouter.post(

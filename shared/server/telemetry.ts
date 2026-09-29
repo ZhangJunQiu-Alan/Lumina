@@ -73,10 +73,7 @@ function generateEventId(): string {
  * Works seamlessly in both Node.js and Supabase Edge (Deno) environments
  * using standard Web APIs (fetch, Headers).
  */
-export async function captureServerException(
-  error: unknown,
-  context: ServerTelemetryContext = {},
-): Promise<void> {
+export async function captureServerException(error: unknown, context: ServerTelemetryContext = {}): Promise<void> {
   const dsnString = getEnv('SENTRY_DSN') || getEnv('VITE_SENTRY_DSN');
   const parsed = parseSentryDsn(dsnString);
   if (!parsed) return;

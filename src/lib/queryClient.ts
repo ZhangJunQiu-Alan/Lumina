@@ -45,4 +45,3 @@ export function invalidateReviewQueries(userId?: string) {
     queryKey: queryKeys.review.all(userId),
   });
 }
-

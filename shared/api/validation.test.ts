@@ -42,10 +42,8 @@ describe('Task 3.2: Zod Runtime Schema Validation & Error Contracts', () => {
         await next();
       });
 
-      app.post(
-        '/api/test/attempt',
-        validateJson(ReviewAttemptSchema, 'Missing required attempt fields'),
-        (c) => c.json({ ok: true, data: c.req.valid('json') }),
+      app.post('/api/test/attempt', validateJson(ReviewAttemptSchema, 'Missing required attempt fields'), (c) =>
+        c.json({ ok: true, data: c.req.valid('json') }),
       );
 
       // 1. Missing required fields
