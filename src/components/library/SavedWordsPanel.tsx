@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
+import { duration, ease, staggerDelay } from '../../lib/motion';
 import {
   AlertCircle,
   BookOpen,
@@ -596,8 +597,8 @@ export function SavedWordsPanel({
                   key={entry.id}
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.015 }}
-                  className={`rounded-[24px] border bg-white px-5 py-4 shadow-[0_14px_34px_rgba(0,0,0,0.05)] transition-all ${
+                  transition={{ duration: duration.base, ease: ease.out, delay: staggerDelay(index) }}
+                  className={`rounded-[24px] border bg-white px-5 py-4 shadow-[0_14px_34px_rgba(0,0,0,0.05)] transition-[color,background-color,border-color,box-shadow,translate] ${
                     selected
                       ? 'border-apple-blue/45 ring-2 ring-apple-blue/15'
                       : 'border-white/80 hover:-translate-y-0.5 hover:shadow-[0_20px_42px_rgba(0,0,0,0.07)]'

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { ease } from '../../lib/motion';
 import {
   AlertCircle,
   ArrowRight,
@@ -71,7 +72,7 @@ function CompletionProgressRing({
           strokeLinecap="round"
           initial={{ strokeDashoffset: circumference }}
           animate={{ strokeDashoffset }}
-          transition={{ duration: 0.8, ease: 'easeOut' }}
+          transition={{ duration: 0.8, ease: ease.out }}
           style={{
             strokeDasharray: circumference,
           }}

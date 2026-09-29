@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
+import { duration, ease } from '../../lib/motion';
 import { Loader2, Plus, Trash2, Volume2, X } from 'lucide-react';
 import { useSavedWords } from '../../contexts/SavedWordsContext';
 import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
@@ -299,7 +300,7 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
       initial={{ opacity: 0, scale: 0.98, y: 4 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.98, y: 4 }}
-      transition={{ duration: 0.16, ease: 'easeOut' }}
+      transition={{ duration: duration.fast, ease: ease.out }}
       style={{ top: position.top, left: position.left, width: POPOVER_WIDTH }}
       className="fixed z-[80] overflow-hidden rounded-[26px] border-2 border-[#d8cdb9] bg-[#fffdf3] p-4 text-left shadow-[0_5px_0_0_#d4c9b4,0_24px_70px_rgba(61,52,40,0.18)]"
       role="dialog"

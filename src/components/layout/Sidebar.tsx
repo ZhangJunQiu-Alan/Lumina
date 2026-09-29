@@ -1,4 +1,5 @@
 import { motion } from 'motion/react';
+import { duration, ease } from '../../lib/motion';
 import { BookMarked, BookOpen, ClipboardList, LayoutDashboard, User } from 'lucide-react';
 import { LuminaLogo } from '../brand/LuminaLogo';
 
@@ -21,7 +22,7 @@ export const Sidebar = ({ activePath, onNavigate, hideOnMobile = false }: Sideba
     <motion.aside
       initial={{ x: -100, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
-      transition={{ duration: 0.24, ease: 'easeOut' }}
+      transition={{ duration: duration.base, ease: ease.out }}
       className={`lumina-sidebar ${hideOnMobile ? 'hidden lg:flex' : 'flex'}`}
     >
       <button

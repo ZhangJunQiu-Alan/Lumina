@@ -5,6 +5,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, Suspense, lazy } from 'react';
 import { motion } from 'motion/react';
+import { duration, ease } from './lib/motion';
 import { AlertCircle, ArrowLeft, Loader2, Settings } from 'lucide-react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -111,7 +112,6 @@ const SessionRouteView = lazy(() =>
   import('./components/learning/SessionRouteView').then((m) => ({ default: m.SessionRouteView })),
 );
 
-
 interface OpenLearningGroupOptions {
   libraryId?: OfficialLibraryId | null;
   officialMode?: OfficialStudyMode | null;
@@ -197,7 +197,6 @@ const LoadingShell = ({ isSkeleton = false }: { isSkeleton?: boolean }) => {
   );
 };
 
-
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -236,6 +235,7 @@ export default function App() {
   const [sessionStartError, setSessionStartError] = useState('');
   const [isSessionSettingsOpen, setIsSessionSettingsOpen] = useState(false);
   const isSessionRoute = location.pathname.startsWith('/app/session');
+  const routeSection = location.pathname.split('/')[2] ?? '';
   const isHomeRoute = location.pathname.startsWith('/app/home');
   const isIeltsTestRoute =
     location.pathname.startsWith('/app/ielts-reading/test/') ||
@@ -348,7 +348,6 @@ export default function App() {
     setArticleGenerationError('');
     setRound('round1');
   }, [cancelArticleGeneration, setActiveSessionSeed]);
-
 
   const openLearningGroup = useCallback(
     async (groupId: string, preloadedWords?: Word[], options: OpenLearningGroupOptions = {}) => {
@@ -1449,7 +1448,13 @@ export default function App() {
                     </button>
                   </div>
                 )}
-                <div className={cx(isSessionRoute && 'flex-1 min-h-0')}>
+                <motion.div
+                  key={routeSection}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: duration.base, ease: ease.out }}
+                  className={cx(isSessionRoute && 'flex-1 min-h-0')}
+                >
                   <Suspense fallback={<LoadingShell isSkeleton={location.pathname.includes('/library')} />}>
                     <Routes>
                       <Route
@@ -1581,7 +1586,7 @@ export default function App() {
                       <Route path="*" element={<Navigate to="/app/home" replace />} />
                     </Routes>
                   </Suspense>
-                </div>
+                </motion.div>
               </div>
             </main>
             <SessionSettingsDrawer

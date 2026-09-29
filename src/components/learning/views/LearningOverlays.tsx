@@ -1,20 +1,9 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import {
-  BookMarked,
-  CheckCircle2,
-  Flag,
-  Loader2,
-  MoreHorizontal,
-  X,
-  XCircle,
-} from 'lucide-react';
+import { duration, ease } from '../../../lib/motion';
+import { BookMarked, CheckCircle2, Flag, Loader2, MoreHorizontal, X, XCircle } from 'lucide-react';
 import { cx } from '../../shared/LearningUI';
-import {
-  type ActionFeedback,
-  type SessionActionKind,
-  VOCABULARY_ISSUE_OPTIONS,
-} from '../learningEngineUtils';
+import { type ActionFeedback, type SessionActionKind, VOCABULARY_ISSUE_OPTIONS } from '../learningEngineUtils';
 import type { VocabularyIssueType } from '../../../lib/vocabReportApi';
 
 export interface ActionFeedbackToastProps {
@@ -84,7 +73,7 @@ export const ReportIssueSheet: React.FC<ReportIssueSheetProps> = ({
           initial={{ y: 24, scale: 0.98 }}
           animate={{ y: 0, scale: 1 }}
           exit={{ y: 24, scale: 0.98 }}
-          transition={{ duration: 0.18, ease: 'easeOut' }}
+          transition={{ duration: duration.fast, ease: ease.out }}
           className="w-full max-w-md rounded-[28px] border border-white/85 bg-white/95 p-4 shadow-[0_28px_70px_rgba(61,52,40,0.22)] backdrop-blur-xl"
           onClick={(event) => event.stopPropagation()}
         >
@@ -194,7 +183,7 @@ export const WordActionMenu: React.FC<WordActionMenuProps> = ({
           initial={{ opacity: 0, y: -6, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -6, scale: 0.98 }}
-          transition={{ duration: 0.14, ease: 'easeOut' }}
+          transition={{ duration: duration.fast, ease: ease.out }}
           className="absolute right-0 top-[3.25rem] z-[90] w-52 overflow-hidden rounded-[22px] border border-white/85 bg-white/92 p-1.5 text-left shadow-[0_22px_56px_rgba(61,52,40,0.18)] backdrop-blur-xl"
         >
           <button

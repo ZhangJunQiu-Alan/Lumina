@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { duration, ease, staggerDelay } from '../../lib/motion';
 import { AlertCircle, ArrowRight, BookOpen, CheckCircle2, Check, Loader2, PlusCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../lib/api';
@@ -442,7 +443,7 @@ export const ImportView = () => {
                   key={`${entry.word}-${index}`}
                   initial={{ opacity: 0, x: -12 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.04 }}
+                  transition={{ duration: duration.base, ease: ease.out, delay: staggerDelay(index, 0.04) }}
                   className="glass flex items-start justify-between gap-4 rounded-2xl px-6 py-4 jelly-shadow"
                 >
                   <div className="min-w-0 flex-1">

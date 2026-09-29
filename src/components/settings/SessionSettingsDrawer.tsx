@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
+import { spring } from '../../lib/motion';
 import { SlidersHorizontal, X } from 'lucide-react';
 import { LearningSettingsContent } from './LearningSettingsContent';
 
@@ -21,7 +22,7 @@ export function SessionSettingsDrawer({ isOpen, onClose }: SessionSettingsDrawer
             initial={{ y: '100%', opacity: 0.96 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: '100%', opacity: 0.96 }}
-            transition={{ type: 'spring', stiffness: 330, damping: 34 }}
+            transition={spring.sheet}
             className="fixed inset-x-0 bottom-0 z-[60] flex max-h-[88vh] flex-col overflow-hidden rounded-t-[36px] border-2 border-[#ded2bf] bg-[#fffaf0] shadow-[0_-5px_0_0_rgba(197,181,159,0.70),0_-28px_90px_rgba(61,52,40,0.18)] lg:hidden"
             onPointerDown={(event) => event.stopPropagation()}
           >
@@ -40,7 +41,7 @@ export function SessionSettingsDrawer({ isOpen, onClose }: SessionSettingsDrawer
             initial={{ x: 560, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 560, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 32 }}
+            transition={spring.sheet}
             className="fixed bottom-6 right-6 top-6 z-[60] hidden w-[min(540px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[36px] border-2 border-[#ded2bf] bg-[#fffaf0] shadow-[0_6px_0_0_rgba(197,181,159,0.70),0_32px_110px_rgba(61,52,40,0.18)] lg:flex"
             onPointerDown={(event) => event.stopPropagation()}
           >

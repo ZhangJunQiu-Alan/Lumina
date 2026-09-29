@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { duration, ease, spring, staggerDelay } from '../../lib/motion';
 import { Icon as IslandIcon, type IconName } from 'animal-island-ui';
 import {
   AlertTriangle,
@@ -255,7 +256,7 @@ function OrbitBadge({
       onClick={onSelect}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.1 + index * 0.05 }}
+      transition={{ duration: duration.base, ease: ease.out, delay: 0.1 + staggerDelay(index, 0.05) }}
       className="home-orbit-badge group flex flex-col items-center gap-2 text-center sm:gap-2.5 xl:gap-3"
     >
       <div className="relative">
@@ -448,7 +449,7 @@ function RoutineDropdown<T extends string>({
           initial={{ opacity: 0, y: -4, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -4, scale: 0.98 }}
-          transition={{ duration: 0.14 }}
+          transition={{ duration: duration.fast, ease: ease.out }}
           className="absolute left-0 right-0 top-[calc(100%+0.45rem)] z-30 overflow-hidden rounded-[18px] border border-white/85 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,250,239,0.96))] p-1.5 text-left shadow-[0_18px_40px_rgba(72,55,29,0.18)] backdrop-blur-xl"
         >
           <div role="listbox">
@@ -701,7 +702,7 @@ export const HomeView = ({
         <motion.section
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: duration.slow, ease: ease.out }}
           className="home-panel flex min-w-0 flex-col px-1 pb-3 pt-5 sm:px-3 sm:pb-5 sm:pt-7 xl:px-4 xl:pt-9"
         >
           <div className="home-metrics flex flex-row gap-3 overflow-x-auto pb-2 sm:grid sm:grid-cols-3 sm:gap-4 sm:overflow-visible sm:pb-0 xl:gap-5">
@@ -776,7 +777,7 @@ export const HomeView = ({
         <motion.section
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: duration.slow, ease: ease.out }}
           className="home-panel home-routine flex min-w-0 flex-col items-center px-1 pb-3 pt-4 text-center sm:px-3 sm:pb-5 sm:pt-6 xl:px-4 xl:pt-8"
         >
           <div className="home-routine-content flex w-full flex-col items-center pb-4 pt-1 sm:pt-2 xl:pb-5 xl:pt-3">
@@ -799,7 +800,7 @@ export const HomeView = ({
                 alt="Lumina Learning Hero"
                 initial={{ scale: 0.85, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: 'spring', stiffness: 100, damping: 20 }}
+                transition={spring.gentle}
                 className="home-routine-image relative z-10 w-full max-w-[200px] sm:max-w-[300px] object-contain drop-shadow-[0_30px_60px_rgba(110,78,32,0.25)] xl:max-w-[360px]"
               />
             </div>
@@ -899,7 +900,7 @@ export const HomeView = ({
               initial={{ opacity: 0, y: 14, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.98 }}
-              transition={{ duration: 0.16 }}
+              transition={{ duration: duration.fast, ease: ease.out }}
               className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-[430px] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[24px] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,249,239,0.96))] p-5 text-left shadow-[0_28px_70px_rgba(71,51,24,0.24)] backdrop-blur-xl sm:rounded-[28px] sm:p-6"
             >
               <button

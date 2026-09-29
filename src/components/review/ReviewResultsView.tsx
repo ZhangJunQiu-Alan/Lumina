@@ -2,6 +2,9 @@ import { motion } from 'motion/react';
 import { ArrowRight, CheckCircle2, Trophy } from 'lucide-react';
 import { MemoryState, ReviewSummaryItem } from '../../types';
 import { IslandButton } from '../shared/AnimalPrimitives';
+import { Confetti } from '../shared/Confetti';
+import { CountUp } from '../shared/CountUp';
+import { duration, ease, spring, staggerDelay } from '../../lib/motion';
 
 interface ReviewResultsViewProps {
   items: ReviewSummaryItem[];
@@ -47,6 +50,13 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
   const confirmedCount = items.filter(
     (item) => item.transition.from !== null && item.transition.from === item.transition.to,
   ).length;
+  const shouldCelebrate = items.length > 0 && (upgradedCount + graduatedCount) / items.length >= 0.5;
+  const stats = [
+    { label: '状态提升', value: upgradedCount, tone: 'bg-apple-blue/8 text-apple-blue' },
+    { label: '已掌握', value: graduatedCount, tone: 'bg-apple-green/10 text-apple-green' },
+    { label: '状态保持', value: confirmedCount, tone: 'bg-black/[0.04] text-text-primary' },
+    { label: '状态下降', value: downgradedCount, tone: 'bg-apple-red/8 text-apple-red' },
+  ];
 
   if (items.length === 0) {
     return (
@@ -79,21 +89,39 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: duration.slow, ease: ease.out }}
       className="mx-auto w-full max-w-4xl space-y-6"
     >
+      {shouldCelebrate && <Confetti />}
       <div className="glass rounded-[28px] p-6 jelly-shadow sm:p-10">
         <div className="flex items-start justify-between gap-4 sm:items-center sm:gap-6">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">状态更新</p>
             <h2 className="mt-2 text-3xl font-black">本轮已完成</h2>
-            <p className="mt-3 text-sm text-text-secondary">
-              共 {items.length} 词 · 状态提升 {upgradedCount} 个 · 状态保持 {confirmedCount} 个 · 状态下降{' '}
-              {downgradedCount} 个 · 掌握 {graduatedCount} 个
-            </p>
+            <p className="mt-3 text-sm text-text-secondary">本轮共 {items.length} 个词</p>
           </div>
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-apple-green/10 text-apple-green sm:h-16 sm:w-16">
+          <motion.div
+            initial={{ scale: 0, rotate: -20 }}
+            animate={{ scale: 1, rotate: shouldCelebrate ? [0, -12, 10, -6, 0] : 0 }}
+            transition={{ scale: { ...spring.pop, delay: 0.15 }, rotate: { duration: 0.6, delay: 0.3 } }}
+            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-apple-green/10 text-apple-green sm:h-16 sm:w-16"
+          >
             <Trophy className="h-7 w-7 sm:h-8 sm:w-8" />
-          </div>
+          </motion.div>
+        </div>
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {stats.map((stat, index) => (
+            <motion.div
+              key={stat.label}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: duration.base, ease: ease.out, delay: 0.1 + index * 0.06 }}
+              className={`rounded-2xl px-4 py-3 ${stat.tone}`}
+            >
+              <CountUp value={stat.value} delay={0.2 + index * 0.06} className="block text-3xl font-black" />
+              <p className="mt-1 text-xs font-bold opacity-80">{stat.label}</p>
+            </motion.div>
+          ))}
         </div>
       </div>
 
@@ -103,7 +131,7 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
             key={item.wordId}
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.04 }}
+            transition={{ duration: duration.base, ease: ease.out, delay: 0.3 + staggerDelay(index, 0.04) }}
             className="glass flex flex-col gap-4 rounded-2xl p-5 jelly-shadow sm:flex-row sm:items-center sm:justify-between sm:p-6"
           >
             <div>

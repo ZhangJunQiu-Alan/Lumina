@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { duration, ease } from '../../lib/motion';
 import { AlertCircle, BookMarked, Clock3, X, Volume2 } from 'lucide-react';
 import type { LibraryGroupWord, MemoryState } from '../../types';
 import { toConfusingPairs, toWordMorphology, toWordRelations } from '../../types';
@@ -305,7 +306,7 @@ export function NotebookView() {
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
+                      transition={{ duration: duration.slow, ease: ease.out }}
                     >
                       <div className="border-t border-black/5 p-6 sm:p-8 space-y-8">
                         {preferences.memoryTipEnabled && word.memoryTip && (

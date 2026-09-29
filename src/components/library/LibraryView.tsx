@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { duration, ease, staggerDelay } from '../../lib/motion';
 import {
   AlertCircle,
   AlertTriangle,
@@ -1212,7 +1213,7 @@ export const LibraryView = ({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18 }}
+            transition={{ duration: duration.fast, ease: ease.out }}
           >
             {userId && <PersonalLearningGroups groups={groups} onContinue={onStartLearningGroup} />}
             {userId && (
@@ -1231,7 +1232,7 @@ export const LibraryView = ({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18 }}
+            transition={{ duration: duration.fast, ease: ease.out }}
             className="space-y-5"
           >
             <div className="grid grid-cols-1 gap-3 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -1383,9 +1384,9 @@ export const OfficialLibraryDetailView = ({
                 type="button"
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.02 }}
+                transition={{ duration: duration.base, ease: ease.out, delay: staggerDelay(index) }}
                 onClick={() => setSelectedId(word.id)}
-                className="group rounded-[30px] border border-white/70 bg-white/78 p-5 text-left shadow-[0_14px_38px_rgba(0,0,0,0.05)] transition-all hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(0,0,0,0.08)]"
+                className="group rounded-[30px] border border-white/70 bg-white/78 p-5 text-left shadow-[0_14px_38px_rgba(0,0,0,0.05)] transition-[translate,box-shadow] hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(0,0,0,0.08)]"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
@@ -1650,9 +1651,9 @@ export const LibraryGroupDetailView = ({
                 type="button"
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.02 }}
+                transition={{ duration: duration.base, ease: ease.out, delay: staggerDelay(index) }}
                 onClick={() => setSelectedId(word.id)}
-                className="group rounded-[30px] border border-white/70 bg-white/78 p-5 text-left shadow-[0_14px_38px_rgba(0,0,0,0.05)] transition-all hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(0,0,0,0.08)]"
+                className="group rounded-[30px] border border-white/70 bg-white/78 p-5 text-left shadow-[0_14px_38px_rgba(0,0,0,0.05)] transition-[translate,box-shadow] hover:-translate-y-0.5 hover:shadow-[0_22px_46px_rgba(0,0,0,0.08)]"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
