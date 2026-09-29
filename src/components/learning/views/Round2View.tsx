@@ -1,19 +1,17 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { slideIn } from '../../../lib/motion';
 import { ChevronRight, Loader2, Volume2, XCircle } from 'lucide-react';
 import type { PronunciationLocale, Word } from '../../../types';
 import { ExampleSentenceList } from '../../shared/ExampleSentenceList';
 import { cx, RoundIndicator, WordSenseList } from '../../shared/LearningUI';
 import { renderProgressBar } from '../Round1Cards';
-import {
-  Round2ChoiceView,
-  type Round2ChoiceOption,
-  type Round2ChoiceSelection,
-} from './Round2ChoiceView';
+import { Round2ChoiceView, type Round2ChoiceOption, type Round2ChoiceSelection } from './Round2ChoiceView';
 
 export interface Round2ViewProps {
   viewedWord: Word;
   viewIndex: number;
+  cardDirection: 1 | -1;
   audioLocale: PronunciationLocale;
   activePronunciationLocale: PronunciationLocale | null;
   displayedPhonetic: string;
@@ -52,6 +50,7 @@ export interface Round2ViewProps {
 export const Round2View: React.FC<Round2ViewProps> = ({
   viewedWord,
   viewIndex,
+  cardDirection,
   audioLocale,
   activePronunciationLocale,
   displayedPhonetic,
@@ -101,8 +100,7 @@ export const Round2View: React.FC<Round2ViewProps> = ({
 
         <motion.div
           key={`${viewedWord.id}:${viewIndex}`}
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
+          {...slideIn(cardDirection)}
           onTouchStart={onCardTouchStart}
           onTouchEnd={onCardTouchEnd}
           onTouchCancel={onCardTouchCancel}

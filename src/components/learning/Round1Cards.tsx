@@ -3,6 +3,7 @@
 // callbacks arrive via props.
 import React from 'react';
 import { motion } from 'motion/react';
+import { spring } from '../../lib/motion';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { PronunciationLocale, RoundType, Word } from '../../types';
 import { ExampleSentenceList } from '../shared/ExampleSentenceList';
@@ -32,18 +33,24 @@ export const AnswerFeedbackCard = ({
   wrongInput?: string | null;
 }) => (
   <motion.div
-    initial={{ opacity: 0, y: 18 }}
-    animate={{ opacity: 1, y: 0 }}
+    initial={{ opacity: 0, y: 18, scale: 0.96 }}
+    animate={{ opacity: 1, y: 0, scale: 1 }}
     exit={{ opacity: 0, y: 10 }}
+    transition={spring.gentle}
     className={cx(
       'mx-auto w-fit max-w-full rounded-[22px] px-5 py-4 text-left font-bold text-white shadow-xl',
       isWrong ? 'bg-apple-red shadow-apple-red/20' : 'bg-[#10B981] shadow-[#10B981]/20',
     )}
   >
     <div className="flex items-start gap-4">
-      <div className="mt-1 flex-shrink-0">
+      <motion.div
+        initial={{ scale: 0, rotate: -45 }}
+        animate={{ scale: 1, rotate: 0 }}
+        transition={{ ...spring.pop, delay: 0.08 }}
+        className="mt-1 flex-shrink-0"
+      >
         {isWrong ? <XCircle className="h-6 w-6" /> : <CheckCircle2 className="h-6 w-6" />}
-      </div>
+      </motion.div>
       <div className="space-y-3">
         <div>
           <p className="text-[10px] uppercase tracking-widest opacity-70">

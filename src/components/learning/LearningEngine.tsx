@@ -1,9 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'motion/react';
-import {
-  ChevronLeft,
-  ChevronRight,
-} from 'lucide-react';
+import { slideIn } from '../../lib/motion';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   getWordPhonetic,
   LearningRoundType,
@@ -22,10 +20,7 @@ import { cx } from '../shared/LearningUI';
 import { buildClozePrompt } from '../../lib/cloze';
 import { useLearningAudio } from './hooks/useLearningAudio';
 import { Round1View } from './views/Round1View';
-import {
-  type Round2ChoiceOption,
-  type Round2ChoiceSelection,
-} from './views/Round2ChoiceView';
+import { type Round2ChoiceOption, type Round2ChoiceSelection } from './views/Round2ChoiceView';
 import { DictationRecallView } from './views/DictationRecallView';
 import { Round2View } from './views/Round2View';
 import { ActionFeedbackToast, ReportIssueSheet, WordActionMenu } from './views/LearningOverlays';
@@ -47,9 +42,7 @@ import {
   stripDiacritics,
   trimDisplayText,
 } from './learningEngineUtils';
-import {
-  InputSessionShell,
-} from './Round1Cards';
+import { InputSessionShell } from './Round1Cards';
 import { ROUND1_REINFORCEMENT_WORD_LIMIT } from '../../../shared/learningProgress';
 
 function areSetsEqual<T>(left: Set<T>, right: Set<T>) {
@@ -227,6 +220,8 @@ export const LearningEngine = ({
   const [queue, setQueue] = useState<Word[]>(initialEngineState.queue);
   const [currentIndex, setCurrentIndex] = useState(initialEngineState.currentIndex);
   const [viewIndex, setViewIndex] = useState(initialEngineState.currentIndex);
+  const [prevViewIndex, setPrevViewIndex] = useState(viewIndex);
+  const [cardDirection, setCardDirection] = useState<1 | -1>(1);
   const [inputValue, setInputValue] = useState('');
   const [isWrong, setIsWrong] = useState(false);
   const [lastWrongInput, setLastWrongInput] = useState<string | null>(null);
@@ -361,6 +356,10 @@ export const LearningEngine = ({
   }, [hydratedDraftKey, inputDraftKey, inputValue, round2ChoiceSelection, showAnswer]);
   const viewedWord = queue[viewIndex] ?? currentWord;
   const isViewingHistory = viewIndex !== currentIndex;
+  if (viewIndex !== prevViewIndex) {
+    setPrevViewIndex(viewIndex);
+    setCardDirection(viewIndex < prevViewIndex && viewIndex < currentIndex ? -1 : 1);
+  }
   const isDictationRound = type === 'round3' || type === 'review';
   const isRecallRound = type === 'round2';
   const lookupTargetWords = useMemo(
@@ -427,7 +426,6 @@ export const LearningEngine = ({
     clearTimeout(answerRevealTimeoutRef.current);
     answerRevealTimeoutRef.current = null;
   }, []);
-
 
   useEffect(() => {
     const currentPassedQueueIndices = [...passedQueueIndicesRef.current].sort((left, right) => left - right);
@@ -1581,7 +1579,6 @@ export const LearningEngine = ({
     </form>
   );
 
-
   const submitErrorBanner = submitError ? (
     <div className="rounded-2xl bg-apple-red/10 px-4 py-3 text-sm font-medium text-apple-red">{submitError}</div>
   ) : null;
@@ -1620,6 +1617,7 @@ export const LearningEngine = ({
       <Round2View
         viewedWord={viewedWord}
         viewIndex={viewIndex}
+        cardDirection={cardDirection}
         audioLocale={audioLocale}
         activePronunciationLocale={activePronunciationLocale}
         displayedPhonetic={displayedPhonetic}
@@ -1722,8 +1720,7 @@ export const LearningEngine = ({
             <div className="hidden items-center sm:flex">{leftNavigationButton}</div>
             <motion.div
               key={`${viewedWord.id}:${viewIndex}`}
-              initial={{ opacity: 0, scale: 0.97, y: 14 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
+              {...slideIn(cardDirection)}
               onTouchStart={handleCardTouchStart}
               onTouchEnd={handleCardTouchEnd}
               onTouchCancel={() => {

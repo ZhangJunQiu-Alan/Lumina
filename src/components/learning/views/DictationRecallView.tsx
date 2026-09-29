@@ -1,5 +1,6 @@
 import React from 'react';
-import { AnimatePresence } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
+import { shake, spring } from '../../../lib/motion';
 import { Loader2, Volume2 } from 'lucide-react';
 import type { Word, PronunciationLocale, RoundType } from '../../../types';
 import type { ClozePrompt } from '../../../lib/cloze';
@@ -168,49 +169,57 @@ export const DictationRecallView: React.FC<DictationRecallViewProps> = ({
       <div className={cx(contentAreaClassName, 'py-8')}>
         <div className="flex min-h-full flex-col justify-center text-center">
           {replayControls}
-          {viewedClozePrompt ? (
-            <Round2ClozePrompt
-              prompt={viewedClozePrompt}
-              inputValue={displayedInputValue}
-              phonetic={displayedClozePhonetic}
-              targetWords={lookupTargetWords}
-              onWordClick={openPopover}
-              canPlaySentenceAudio={canPlayExampleAudio && Boolean(viewedClozeFullSentence)}
-              isSentencePlaying={activeExampleKey === viewedClozeSentenceAudioKey}
-              sentenceAudioLocale={audioLocale}
-              wordInfoText={viewedClozeWordInfoText}
-              onPlaySentence={() => {
-                if (!viewedClozeFullSentence || !viewedClozeSentenceAudioKey) return;
-                onPlayExampleSentence(viewedClozeFullSentence, viewedClozeSentenceAudioKey);
-              }}
-            />
-          ) : (
-            <div className="mx-auto max-w-3xl">
-              <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary">
-                {type === 'review' ? '根据发音写出单词' : '根据提示写出单词'}
-              </p>
-              <p className="mt-5 text-4xl font-black leading-tight text-text-primary md:text-5xl">
-                {viewedWord.chinese_definition}
-              </p>
-              <div className="mt-4 flex items-center justify-center gap-3">
-                <span className="rounded-full bg-black/5 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">
-                  {primaryPos}
-                </span>
-              </div>
-              <div
-                className={cx(
-                  'mt-7 inline-flex items-baseline gap-1.5 rounded-md px-4 py-2 text-2xl md:text-3xl',
-                  type === 'round3' ? 'bg-[#eaf2ff] text-[#2563eb]' : 'bg-apple-blue/10 text-apple-blue/80',
-                )}
-              >
-                {Array.from({ length: viewedExpectedInput.length }, (_, i) => (
-                  <span key={i} className="inline-block min-w-[0.9ch] text-center font-mono">
-                    {displayedInputValue[i] ?? '_'}
+          <motion.div animate={!isViewingHistory && showAnswer && isWrong ? shake : { x: 0 }}>
+            {viewedClozePrompt ? (
+              <Round2ClozePrompt
+                prompt={viewedClozePrompt}
+                inputValue={displayedInputValue}
+                phonetic={displayedClozePhonetic}
+                targetWords={lookupTargetWords}
+                onWordClick={openPopover}
+                canPlaySentenceAudio={canPlayExampleAudio && Boolean(viewedClozeFullSentence)}
+                isSentencePlaying={activeExampleKey === viewedClozeSentenceAudioKey}
+                sentenceAudioLocale={audioLocale}
+                wordInfoText={viewedClozeWordInfoText}
+                onPlaySentence={() => {
+                  if (!viewedClozeFullSentence || !viewedClozeSentenceAudioKey) return;
+                  onPlayExampleSentence(viewedClozeFullSentence, viewedClozeSentenceAudioKey);
+                }}
+              />
+            ) : (
+              <div className="mx-auto max-w-3xl">
+                <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-text-secondary">
+                  {type === 'review' ? '根据发音写出单词' : '根据提示写出单词'}
+                </p>
+                <p className="mt-5 text-4xl font-black leading-tight text-text-primary md:text-5xl">
+                  {viewedWord.chinese_definition}
+                </p>
+                <div className="mt-4 flex items-center justify-center gap-3">
+                  <span className="rounded-full bg-black/5 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-text-secondary">
+                    {primaryPos}
                   </span>
-                ))}
+                </div>
+                <div
+                  className={cx(
+                    'mt-7 inline-flex items-baseline gap-1.5 rounded-md px-4 py-2 text-2xl md:text-3xl',
+                    type === 'round3' ? 'bg-[#eaf2ff] text-[#2563eb]' : 'bg-apple-blue/10 text-apple-blue/80',
+                  )}
+                >
+                  {Array.from({ length: viewedExpectedInput.length }, (_, i) => (
+                    <motion.span
+                      key={`${i}:${displayedInputValue[i] ?? ''}`}
+                      initial={displayedInputValue[i] ? { y: -6, opacity: 0.4 } : false}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={spring.snappy}
+                      className="inline-block min-w-[0.9ch] text-center font-mono"
+                    >
+                      {displayedInputValue[i] ?? '_'}
+                    </motion.span>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </motion.div>
 
           <div className="mt-6 space-y-3">
             {isViewingHistory ? (

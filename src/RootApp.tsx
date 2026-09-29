@@ -1,4 +1,4 @@
-import { motion } from 'motion/react';
+import { MotionConfig, motion } from 'motion/react';
 import { Loader2 } from 'lucide-react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { lazy, Suspense, type ReactNode } from 'react';
@@ -9,18 +9,10 @@ import { SyncStatus } from './components/shared/SyncStatus';
 import { GlobalErrorBoundary } from './components/shared/GlobalErrorBoundary';
 
 const App = lazy(() => import('./App'));
-const LandingView = lazy(() =>
-  import('./components/landing/LandingView').then((m) => ({ default: m.LandingView })),
-);
-const AuthView = lazy(() =>
-  import('./components/auth/AuthView').then((m) => ({ default: m.AuthView })),
-);
-const PrivacyView = lazy(() =>
-  import('./components/legal/LegalView').then((m) => ({ default: m.PrivacyView })),
-);
-const TermsView = lazy(() =>
-  import('./components/legal/LegalView').then((m) => ({ default: m.TermsView })),
-);
+const LandingView = lazy(() => import('./components/landing/LandingView').then((m) => ({ default: m.LandingView })));
+const AuthView = lazy(() => import('./components/auth/AuthView').then((m) => ({ default: m.AuthView })));
+const PrivacyView = lazy(() => import('./components/legal/LegalView').then((m) => ({ default: m.PrivacyView })));
+const TermsView = lazy(() => import('./components/legal/LegalView').then((m) => ({ default: m.TermsView })));
 
 function FullscreenLoader({ message }: { message: string }) {
   return (
@@ -80,25 +72,27 @@ function PublicOnlyAuthRoute() {
 
 export default function RootApp() {
   return (
-    <GlobalErrorBoundary>
-      <SyncStatus />
-      <Suspense fallback={<FullscreenLoader message="正在加载" />}>
-        <Routes>
-          <Route path="/" element={<LandingView />} />
-          <Route path="/auth" element={<PublicOnlyAuthRoute />} />
-          <Route path="/privacy" element={<PrivacyView />} />
-          <Route path="/terms" element={<TermsView />} />
-          <Route
-            path="/app/*"
-            element={
-              <ProtectedRoute>
-                <App />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
-    </GlobalErrorBoundary>
+    <MotionConfig reducedMotion="user">
+      <GlobalErrorBoundary>
+        <SyncStatus />
+        <Suspense fallback={<FullscreenLoader message="正在加载" />}>
+          <Routes>
+            <Route path="/" element={<LandingView />} />
+            <Route path="/auth" element={<PublicOnlyAuthRoute />} />
+            <Route path="/privacy" element={<PrivacyView />} />
+            <Route path="/terms" element={<TermsView />} />
+            <Route
+              path="/app/*"
+              element={
+                <ProtectedRoute>
+                  <App />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </GlobalErrorBoundary>
+    </MotionConfig>
   );
 }

@@ -1,14 +1,22 @@
 import React from 'react';
 import { Loader2, Volume2 } from 'lucide-react';
+import { motion } from 'motion/react';
+import { spring } from '../../lib/motion';
 import { ClozePrompt, CLOZE_BLANK } from '../../lib/cloze';
 import type { PronunciationLocale } from '../../types';
 import { ClickableText, type WordClickHandler } from '../shared/ClickableText';
 
 function renderSlots(expectedForm: string, inputValue: string) {
   return Array.from({ length: expectedForm.length }, (_, i) => (
-    <span key={i} className="inline-block min-w-[0.9ch] text-center font-mono">
+    <motion.span
+      key={`${i}:${inputValue[i] ?? ''}`}
+      initial={inputValue[i] ? { y: -6, opacity: 0.4 } : false}
+      animate={{ y: 0, opacity: 1 }}
+      transition={spring.snappy}
+      className="inline-block min-w-[0.9ch] text-center font-mono"
+    >
       {inputValue[i] ?? '_'}
-    </span>
+    </motion.span>
   ));
 }
 
