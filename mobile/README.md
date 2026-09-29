@@ -4,7 +4,7 @@
 
 ## 安装与升级
 
-发布包：`mobile/releases/Lumina-1.0.2-release.apk`（versionCode 2），旁边的 `.sha256` 文件用于校验传输完整性。
+发布包：`mobile/releases/Lumina-1.0.3-release.apk`（versionCode 3），旁边的 `.sha256` 文件用于校验传输完整性。
 
 将 APK 发给朋友，在手机上允许该文件来源安装应用。后续直接打开新版 APK 覆盖安装，**不要先卸载**。卸载、清除应用数据或丢失手机会删除尚未同步的数据；APK 升级不能恢复这些数据。
 

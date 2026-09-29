@@ -9,5 +9,5 @@ docs
 content
 public
 src/data
-qa-artifacts
+docs/qa/artifacts
 **/*.md

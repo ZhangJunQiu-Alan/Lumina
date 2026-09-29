@@ -39,7 +39,7 @@
 > **实施成果**：落地 `daily_user_statistics` 聚合表并实现原子累加，首页概览废除全表拉取循环回放，性能由 O(N) 降低至 O(1)，响应耗时缩减 98%+；同时完成按用户本地时区 9 点调度复习及学完自动清理生词本。
 
 #### 1. 现状与隐患
-- **问题代码**：[`shared/server/home.ts#L982-L1007`](file:///Users/zhangjunqiu/Desktop/Lumina/shared/server/home.ts#L982) 与 [`#L1050-L1083`](file:///Users/zhangjunqiu/Desktop/Lumina/shared/server/home.ts#L1050)。
+- **问题代码**：[`shared/server/home.ts#L982-L1007`](../shared/server/home.ts#L982) 与 [`#L1050-L1083`](../shared/server/home.ts#L1050)。
 - **根因分析**：
   在 `getHomeOverview` 中，调用 `fetchReviewEvents(userId)` 采用分页循环拉取用户历史上的**每一条**复习事件，并在 Node/Deno 内存中循环 365 天模拟回放计算热力图与 streak；同时，`fetchLearningGroupWordCounts` 采用分页遍历全部 `learning_group_words` 行计算词数。
 - **灾难场景**：
@@ -85,7 +85,7 @@ ON CONFLICT (user_id, date_key) DO NOTHING;
 ```
 
 #### 4. 代码改造步骤
-1. **新增事件累加钩子**：在 [`shared/server/review.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/shared/server/review.ts) 的 `recordReviewAttempt` 内部，增加对 `daily_user_statistics` 的原子 `UPSERT`：
+1. **新增事件累加钩子**：在 [`shared/server/review.ts`](../shared/server/review.ts) 的 `recordReviewAttempt` 内部，增加对 `daily_user_statistics` 的原子 `UPSERT`：
    ```sql
    INSERT INTO daily_user_statistics (user_id, date_key, review_word_count, attempt_count, correct_count)
    VALUES ($1, $2, 1, 1, CASE WHEN $3 THEN 1 ELSE 0 END)
@@ -119,7 +119,7 @@ ON CONFLICT (user_id, date_key) DO NOTHING;
 > **实施成果**：落地 `OfflineSyncManager` 统一调度引擎，建立 `sync/types.ts` 标准契约；实现瞬态（Transient）与非瞬态（Non-transient）错误智能分类；引入指数退避重试（Backoff: 1s, 2s, 4s... 最多 3 次）；建立毒丸任务死信队列（Dead-Letter Queue）自动隔离机制，彻底消除队头阻塞（Head-of-Line Blocking）；前端组件 `SyncStatus.tsx` 具备死信告警、重试与忽略操作，单测 100% 覆盖。
 
 #### 1. 现状与隐患
-- **问题代码**：[`src/lib/syncQueue.ts#L49-L52`](file:///Users/zhangjunqiu/Desktop/Lumina/src/lib/syncQueue.ts#L49) 与 [`src/lib/attemptBuffer.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/src/lib/attemptBuffer.ts)。
+- **问题代码**：[`src/lib/syncQueue.ts#L49-L52`](../src/lib/syncQueue.ts#L49) 与 [`src/lib/attemptBuffer.ts`](../src/lib/attemptBuffer.ts)。
 - **根因分析**：
   `syncQueue.ts` 在 `flushSyncQueue` 捕获异常时直接执行 `return;`，没有记录失败次数，没有错误分类。如果某个任务由于参数错误或数据库外键冲突引发 400 Bad Request，该任务永久留在队头，**直接引发后续所有任务完全无法同步（Head-of-Line Blocking）**。此外，项目中同时存在 `attemptBuffer.ts` 和 `syncQueue.ts` 两套独立的离线同步机制，职责重叠。
 
@@ -194,7 +194,7 @@ export interface DeadLetterJob extends UnifiedSyncJob {
 > **实施成果**：彻底废弃 Append 逻辑并下线全部僵尸代码；确立学习组绝对不可变原则（Immutable Group，固定 30 词或最后一批自然余量）；重构 `LearningEngine.tsx` 进度分母逻辑，单向绑定有效会话队列唯一单词数，彻底消灭 Round 2 首屏“1 / 70”闪现；落地迁移脚本 `20260923030000_cleanup_70_word_groups_and_orphans.sql`，精准清洗历史未完成冗余单词、级联清理孤儿 review_states 并重算 `word_count`。
 
 #### 1. 现状与隐患
-- **问题代码**：[`src/lib/officialLibraryStart.ts#L74-L120`](file:///Users/zhangjunqiu/Desktop/Lumina/src/lib/officialLibraryStart.ts#L74)、[`main issue.md 问题 9 & 10`](file:///Users/zhangjunqiu/Desktop/Lumina/main%20issue.md#L224)。
+- **问题代码**：[`src/lib/officialLibraryStart.ts#L74-L120`](../src/lib/officialLibraryStart.ts#L74)、[`qa/main-issues.md 问题 9 & 10`](qa/main-issues.md#L224)。
 - **根因剖析**：
   现有设计中包含一个追加批次的机制：当当前组剩余词数少于 15 时，`preloadNextOfficialBatchForAppend` 将新一批 30 个词**直接追加插入当前组的 `learning_group_words` 数据库表**，导致原本 40 词的组变成了 70 词。进入 Round 2 时，首屏使用了 `words.length`（70）渲染进度条，造成“第 1 / 70 个词”闪烁；同时组完成统计时，因这 70 个词里后 30 个尚未完成 Round 3，导致 `learned` 计数与组词数永久失真。
 
@@ -227,7 +227,7 @@ export interface DeadLetterJob extends UnifiedSyncJob {
 > 3. **健壮双层适配**：服务端与客户端（含离线同步队列）全面切换至 RPC 事务调用，并配备对旧版本数据库环境（`PGRST202` / `42883`）的自愈降级回退机制。
 
 #### 1. 现状与隐患
-- **问题代码**：[`shared/server/review.ts#L517-L550`](file:///Users/zhangjunqiu/Desktop/Lumina/shared/server/review.ts#L517) 与 [`src/App.tsx#finishLearningSession`](file:///Users/zhangjunqiu/Desktop/Lumina/src/App.tsx)。
+- **问题代码**：[`shared/server/review.ts#L517-L550`](../shared/server/review.ts#L517) 与 [`src/App.tsx#finishLearningSession`](../src/App.tsx)。
 - **根因分析**：
   - 复习判定时，分两次独立 HTTP 调用发起 `review_states` 更新和 `review_events` 插入，缺乏数据库事务保证。一旦后续调用因弱网中断，导致状态已迁但日志丢失；
   - 学习组完成时，客户端分 4~5 次连续请求发起词进度标记、打卡步骤完成、清除组会话、更新生词本，任何一步网络闪断即导致“打卡计数丢了”或“组状态未完成”的半持久化状态撕裂。
@@ -268,7 +268,7 @@ export interface DeadLetterJob extends UnifiedSyncJob {
 ### 任务 2.1：采用 Hono 统一跨运行时 API 层（消除 3000 行双路由代码）✅ [已完成]
 
 #### 1. 现状与隐患
-- **问题代码**：原 [`server/index.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/server/index.ts) (1399 行) 与原 [`supabase/functions/api/index.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/supabase/functions/api/index.ts) (1697 行)。
+- **问题代码**：原 [`server/index.ts`](../server/index.ts) (1399 行) 与原 [`supabase/functions/api/index.ts`](../supabase/functions/api/index.ts) (1697 行)。
 - **根因分析**：
   同一套 API，为了兼容本地 Node (Express) 和线上 Supabase Edge (Deno)，手工写了两遍全量路由、CORS、鉴权中间件、JSON 响应和错误捕获，带来了极其严重的维护包袱与行为漂移隐患。
 
@@ -356,7 +356,7 @@ Deno.serve(fetchHandler);
 > 4. **响应式 Hook 体系**：建立 `src/hooks/queries/`，提供 `useHomeOverviewQuery`、`useLibraryGroupsQuery`、`useSavedWordsQuery`、`useOfficialResumeCandidatesQuery`、`useOfficialCompletionCountsQuery`，为后续组件拆解奠定坚实基础。
 
 #### 1. 现状与隐患
-- **问题代码**：[`src/lib/homeOverviewCache.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/src/lib/homeOverviewCache.ts)、[`libraryCache.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/src/lib/libraryCache.ts)、[`articleCache.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/src/lib/articleCache.ts)。
+- **问题代码**：[`src/lib/homeOverviewCache.ts`](../src/lib/homeOverviewCache.ts)、[`libraryCache.ts`](../src/lib/libraryCache.ts)、[`articleCache.ts`](../src/lib/articleCache.ts)。
 - **根因分析**：
   团队手工为每个模块编写本地缓存、过期时间判断、版本号对比与序列化逻辑。这不仅充斥着重复代码，且在跨页面跳转、学习打卡后，依赖极其脆弱的事件派发与手动缓存注销（`invalidateCachedHomeOverview`），极易产生脏数据。
 
@@ -407,15 +407,15 @@ Deno.serve(fetchHandler);
 > **完成状态**：已完成 (Commit: `a5a77d5`)  
 > **实施成果**：
 > 1. **LearningEngine 深度瘦身（-811 行）**：
->    - 提取专用发音控制 Hook [`useLearningAudio`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/learning/hooks/useLearningAudio.ts)；
->    - 提取第一轮初记卡片视图 [`Round1View`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/learning/views/Round1View.tsx)；
->    - 提取第二轮四选一选择题组件 [`Round2ChoiceView`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/learning/views/Round2ChoiceView.tsx) 与综合视图 [`Round2View`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/learning/views/Round2View.tsx)；
->    - 提取二/三轮及复习拼写填空视图 [`DictationRecallView`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/learning/views/DictationRecallView.tsx)；
->    - 提取弹窗与报错吐司 [`LearningOverlays`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/learning/views/LearningOverlays.tsx)；
+>    - 提取专用发音控制 Hook [`useLearningAudio`](../src/components/learning/hooks/useLearningAudio.ts)；
+>    - 提取第一轮初记卡片视图 [`Round1View`](../src/components/learning/views/Round1View.tsx)；
+>    - 提取第二轮四选一选择题组件 [`Round2ChoiceView`](../src/components/learning/views/Round2ChoiceView.tsx) 与综合视图 [`Round2View`](../src/components/learning/views/Round2View.tsx)；
+>    - 提取二/三轮及复习拼写填空视图 [`DictationRecallView`](../src/components/learning/views/DictationRecallView.tsx)；
+>    - 提取弹窗与报错吐司 [`LearningOverlays`](../src/components/learning/views/LearningOverlays.tsx)；
 > 2. **App.tsx 根应用瘦身（-665 行）**：
->    - 提取 AI 文章生成与重试 Hook [`useArticleGeneration`](file:///Users/zhangjunqiu/Desktop/Lumina/src/hooks/useArticleGeneration.ts)；
->    - 提取首页打卡与状态调度 Hook [`useHomeStats`](file:///Users/zhangjunqiu/Desktop/Lumina/src/hooks/useHomeStats.ts)；
->    - 提取会话路由级容器 [`SessionRouteView`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/learning/SessionRouteView.tsx)，实现会话按需 Chunk 加载；
+>    - 提取 AI 文章生成与重试 Hook [`useArticleGeneration`](../src/hooks/useArticleGeneration.ts)；
+>    - 提取首页打卡与状态调度 Hook [`useHomeStats`](../src/hooks/useHomeStats.ts)；
+>    - 提取会话路由级容器 [`SessionRouteView`](../src/components/learning/SessionRouteView.tsx)，实现会话按需 Chunk 加载；
 > 3. **全量无损验证**：
 >    - 36 个测试套件 237/237 单测全部通过（包含 39 个 LearningEngine 自动播放回归测试）；
 >    - Vite 构建生成独立的 76kB `SessionRouteView` Chunk，首屏包体积进一步下降。
@@ -460,11 +460,11 @@ src/
 > 1. **全局 index.css 骤降 75%**：从原先的 4,864 行缩减至 1,194 行（净减少 3,670 行），清除了 400+ 行未使用的历史废弃原型样式（如 `.landing-system-*`）；
 > 2. **设计令牌与基础设施沉淀**：将全局 active 2026-08 observatory tokens 精准保留在 `:root`，保留 Apple/Linear 风格设计令牌、全局 `.glass` 磨砂、无障碍隐藏与基础动画规范；
 > 3. **专属视图样式彻底抽离解耦**：
->    - 抽离落地 [`src/components/landing/landing.css`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/landing/landing.css)（2,160 行 Landing 专属视觉系统）；
->    - 抽离落地 [`src/components/auth/auth.css`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/auth/auth.css)（912 行 Auth 专属动效与表单）；
->    - 抽离落地 [`src/components/legal/legal.css`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/legal/legal.css)（100 行条款与隐私页面排版）；
+>    - 抽离落地 [`src/components/landing/landing.css`](../src/components/landing/landing.css)（2,160 行 Landing 专属视觉系统）；
+>    - 抽离落地 [`src/components/auth/auth.css`](../src/components/auth/auth.css)（912 行 Auth 专属动效与表单）；
+>    - 抽离落地 [`src/components/legal/legal.css`](../src/components/legal/legal.css)（100 行条款与隐私页面排版）；
 > 4. **路由级按需懒加载与 CSS 自动代码分割**：
->    - 将 `LandingView`、`AuthView`、`LegalView` 在 [`src/RootApp.tsx`](file:///Users/zhangjunqiu/Desktop/Lumina/src/RootApp.tsx) 中重构为 `React.lazy()` 动态加载与 `<Suspense>` 兜底；
+>    - 将 `LandingView`、`AuthView`、`LegalView` 在 [`src/RootApp.tsx`](../src/RootApp.tsx) 中重构为 `React.lazy()` 动态加载与 `<Suspense>` 兜底；
 >    - Vite 构建生产产物实现 CSS 深度切片（`LandingView.css` 33kB、`AuthView.css` 13.5kB、`LegalView.css` 1.27kB），进入主学习应用 `/app/*` 的用户不再预载数十 KB 的宣传与登录样式，首屏 CSS 体积优化显著；
 > 5. **质量与品牌规范零回退**：严格遵守 `GEMINI.md` 针对 Landing Page Hero 文案的绝对不可变红线，全套 36 单元测试文件 237/237 单测与全量 core/ielts 测试 100% 绿色通过。
 
@@ -491,14 +491,14 @@ src/
 
 > **完成状态**：已完成  
 > **实施成果**：
-> 1. **前端 Sentry 体系与 Session Replay 落地**：新建 [`src/lib/observability/sentry.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/src/lib/observability/sentry.ts)，接入 `@sentry/react` (v11)；支持浏览器追踪（Browser Tracing & Web Vitals）与用户操作录屏回放（Session Replay，异常时 100% 录屏，文本输入智能脱敏）；
-> 2. **React 全局错误边界自动捕获**：改造 [`src/components/shared/GlobalErrorBoundary.tsx`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/shared/GlobalErrorBoundary.tsx)，捕获未捕获渲染崩溃并自动上报附带 `componentStack` 的完整异常上下文；
-> 3. **用户身份与用户旅程链路关联**：改造 [`src/contexts/AuthContext.tsx`](file:///Users/zhangjunqiu/Desktop/Lumina/src/contexts/AuthContext.tsx)，在登录与会话初始化时自动将 `userId` 与 `email` 绑定至 Sentry 上下文，登出时自动注销；
-> 4. **跨运行时同构服务端 Telemetry**：新建 [`shared/server/telemetry.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/shared/server/telemetry.ts)，基于标准 Web API 封装零依赖 Sentry Store 协议，跨 Node.js (`server/index.ts`) 与 Supabase Edge (Deno) 通用；在 [`shared/api/app.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/shared/api/app.ts)（`app.onError`）与 [`shared/server/logger.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/shared/server/logger.ts)（`logger.error`）全自动分发未处理服务端异常；
+> 1. **前端 Sentry 体系与 Session Replay 落地**：新建 [`src/lib/observability/sentry.ts`](../src/lib/observability/sentry.ts)，接入 `@sentry/react` (v11)；支持浏览器追踪（Browser Tracing & Web Vitals）与用户操作录屏回放（Session Replay，异常时 100% 录屏，文本输入智能脱敏）；
+> 2. **React 全局错误边界自动捕获**：改造 [`src/components/shared/GlobalErrorBoundary.tsx`](../src/components/shared/GlobalErrorBoundary.tsx)，捕获未捕获渲染崩溃并自动上报附带 `componentStack` 的完整异常上下文；
+> 3. **用户身份与用户旅程链路关联**：改造 [`src/contexts/AuthContext.tsx`](../src/contexts/AuthContext.tsx)，在登录与会话初始化时自动将 `userId` 与 `email` 绑定至 Sentry 上下文，登出时自动注销；
+> 4. **跨运行时同构服务端 Telemetry**：新建 [`shared/server/telemetry.ts`](../shared/server/telemetry.ts)，基于标准 Web API 封装零依赖 Sentry Store 协议，跨 Node.js (`server/index.ts`) 与 Supabase Edge (Deno) 通用；在 [`shared/api/app.ts`](../shared/api/app.ts)（`app.onError`）与 [`shared/server/logger.ts`](../shared/server/logger.ts)（`logger.error`）全自动分发未处理服务端异常；
 > 5. **全流程防护与专项单测**：未配置 DSN 或自动化测试环境下自动静默熔断，绝无网络污染；新建 8 项专项单元测试，全量 39 个单测套件 266/266 测试 100% 通过。
 
 #### 1. 现状与隐患
-- [`src/components/shared/GlobalErrorBoundary.tsx#L31`](file:///Users/zhangjunqiu/Desktop/Lumina/src/components/shared/GlobalErrorBoundary.tsx#L31) 注释写着 `// 在这里可以接入 Sentry, LogRocket 等外部监控系统`。生产环境中，一旦用户遇到音频无法播放、离线同步异常、页面渲染白屏，开发者完全无法感知。
+- [`src/components/shared/GlobalErrorBoundary.tsx#L31`](../src/components/shared/GlobalErrorBoundary.tsx#L31) 注释写着 `// 在这里可以接入 Sentry, LogRocket 等外部监控系统`。生产环境中，一旦用户遇到音频无法播放、离线同步异常、页面渲染白屏，开发者完全无法感知。
 
 #### 2. 技术设计方案
 1. **前端接入 Sentry**：
@@ -514,10 +514,10 @@ src/
 
 > **完成状态**：已完成  
 > **实施成果**：
-> 1. **全域强类型运行时校验覆盖**：在 [`shared/api/schemas/`](file:///Users/zhangjunqiu/Desktop/Lumina/shared/api/schemas/) 建立涵盖 8 大垂直业务域的严格 Zod Schema（`review`, `learning`, `library`, `settings`, `vocab`, `audio`, `ielts`, `auth`）；
-> 2. **统一 API 错误契约**：落地 [`shared/api/middleware/validator.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/shared/api/middleware/validator.ts)，基于 `@hono/zod-validator` 封装 `validateJson` / `validateQuery` / `validateParam`，遇到非法请求时统一返回 `{ error, code: 'VALIDATION_ERROR', details: [...], request_id }`，并在服务端输出结构化告警日志；
+> 1. **全域强类型运行时校验覆盖**：在 [`shared/api/schemas/`](../shared/api/schemas/) 建立涵盖 8 大垂直业务域的严格 Zod Schema（`review`, `learning`, `library`, `settings`, `vocab`, `audio`, `ielts`, `auth`）；
+> 2. **统一 API 错误契约**：落地 [`shared/api/middleware/validator.ts`](../shared/api/middleware/validator.ts)，基于 `@hono/zod-validator` 封装 `validateJson` / `validateQuery` / `validateParam`，遇到非法请求时统一返回 `{ error, code: 'VALIDATION_ERROR', details: [...], request_id }`，并在服务端输出结构化告警日志；
 > 3. **跨运行时双端兼容**：在 `supabase/functions/deno.json` 建立 npm 导入映射，Node.js (`@hono/node-server`) 与 Supabase Edge (Deno) 双端 100% 共享相同校验逻辑与类型推导；
-> 4. **零破坏性升级与完备测试**：保留所有原有关键错误提示文本，客户端完全向后兼容；新建 [`shared/api/validation.test.ts`](file:///Users/zhangjunqiu/Desktop/Lumina/shared/api/validation.test.ts) 专项单测（21 项用例），全量 37 个单测文件 258/258 测试、核心 ACID 契约与生产构建全部一次性通过。
+> 4. **零破坏性升级与完备测试**：保留所有原有关键错误提示文本，客户端完全向后兼容；新建 [`shared/api/validation.test.ts`](../shared/api/validation.test.ts) 专项单测（21 项用例），全量 37 个单测文件 258/258 测试、核心 ACID 契约与生产构建全部一次性通过。
 
 #### 1. 现状与隐患
 - 服务端大量代码使用可选链和松散类型断言：`const { words } = req.body;`、`const word = sanitizeLookupWord(req.body?.word);`。缺乏类型约束，畸形 JSON 或恶意注入可引发不可预期的底层数据库报错。

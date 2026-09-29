@@ -6,7 +6,9 @@ Lumina 是一款面向中文英语学习者的词汇记忆与雅思真题训练�
 
 ## Android 客户端
 
-原生 Android 客户端位于 [`android/`](./android/README.md)，使用 Kotlin、Jetpack Compose 和现有 Supabase 账号体系。目前已完成账号、原生首页和词库模块：每日指标、7 天学习轨迹、官方词库进度、学习组列表与单词记忆详情均使用真实服务端数据。后续模块会按学习、复习和 IELTS 的顺序逐步迁移。
+当前发布的 Android App 位于 [`mobile/`](./mobile/README.md)：使用 Capacitor 打包现有网站，`npm run android:build` 生成签名 APK。
+
+另有一个原生 Android 客户端位于 [`android/`](./android/README.md)，使用 Kotlin、Jetpack Compose 和现有 Supabase 账号体系。目前已完成账号、原生首页和词库模块：每日指标、7 天学习轨迹、官方词库进度、学习组列表与单词记忆详情均使用真实服务端数据。后续模块会按学习、复习和 IELTS 的顺序逐步迁移。
 
 ## 产品定位
 
@@ -195,6 +197,24 @@ Lumina 的复习不是简单的正确率统计，而是基于记忆状态推进�
 
 ## 项目结构
 
+### 顶层目录
+
+| 目录 | 说明 |
+| --- | --- |
+| `src/` | Web 前端（React + Vite） |
+| `shared/` | 前后端共用代码：`api/` Hono 路由与校验，`server/` 领域逻辑 |
+| `server/` | 本地 Node API 入口（Hono） |
+| `supabase/` | 数据库 schema 与 Edge Function（生产 API） |
+| `mobile/` | Capacitor Android App（当前发布版本） |
+| `android/` | 原生 Kotlin / Jetpack Compose Android 客户端 |
+| `e2e/` | Playwright 端到端测试与 mock 数据 |
+| `scripts/` | 数据导入、回填、种子与规则测试脚本 |
+| `content/` | 雅思题库导入源说明 |
+| `public/` | 静态资源 |
+| `docs/` | 文档：`product/` 产品与体验设计，`qa/` 问题记录与截图证据，`archive/` 早期开发记录，以及路线图与评审 |
+
+### 关键文件
+
 | 路径 | 说明 |
 | --- | --- |
 | `src/RootApp.tsx` | 顶层路由、鉴权保护、公开页面 |
@@ -225,7 +245,7 @@ Lumina 的复习不是简单的正确率统计，而是基于记忆状态推进�
 | `shared/server/audio.ts` | 单词音频生成与缓存 |
 | `shared/server/exampleAudio.ts` | 例句音频生成与缓存 |
 | `shared/server/ieltsAttempts.ts` | 雅思阅读 / 听力提交记录 |
-| `server/index.ts` | 本地 Express API 入口 |
+| `server/index.ts` | 本地 Hono API 入口 |
 | `supabase/functions/api/index.ts` | Supabase Edge Function 入口 |
 | `supabase/schema.sql` | 当前完整数据库结构 |
 

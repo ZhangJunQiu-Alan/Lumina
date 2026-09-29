@@ -17,12 +17,12 @@
 ## 最新复测摘要：问题 6 / 7 / 8
 
 - 账号：`codexissues68041658@example.com`
-- 截图目录：`qa-artifacts/lumina-issues-6-8-retest-20260608/`
+- 截图目录：`artifacts/lumina-issues-6-8-retest-20260608/`
 - 数据文件：
-  - `qa-artifacts/lumina-issues-6-8-retest-20260608/word-data.json`
-  - `qa-artifacts/lumina-issues-6-8-retest-20260608/after-round1-db.json`
-  - `qa-artifacts/lumina-issues-6-8-retest-20260608/after-round2-db.json`
-  - `qa-artifacts/lumina-issues-6-8-retest-20260608/after-round3-stuck-db.json`
+  - `artifacts/lumina-issues-6-8-retest-20260608/word-data.json`
+  - `artifacts/lumina-issues-6-8-retest-20260608/after-round1-db.json`
+  - `artifacts/lumina-issues-6-8-retest-20260608/after-round2-db.json`
+  - `artifacts/lumina-issues-6-8-retest-20260608/after-round3-stuck-db.json`
 - 结果：
   - 问题 6：通过。加入 `雅思词汇真经` 后首页 CTA 是 `开始学习`，没有 `先选择学习词库`。
   - 问题 7：通过。Round 1 确认 30 个；Round 2 完成 30 个；Round 3 队列 30 个；`quartz` 在队列第 30 个且已完成 Round 2。
@@ -38,13 +38,13 @@
 - DB 和 `/api/home/overview` 已有正确 active session，但当前会话首页吃到了旧缓存。
 
 关键旧证据：
-- `qa-artifacts/lumina-main-issues-20260608/05-round1-after-two-words.png`
-- `qa-artifacts/lumina-main-issues-20260608/06-home-stale-after-learning.png`
-- `qa-artifacts/lumina-main-issues-20260608/07-start-routes-to-empty-library.png`
+- `artifacts/lumina-main-issues-20260608/05-round1-after-two-words.png`
+- `artifacts/lumina-main-issues-20260608/06-home-stale-after-learning.png`
+- `artifacts/lumina-main-issues-20260608/07-start-routes-to-empty-library.png`
 
 复测证据：
-- `qa-artifacts/lumina-retest-20260608/07-home-after-two-words.png`
-- `qa-artifacts/lumina-retest-20260608/08-continue-from-refreshed-home.png`
+- `artifacts/lumina-retest-20260608/07-home-after-two-words.png`
+- `artifacts/lumina-retest-20260608/08-continue-from-refreshed-home.png`
 
 代码线索：
 - `src/App.tsx` 的首页 `fetchStats({ preferCache: true })` 和 `homeOverviewCache` 曾导致当前会话显示旧 overview。
@@ -59,7 +59,7 @@
 - 需要先点登录再点注册，注册表单才出现。
 
 关键证据：
-- `qa-artifacts/lumina-retest-20260608/01-register-route.png`
+- `artifacts/lumina-retest-20260608/01-register-route.png`
 
 代码线索：
 - `src/components/auth/AuthView.tsx` 初始 mode 曾先默认 `login`，再由 effect 同步 query。
@@ -74,7 +74,7 @@
 - 但真实浏览器打开 Round 1 第一张卡后，后端仍看到约 15 次 `/api/vocab/lookup` 和 6 次 `/api/audio/...`。
 
 关键证据：
-- `qa-artifacts/lumina-issues-3-5-retest-20260608/05-round1-first-card.png`
+- `artifacts/lumina-issues-3-5-retest-20260608/05-round1-first-card.png`
 
 代码线索：
 - `src/lib/round1Preload.ts`
@@ -93,8 +93,8 @@
 - `learning_group_words.round1_confirmed_at` 仍为空，导致逐词进度和 session 快照不一致。
 
 复测证据：
-- `qa-artifacts/lumina-issues-3-5-retest-20260608/06-after-two-round1-words.png`
-- `qa-artifacts/lumina-issues-3-5-retest-20260608/db-after-two-words.json`
+- `artifacts/lumina-issues-3-5-retest-20260608/06-after-two-round1-words.png`
+- `artifacts/lumina-issues-3-5-retest-20260608/db-after-two-words.json`
 
 复测结论：
 - 新账号完成 `atmosphere`、`hydrosphere` 后，逐词表同步写入两个 `round1_confirmed_at`。
@@ -107,8 +107,8 @@
 - 新用户无词库时 CTA 写 `开始学习`，点击后进入空词库页。
 
 复测证据：
-- `qa-artifacts/lumina-issues-3-5-retest-20260608/02-empty-home-after-register.png`
-- `qa-artifacts/lumina-issues-3-5-retest-20260608/03-no-library-cta-official-library.png`
+- `artifacts/lumina-issues-3-5-retest-20260608/02-empty-home-after-register.png`
+- `artifacts/lumina-issues-3-5-retest-20260608/03-no-library-cta-official-library.png`
 
 复测结论：
 - 空首页 CTA 已显示 `先选择学习词库`。
@@ -122,8 +122,8 @@
 - 从官方词库点击 `开始记忆` 回首页。
 - 页面显示已选 `雅思词汇真经`，但底部主按钮仍写 `先选择学习词库`。
 - 旧截图：
-  - `qa-artifacts/lumina-full-round-20260608/04-home-after-select-ielts.png`
-  - `qa-artifacts/lumina-full-round-20260608/05-home-after-refresh-selected.png`
+  - `artifacts/lumina-full-round-20260608/04-home-after-select-ielts.png`
+  - `artifacts/lumina-full-round-20260608/05-home-after-refresh-selected.png`
 
 最新复测：
 - 加入 `雅思词汇真经` 后 URL：`/app/home?officialLibraryId=ielts-vocab`
@@ -132,7 +132,7 @@
 - 页面没有 `先选择学习词库`
 
 最新证据：
-- `qa-artifacts/lumina-issues-6-8-retest-20260608/03-home-after-add-ielts.png`
+- `artifacts/lumina-issues-6-8-retest-20260608/03-home-after-add-ielts.png`
 
 代码线索：
 - `src/components/home/HomeView.tsx` 已在 selected official library 场景下将 CTA 改为 `开始学习`。
@@ -147,9 +147,9 @@
 - DB 对比发现 `quartz` 在 Round 1 确认过，但没有进入 Round 2 / Round 3。
 
 旧证据：
-- `qa-artifacts/lumina-full-round-20260608/10-after-round1-continued.png`
-- `qa-artifacts/lumina-full-round-20260608/12-round3-start.png`
-- `qa-artifacts/lumina-full-round-20260608/final-db-state.json`
+- `artifacts/lumina-full-round-20260608/10-after-round1-continued.png`
+- `artifacts/lumina-full-round-20260608/12-round3-start.png`
+- `artifacts/lumina-full-round-20260608/final-db-state.json`
 
 最新复测：
 - Round 1 手动提交前 30 个词，最后一个是 `quartz`。
@@ -168,10 +168,10 @@
 - Round 3 首屏显示 `这一轮进度 1 / 30`。
 
 最新证据：
-- `qa-artifacts/lumina-issues-6-8-retest-20260608/05-after-round1.png`
-- `qa-artifacts/lumina-issues-6-8-retest-20260608/06-after-round2-round3-start.png`
-- `qa-artifacts/lumina-issues-6-8-retest-20260608/after-round1-db.json`
-- `qa-artifacts/lumina-issues-6-8-retest-20260608/after-round2-db.json`
+- `artifacts/lumina-issues-6-8-retest-20260608/05-after-round1.png`
+- `artifacts/lumina-issues-6-8-retest-20260608/06-after-round2-round3-start.png`
+- `artifacts/lumina-issues-6-8-retest-20260608/after-round1-db.json`
+- `artifacts/lumina-issues-6-8-retest-20260608/after-round2-db.json`
 
 观察：
 - Round 2 刚进入时曾短暂出现 `第 1 / 70 个词`，第一题继续后恢复为 `第 2 / 30 个词`；DB 队列始终是 30。暂不作为独立 issue，除非可稳定复现。
@@ -194,9 +194,9 @@
 - 等待 7 秒：仍停住。
 
 最新证据：
-- `qa-artifacts/lumina-issues-6-8-retest-20260608/07-round3-after-atmosphere.png`
-- `qa-artifacts/lumina-issues-6-8-retest-20260608/08-round3-after-real-key-atmosphere.png`
-- `qa-artifacts/lumina-issues-6-8-retest-20260608/after-round3-stuck-db.json`
+- `artifacts/lumina-issues-6-8-retest-20260608/07-round3-after-atmosphere.png`
+- `artifacts/lumina-issues-6-8-retest-20260608/08-round3-after-real-key-atmosphere.png`
+- `artifacts/lumina-issues-6-8-retest-20260608/after-round3-stuck-db.json`
 
 最新 DB 状态：
 - `session_round = round3`
@@ -218,7 +218,7 @@
 - 加测试覆盖：Round 3 cloze 输入 `atmosphere` 后，`session_current_index` 从 0 前进，DB 有 Round 3 正确记录。
 
 最新复测：
-- 目录：`qa-artifacts/lumina-round3-autosubmit-20260608/`
+- 目录：`artifacts/lumina-round3-autosubmit-20260608/`
 - 错误输入 `quarts`，不按 Enter：页面不前进，DB 不写 `round3_completed_at`。
 - 正确输入 `quartz`，不按 Enter：页面自动提交并完成学习组。
 - DB：`round3Rows = 30`，`learnedRows = 30`，`quartz.round3_completed_at` 和 `learned_at` 均写入。
@@ -265,10 +265,10 @@
 
 ## 证据索引
 
-- `qa-artifacts/lumina-main-issues-20260608/`：第一轮主流程原始截图。
-- `qa-artifacts/lumina-retest-20260608/`：问题 1 / 2 复测截图。
-- `qa-artifacts/lumina-issues-3-5-retest-20260608/`：问题 3 / 4 / 5 复测截图和 DB 文件。
-- `qa-artifacts/lumina-full-round-20260608/`：旧问题 6 / 7 / 8 原始完整路径截图和 DB 文件。
-- `qa-artifacts/lumina-issues-6-8-retest-20260608/`：最新问题 6 / 7 / 8 手动复测截图和 DB 文件。
-- `qa-artifacts/lumina-round3-autosubmit-20260608/`：Round 3 自动提交专项复测。
-- `qa-artifacts/lumina-learning-stats-round-20260608/`：第二组完整学习和统计口径复测。
+- `artifacts/lumina-main-issues-20260608/`：第一轮主流程原始截图。
+- `artifacts/lumina-retest-20260608/`：问题 1 / 2 复测截图。
+- `artifacts/lumina-issues-3-5-retest-20260608/`：问题 3 / 4 / 5 复测截图和 DB 文件。
+- `artifacts/lumina-full-round-20260608/`：旧问题 6 / 7 / 8 原始完整路径截图和 DB 文件。
+- `artifacts/lumina-issues-6-8-retest-20260608/`：最新问题 6 / 7 / 8 手动复测截图和 DB 文件。
+- `artifacts/lumina-round3-autosubmit-20260608/`：Round 3 自动提交专项复测。
+- `artifacts/lumina-learning-stats-round-20260608/`：第二组完整学习和统计口径复测。

@@ -3,10 +3,10 @@
 > [!NOTE]
 > **历史阶段存档说明**：本文档为 2026 年 4 月早期的开发阶段记录。
 > 项目当前最新能力、架构规范与设计准则请优先查阅：
-> - [README.md](README.md)：全局项目说明与核心架构
-> - [product.md](product.md)：全量产品功能与交互说明
-> - [docs/enterprise-refactoring-roadmap.md](docs/enterprise-refactoring-roadmap.md)：企业级高可用演进路线图
-> - [GEMINI.md](GEMINI.md)：AI 编码准则与设计红线
+> - [README.md](../../README.md)：全局项目说明与核心架构
+> - [product.md](../product/product.md)：全量产品功能与交互说明
+> - [docs/enterprise-refactoring-roadmap.md](../enterprise-refactoring-roadmap.md)：企业级高可用演进路线图
+> - [GEMINI.md](../../GEMINI.md)：AI 编码准则与设计红线
 > 
 > 原始更新时间：2026-04-18  
 > 目的：记录当前由 Codex 已完成的核心工作，作为后续继续设计和开发单词复习系统的接手说明。
