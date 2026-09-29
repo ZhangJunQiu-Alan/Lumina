@@ -31,5 +31,10 @@ export default defineConfig({
     url: 'http://127.0.0.1:3100',
     reuseExistingServer: !process.env.CI,
     timeout: 60000,
+    // Hermetic placeholders: every request is served by e2e/fixtures/mockApi.ts, never a real backend.
+    env: {
+      VITE_SUPABASE_URL: 'https://e2e.supabase.test',
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'e2e-publishable-key',
+    },
   },
 });
