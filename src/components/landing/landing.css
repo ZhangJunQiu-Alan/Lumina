@@ -1089,7 +1089,7 @@
 
 .landing-practice-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
   gap: 0.9rem;
   grid-column: 2;
 }
@@ -1150,7 +1150,7 @@
 
 .landing-bank-detail__grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
   gap: 0.9rem;
 }
 
@@ -1208,7 +1208,7 @@
 
 .landing-continuity-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
   gap: 0.9rem;
 }
 
@@ -1597,7 +1597,7 @@
   }
 
   .landing-hero-copy h1 {
-    font-size: 2.85rem;
+    font-size: clamp(2.35rem, 1.6rem + 1.6vw, 2.85rem);
   }
 
   .landing-hero-visual {
@@ -1731,15 +1731,12 @@
     grid-template-columns: 1fr;
   }
 
-  .landing-route-steps,
-  .landing-bank-detail__grid,
-  .landing-continuity-list {
+  .landing-route-steps {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .landing-practice-grid {
     grid-column: auto;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .landing-faq-copy {
@@ -1808,7 +1805,6 @@
   }
 
   .landing-hero-copy h1 {
-    font-size: 2.5rem;
     line-height: 1.18;
   }
 
@@ -2001,10 +1997,7 @@
     line-height: 1.72;
   }
 
-  .landing-route-steps,
-  .landing-practice-grid,
-  .landing-bank-detail__grid,
-  .landing-continuity-list {
+  .landing-route-steps {
     grid-template-columns: 1fr;
   }
 
@@ -2145,7 +2138,7 @@
   }
 
   .landing-hero-copy h1 {
-    font-size: 2.35rem;
+    font-size: clamp(2rem, 1.7rem + 1.2vw, 2.35rem);
   }
 }
 

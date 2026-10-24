@@ -823,7 +823,7 @@
 .auth-story-panel {
   min-height: 36rem;
   justify-content: space-between;
-  padding: 2rem;
+  padding: clamp(1.25rem, 0.75rem + 2vw, 2rem);
 }
 
 .auth-story-panel::after,
@@ -835,7 +835,7 @@
 .auth-story-copy h1 {
   max-width: 9ch;
   color: #142b36;
-  font-size: clamp(2.5rem, 4vw, 4rem);
+  font-size: clamp(2.5rem, 1.5rem + 2.5vw, 4rem);
   font-weight: 780;
   letter-spacing: -0.05em;
   line-height: 1.05;
