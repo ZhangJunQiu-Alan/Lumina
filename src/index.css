@@ -868,10 +868,11 @@ select:focus-visible {
 }
 
 .home-routine-visual {
-  height: 10rem !important;
+  height: clamp(6rem, 20cqi, 10rem) !important;
 }
 
 .home-routine-image {
+  max-height: 100%;
   max-width: 15rem !important;
   filter: saturate(0.78);
 }

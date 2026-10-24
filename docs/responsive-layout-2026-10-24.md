@@ -50,3 +50,22 @@ Date: 2026-10-24
 - `npm run test:e2e -- --workers=2 --timeout=90000 --retries=0`: 23 tests passed without retries.
 - `npm run test:ielts`, `npm run test:session`, and `npm run test:official-library`: passed.
 - The reflow checks caught and verified fixes for switch thumb overflow, fixed-size seven-day rings, an outlying day flag, and an oversized illustration decoration.
+
+## Mobile visual review follow-up
+
+Inspected the actual local pages in the Codex in-app browser using synthetic API data. Primary viewport: 390 × 844; additional checks: 320 × 740, 430 × 932, 844 × 390 landscape, and 1280 × 800 desktop comparison.
+
+Findings and fixes:
+
+- The home dashboard initially placed a two-plus-one metric grid before the learning action. Move the learning section first in document order, place its action before the progress steps, bound the illustration, and use a container query to retain the wide dashboard arrangement.
+- Keep home metrics compact and improve the contrast of upcoming learning steps and the learning-record heading.
+- Toggle controls wrapped below their labels in narrow preference panels. Give small toggle controls their intrinsic width; retain wrapping for segmented options.
+- A feedback-duration option split `0.8秒` across lines. Keep individual labels intact and allow more width before the option group wraps.
+- Profile metrics consumed four rows on phones. Reduce their minimum card width so common phone sizes display two columns.
+- Reading tools occupied substantial vertical space. Put font size, highlighting, notes and clear controls in a native expandable section; preserve passage/question navigation and tool behavior.
+
+Observed interactions: public registration/login tab switching; home mode dropdown; navigation tabs; populated/empty personal library and empty search results; expanded notebook example; two Round 1 spelling confirmations leading to four Round 2 choices; session preference drawer open/change/restore/close; landscape card scrolling; IELTS target-score picker; reading book selection, article/question switching, font-size increase/restore, answer selection and unanswered-submit confirmation/cancel; standalone preferences bottom controls. No app errors or warnings appeared in the inspected browser console.
+
+The visual review uses synthetic content, not a production account or an actual device. Native mobile keyboards, iOS Safari, Android WebView, audio output, populated annual charts, and every reading question type remain outside this visual sign-off. Browser screenshots are saved outside the repository.
+
+Follow-up checks: the four home component tests passed. The seven targeted Playwright checks (320px, 390px, enlarged text, reading tools, and the earlier profile-navigation timeout) passed without retries. The broader local journey run passed 22 checks and timed out waiting for the initial home heading in one authentication check; the isolated rerun passed. A concurrent full unit run also hit timing limits and was stopped; use the updated PR's CI result for the complete suite.

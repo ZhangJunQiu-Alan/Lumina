@@ -1661,63 +1661,68 @@ export function IeltsReadingTestView() {
             })}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 xl:justify-end">
-            <div className="inline-flex h-12 items-center rounded-[16px] bg-[#f4f6fb] p-1 text-sm font-black text-text-secondary">
-              <button
-                type="button"
-                onClick={() => setFontSize((current) => clampReadingFontSize(current - 1))}
-                disabled={inputsLocked}
-                className="flex h-10 w-10 items-center justify-center rounded-xl hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="减小原文字号"
-              >
-                <Minus className="h-4 w-4" />
-              </button>
-              <span className="flex h-10 min-w-10 items-center justify-center">{fontSize}</span>
-              <button
-                type="button"
-                onClick={() => setFontSize((current) => clampReadingFontSize(current + 1))}
-                disabled={inputsLocked}
-                className="flex h-10 w-10 items-center justify-center rounded-xl hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="增大原文字号"
-              >
-                <Plus className="h-4 w-4" />
-              </button>
-            </div>
-
-            {[
-              { key: 'highlight' as const, label: '高亮', icon: Highlighter },
-              { key: 'note' as const, label: '笔记', icon: StickyNote },
-              { key: 'clear' as const, label: '清除', icon: Eraser },
-              ...(practiceMode ? [{ key: 'lookup' as const, label: '查阅', icon: Search }] : []),
-            ].map((tool) => {
-              const Icon = tool.icon;
-              return (
+          <details className="min-w-0 w-full rounded-2xl border border-[#dfe6f2] bg-white p-3">
+            <summary className="min-h-11 cursor-pointer content-center text-sm font-bold text-text-secondary">
+              阅读工具 · 字号、高亮、笔记
+            </summary>
+            <div className="flex flex-wrap items-center gap-3 pt-3">
+              <div className="inline-flex h-12 items-center rounded-[16px] bg-[#f4f6fb] p-1 text-sm font-black text-text-secondary">
                 <button
-                  key={tool.key}
                   type="button"
-                  onClick={() => setReadingMode(tool.key)}
+                  onClick={() => setFontSize((current) => clampReadingFontSize(current - 1))}
                   disabled={inputsLocked}
-                  className={cx(
-                    'inline-flex h-12 items-center gap-2 rounded-[16px] border px-4 text-sm font-black transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-                    readingMode === tool.key
-                      ? 'border-apple-blue/20 bg-apple-blue/10 text-apple-blue'
-                      : 'border-[#dfe6f2] bg-white text-text-secondary hover:border-apple-blue/25 hover:bg-[#f4f6fb] hover:text-text-primary',
-                  )}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="减小原文字号"
                 >
-                  <Icon className="h-4 w-4" />
-                  {tool.label}
+                  <Minus className="h-4 w-4" />
                 </button>
-              );
-            })}
+                <span className="flex h-10 min-w-10 items-center justify-center">{fontSize}</span>
+                <button
+                  type="button"
+                  onClick={() => setFontSize((current) => clampReadingFontSize(current + 1))}
+                  disabled={inputsLocked}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="增大原文字号"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
 
-            <span className="inline-flex items-center gap-2 rounded-full bg-apple-blue/9 px-4 py-2 text-xs font-black text-apple-blue">
-              <span className="h-2 w-2 rounded-full bg-apple-blue" />
-              {readingMode === 'highlight' && '高亮模式 — 选中文字以高亮'}
-              {readingMode === 'note' && '笔记模式 — 选中文字或点击标注写笔记'}
-              {readingMode === 'clear' && '清除模式 — 选中文字或点击标注清除'}
-              {readingMode === 'lookup' && '查阅模式 — 点击英文单词查看读音和释义'}
-            </span>
-          </div>
+              {[
+                { key: 'highlight' as const, label: '高亮', icon: Highlighter },
+                { key: 'note' as const, label: '笔记', icon: StickyNote },
+                { key: 'clear' as const, label: '清除', icon: Eraser },
+                ...(practiceMode ? [{ key: 'lookup' as const, label: '查阅', icon: Search }] : []),
+              ].map((tool) => {
+                const Icon = tool.icon;
+                return (
+                  <button
+                    key={tool.key}
+                    type="button"
+                    onClick={() => setReadingMode(tool.key)}
+                    disabled={inputsLocked}
+                    className={cx(
+                      'inline-flex h-12 items-center gap-2 rounded-[16px] border px-4 text-sm font-black transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                      readingMode === tool.key
+                        ? 'border-apple-blue/20 bg-apple-blue/10 text-apple-blue'
+                        : 'border-[#dfe6f2] bg-white text-text-secondary hover:border-apple-blue/25 hover:bg-[#f4f6fb] hover:text-text-primary',
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {tool.label}
+                  </button>
+                );
+              })}
+
+              <span className="inline-flex items-center gap-2 rounded-full bg-apple-blue/9 px-4 py-2 text-xs font-black text-apple-blue">
+                <span className="h-2 w-2 rounded-full bg-apple-blue" />
+                {readingMode === 'highlight' && '高亮模式 — 选中文字以高亮'}
+                {readingMode === 'note' && '笔记模式 — 选中文字或点击标注写笔记'}
+                {readingMode === 'clear' && '清除模式 — 选中文字或点击标注清除'}
+                {readingMode === 'lookup' && '查阅模式 — 点击英文单词查看读音和释义'}
+              </span>
+            </div>
+          </details>
 
           <div className="grid grid-cols-2 gap-2 lg:hidden">
             {(['passage', 'questions'] as ReadingPane[]).map((item) => (
