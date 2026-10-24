@@ -289,8 +289,8 @@ function getModuleRoute(key: DisplayModuleKey) {
 
 function DashboardLoadingShell() {
   return (
-    <div className="-mx-3 w-[calc(100%+1.5rem)] max-w-[1480px] overflow-x-clip rounded-none border-0 bg-transparent p-0 shadow-none sm:mx-auto sm:w-full">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(430px,0.38fr)] xl:items-center xl:gap-7">
+    <div className="mx-auto min-w-0 w-full max-w-[1480px] rounded-none border-0 bg-transparent p-0 shadow-none">
+      <div className="fluid-grid ielts-dashboard-grid items-center">
         <div className="space-y-3 sm:space-y-4">
           <div className="h-8 w-60 animate-pulse rounded-[14px] bg-black/8 sm:h-10 sm:w-full sm:max-w-md" />
           <div className="h-4 w-full max-w-xs animate-pulse rounded-full bg-black/7 sm:max-w-xl" />
@@ -302,7 +302,7 @@ function DashboardLoadingShell() {
         </div>
         <div className="h-[94px] animate-pulse rounded-[18px] bg-black/6 sm:h-[154px] sm:rounded-[24px]" />
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-3 sm:mt-7 sm:gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-[var(--layout-space)] fluid-grid ielts-module-grid">
         {[0, 1, 2, 3].map((item) => (
           <div
             key={item}
@@ -310,7 +310,7 @@ function DashboardLoadingShell() {
           />
         ))}
       </div>
-      <div className="mt-3 grid gap-3 sm:mt-5 sm:gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <div className="mt-[var(--layout-space)] fluid-grid ielts-dashboard-grid">
         <div className="h-36 animate-pulse rounded-[18px] bg-black/6 sm:h-56 sm:rounded-[24px]" />
         <div className="h-36 animate-pulse rounded-[18px] bg-black/6 sm:h-56 sm:rounded-[24px]" />
       </div>
@@ -929,7 +929,7 @@ function LearningDataPanel({ model }: { model: IeltsDashboardModel }) {
         <BarChart3 className="h-4 w-4 text-text-secondary sm:h-5 sm:w-5" />
         <h3 className="text-base font-black text-text-primary sm:text-lg">学习数据概览</h3>
       </div>
-      <div className="grid gap-3 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <div className="fluid-grid word-detail-grid">
         <div className="grid grid-cols-3 gap-2 sm:gap-3">
           <OverviewMetric
             icon={CalendarDays}
@@ -1081,16 +1081,11 @@ export function IeltsHomeView() {
       variants={stagger(0.07)}
       initial="hidden"
       animate="visible"
-      className="-mx-3 w-[calc(100%+1.5rem)] max-w-[1480px] overflow-x-clip rounded-none border-0 bg-transparent p-0 shadow-none sm:mx-auto sm:w-full"
+      className="mx-auto min-w-0 w-full max-w-[1480px] rounded-none border-0 bg-transparent p-0 shadow-none"
     >
-      <motion.div
-        variants={fadeUp}
-        className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(430px,0.38fr)] xl:items-center xl:gap-7"
-      >
+      <motion.div variants={fadeUp} className="fluid-grid ielts-dashboard-grid items-center">
         <header>
-          <h2 className="text-[28px] font-black leading-tight tracking-tight text-text-primary sm:text-4xl xl:text-[42px]">
-            剑桥雅思真题训练
-          </h2>
+          <h2 className="fluid-title font-black leading-tight tracking-tight text-text-primary">剑桥雅思真题训练</h2>
           <p className="mt-2 max-w-3xl text-xs font-bold leading-6 text-text-secondary sm:mt-3 sm:text-sm sm:leading-7">
             选择套题开始练习，提交后查看答案、正确率和用时。
           </p>
@@ -1110,24 +1105,18 @@ export function IeltsHomeView() {
         />
       </motion.div>
 
-      <motion.section variants={fadeUp} className="mt-3 grid grid-cols-2 gap-3 sm:mt-7 sm:gap-4 xl:grid-cols-4">
+      <motion.section variants={fadeUp} className="mt-[var(--layout-space)] fluid-grid ielts-module-grid">
         {MODULE_CARD_CONFIGS.map((config) => (
           <PracticeModuleCard key={config.key} config={config} model={model} onNavigate={navigate} />
         ))}
       </motion.section>
 
-      <motion.div
-        variants={fadeUp}
-        className="mt-3 grid gap-3 sm:mt-5 sm:gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]"
-      >
+      <motion.div variants={fadeUp} className="mt-[var(--layout-space)] fluid-grid ielts-dashboard-grid">
         <RecentPracticePanel model={model} onNavigate={navigate} />
         <RecommendationPanel model={model} onNavigate={navigate} />
       </motion.div>
 
-      <motion.div
-        variants={fadeUp}
-        className="mt-3 grid gap-3 sm:mt-4 sm:gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]"
-      >
+      <motion.div variants={fadeUp} className="mt-[var(--layout-space)] fluid-grid ielts-dashboard-grid">
         <LearningDataPanel model={model} />
         <StudyAdvicePanel />
       </motion.div>
