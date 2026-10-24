@@ -60,38 +60,30 @@ function SegmentedOptionGroup<T extends string | number>({
   value,
   onChange,
   disabled = false,
-  wrap = false,
 }: {
   options: Array<{ label: string; value: T }>;
   value: T;
   onChange: (next: T) => void;
   disabled?: boolean;
-  wrap?: boolean;
 }) {
   return (
     <div
       className={cx(
-        'isolate grid w-full overflow-hidden rounded-[16px] border border-[#eadfcd] bg-white/92 shadow-[0_10px_28px_rgba(79,62,38,0.10),inset_0_1px_0_rgba(255,255,255,0.85)]',
-        wrap ? 'grid-cols-3 sm:grid-cols-5' : '',
+        'setting-options isolate w-full overflow-hidden rounded-[16px] border border-[#eadfcd] shadow-[0_10px_28px_rgba(79,62,38,0.10),inset_0_1px_0_rgba(255,255,255,0.85)]',
         disabled && 'opacity-45',
       )}
-      style={wrap ? undefined : { gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
     >
-      {options.map((option, index) => {
+      {options.map((option) => {
         const active = option.value === value;
         return (
           <button
             key={String(option.value)}
             type="button"
             disabled={disabled}
+            aria-pressed={active}
             onClick={() => onChange(option.value)}
             className={cx(
-              'min-h-[52px] px-2.5 text-sm font-black text-[#5f4f42] transition-colors sm:text-base',
-              index > 0 && !wrap && 'border-l border-[#eadfcd]',
-              wrap && index % 3 !== 0 && 'border-l border-[#eadfcd] sm:border-l-0',
-              wrap && index % 5 !== 0 && 'sm:border-l sm:border-[#eadfcd]',
-              wrap && index >= 3 && 'border-t border-[#eadfcd] sm:border-t-0',
-              wrap && index >= 5 && 'sm:border-t sm:border-[#eadfcd]',
+              'min-h-[52px] px-2.5 text-sm font-black text-[#5f4f42] transition-colors',
               active && 'bg-[#19c8b9] text-white shadow-[0_12px_28px_rgba(25,200,185,0.30)]',
               !active && !disabled && 'hover:bg-[#fff8ec]',
               disabled && 'cursor-not-allowed',
@@ -112,14 +104,14 @@ function ToggleControl({ checked, onChange }: { checked: boolean; onChange: (che
       aria-pressed={checked}
       onClick={() => onChange(!checked)}
       className={cx(
-        'relative h-9 w-[66px] rounded-full transition-colors shadow-[0_10px_24px_rgba(79,62,38,0.10)]',
+        'relative h-9 w-[4.125rem] rounded-full transition-colors shadow-[0_10px_24px_rgba(79,62,38,0.10)]',
         checked ? 'bg-[#19c8b9]' : 'bg-[#ded4c8]',
       )}
     >
       <span
         className={cx(
           'absolute left-0 top-1 h-7 w-7 rounded-full bg-white shadow-[0_6px_14px_rgba(51,41,30,0.22)] transition-transform',
-          checked ? 'translate-x-[34px]' : 'translate-x-1',
+          checked ? 'translate-x-[2.125rem]' : 'translate-x-1',
         )}
       />
     </button>
@@ -144,24 +136,21 @@ function SettingRow({
   disabled?: boolean;
 }) {
   return (
-    <div
-      className={cx(
-        'grid min-h-[82px] grid-cols-[3.25rem_minmax(0,1fr)] items-center gap-x-4 gap-y-3 py-4 sm:grid-cols-[3.25rem_minmax(8rem,1fr)_minmax(10rem,15rem)]',
-        disabled && 'opacity-50',
-      )}
-    >
-      <div className="flex h-12 w-12 items-center justify-center rounded-full border border-[#eadfcd] bg-[#fffdf8] text-[#6a5848] shadow-[0_8px_22px_rgba(79,62,38,0.08),inset_0_1px_0_rgba(255,255,255,0.95)]">
-        <Icon className="h-5 w-5" strokeWidth={2.35} />
+    <div className={cx('setting-row', disabled && 'opacity-50')}>
+      <div className="setting-row__label">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#eadfcd] bg-[#fffdf8] text-[#6a5848] shadow-[0_8px_22px_rgba(79,62,38,0.08),inset_0_1px_0_rgba(255,255,255,0.95)]">
+          <Icon className="h-5 w-5" strokeWidth={2.35} />
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h3 className="text-lg font-black leading-tight text-[#5a4a3d]">{title}</h3>
+          <StatusPill feedback={feedback} />
+        </div>
       </div>
-      <div className="flex min-w-0 items-center gap-2">
-        <h3 className="text-lg font-black leading-tight text-[#5a4a3d]">{title}</h3>
-        <StatusPill feedback={feedback} />
-      </div>
-      <div className="col-span-2 flex min-w-0 justify-start sm:col-span-1 sm:col-start-3 sm:justify-end">
-        <div className="flex w-full justify-start sm:mr-6 sm:w-[15rem] sm:max-w-full sm:justify-end">{control}</div>
+      <div className="setting-row__control">
+        <div className="flex justify-end">{control}</div>
       </div>
       {feedback?.status === 'error' && feedback.message && (
-        <p className="col-span-2 text-sm font-bold leading-6 text-apple-red sm:col-start-2">{feedback.message}</p>
+        <p className="w-full text-sm font-bold leading-6 text-apple-red">{feedback.message}</p>
       )}
     </div>
   );

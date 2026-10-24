@@ -105,7 +105,7 @@ export const Round2View: React.FC<Round2ViewProps> = ({
           onTouchEnd={onCardTouchEnd}
           onTouchCancel={onCardTouchCancel}
           style={{ touchAction: 'pan-y' }}
-          className="w-full flex min-h-0 flex-col items-center justify-center py-6 sm:min-h-[500px]"
+          className="w-full flex min-h-0 flex-col items-center justify-center py-[var(--layout-space)]"
         >
           <motion.div
             initial={{ y: -10, opacity: 0 }}
@@ -136,7 +136,7 @@ export const Round2View: React.FC<Round2ViewProps> = ({
             ))}
           </motion.div>
 
-          <div className="mb-4 max-w-full text-center text-6xl font-black leading-tight text-text-primary sm:text-7xl [overflow-wrap:anywhere]">
+          <div className="mb-4 max-w-full text-center text-[clamp(2.5rem,1.75rem+3vw,4.5rem)] font-black leading-tight text-text-primary [overflow-wrap:anywhere]">
             {viewedWord.word}
           </div>
           <div className="text-sm font-bold text-text-secondary uppercase tracking-widest mb-8">

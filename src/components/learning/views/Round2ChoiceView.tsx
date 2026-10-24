@@ -35,7 +35,7 @@ export const Round2ChoiceView: React.FC<Round2ChoiceViewProps> = ({
   onSelect,
 }) => {
   return (
-    <div className="grid w-full max-w-2xl gap-3 sm:grid-cols-2">
+    <div className="fluid-grid word-detail-grid w-full max-w-2xl">
       {options.map((option, index) => {
         const isSelected = activeSelection?.optionId === option.id;
         const isWrongSelection = isRevealed && isSelected && !option.isCorrect;
