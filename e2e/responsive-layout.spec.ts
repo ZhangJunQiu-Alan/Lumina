@@ -10,6 +10,10 @@ async function expectContentToFit(page: Page, selector: string) {
           .map((element) => ({
             element: element.className,
             overflow: element.scrollWidth - element.clientWidth,
+            overflowingChildren: Array.from(element.querySelectorAll('*'))
+              .filter((child) => child.getBoundingClientRect().right > element.getBoundingClientRect().right + 2)
+              .slice(0, 8)
+              .map((child) => child.getAttribute('class')),
           }))
           .filter(({ overflow }) => overflow > 2),
       ),

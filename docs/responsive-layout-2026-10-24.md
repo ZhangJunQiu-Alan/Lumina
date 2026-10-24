@@ -39,3 +39,14 @@ Date: 2026-10-24
 - Automated overflow and interaction checks do not establish subjective visual acceptance or physical-device compatibility.
 - IELTS listening remains behind its existing feature flag and is outside this layout change.
 - Database work already present in the checkout is excluded from these commits.
+
+## Local verification results
+
+- `npm run typecheck`: passed.
+- `npm run lint`: no errors; five existing hook-dependency warnings in unchanged App logic.
+- `npm run format:check`: passed.
+- `npm run test:unit -- --maxWorkers=2 --testTimeout=15000`: 39 files, 266 tests passed. An initial unrestricted run timed out on one learning test under local load.
+- `npm run build`: passed after the final layout fixes.
+- `npm run test:e2e -- --workers=2 --timeout=90000 --retries=0`: 23 tests passed without retries.
+- `npm run test:ielts`, `npm run test:session`, and `npm run test:official-library`: passed.
+- The reflow checks caught and verified fixes for switch thumb overflow, fixed-size seven-day rings, an outlying day flag, and an oversized illustration decoration.

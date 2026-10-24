@@ -782,7 +782,7 @@ export const HomeView = ({
         >
           <div className="home-routine-content flex w-full flex-col items-center pb-4 pt-1 sm:pt-2 xl:pb-5 xl:pt-3">
             <div className="home-routine-visual relative flex h-40 w-full items-center justify-center sm:h-52 xl:h-60">
-              <div className="absolute bottom-5 h-14 w-52 rounded-[50%] bg-[#d6c6a8]/45 sm:h-20 sm:w-72 xl:w-80" />
+              <div className="absolute bottom-5 h-14 w-52 max-w-full rounded-[50%] bg-[#d6c6a8]/45 sm:h-20 sm:w-72 xl:w-80" />
               <IslandIcon
                 name="icon-helicopter"
                 size={64}
