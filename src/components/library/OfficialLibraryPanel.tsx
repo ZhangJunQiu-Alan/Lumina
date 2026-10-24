@@ -147,12 +147,12 @@ export function OfficialLibraryPanel({
               </h3>
             </div>
 
-            <div className="flex items-center justify-between gap-4 pt-0">
+            <div className="flex flex-wrap items-center justify-between gap-4 pt-0">
               <CompletionProgressRing
                 completedMemoryWordCount={summary.completedMemoryWordCount}
                 totalWordCount={summary.totalWordCount}
               />
-              <div className="flex min-w-[126px] flex-1 flex-col items-stretch gap-3 sm:min-w-[150px] sm:flex-none">
+              <div className="flex min-w-0 flex-[1_1_8rem] flex-col items-stretch gap-3">
                 {showOpenDetailAction && onOpenDetail && (
                   <button
                     type="button"
