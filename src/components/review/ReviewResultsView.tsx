@@ -61,12 +61,12 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
   if (items.length === 0) {
     return (
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mx-auto w-full max-w-2xl">
-        <div className="glass rounded-[28px] p-6 text-center jelly-shadow sm:p-10">
+        <div className="glass fluid-empty rounded-[28px] text-center jelly-shadow">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-apple-blue/10 text-apple-blue">
             <Trophy className="h-7 w-7" />
           </div>
           <p className="mt-6 text-xs font-bold uppercase tracking-widest text-text-secondary">状态更新</p>
-          <h2 className="mt-2 text-2xl font-black text-text-primary sm:text-3xl">暂无本轮结果</h2>
+          <h2 className="fluid-title mt-2 font-black text-text-primary">暂无本轮结果</h2>
           <p className="mx-auto mt-3 max-w-md text-sm font-bold leading-6 text-text-secondary">
             完成一轮词汇学习或复习后，这里会展示每个词的记忆状态变化。
           </p>
@@ -93,7 +93,7 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
       className="mx-auto w-full max-w-4xl space-y-6"
     >
       {shouldCelebrate && <Confetti />}
-      <div className="glass rounded-[28px] p-6 jelly-shadow sm:p-10">
+      <div className="glass fluid-panel rounded-[28px] jelly-shadow">
         <div className="flex items-start justify-between gap-4 sm:items-center sm:gap-6">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">状态更新</p>
@@ -109,7 +109,7 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
             <Trophy className="h-7 w-7 sm:h-8 sm:w-8" />
           </motion.div>
         </div>
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="mt-6 fluid-grid compact-card-grid">
           {stats.map((stat, index) => (
             <motion.div
               key={stat.label}
@@ -132,7 +132,7 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: duration.base, ease: ease.out, delay: 0.3 + staggerDelay(index, 0.04) }}
-            className="glass flex flex-col gap-4 rounded-2xl p-5 jelly-shadow sm:flex-row sm:items-center sm:justify-between sm:p-6"
+            className="glass fluid-toolbar fluid-panel rounded-2xl jelly-shadow"
           >
             <div>
               <p className="text-xl font-black">{item.word}</p>
@@ -140,13 +140,13 @@ export const ReviewResultsView = ({ items, onBackHome }: ReviewResultsViewProps)
             </div>
 
             {item.transition.from === item.transition.to ? (
-              <div className="flex items-center gap-3 text-sm font-bold">
+              <div className="flex flex-wrap items-center gap-3 text-sm font-bold">
                 <span className="rounded-full bg-apple-blue/10 px-3 py-1 text-apple-blue">
                   {memoryStateLabel[item.transition.to]}确认
                 </span>
               </div>
             ) : (
-              <div className="flex items-center gap-3 text-sm font-bold">
+              <div className="flex flex-wrap items-center gap-3 text-sm font-bold">
                 <span className="rounded-full bg-black/5 px-3 py-1 text-text-secondary">
                   {item.transition.from ? memoryStateLabel[item.transition.from] : '刚加入'}
                 </span>

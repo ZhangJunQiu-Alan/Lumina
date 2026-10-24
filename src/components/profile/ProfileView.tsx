@@ -375,7 +375,7 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
       animate="visible"
       className="mx-auto w-full max-w-6xl space-y-6"
     >
-      <motion.section variants={stagger(0.05)} className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <motion.section variants={stagger(0.05)} className="fluid-grid metric-card-grid">
         <MetricPill icon={Flame} label="连续学习" value={`${stats.streak} 天`} />
         <MetricPill icon={CalendarDays} label="年度学习" value={`${yearlySummary.activeDays} 天`} />
         <MetricPill icon={Activity} label="新学单词" value={`${yearlySummary.learned}`} />
@@ -387,7 +387,7 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
       </motion.section>
 
       {!hasLearningActivity ? (
-        <motion.section variants={fadeUp} className="glass px-6 py-14 text-center md:px-10 md:py-20">
+        <motion.section variants={fadeUp} className="glass fluid-empty text-center">
           <p className="text-[11px] font-black uppercase tracking-[0.24em] text-apple-blue">Learning record</p>
           <h3 className="mt-3 text-2xl font-black tracking-tight text-text-primary">暂无学习记录</h3>
           <p className="mx-auto mt-3 max-w-lg text-sm leading-7 text-text-secondary">
@@ -396,8 +396,8 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
         </motion.section>
       ) : (
         <>
-          <motion.section variants={fadeUp} className="glass rounded-[34px] p-5 md:p-7">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <motion.section variants={fadeUp} className="glass fluid-panel rounded-[34px]">
+            <div className="fluid-toolbar">
               <div>
                 <p className="text-[11px] font-black uppercase tracking-[0.24em] text-apple-blue">Learning Trend</p>
                 <h3 className="mt-2 text-2xl font-black tracking-tight text-text-primary">每日学习趋势</h3>
@@ -421,7 +421,7 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
               </div>
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="mt-5 fluid-grid compact-card-grid">
               <div className="rounded-[22px] bg-white/55 p-4">
                 <p className="text-xs font-black text-text-secondary">新学</p>
                 <p className="mt-1 text-2xl font-black text-apple-blue">{trendSummary.learned}</p>
@@ -455,8 +455,8 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
             </div>
           </motion.section>
 
-          <motion.section variants={fadeUp} className="glass rounded-[34px] p-5 md:p-7">
-            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <motion.section variants={fadeUp} className="glass fluid-panel rounded-[34px]">
+            <div className="fluid-toolbar">
               <div>
                 <p className="text-[11px] font-black uppercase tracking-[0.24em] text-apple-green">Activity Heatmap</p>
                 <h3 className="mt-2 text-2xl font-black tracking-tight text-text-primary">年度学习记录</h3>
@@ -481,16 +481,16 @@ export function ProfileView({ user, stats, onSignOut }: ProfileViewProps) {
         </>
       )}
 
-      <motion.section variants={fadeUp} className="glass relative overflow-hidden rounded-[36px] p-6 md:p-8">
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+      <motion.section variants={fadeUp} className="glass fluid-panel relative overflow-hidden rounded-[36px]">
+        <div className="fluid-toolbar relative">
           <div>
             <div className="flex h-24 w-24 items-center justify-center rounded-[30px] bg-apple-blue text-4xl font-black text-white shadow-lg">
               {(user?.email?.[0] ?? 'L').toUpperCase()}
             </div>
-            <h2 className="mt-6 text-4xl font-black text-text-primary prose-serif">
+            <h2 className="fluid-title mt-6 font-black text-text-primary prose-serif">
               {(user?.user_metadata.full_name as string | undefined) ?? '当前账号'}
             </h2>
-            <p className="mt-3 text-base text-text-secondary">{user?.email ?? '邮箱暂不可用'}</p>
+            <p className="mt-3 break-all text-base text-text-secondary">{user?.email ?? '邮箱暂不可用'}</p>
           </div>
 
           <button
