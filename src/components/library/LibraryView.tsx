@@ -809,7 +809,7 @@ function WordDetailDrawer({ word, onClose }: { word: LibraryGroupWord; onClose: 
 
           <section className="glass rounded-2xl p-5">
             <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">近义词 / 反义词</p>
-            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+            <div className="mt-3 fluid-grid word-detail-grid">
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">近义词</p>
                 {word.synonyms.length > 0 ? (
@@ -1153,7 +1153,7 @@ export const LibraryView = ({
             <BookOpen className="h-7 w-7" />
           </div>
           <div className="min-w-0 pt-1">
-            <h2 className="text-3xl font-black tracking-tight text-text-primary sm:text-4xl">词库</h2>
+            <h2 className="fluid-title font-black tracking-tight text-text-primary">词库</h2>
             <p className="mt-2 text-sm leading-7 text-text-secondary">
               选择官方词库，或在个人词库中勾选任意数量的单词开始学习。
             </p>
@@ -1161,7 +1161,7 @@ export const LibraryView = ({
         </div>
 
         <div className="border-b border-black/8">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="fluid-toolbar">
             <div className="flex items-center gap-2">
               {(
                 [
@@ -1235,7 +1235,7 @@ export const LibraryView = ({
             transition={{ duration: duration.fast, ease: ease.out }}
             className="space-y-5"
           >
-            <div className="grid grid-cols-1 gap-3 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
+            <div className="fluid-grid library-card-grid">
               {officialLibraries.map(({ definition, summary }) => (
                 <Fragment key={definition.id}>
                   <OfficialLibraryPanel
@@ -1377,7 +1377,7 @@ export const OfficialLibraryDetailView = ({
             <p className="mt-3 text-sm leading-7 text-text-secondary">回首页选择词库和顺序后，就能开始官方学习。</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <div className="fluid-grid detail-card-grid">
             {words.map((word, index) => (
               <motion.button
                 key={word.id}
@@ -1644,7 +1644,7 @@ export const LibraryGroupDetailView = ({
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <div className="fluid-grid detail-card-grid">
             {words.map((word, index) => (
               <motion.button
                 key={word.id}

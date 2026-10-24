@@ -363,7 +363,7 @@ export const ImportView = () => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="glass flex flex-col items-center gap-6 rounded-apple-lg p-12 jelly-shadow"
+                className="glass flex flex-col items-center gap-6 fluid-empty rounded-apple-lg jelly-shadow"
               >
                 <Loader2 className="h-10 w-10 animate-spin text-apple-blue" />
                 <div className="text-center">
@@ -426,7 +426,7 @@ export const ImportView = () => {
             exit={{ opacity: 0 }}
             className="space-y-4"
           >
-            <div className="mb-2 flex items-center justify-between px-1">
+            <div className="fluid-toolbar mb-2 px-1">
               <h2 className="text-2xl font-black">词条预览</h2>
               <button
                 type="button"
@@ -457,7 +457,7 @@ export const ImportView = () => {
                       )}
                     </div>
                     <p className="mt-1 truncate text-sm text-text-secondary">{entry.primary_meaning_zh}</p>
-                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                    <div className="mt-4 grid gap-2 grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))]">
                       <div className="rounded-2xl bg-white/70 px-3 py-2">
                         <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">
                           构词拆解
@@ -510,7 +510,7 @@ export const ImportView = () => {
             key="saving"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="glass flex flex-col items-center gap-6 rounded-apple-lg p-16 jelly-shadow"
+            className="glass flex flex-col items-center gap-6 fluid-empty rounded-apple-lg jelly-shadow"
           >
             <Loader2 className="h-10 w-10 animate-spin text-apple-green" />
             <p className="text-xl font-black">正在保存到个人词库…</p>

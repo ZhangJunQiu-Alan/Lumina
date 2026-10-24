@@ -1,0 +1,168 @@
+:root {
+  --layout-space: clamp(1rem, 0.65rem + 1.2vw, 2rem);
+  --layout-gap: clamp(0.875rem, 0.65rem + 0.8vw, 1.5rem);
+}
+
+@layer components {
+  .app-page-main {
+    padding: var(--layout-space);
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+  }
+
+  .fluid-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--card-min, 18rem)), 1fr));
+    gap: var(--layout-gap);
+  }
+
+  .fluid-grid > *,
+  .fluid-toolbar > * {
+    min-inline-size: 0;
+  }
+
+  .fluid-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .fluid-panel {
+    padding: var(--layout-space);
+  }
+
+  .fluid-empty {
+    padding: clamp(1.5rem, 1rem + 4vw, 5rem);
+  }
+
+  .fluid-title {
+    font-size: clamp(1.75rem, 1.3rem + 1.5vw, 2.625rem);
+    overflow-wrap: anywhere;
+    text-wrap: balance;
+  }
+
+  .home-dashboard {
+    container-type: inline-size;
+  }
+
+  .home-metrics {
+    --card-min: 5rem;
+  }
+
+  @container (min-width: 56rem) {
+    .home-overview {
+      order: -1;
+    }
+  }
+
+  .home-dashboard-grid {
+    --card-min: 27rem;
+  }
+
+  .library-card-grid {
+    --card-min: 20rem;
+  }
+
+  .detail-card-grid {
+    --card-min: 25rem;
+  }
+
+  .metric-card-grid {
+    --card-min: 9rem;
+  }
+
+  .compact-card-grid {
+    --card-min: 8rem;
+  }
+
+  .word-detail-grid {
+    --card-min: 15rem;
+  }
+
+  .ielts-dashboard-grid {
+    --card-min: 26rem;
+  }
+
+  .ielts-module-grid {
+    --card-min: 14rem;
+  }
+
+  .saved-words-controls {
+    display: flex;
+    flex: 1 1 26rem;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .saved-words-controls > label {
+    flex: 1 1 14rem;
+  }
+
+  .setting-row {
+    display: flex;
+    min-block-size: 5.125rem;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1rem;
+    padding-block: 1rem;
+  }
+
+  .setting-row__label {
+    display: flex;
+    flex: 1 1 13rem;
+    align-items: center;
+    gap: 1rem;
+    min-inline-size: 0;
+  }
+
+  .setting-row__control {
+    display: flex;
+    flex: 1 1 15rem;
+    justify-content: flex-end;
+    min-inline-size: 0;
+  }
+
+  .setting-row__control:has(> div > button) {
+    flex: 0 0 auto;
+  }
+
+  .setting-row:has(.setting-row__control > div > button) .setting-row__label {
+    flex-basis: 10rem;
+  }
+
+  .setting-row__control > div {
+    inline-size: 100%;
+    max-inline-size: 18rem;
+  }
+
+  .setting-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1px;
+    background: #eadfcd;
+  }
+
+  .setting-options > button {
+    flex: 1 1 3.5rem;
+    min-inline-size: max-content;
+    white-space: nowrap;
+    background: #ffffff;
+  }
+
+  .setting-options > button[aria-pressed='true'] {
+    background: #0e8f88;
+    color: #ffffff;
+  }
+
+  .setting-options > button[aria-pressed='false']:hover:not(:disabled) {
+    background: #f7faf8;
+  }
+
+  @media (min-width: 64rem) {
+    .app-page-main {
+      padding-left: calc(9.25rem + var(--layout-space));
+      padding-bottom: var(--layout-space);
+    }
+  }
+}

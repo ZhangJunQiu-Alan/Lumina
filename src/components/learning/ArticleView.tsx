@@ -39,8 +39,8 @@ export const ArticleView = ({ sentences, words, onFinish }: ArticleViewProps) =>
       className="mx-auto w-full max-w-[1400px] py-6 sm:py-7"
     >
       <div className="grid w-full gap-4 xl:grid-cols-[minmax(0,1fr)_180px] xl:items-start">
-        <div className="glass relative min-w-0 rounded-apple-lg p-6 sm:p-8 lg:p-10 xl:p-12">
-          <div className="mb-10 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+        <div className="glass relative min-w-0 fluid-panel rounded-apple-lg">
+          <div className="fluid-toolbar mb-[var(--layout-space)]">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-apple-green shadow-lg shadow-apple-green/20">
                 <BookOpen className="h-6 w-6 text-white" />
@@ -63,7 +63,7 @@ export const ArticleView = ({ sentences, words, onFinish }: ArticleViewProps) =>
             </IslandButton>
           </div>
 
-          <div className="space-y-6 text-lg font-medium leading-[1.85] text-gray-800 selection:bg-apple-blue/10 sm:text-xl">
+          <div className="mx-auto max-w-[70ch] space-y-6 text-lg font-medium leading-[1.85] text-gray-800 selection:bg-apple-blue/10 sm:text-xl">
             {sentences.map((sentence, index) => (
               <div key={`${sentence.en}-${index}`} className="space-y-2">
                 <p>

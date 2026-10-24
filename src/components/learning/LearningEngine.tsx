@@ -1519,7 +1519,7 @@ export const LearningEngine = ({
   const allowLiveCorrectTint = type === 'round1' || type === 'round3';
   const inputIsCorrect = !isWrong && allowLiveCorrectTint && isCorrect;
   const contentAreaClassName =
-    'learning-card-scrollarea flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7 sm:py-7 lg:px-8 lg:py-7';
+    'learning-card-scrollarea flex-1 min-h-0 overflow-y-auto overscroll-contain px-[var(--layout-space)] py-[var(--layout-space)]';
   const round1InputDockClassName =
     'shrink-0 border-t border-black/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.76),rgba(247,249,253,0.94))] px-4 pt-2 pb-3 shadow-[0_-18px_40px_rgba(14,26,56,0.08)] backdrop-blur-xl sm:px-7 sm:pt-3 sm:pb-4 lg:px-8';
   const round1MemoryTip = preferences.memoryTipEnabled ? trimDisplayText(viewedWord.memory_tip) : '';

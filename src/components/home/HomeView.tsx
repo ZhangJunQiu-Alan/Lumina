@@ -196,7 +196,7 @@ function OrbitMetric({
   return (
     <div
       className={cx(
-        'home-metric home-metric-card glass flex-1 min-w-[100px] sm:min-w-[110px] rounded-[22px] border p-3 sm:p-4 transition-all hover:bg-white/60 sm:rounded-[26px] xl:p-5',
+        'home-metric home-metric-card glass flex-1 min-w-0 rounded-[22px] border p-3 sm:p-4 transition-all hover:bg-white/60 sm:rounded-[26px] xl:p-5',
         tones.card,
         tones.shadow,
       )}
@@ -259,14 +259,14 @@ function OrbitBadge({
       transition={{ duration: duration.base, ease: ease.out, delay: 0.1 + staggerDelay(index, 0.05) }}
       className="home-orbit-badge group flex flex-col items-center gap-2 text-center sm:gap-2.5 xl:gap-3"
     >
-      <div className="relative">
+      <div className="relative w-full max-w-[3.5rem]">
         <div
           className={cx(
-            'home-orbit-ring relative flex h-[42px] w-[42px] sm:h-[58px] sm:w-[58px] items-center justify-center rounded-full border transition-all duration-500 xl:h-[68px] xl:w-[68px]',
+            'home-orbit-ring relative flex aspect-square w-full items-center justify-center rounded-full border transition-all duration-500',
             meta.ringClass,
             active
-              ? 'ring-4 ring-[#efc16d]/30 scale-110 shadow-lg shadow-[#efc16d]/20'
-              : 'hover:scale-105 hover:shadow-[0_12px_24px_-18px_rgba(76,57,24,0.35)]',
+              ? 'ring-4 ring-[#efc16d]/30 shadow-lg shadow-[#efc16d]/20'
+              : 'hover:shadow-[0_12px_24px_-18px_rgba(76,57,24,0.35)]',
           )}
         >
           {Icon && (
@@ -351,7 +351,7 @@ function RoutineStepRow({
   const isCurrent = status === 'current';
 
   return (
-    <div className={cx('home-routine-step flex items-center gap-4 xl:gap-6', status === 'upcoming' && 'opacity-30')}>
+    <div className="home-routine-step flex items-center gap-4 xl:gap-6">
       <div
         className={cx(
           'home-routine-step-icon flex h-10 w-10 items-center justify-center rounded-full xl:h-11 xl:w-11',
@@ -368,7 +368,7 @@ function RoutineStepRow({
           'text-[15px] xl:text-[17px]',
           isCurrent && 'font-bold text-[#2f261d]',
           isCompleted && 'font-bold text-[#2f261d]',
-          status === 'upcoming' && 'font-medium text-[#2f261d]',
+          status === 'upcoming' && 'font-medium text-text-secondary',
         )}
       >
         {label}
@@ -691,89 +691,13 @@ export const HomeView = ({
         </span>
       </div>
 
-      <header className="home-header relative z-10 mb-4 sm:mb-6 xl:mb-10">
+      <header className="home-header relative z-10 mb-[var(--layout-space)]">
         <p className="home-header-kicker">Today · 今日学习</p>
         <h1 className="home-header-title">今日学习</h1>
         <p className="home-header-copy">查看待复习单词，或继续上次未完成的学习。</p>
       </header>
 
-      <main className="home-dashboard-grid relative z-10 grid items-start gap-8 xl:gap-12 lg:grid-cols-2">
-        {/* Left Side: Domain Overview */}
-        <motion.section
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: duration.slow, ease: ease.out }}
-          className="home-panel flex min-w-0 flex-col px-1 pb-3 pt-5 sm:px-3 sm:pb-5 sm:pt-7 xl:px-4 xl:pt-9"
-        >
-          <div className="home-metrics flex flex-row gap-3 overflow-x-auto pb-2 sm:grid sm:grid-cols-3 sm:gap-4 sm:overflow-visible sm:pb-0 xl:gap-5">
-            <OrbitMetric
-              value={String(stats.streak)}
-              label="连续学习天数"
-              icon={Zap}
-              accent="warm"
-              islandIconName="icon-miles"
-            />
-            <OrbitMetric
-              value={String(stats.perfectCheckinDays)}
-              label="完成计划天数"
-              icon={Sparkles}
-              accent="gold"
-              islandIconName="icon-critterpedia"
-            />
-            <OrbitMetric
-              value={String(stats.stableRecallCount)}
-              label="已掌握单词数"
-              icon={BookOpen}
-              accent="blue"
-              islandIconName="icon-map"
-            />
-          </div>
-
-          <div className="home-orbit-heading mt-7 sm:mt-9 xl:mt-12">
-            <h2 className="inline-flex items-center gap-2 text-[16px] sm:text-[20px] font-bold tracking-widest text-[#2f261d] uppercase opacity-40">
-              <span className="home-leaf-shape home-leaf-shape--heading" aria-hidden="true" />
-              学习记录
-            </h2>
-          </div>
-
-          <div className="home-orbit-map relative mt-4 sm:mt-5 xl:mt-7">
-            <span className="home-orbit-dotted-trail" aria-hidden="true" />
-            <div className="home-orbit-grid relative z-10 grid grid-cols-7 gap-2 sm:gap-3 xl:gap-5">
-              {stats.orbitDays.map((node, index) => (
-                <OrbitBadge
-                  key={node.date}
-                  node={node}
-                  active={node.date === stats.selectedDate}
-                  index={index}
-                  onSelect={() => onSelectOrbitDate(node.date)}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="home-summary mt-7 sm:mt-9 xl:mt-10">
-            <div className="home-summary-card home-summary-ticket rounded-[22px] sm:rounded-[28px] border border-black/[0.03] bg-black/[0.03] p-4 sm:p-6 xl:rounded-[32px] xl:p-8">
-              <span className="home-summary-pin home-summary-pin--left" aria-hidden="true" />
-              <span className="home-summary-pin home-summary-pin--right" aria-hidden="true" />
-              <div className="grid grid-cols-2 divide-x divide-black/[0.06]">
-                <SummaryMetric
-                  value={stats.selectedDayReviewWordCount}
-                  label="复习单词数"
-                  iconName="icon-variant"
-                  tone="review"
-                />
-                <SummaryMetric
-                  value={stats.selectedDayLearnedWordCount}
-                  label="新学习单词数"
-                  iconName="icon-diy"
-                  tone="new"
-                />
-              </div>
-            </div>
-          </div>
-        </motion.section>
-
-        {/* Right Side: Daily Routine */}
+      <main className="home-dashboard-grid fluid-grid relative z-10 items-start">
         <motion.section
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -782,7 +706,7 @@ export const HomeView = ({
         >
           <div className="home-routine-content flex w-full flex-col items-center pb-4 pt-1 sm:pt-2 xl:pb-5 xl:pt-3">
             <div className="home-routine-visual relative flex h-40 w-full items-center justify-center sm:h-52 xl:h-60">
-              <div className="absolute bottom-5 h-14 w-52 rounded-[50%] bg-[#d6c6a8]/45 sm:h-20 sm:w-72 xl:w-80" />
+              <div className="absolute bottom-5 h-14 w-52 max-w-full rounded-[50%] bg-[#d6c6a8]/45 sm:h-20 sm:w-72 xl:w-80" />
               <IslandIcon
                 name="icon-helicopter"
                 size={64}
@@ -806,13 +730,13 @@ export const HomeView = ({
             </div>
 
             <div className="home-routine-copy mt-3 sm:mt-4 xl:mt-5">
-              <h2 className="home-routine-title text-[28px] font-black leading-[1.1] tracking-tight text-[#2f261d] prose-serif sm:text-[34px] md:text-[38px] xl:text-[40px]">
+              <h2 className="home-routine-title fluid-title font-black leading-[1.1] tracking-tight text-[#2f261d] prose-serif">
                 {routineCard.title}
               </h2>
               {shouldShowOfficialControls ? (
-                <div className="mt-3 flex flex-col items-stretch justify-center gap-2.5 sm:flex-row xl:mt-4">
+                <div className="mt-3 flex flex-wrap items-stretch justify-center gap-2.5">
                   {officialOptions.length > 0 ? (
-                    <div className="flex min-w-0 flex-1 items-stretch gap-2 sm:min-w-[15rem]">
+                    <div className="flex min-w-0 flex-[1_1_15rem] items-stretch gap-2">
                       <RoutineDropdown
                         label="选择已学习官方词库"
                         value={(selectedOfficialOption?.libraryId ?? '') as OfficialLibraryId}
@@ -854,7 +778,7 @@ export const HomeView = ({
                     options={modeDropdownOptions}
                     onChange={handleModeChange}
                     disabled={officialOptions.length === 0 || isDataPending}
-                    className="sm:w-[9.5rem]"
+                    className="min-w-0 flex-[1_1_9.5rem]"
                   />
                 </div>
               ) : (
@@ -865,12 +789,6 @@ export const HomeView = ({
             </div>
           </div>
 
-          <div className="home-routine-steps mt-2 w-full space-y-3 rounded-[22px] border border-black/[0.02] bg-black/[0.04] p-4 text-left sm:mt-3 sm:rounded-[28px] sm:p-5 xl:mt-4 xl:space-y-5 xl:rounded-[32px] xl:p-7">
-            {routineCard.visibleSteps.map((step) => (
-              <RoutineStepRow key={`${step.key}-${step.status}`} label={step.label} status={step.status} />
-            ))}
-          </div>
-
           <button
             onClick={handleStart}
             disabled={isStartDisabled}
@@ -878,6 +796,86 @@ export const HomeView = ({
           >
             {isLoading ? '准备中...' : isDataPending ? '同步中...' : ctaLabel}
           </button>
+
+          <div className="home-routine-steps mt-2 w-full space-y-3 rounded-[22px] border border-black/[0.02] bg-black/[0.04] p-4 text-left sm:mt-3 sm:rounded-[28px] sm:p-5 xl:mt-4 xl:space-y-5 xl:rounded-[32px] xl:p-7">
+            {routineCard.visibleSteps.map((step) => (
+              <RoutineStepRow key={`${step.key}-${step.status}`} label={step.label} status={step.status} />
+            ))}
+          </div>
+        </motion.section>
+
+        <motion.section
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: duration.slow, ease: ease.out }}
+          className="home-panel home-overview flex min-w-0 flex-col px-1 pb-3 pt-5 sm:px-3 sm:pb-5 sm:pt-7 xl:px-4 xl:pt-9"
+        >
+          <div className="home-metrics fluid-grid">
+            <OrbitMetric
+              value={String(stats.streak)}
+              label="连续学习天数"
+              icon={Zap}
+              accent="warm"
+              islandIconName="icon-miles"
+            />
+            <OrbitMetric
+              value={String(stats.perfectCheckinDays)}
+              label="完成计划天数"
+              icon={Sparkles}
+              accent="gold"
+              islandIconName="icon-critterpedia"
+            />
+            <OrbitMetric
+              value={String(stats.stableRecallCount)}
+              label="已掌握单词数"
+              icon={BookOpen}
+              accent="blue"
+              islandIconName="icon-map"
+            />
+          </div>
+
+          <div className="home-orbit-heading mt-7 sm:mt-9 xl:mt-12">
+            <h2 className="inline-flex items-center gap-2 text-[16px] sm:text-[20px] font-bold tracking-widest text-[#2f261d] uppercase">
+              <span className="home-leaf-shape home-leaf-shape--heading" aria-hidden="true" />
+              学习记录
+            </h2>
+          </div>
+
+          <div className="home-orbit-map relative mt-4 sm:mt-5 xl:mt-7">
+            <span className="home-orbit-dotted-trail" aria-hidden="true" />
+            <div className="home-orbit-grid relative z-10 grid grid-cols-7 gap-2 sm:gap-3 xl:gap-5">
+              {stats.orbitDays.map((node, index) => (
+                <OrbitBadge
+                  key={node.date}
+                  node={node}
+                  active={node.date === stats.selectedDate}
+                  index={index}
+                  onSelect={() => onSelectOrbitDate(node.date)}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="home-summary mt-7 sm:mt-9 xl:mt-10">
+            <div className="home-summary-card home-summary-ticket rounded-[22px] sm:rounded-[28px] border border-black/[0.03] bg-black/[0.03] p-4 sm:p-6 xl:rounded-[32px] xl:p-8">
+              <span className="home-summary-pin home-summary-pin--left" aria-hidden="true" />
+              <span className="home-summary-pin home-summary-pin--right" aria-hidden="true" />
+              <div className="grid grid-cols-2 divide-x divide-black/[0.06]">
+                <SummaryMetric
+                  value={stats.selectedDayReviewWordCount}
+                  label="复习单词数"
+                  iconName="icon-variant"
+                  tone="review"
+                />
+                <SummaryMetric
+                  value={stats.selectedDayLearnedWordCount}
+                  label="新学习单词数"
+                  iconName="icon-diy"
+                  tone="new"
+                />
+              </div>
+            </div>
+          </div>
         </motion.section>
       </main>
 

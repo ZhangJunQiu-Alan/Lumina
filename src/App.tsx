@@ -1395,14 +1395,14 @@ export default function App() {
   return (
     <SavedWordsProvider>
       <WordPopoverProvider>
-        <div className="lumina-app-shell min-h-screen flex selection:bg-apple-blue/20">
+        <div className="lumina-app-shell min-h-dvh flex selection:bg-apple-blue/20">
           <AmbientBackground />
           {!isIeltsTestRoute && !isSessionRoute && (
             <Sidebar activePath={activeNavPath} onNavigate={handleSidebarNavigate} hideOnMobile={isSessionRoute} />
           )}
           <WhatsNewModal />
 
-          <div className="flex-1 relative h-screen overflow-hidden">
+          <div className="min-w-0 flex-1 relative h-dvh overflow-hidden">
             <main
               ref={mainScrollRef}
               onPointerDownCapture={(event) => {
@@ -1416,12 +1416,10 @@ export default function App() {
               className={cx(
                 'lumina-app-main h-full overflow-y-auto relative z-10',
                 isSessionRoute
-                  ? 'session-main px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:px-6 md:pt-7 md:pb-7 lg:px-8 xl:px-10'
+                  ? 'session-main px-[var(--layout-space)] pt-[var(--layout-space)] pb-[calc(env(safe-area-inset-bottom)+0.75rem)]'
                   : isIeltsTestRoute
                     ? 'px-0 py-0'
-                    : isHomeRoute
-                      ? 'px-4 pt-4 pb-28 sm:px-6 lg:px-6 lg:py-8 lg:pl-[10.25rem] lg:pr-8 xl:pl-[10.75rem] xl:pr-10'
-                      : 'px-4 pt-4 pb-28 sm:px-6 lg:px-6 lg:py-8 lg:pl-[10.25rem] lg:pr-8 xl:pl-[10.75rem] xl:pr-10',
+                    : 'app-page-main',
               )}
             >
               <div

@@ -432,7 +432,7 @@ export function SavedWordsPanel({
   return (
     <section className="space-y-5">
       {showHeader && (
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="fluid-toolbar items-start">
           <div className="flex items-start gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-apple-green/10 text-apple-green">
               <BookOpen className="h-5 w-5" />
@@ -465,7 +465,7 @@ export function SavedWordsPanel({
       )}
 
       {savedWords.length === 0 ? (
-        <div className="glass rounded-[32px] p-12 text-center jelly-shadow">
+        <div className="glass fluid-empty rounded-[32px] text-center jelly-shadow">
           <BookOpen className="mx-auto h-10 w-10 text-text-secondary/50" />
           <p className="mt-4 text-2xl font-black text-text-primary">暂无收藏单词</p>
           <p className="mt-3 text-sm leading-7 text-text-secondary">
@@ -474,14 +474,14 @@ export function SavedWordsPanel({
         </div>
       ) : (
         <div className="space-y-5">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="fluid-toolbar">
             <div className="inline-flex h-12 w-fit shrink-0 items-center rounded-[18px] bg-white px-4 text-text-primary shadow-[0_12px_28px_rgba(0,0,0,0.06)]">
               <span className="text-2xl font-black tracking-tight">{savedWords.length}</span>
               <span className="ml-2 text-xs font-bold text-text-secondary">个词</span>
             </div>
 
-            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
-              <label className="flex h-12 min-w-0 flex-1 items-center gap-2 rounded-[18px] bg-white px-4 text-sm text-text-secondary shadow-[0_12px_28px_rgba(0,0,0,0.05)]">
+            <div className="saved-words-controls">
+              <label className="flex h-12 min-w-0 items-center gap-2 rounded-[18px] bg-white px-4 text-sm text-text-secondary shadow-[0_12px_28px_rgba(0,0,0,0.05)]">
                 <Search className="h-4 w-4 flex-shrink-0" />
                 <input
                   value={searchTerm}
@@ -586,7 +586,7 @@ export function SavedWordsPanel({
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <div className="fluid-grid detail-card-grid">
             {pageWords.map((entry, index) => {
               const badge = getSavedWordBadge(entry);
               const selected = selectedIds.has(entry.vocabularyItemId);

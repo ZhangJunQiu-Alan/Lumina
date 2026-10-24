@@ -34,7 +34,7 @@ export const LibrarySkeleton = () => {
   return (
     <div className="space-y-10">
       {/* Header Skeleton */}
-      <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+      <header className="fluid-toolbar">
         <div className="space-y-3">
           <Skeleton className="h-10 w-48" />
           <Skeleton className="h-5 w-64 opacity-60" />
@@ -49,15 +49,15 @@ export const LibrarySkeleton = () => {
           <div className="h-px flex-1 bg-black/5" />
         </div>
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2">
+        <div className="fluid-grid library-card-grid">
           {[1, 2].map((i) => (
-            <div key={i} className="glass rounded-[32px] p-7 shadow-sm">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-4">
+            <div key={i} className="glass fluid-panel rounded-[32px] shadow-sm">
+              <div className="fluid-toolbar items-start">
+                <div className="flex min-w-0 flex-wrap items-center gap-4">
                   <Skeleton variant="circle" className="h-14 w-14" />
                   <div className="space-y-2">
                     <Skeleton className="h-6 w-32" />
-                    <Skeleton className="h-4 w-48 opacity-60" />
+                    <Skeleton className="h-4 w-48 max-w-full opacity-60" />
                   </div>
                 </div>
                 <Skeleton className="h-10 w-24 rounded-full" />
@@ -77,7 +77,7 @@ export const LibrarySkeleton = () => {
           <Skeleton className="h-6 w-24" />
           <div className="h-px flex-1 bg-black/5" />
         </div>
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+        <div className="fluid-grid detail-card-grid">
           {[1, 2, 3].map((i) => (
             <div key={i} className="glass rounded-[32px] p-6 shadow-sm">
               <div className="space-y-4">

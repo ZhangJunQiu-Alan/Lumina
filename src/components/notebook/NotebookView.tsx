@@ -223,7 +223,7 @@ export function NotebookView() {
             <BookMarked className="h-6 w-6" />
           </div>
           <div>
-            <h1 className="text-3xl font-black text-text-primary">生词本</h1>
+            <h1 className="fluid-title font-black text-text-primary">生词本</h1>
             <p className="mt-2 text-sm leading-7 text-text-secondary max-w-2xl">
               按下次复习时间列出已学习、尚未掌握的单词。
             </p>
@@ -237,7 +237,7 @@ export function NotebookView() {
       </header>
 
       {words.length === 0 ? (
-        <div className="glass rounded-[40px] p-20 text-center jelly-shadow">
+        <div className="glass fluid-empty rounded-[40px] text-center jelly-shadow">
           <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-apple-green/10 text-apple-green">
             <BookMarked className="h-10 w-10" />
           </div>
@@ -261,7 +261,7 @@ export function NotebookView() {
                 }`}
               >
                 <div
-                  className="flex cursor-pointer items-center justify-between p-5 sm:p-6"
+                  className="flex cursor-pointer items-center justify-between fluid-panel"
                   onClick={() => setExpandedWordId(isExpanded ? null : word.id)}
                 >
                   <div className="flex flex-1 items-center gap-4 min-w-0">
@@ -308,7 +308,7 @@ export function NotebookView() {
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: duration.slow, ease: ease.out }}
                     >
-                      <div className="border-t border-black/5 p-6 sm:p-8 space-y-8">
+                      <div className="fluid-panel border-t border-black/5 space-y-8">
                         {preferences.memoryTipEnabled && word.memoryTip && (
                           <div className="rounded-2xl bg-apple-blue/5 p-4">
                             <p className="text-xs font-bold uppercase tracking-widest text-apple-blue mb-2">记忆提示</p>
@@ -337,7 +337,7 @@ export function NotebookView() {
                         )}
 
                         {(word.synonyms.length > 0 || word.antonyms.length > 0) && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                          <div className="fluid-grid word-detail-grid">
                             {word.synonyms.length > 0 && (
                               <div>
                                 <p className="text-xs font-bold uppercase tracking-widest text-text-secondary mb-3">

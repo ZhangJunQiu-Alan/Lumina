@@ -127,7 +127,7 @@ export const Round1View: React.FC<Round1ViewProps> = ({
           </div>
 
           {hasRound1InfoCards && (
-            <div className="grid gap-3 sm:gap-4 lg:grid-cols-[repeat(auto-fit,minmax(18rem,1fr))]">
+            <div className="fluid-grid">
               {showRound1MorphologyCard && (
                 <Round1MorphologyCard word={viewedWord} targetWords={lookupTargetWords} onWordClick={openPopover} />
               )}

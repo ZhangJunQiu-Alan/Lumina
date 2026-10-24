@@ -12,7 +12,7 @@ export const SettingsView = () => (
     animate="visible"
     className="settings-panel mx-auto w-full max-w-[680px] overflow-hidden"
   >
-    <motion.header variants={fadeUp} className="px-7 pb-5 pt-7 sm:px-8 sm:pt-8">
+    <motion.header variants={fadeUp} className="fluid-panel pb-5">
       <div className="flex items-start gap-4">
         <div className="settings-panel__icon flex h-12 w-12 shrink-0 items-center justify-center">
           <SlidersHorizontal className="h-6 w-6" strokeWidth={2.4} />
@@ -24,7 +24,7 @@ export const SettingsView = () => (
       </div>
     </motion.header>
 
-    <motion.div variants={fadeUp} className="px-7 pb-7 sm:px-8 sm:pb-8">
+    <motion.div variants={fadeUp} className="fluid-panel pt-0">
       <LearningSettingsContent />
     </motion.div>
   </motion.div>

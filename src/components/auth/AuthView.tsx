@@ -489,7 +489,7 @@ export const AuthView = () => {
   };
 
   return (
-    <main className="auth-page min-h-svh overflow-x-hidden px-4 py-5 sm:px-6 md:py-7 lg:px-8">
+    <main className="auth-page fluid-panel min-h-svh">
       <div className="auth-shell mx-auto grid w-full max-w-5xl gap-5 lg:grid-cols-[minmax(0,0.82fr)_minmax(430px,0.88fr)] lg:items-stretch">
         <motion.aside
           initial={{ opacity: 0, x: -18 }}
