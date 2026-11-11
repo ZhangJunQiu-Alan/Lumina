@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { duration, ease } from '../../lib/motion';
 import { AlertCircle, BookMarked, Clock3, X, Volume2 } from 'lucide-react';
 import type { LibraryGroupWord, MemoryState } from '../../types';
 import { toConfusingPairs, toWordMorphology, toWordRelations } from '../../types';
 import { ExampleSentenceList } from '../shared/ExampleSentenceList';
-import { cancelBrowserSpeech, isBrowserSpeechSupported, speakTextViaBrowser } from '../../lib/browserSpeech';
+import { useLearningAudio } from '../learning/hooks/useLearningAudio';
 import { fetchDifficultWords } from '../../lib/libraryApi';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
@@ -118,43 +118,10 @@ export function NotebookView() {
   const [expandedWordId, setExpandedWordId] = useState<string | null>(null);
 
   // Playback state for example sentences
-  const [activeExampleKey, setActiveExampleKey] = useState<string | null>(null);
-  const playbackRunIdRef = useRef(0);
-  const canPlayExampleAudio = useMemo(() => isBrowserSpeechSupported(), []);
-
-  const stopPlayback = useCallback(() => {
-    playbackRunIdRef.current += 1;
-    cancelBrowserSpeech();
-    setActiveExampleKey(null);
-  }, []);
-
-  const playExampleSentence = useCallback(
-    async (sentence: string, key: string) => {
-      if (!canPlayExampleAudio) return;
-
-      if (activeExampleKey === key) {
-        stopPlayback();
-        return;
-      }
-
-      stopPlayback();
-      const runId = playbackRunIdRef.current;
-      setActiveExampleKey(key);
-      await speakTextViaBrowser(sentence, preferences.defaultPronunciationLocale);
-
-      if (runId === playbackRunIdRef.current) {
-        setActiveExampleKey(null);
-      }
-    },
-    [activeExampleKey, canPlayExampleAudio, preferences.defaultPronunciationLocale, stopPlayback],
-  );
-
-  useEffect(
-    () => () => {
-      stopPlayback();
-    },
-    [stopPlayback],
-  );
+  const canPlayExampleAudio = typeof Audio !== 'undefined';
+  const { activeExampleKey, playExampleSentence, playAudioSequence, audioError } = useLearningAudio({
+    canPlayExampleAudio,
+  });
 
   const loadData = useCallback(async () => {
     if (!userId) return;
@@ -175,18 +142,12 @@ export function NotebookView() {
   }, [loadData]);
 
   const handlePlayAudio = (word: LibraryGroupWord) => {
-    const locale = preferences.defaultPronunciationLocale;
-    const url = locale === 'us' ? word.audioUsUrl || word.audioUkUrl : word.audioUkUrl || word.audioUsUrl;
-
-    if (url) {
-      const audio = new Audio(url);
-      void audio.play().catch((error) => {
-        console.error('Failed to play database audio:', error);
-        void speakTextViaBrowser(word.word, locale);
-      });
-    } else {
-      void speakTextViaBrowser(word.word, locale);
-    }
+    void playAudioSequence(
+      { word: word.word, audio_uk_url: word.audioUkUrl, audio_us_url: word.audioUsUrl },
+      preferences.defaultPronunciationLocale,
+      1,
+      0,
+    );
   };
 
   if (isLoading) {
@@ -235,6 +196,12 @@ export function NotebookView() {
           </div>
         )}
       </header>
+
+      {audioError && (
+        <p role="alert" className="text-sm text-apple-red">
+          {audioError}
+        </p>
+      )}
 
       {words.length === 0 ? (
         <div className="glass rounded-[40px] p-20 text-center jelly-shadow">

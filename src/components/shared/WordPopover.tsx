@@ -4,7 +4,6 @@ import { duration, ease } from '../../lib/motion';
 import { Loader2, Plus, Trash2, Volume2, X } from 'lucide-react';
 import { useSavedWords } from '../../contexts/SavedWordsContext';
 import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
-import { cancelBrowserSpeech, isBrowserSpeechSupported, speakTextViaBrowser } from '../../lib/browserSpeech';
 import { fetchWordAudioUrl, getCachedWordAudioUrl, primeWordAudioUrl } from '../../lib/wordAudio';
 import { type MemoryState, useWordLookup, type WordLookupResult } from '../../lib/wordLookup';
 import { cx } from './LearningUI';
@@ -151,7 +150,6 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
       audioRef.current.src = '';
       audioRef.current = null;
     }
-    cancelBrowserSpeech();
   }, []);
 
   const stopAudio = useCallback(() => {
@@ -168,6 +166,7 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
     const isCurrentRun = () => runId === playbackRunIdRef.current;
 
     haltActiveAudio();
+    setActionError('');
     setIsPlayingAudio(true);
 
     const playUrl = async (url: string) =>
@@ -203,11 +202,9 @@ export function WordPopover({ word, anchor, onClose }: WordPopoverProps) {
       }
     }
 
-    if (isCurrentRun() && isBrowserSpeechSupported()) {
-      await speakTextViaBrowser(playableWord, accent);
-    }
     if (isCurrentRun()) {
       setIsPlayingAudio(false);
+      setActionError(`无法播放 ${playableWord} 的发音，请稍后重试。`);
     }
   }, [accent, haltActiveAudio, playableWord, resolvedAudioUrl]);
 

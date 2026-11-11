@@ -11,7 +11,6 @@ const state = vi.hoisted(() => ({
   fetchEntries: vi.fn(),
   fetchAudio: vi.fn(),
   speak: vi.fn(),
-  cancelSpeech: vi.fn(),
   cleanupSaved: vi.fn(),
   deleteSaved: vi.fn(),
   cacheFresh: true,
@@ -38,10 +37,6 @@ vi.mock('../../lib/libraryCache', () => ({
   removeSavedWordFromCache: vi.fn(),
 }));
 vi.mock('../../lib/wordAudio', () => ({ fetchWordAudioUrl: state.fetchAudio }));
-vi.mock('../../lib/browserSpeech', () => ({
-  cancelBrowserSpeech: state.cancelSpeech,
-  speakTextViaBrowser: state.speak,
-}));
 
 function makeWords(count: number) {
   return Array.from(
@@ -91,7 +86,7 @@ beforeEach(() => {
   state.create.mockResolvedValue({ groupId: 'group3', words: [] });
   state.fetchEntries.mockImplementation(async (ids: string[]) => ids.map((id) => ({ id })));
   state.fetchAudio.mockResolvedValue('https://example.com/word.mp3');
-  state.speak.mockResolvedValue(true);
+  vi.stubGlobal('speechSynthesis', { speak: state.speak });
   MockAudio.instances = [];
   vi.stubGlobal('Audio', MockAudio);
 });
@@ -217,13 +212,12 @@ describe('personal vocabulary pronunciation', () => {
     expect(screen.getByRole('button', { name: '停止 word2 的英式发音' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('falls back to browser speech after an audio error and reports failure', async () => {
-    state.speak.mockResolvedValue(false);
+  it('reports an audio error without using browser speech', async () => {
     await showPanel();
     fireEvent.click(screen.getByRole('button', { name: '播放 word1 的英式发音' }));
     await waitFor(() => expect(MockAudio.instances).toHaveLength(1));
     act(() => MockAudio.instances[0].onerror?.());
     expect(await screen.findByRole('alert')).toHaveTextContent('无法播放 word1 的发音');
-    expect(state.speak).toHaveBeenCalledWith('word1', 'uk');
+    expect(state.speak).not.toHaveBeenCalled();
   });
 });

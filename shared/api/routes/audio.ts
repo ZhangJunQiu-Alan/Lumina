@@ -13,7 +13,7 @@ export const audioRouter = new Hono<AppEnv>();
 
 audioRouter.use('*', requireAuth);
 
-const ttsSingleQuota = requireExpensiveQuota('tts');
+export const ttsSingleQuota = requireExpensiveQuota('tts');
 const ttsBatchQuota = requireExpensiveQuota('tts', async (c) => {
   const body = await c.req.raw
     .clone()

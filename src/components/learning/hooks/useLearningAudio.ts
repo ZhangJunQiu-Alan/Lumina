@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PronunciationLocale, Word } from '../../../types';
 import { useLearningPreferences } from '../../../contexts/LearningPreferencesContext';
-import { cancelBrowserSpeech, speakTextViaBrowser } from '../../../lib/browserSpeech';
 import { fetchExampleAudioUrl } from '../../../lib/exampleAudio';
 import { fetchWordAudioUrl, primeWordAudioUrl } from '../../../lib/wordAudio';
 import type { PlaybackTarget } from '../learningEngineUtils';
@@ -17,6 +16,7 @@ export function useLearningAudio({ currentWord, canPlayExampleAudio = true }: Us
   preferencesRef.current = preferences;
 
   const [audioLocale, setAudioLocale] = useState<PronunciationLocale>(preferences.defaultPronunciationLocale);
+  const [audioError, setAudioError] = useState('');
   const [playbackTarget, setPlaybackTarget] = useState<PlaybackTarget | null>(null);
 
   const activePronunciationLocale = playbackTarget?.kind === 'pronunciation' ? playbackTarget.locale : null;
@@ -46,7 +46,6 @@ export function useLearningAudio({ currentWord, canPlayExampleAudio = true }: Us
     }
 
     finishActivePlayback?.();
-    cancelBrowserSpeech();
     setPlaybackTarget(null);
   }, []);
 
@@ -62,32 +61,18 @@ export function useLearningAudio({ currentWord, canPlayExampleAudio = true }: Us
     [stopPlayback],
   );
 
-  const speakViaBrowser = useCallback(
-    (text: string, locale: PronunciationLocale, runId: number, target: PlaybackTarget) => {
-      if (!canPlayExampleAudio || runId !== playbackRunIdRef.current) {
-        return Promise.resolve(false);
+  const resolveAudioUrl = useCallback(
+    async (word: Pick<Word, 'word' | 'audio_uk_url' | 'audio_us_url'>, locale: PronunciationLocale) => {
+      const cachedUrl = locale === 'uk' ? word.audio_uk_url : word.audio_us_url;
+      if (cachedUrl) {
+        primeWordAudioUrl(word.word, locale, cachedUrl);
+        return cachedUrl;
       }
 
-      setPlaybackTarget(target);
-
-      return speakTextViaBrowser(text, locale, preferencesRef.current.speechPlaybackRate).finally(() => {
-        if (runId === playbackRunIdRef.current) {
-          setPlaybackTarget(null);
-        }
-      });
+      return fetchWordAudioUrl(word.word, locale);
     },
-    [canPlayExampleAudio],
+    [],
   );
-
-  const resolveAudioUrl = useCallback(async (word: Word, locale: PronunciationLocale) => {
-    const cachedUrl = locale === 'uk' ? word.audio_uk_url : word.audio_us_url;
-    if (cachedUrl) {
-      primeWordAudioUrl(word.word, locale, cachedUrl);
-      return cachedUrl;
-    }
-
-    return fetchWordAudioUrl(word.word, locale);
-  }, []);
 
   const resolveExampleAudioUrl = useCallback(
     (sentence: string, locale: PronunciationLocale) => fetchExampleAudioUrl(sentence, locale),
@@ -120,15 +105,15 @@ export function useLearningAudio({ currentWord, canPlayExampleAudio = true }: Us
   );
 
   const playAudioOnce = useCallback(
-    async (word: Word, locale: PronunciationLocale, runId: number) => {
+    async (word: Pick<Word, 'word' | 'audio_uk_url' | 'audio_us_url'>, locale: PronunciationLocale, runId: number) => {
       if (runId !== playbackRunIdRef.current) return;
 
       const resolvedUrl = await resolveAudioUrl(word, locale);
       const pronunciationTarget: PlaybackTarget = { kind: 'pronunciation', locale };
       if (runId !== playbackRunIdRef.current) return;
 
-      if (!resolvedUrl) {
-        await speakViaBrowser(word.word, locale, runId, pronunciationTarget);
+      if (!resolvedUrl || typeof Audio === 'undefined') {
+        setAudioError(`无法播放 ${word.word} 的发音，请稍后重试。`);
         return;
       }
 
@@ -156,31 +141,32 @@ export function useLearningAudio({ currentWord, canPlayExampleAudio = true }: Us
           resolve();
         };
 
-        const fallbackToSpeech = () => {
-          if (settled) return;
-          settled = true;
-          if (activePlaybackFinishRef.current === finish) {
-            activePlaybackFinishRef.current = null;
-          }
-          if (audioRef.current === audio) {
-            audioRef.current = null;
-          }
-          void speakViaBrowser(word.word, locale, runId, pronunciationTarget).then(() => resolve());
+        const failPlayback = () => {
+          if (settled || runId !== playbackRunIdRef.current) return;
+          setAudioError(`无法播放 ${word.word} 的发音，请稍后重试。`);
+          audio.pause();
+          finish();
         };
 
         audioRef.current = audio;
         activePlaybackFinishRef.current = finish;
         audio.onended = finish;
-        audio.onerror = fallbackToSpeech;
-        audio.play().catch(fallbackToSpeech);
+        audio.onerror = failPlayback;
+        audio.play().catch(failPlayback);
       });
     },
-    [resolveAudioUrl, speakViaBrowser],
+    [resolveAudioUrl],
   );
 
   const playAudioSequence = useCallback(
-    async (word: Word, locale: PronunciationLocale, repeatCount: number, gapMs: number) => {
+    async (
+      word: Pick<Word, 'word' | 'audio_uk_url' | 'audio_us_url'>,
+      locale: PronunciationLocale,
+      repeatCount: number,
+      gapMs: number,
+    ) => {
       stopPlayback();
+      setAudioError('');
       const runId = playbackRunIdRef.current;
 
       for (let attempt = 0; attempt < repeatCount; attempt += 1) {
@@ -208,6 +194,7 @@ export function useLearningAudio({ currentWord, canPlayExampleAudio = true }: Us
       }
 
       stopPlayback();
+      setAudioError('');
       const runId = playbackRunIdRef.current;
       const exampleTarget: PlaybackTarget = { kind: 'example', key };
       setPlaybackTarget(exampleTarget);
@@ -216,7 +203,8 @@ export function useLearningAudio({ currentWord, canPlayExampleAudio = true }: Us
       if (runId !== playbackRunIdRef.current) return;
 
       if (!resolvedUrl || typeof Audio === 'undefined') {
-        await speakViaBrowser(sentence, audioLocale, runId, exampleTarget);
+        setAudioError('暂时无法播放例句音频，请稍后重试。');
+        setPlaybackTarget(null);
         return;
       }
 
@@ -242,34 +230,29 @@ export function useLearningAudio({ currentWord, canPlayExampleAudio = true }: Us
           resolve();
         };
 
-        const fallbackToSpeech = () => {
-          if (settled) return;
-          settled = true;
-          if (activePlaybackFinishRef.current === finish) {
-            activePlaybackFinishRef.current = null;
-          }
-          if (audioRef.current === audio) {
-            audioRef.current = null;
-          }
-          void speakViaBrowser(sentence, audioLocale, runId, exampleTarget).then(() => resolve());
+        const failPlayback = () => {
+          if (settled || runId !== playbackRunIdRef.current) return;
+          setAudioError('暂时无法播放例句音频，请稍后重试。');
+          audio.pause();
+          finish();
         };
 
         audioRef.current = audio;
         activePlaybackFinishRef.current = finish;
         audio.onended = finish;
-        audio.onerror = fallbackToSpeech;
-        audio.play().catch(fallbackToSpeech);
+        audio.onerror = failPlayback;
+        audio.play().catch(failPlayback);
       });
     },
-    [audioLocale, canPlayExampleAudio, playbackTarget, resolveExampleAudioUrl, speakViaBrowser, stopPlayback],
+    [audioLocale, canPlayExampleAudio, playbackTarget, resolveExampleAudioUrl, stopPlayback],
   );
 
   useEffect(() => {
-    if (!currentWord) return;
-
     const locale = preferences.defaultPronunciationLocale;
     setAudioLocale(locale);
     stopPlayback();
+    setAudioError('');
+    if (!currentWord) return;
 
     if (!preferences.autoPlayEnabled) {
       return;
@@ -296,6 +279,6 @@ export function useLearningAudio({ currentWord, canPlayExampleAudio = true }: Us
     stopPlayback,
     playAudioSequence,
     playExampleSentence,
-    speakViaBrowser,
+    audioError,
   };
 }

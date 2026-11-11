@@ -31,7 +31,6 @@ import {
 } from '../../lib/libraryCache';
 import { AI_CONTENT_FEATURES_ENABLED } from '../../lib/aiFeatures';
 import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
-import { cancelBrowserSpeech, speakTextViaBrowser } from '../../lib/browserSpeech';
 import { fetchWordAudioUrl } from '../../lib/wordAudio';
 
 interface SavedWordsPanelProps {
@@ -115,7 +114,6 @@ export function SavedWordsPanel({
       audioRef.current.src = '';
       audioRef.current = null;
     }
-    cancelBrowserSpeech();
   }, []);
 
   useEffect(() => {
@@ -135,23 +133,21 @@ export function SavedWordsPanel({
     const runId = playbackRunRef.current;
     const isCurrent = () => playbackRunRef.current === runId;
     setPlayingWordId(entry.vocabularyItemId);
-    const fallback = async () => {
+    const failPlayback = () => {
       if (!isCurrent()) return;
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
       }
-      const played = await speakTextViaBrowser(entry.word, preferences.defaultPronunciationLocale).catch(() => false);
-      if (!isCurrent()) return;
       setPlayingWordId(null);
-      if (!played) setAudioError(`无法播放 ${entry.word} 的发音，请稍后重试。`);
+      setAudioError(`无法播放 ${entry.word} 的发音，请稍后重试。`);
     };
 
     try {
       const url = await fetchWordAudioUrl(entry.word, preferences.defaultPronunciationLocale);
       if (!isCurrent()) return;
       if (!url) {
-        await fallback();
+        failPlayback();
         return;
       }
       const audio = new Audio(url);
@@ -160,7 +156,7 @@ export function SavedWordsPanel({
       const fail = () => {
         if (settled || !isCurrent()) return;
         settled = true;
-        void fallback();
+        failPlayback();
       };
       audio.onended = () => {
         if (settled || !isCurrent()) return;
@@ -171,7 +167,7 @@ export function SavedWordsPanel({
       audio.onerror = fail;
       await audio.play().catch(fail);
     } catch {
-      await fallback();
+      failPlayback();
     }
   };
 

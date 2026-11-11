@@ -13,7 +13,6 @@ import {
 import { useLearningPreferences } from '../../contexts/LearningPreferencesContext';
 import { useSavedWords } from '../../contexts/SavedWordsContext';
 import { useWordPopover } from '../../contexts/WordPopoverContext';
-import { isBrowserSpeechSupported } from '../../lib/browserSpeech';
 import { preloadRound1CardResources } from '../../lib/round1Preload';
 import { preloadRound2CardResources } from '../../lib/round2Preload';
 import { cx } from '../shared/LearningUI';
@@ -278,7 +277,7 @@ export const LearningEngine = ({
     [queue, round1ConfirmedWordIds],
   );
 
-  const canPlayExampleAudio = useMemo(() => typeof Audio !== 'undefined' || isBrowserSpeechSupported(), []);
+  const canPlayExampleAudio = useMemo(() => typeof Audio !== 'undefined', []);
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
   const [activeActionKind, setActiveActionKind] = useState<SessionActionKind | null>(null);
   const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
@@ -334,6 +333,7 @@ export const LearningEngine = ({
     setAudioLocale,
     activePronunciationLocale,
     activeExampleKey,
+    audioError,
     stopPlayback,
     playAudioSequence,
     playExampleSentence,
@@ -1579,9 +1579,12 @@ export const LearningEngine = ({
     </form>
   );
 
-  const submitErrorBanner = submitError ? (
-    <div className="rounded-2xl bg-apple-red/10 px-4 py-3 text-sm font-medium text-apple-red">{submitError}</div>
-  ) : null;
+  const submitErrorBanner =
+    submitError || audioError ? (
+      <div className="rounded-2xl bg-apple-red/10 px-4 py-3 text-sm font-medium text-apple-red" role="alert">
+        {submitError || audioError}
+      </div>
+    ) : null;
 
   const navigationButtonClassName =
     'flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/80 bg-white/78 text-text-primary shadow-[0_14px_34px_rgba(14,26,56,0.08)] backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:bg-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:translate-y-0 disabled:hover:bg-white/78';

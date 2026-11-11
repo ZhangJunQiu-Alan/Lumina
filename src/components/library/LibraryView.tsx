@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { duration, ease, staggerDelay } from '../../lib/motion';
 import {
@@ -29,7 +29,7 @@ import {
 } from '../../types';
 import { toConfusingPairs, toWordMorphology, toWordRelations } from '../../types';
 import { ExampleSentenceList } from '../shared/ExampleSentenceList';
-import { cancelBrowserSpeech, isBrowserSpeechSupported, speakTextViaBrowser } from '../../lib/browserSpeech';
+import { useLearningAudio } from '../learning/hooks/useLearningAudio';
 import {
   getCachedLibraryGroupDetail,
   getCachedLibraryGroups,
@@ -632,48 +632,15 @@ async function fetchLibraryGroupDetail(userId: string, groupId: string): Promise
 
 function WordDetailDrawer({ word, onClose }: { word: LibraryGroupWord; onClose: () => void }) {
   const { preferences } = useLearningPreferences();
-  const [activeExampleKey, setActiveExampleKey] = useState<string | null>(null);
-  const playbackRunIdRef = useRef(0);
-  const canPlayExampleAudio = useMemo(() => isBrowserSpeechSupported(), []);
-
-  const stopPlayback = useCallback(() => {
-    playbackRunIdRef.current += 1;
-    cancelBrowserSpeech();
-    setActiveExampleKey(null);
-  }, []);
+  const canPlayExampleAudio = typeof Audio !== 'undefined';
+  const { activeExampleKey, playExampleSentence, stopPlayback, audioError } = useLearningAudio({
+    canPlayExampleAudio,
+  });
 
   const handleClose = useCallback(() => {
     stopPlayback();
     onClose();
   }, [onClose, stopPlayback]);
-
-  const playExampleSentence = useCallback(
-    async (sentence: string, key: string) => {
-      if (!canPlayExampleAudio) return;
-
-      if (activeExampleKey === key) {
-        stopPlayback();
-        return;
-      }
-
-      stopPlayback();
-      const runId = playbackRunIdRef.current;
-      setActiveExampleKey(key);
-      await speakTextViaBrowser(sentence, preferences.defaultPronunciationLocale);
-
-      if (runId === playbackRunIdRef.current) {
-        setActiveExampleKey(null);
-      }
-    },
-    [activeExampleKey, canPlayExampleAudio, preferences.defaultPronunciationLocale, stopPlayback],
-  );
-
-  useEffect(
-    () => () => {
-      stopPlayback();
-    },
-    [stopPlayback],
-  );
 
   useEffect(() => {
     stopPlayback();
@@ -727,6 +694,11 @@ function WordDetailDrawer({ word, onClose }: { word: LibraryGroupWord; onClose: 
         </div>
 
         <div className="mt-8 space-y-6">
+          {audioError && (
+            <p role="alert" className="text-sm text-apple-red">
+              {audioError}
+            </p>
+          )}
           <section className="glass rounded-2xl p-5">
             <p className="text-xs font-bold uppercase tracking-widest text-text-secondary">释义</p>
             <p className="mt-3 text-lg font-bold text-text-primary">{word.meaning || '暂无释义'}</p>
